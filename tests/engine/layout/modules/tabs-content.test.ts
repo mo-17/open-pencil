@@ -7,6 +7,8 @@ import { computeAllLayouts, computeAllLayoutsAsync, computeLayout } from '#core/
 import { createLayoutRunner } from '#core/layout/mutations'
 import { createTabsModuleFrameOverrides } from '#core/plugins/tabs'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 function fixture(parentId?: string, existingGraph?: SceneGraph) {
   const graph = existingGraph ?? new SceneGraph()
   const tabs = graph.createNode('FRAME', parentId ?? graph.getPages()[0].id, {
@@ -106,7 +108,7 @@ test('imported stale geometry cannot pin slotted content to the tab header', () 
 test('fixed-size panel content stays fixed, while vertical Tabs reserve the sidebar', () => {
   const f = fixture()
   f.graph.updateNode(f.panel.id, { counterAxisSizing: 'FIXED', width: 100 })
-  const module = f.tabs.interactiveProps?.module
+  const module = expectModuleInstance(f.tabs.interactiveProps?.module)
   if (!module) throw new Error('Missing module')
   f.graph.updateNode(f.tabs.id, {
     interactiveProps: {
@@ -159,7 +161,7 @@ test('cancelled cooperative module layout never leaves temporary sizing or sourc
     })
   ).rejects.toThrow('Layout cancelled')
   for (const node of f.graph.getAllNodes()) {
-    expect({
+    expect<unknown>({
       source: node.source,
       primaryAxisSizing: node.primaryAxisSizing,
       counterAxisSizing: node.counterAxisSizing,
@@ -205,7 +207,7 @@ test('editor module and slot edits reflow consistently through undo and redo', (
     editor.replaceGraph(f.graph)
     editor.runLayoutForNode(f.tabs.id)
     const horizontalY = f.panel.y
-    const module = f.tabs.interactiveProps?.module
+    const module = expectModuleInstance(f.tabs.interactiveProps?.module)
     if (!module) throw new Error('Missing module')
     editor.updateNodeWithUndo(f.tabs.id, {
       interactiveProps: {

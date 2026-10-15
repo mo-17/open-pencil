@@ -7,6 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
+import { parseStarterBrowserOutput } from '#tests/helpers/compiler/output'
 import type { StarterPresentationKind } from '#tests/helpers/compiler/starter/fixtures'
 
 async function withStarter(
@@ -16,7 +17,7 @@ async function withStarter(
   run: (fixture: { base: string; open: (key: string) => Promise<void> }) => Promise<void>,
   locale = 'en'
 ) {
-  const fixture = JSON.parse(
+  const fixture = parseStarterBrowserOutput(
     execFileSync(
       'bun',
       [
@@ -25,11 +26,7 @@ async function withStarter(
       ],
       { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as {
-    files: [string, string][]
-    paths: Record<string, string>
-    apiBasePath: string
-  }
+  )
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

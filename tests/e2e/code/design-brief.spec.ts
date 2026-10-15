@@ -7,6 +7,8 @@ import { expect, test } from '#tests/helpers/chat/fixture'
 
 async function seedBriefPage(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('OpenPencil is not initialized')
     const included = editor.graph.createNode('FRAME', editor.state.currentPageId, {
@@ -67,6 +69,8 @@ test('current-page brief retains author notes across close, canvas changes and r
   )
   await expect(dialog.getByTestId('design-brief-preview')).toHaveValue(initialOutput)
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     editor.graph.updateNode(id, { name: 'Updated customer overview' })
     editor.requestRender()
@@ -101,7 +105,10 @@ test('empty selection blocks transfer, then selected scope and language produce 
   await expect(dialog.getByRole('alert')).toBeVisible()
   await expect(dialog.getByTestId('design-brief-preview')).toHaveValue('')
   await expect(dialog.getByTestId('design-brief-save')).toBeDisabled()
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), frameId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, frameId)
   await dialog.getByTestId('design-brief-language').click()
   await page.getByRole('option', { name: 'Chinese', exact: true }).click()
   await dialog.getByTestId('design-brief-notes').fill('导出后接入客户服务。')

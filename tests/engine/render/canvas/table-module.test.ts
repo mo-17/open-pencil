@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -13,7 +11,9 @@ import {
   type TableModuleConfigV1
 } from '#core/plugins/table'
 
-import { createMockCanvas } from './effects/helpers'
+import { canvasMock, createMockCanvas } from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
+
 import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 const CONFIG: TableModuleConfigV1 = {
@@ -67,10 +67,10 @@ describe('table module canvas preview', () => {
   })
 
   test('draws the inline grid, headers, stripes, and bounded cell labels', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const { renderer, labelFont } = rendererWithFont()
 
-    expect(renderTableModulePreview(renderer, canvas as Canvas, tableFrame())).toBe(true)
+    expect(renderTableModulePreview(renderer, asCanvas(canvas), tableFrame())).toBe(true)
     expect(canvas.save).toHaveBeenCalledTimes(9)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawRect.mock.calls.length).toBeGreaterThanOrEqual(7)
@@ -99,7 +99,7 @@ describe('table module canvas preview', () => {
     }
     const { renderer, labelFont } = rendererWithFont()
 
-    expect(() => renderTableModulePreview(renderer, canvas as Canvas, tableFrame())).toThrow(
+    expect(() => renderTableModulePreview(renderer, asCanvas(canvas), tableFrame())).toThrow(
       'draw failed'
     )
     expect(canvas.restore).toHaveBeenCalledTimes(canvas.save.mock.calls.length)
@@ -107,9 +107,9 @@ describe('table module canvas preview', () => {
   })
 
   test('regular FRAME rendering dispatches table and invalid identities fail closed', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const { renderer } = rendererWithFont()
-    renderShapeUncached(renderer, canvas as Canvas, tableFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), tableFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawParagraph).toHaveBeenCalled()
 
@@ -118,8 +118,8 @@ describe('table module canvas preview', () => {
         module: { ...createTableModuleInstance(CONFIG), moduleType: 'unknown' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
-    expect(renderTableModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
+    expect(renderTableModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
   })
 })

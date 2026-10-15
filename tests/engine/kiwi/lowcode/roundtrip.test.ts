@@ -28,6 +28,8 @@ import {
   type AppBackendProviderDescriptor
 } from '@/app/plugins/host/backend-provider'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 setDefaultTimeout(30_000)
 
 const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
@@ -94,7 +96,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(page.id, { state })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedPage = reimported.getPages()[0]
 
     expect(reimportedPage.state).toEqual(state)
@@ -106,7 +108,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(page.id, { lowcodeRoutePattern: '/product/:id' })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedPage = reimported.getPages()[0]
 
     expect(reimportedPage.lowcodeRoutePattern).toBe('/product/:id')
@@ -119,7 +121,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeAuthRedirect: '/signin' })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getPages()[0].lowcodeRequiresAuth).toBe(true)
     expect(reimported.getNode(reimported.rootId)?.lowcodeAuthRedirect).toBe('/signin')
@@ -139,7 +141,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const root = reimported.getNode(reimported.rootId)
 
     expect(root?.pluginData).toContainEqual({
@@ -166,7 +168,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(page.id, { lowcodeSeoMetadata: pageMetadata })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeSeoMetadata).toEqual(rootMetadata)
     expect(reimported.getPages()[0].lowcodeSeoMetadata).toEqual(pageMetadata)
@@ -191,7 +193,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeHeadMetadata).toEqual(headMetadata)
     expect(reimported.getNode(reimported.rootId)?.lowcodeCustomCss).toBe(
@@ -215,7 +217,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedBtn = findFirst(reimported, 'BUTTON')
 
     // Type override (decision §12.3 #7): without lowcode/nodeType the kiwi
@@ -248,7 +250,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const importedMap = findByName(reimported, 'Shanghai Map')
 
     expect(importedMap.type).toBe('FRAME')
@@ -312,7 +314,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const importedTarget = findByName(reimported, 'Animated target')
     const importedButton = findByName(reimported, 'Motion trigger')
     const importedActions = importedButton.events?.onClick
@@ -371,7 +373,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'wf-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'wf-btn')
     expect(btn.events).toEqual({ onClick })
   })
@@ -406,7 +408,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'checkout-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'checkout-btn')
     expect(btn.events).toEqual({ onClick })
     expect(reimported.getNode(reimported.rootId)?.lowcodeDocumentState).toEqual([
@@ -438,7 +440,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'portal-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'portal-btn')
     expect(btn.events).toEqual({ onClick })
     expect(reimported.getNode(reimported.rootId)?.lowcodeDocumentState).toEqual([
@@ -458,7 +460,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'nav-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'nav-btn')
     expect(btn.events).toEqual({ onClick })
   })
@@ -481,7 +483,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'toast-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'toast-btn')
     expect(btn.events).toEqual({ onClick })
   })
@@ -501,7 +503,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'confirm-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'confirm-btn')
     expect(btn.events).toEqual({ onClick })
   })
@@ -530,7 +532,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'cfg-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const btn = findByName(reimported, 'cfg-btn')
     expect(btn.events).toEqual({ onClick })
   })
@@ -558,7 +560,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     }
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedTypes = [...reimported.getAllNodes()]
       .filter((n) => (types as readonly string[]).includes(n.type))
       .map((n) => n.type)
@@ -575,7 +577,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const radio = findFirst(reimported, 'RADIO')
 
     expect(radio.type).toBe('RADIO')
@@ -598,7 +600,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('LIST', page.id, { name: 'Products', interactiveProps: { dataSourceRef } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const list = findFirst(reimported, 'LIST')
 
     expect(list.interactiveProps).toEqual({ dataSourceRef })
@@ -616,7 +618,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('INPUT', page.id, { name: 'Avatar', interactiveProps: { upload } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ upload })
   })
@@ -641,7 +643,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('INPUT', page.id, { name: 'Email', interactiveProps })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual(interactiveProps)
   })
@@ -656,7 +658,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('RECTANGLE', page.id, { name: 'Hero', interactiveProps })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findFirst(reimported, 'RECTANGLE').interactiveProps).toEqual(interactiveProps)
   })
@@ -673,7 +675,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedText = findFirst(reimported, 'TEXT')
 
     expect(reimportedText.bindings).toEqual({ text: { kind: 'ref', stateId: 's-count' } })
@@ -689,7 +691,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedPage = reimported.getPages()[0]
     const reimportedRect = findFirst(reimported, 'RECTANGLE')
 
@@ -726,7 +728,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     // findFirst('FRAME') would return the document root (also typed FRAME);
     // look up by the unique node name instead.
     const reimportedFrame = findByName(reimported, 'Conditional frame')
@@ -743,7 +745,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedText = findFirst(reimported, 'TEXT')
 
     expect(reimportedText.bindings).toEqual({
@@ -769,7 +771,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeDocumentState: docState })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeDocumentState).toEqual(docState)
@@ -787,7 +789,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedText = findFirst(reimported, 'TEXT')
 
     expect(reimportedText.bindings).toEqual({
@@ -801,7 +803,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('RECTANGLE', page.id, { name: 'Plain rect', width: 80, height: 60 })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeDocumentState).toBeUndefined()
@@ -818,7 +820,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedFrame = findByName(reimported, 'FreeCard')
 
     expect(reimportedFrame.layoutMode).toBe('FREE')
@@ -848,7 +850,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findByName(reimported, 'FlexRow').layoutMode).toBe('HORIZONTAL')
     expect(findByName(reimported, 'PlainBox').layoutMode).toBe('NONE')
@@ -864,7 +866,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: config })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeSupabaseConfig).toEqual(config)
@@ -876,7 +878,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: config })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeSupabaseConfig).toEqual(config)
@@ -891,7 +893,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('RECTANGLE', page.id, { name: 'Plain rect', width: 80, height: 60 })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeSupabaseConfig).toBeUndefined()
@@ -914,7 +916,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(frame.id, { responsiveOverrides: overrides })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedFrame = findByName(reimported, 'ResponsiveStack')
 
     expect(reimportedFrame.responsiveOverrides).toEqual(overrides)
@@ -931,7 +933,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findByName(reimported, 'PlainStack').responsiveOverrides).toBeUndefined()
   })
@@ -956,7 +958,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(frame.id, { stateOverrides: overrides })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findByName(reimported, 'StatefulCard').stateOverrides).toEqual(overrides)
   })
@@ -967,7 +969,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('FRAME', page.id, { name: 'PlainCard', width: 200, height: 80 })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(findByName(reimported, 'PlainCard').stateOverrides).toBeUndefined()
   })
@@ -981,7 +983,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeTranslations: translations })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeTranslations).toEqual(translations)
@@ -993,7 +995,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('RECTANGLE', page.id, { name: 'Plain', width: 80, height: 60 })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeTranslations).toBeUndefined()
   })
@@ -1023,7 +1025,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedRoot = reimported.getNode(reimported.rootId)
 
     expect(reimportedRoot?.lowcodeWorkflows).toEqual(workflows)
@@ -1035,7 +1037,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('RECTANGLE', page.id, { name: 'Plain', width: 80, height: 60 })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toBeUndefined()
   })
@@ -1058,7 +1060,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, { name: 'arg-btn', events: { onClick } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toEqual(workflows)
     const btn = [...reimported.getAllNodes()].find((n) => n.name === 'arg-btn')
@@ -1082,7 +1084,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     inst.overrides = { [`${child.id}:text`]: 'OVERRIDDEN' }
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     const inst2 = [...reimported.getAllNodes()].find((n) => n.type === 'INSTANCE')
     expect(inst2).toBeDefined()
@@ -1141,7 +1143,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const comp2 = findFirst(reimported, 'COMPONENT')
     const inst2 = findFirst(reimported, 'INSTANCE')
 
@@ -1188,7 +1190,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(inst.id, { overrides: { ...inst.overrides, motion: null } })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const comp2 = findFirst(reimported, 'COMPONENT')
     const inst2 = findFirst(reimported, 'INSTANCE')
 
@@ -1220,7 +1222,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createInstance(comp.id, page.id) // clean
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const inst2 = [...reimported.getAllNodes()].find((n) => n.type === 'INSTANCE')
     expect(Object.keys(inst2?.overrides ?? {})).toEqual([])
     expect(inst2?.pendingInstanceOverrides).toBeUndefined()
@@ -1262,7 +1264,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     deep.overrides = { [`${deepLabel.id}:text`]: 'DEEP' }
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     // the deep child value survives across the nested-instance re-clone
     const deepTexts = [...reimported.getAllNodes()].filter(
       (n) => n.type === 'TEXT' && n.text === 'DEEP'
@@ -1285,7 +1287,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toEqual(workflows)
   })
@@ -1324,7 +1326,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     }
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const importedButton = [...reimported.getAllNodes()].find((node) => node.type === 'BUTTON')
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeAnalyticsConfig).toEqual({

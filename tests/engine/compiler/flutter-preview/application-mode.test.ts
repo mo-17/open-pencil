@@ -119,8 +119,8 @@ describe('Flutter application mode snapshot contract', () => {
       { pluginId: 'open-pencil', key: LOWCODE_APPLICATION_PAGE_PLUGIN_KEY, value: '{broken' }
     ]
     const parsed = validateFlutterPreviewSnapshot(JSON.parse(snapshotWire(graph, [page.id])))
-    expect(editSnapshotNode(parsed, root.id).pluginData).toEqual(root.pluginData)
-    expect(editSnapshotNode(parsed, page.id).pluginData).toEqual(page.pluginData)
+    expect<unknown>(editSnapshotNode(parsed, root.id).pluginData).toEqual(root.pluginData)
+    expect<unknown>(editSnapshotNode(parsed, page.id).pluginData).toEqual(page.pluginData)
     expect(editSnapshotNode(parsed, root.id).lowcodeApplication).toBeUndefined()
     expect(editSnapshotNode(parsed, page.id).lowcodeApplicationPage).toBeUndefined()
   })

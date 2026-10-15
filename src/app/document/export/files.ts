@@ -156,6 +156,7 @@ export async function writeTauriExportFile(path: string, data: Uint8Array) {
   await tauriWrite(path, data)
 }
 
+/** Saves an exported file and reports whether it was saved; `false` means the person cancelled. */
 export async function saveExportedFile(
   data: Uint8Array,
   fileName: string,
@@ -164,7 +165,7 @@ export async function saveExportedFile(
   mime: string,
   downloadBlob: DownloadBlob,
   options: ExportedFileSaveOptions = {}
-) {
+): Promise<boolean> {
   if (isTauri()) {
     const path = await chooseTauriExportPath(fileName, format, ext)
     if (!path) return false

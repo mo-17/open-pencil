@@ -17,7 +17,11 @@ import {
 import { richTextVisibleLines } from './text'
 export { richTextPreviewLines } from './text'
 
-const TEXT_ALIGNMENT = { left: 'LEFT', center: 'CENTER', right: 'RIGHT' } as const
+const TEXT_ALIGNMENT = {
+  left: 'LEFT',
+  center: 'CENTER',
+  right: 'RIGHT'
+} as const
 
 /** Draw the bounded AST sketch through the editor's shared shaping and fallback pipeline. */
 export function renderRichTextModulePreview(
@@ -58,7 +62,7 @@ export function renderRichTextModulePreview(
         label,
         renderer.color4f(color.r, color.g, color.b, color.a),
         { halfLeading: true },
-        (paragraph) => canvas.drawParagraph(paragraph, inset, inset + lineHeight * index)
+        (paragraph) => paragraph.draw(canvas, inset, inset + lineHeight * index)
       )
     })
   } finally {

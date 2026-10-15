@@ -1,4 +1,10 @@
-import type { FigSessionCheckpoint, FigArchiveLimits } from '@open-pencil/fig'
+import type {
+  FigArchiveRecordInfo,
+  FigArchiveLimits,
+  FigPatchedArchiveInput,
+  FigRecordPatch,
+  FigSessionCheckpoint
+} from '@open-pencil/fig'
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 
 import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
@@ -13,9 +19,10 @@ export interface FigSessionOpenOptions {
 
 export interface FigSessionOpenRequest {
   type: 'open'
-  originalBuffer: ArrayBuffer
+  /** One source archive is transferred back for recovery; normal worker clients use buffer. */
+  originalBuffer?: ArrayBuffer
+  buffer?: ArrayBuffer
   options?: FigSessionOpenOptions
-  /** Transfer the sole compressed archive back with the graph for synchronous recovery. */
   returnOriginalBuffer?: boolean
   port: MessagePort
 }
@@ -32,6 +39,30 @@ export interface FigSessionOriginalArchiveRequest {
   requestId: string
 }
 
+export interface FigSessionArchiveInfoRequest {
+  type: 'archive-info'
+  requestId: string
+}
+
+export interface FigSessionComponentPagesRequest {
+  type: 'component-pages'
+  requestId: string
+  /** Archive GUIDs of the components, as `session:local`. */
+  componentIds: string[]
+}
+
+export interface FigSessionPatchArchiveRequest {
+  type: 'patch-archive'
+  requestId: string
+  patch: FigRecordPatch
+  input: FigPatchedArchiveInput
+}
+
+/** The graph diverged from the worker's: stop loading pages there, keep the archive. */
+export interface FigSessionRetireRequest {
+  type: 'retire'
+}
+
 export interface FigSessionCancelRequest {
   type: 'cancel'
   requestId?: string
@@ -44,6 +75,10 @@ export interface FigSessionDisposeRequest {
 export type FigSessionRequest =
   | FigSessionPopulateRequest
   | FigSessionOriginalArchiveRequest
+  | FigSessionArchiveInfoRequest
+  | FigSessionComponentPagesRequest
+  | FigSessionPatchArchiveRequest
+  | FigSessionRetireRequest
   | FigSessionCancelRequest
   | FigSessionDisposeRequest
 
@@ -51,11 +86,14 @@ export type FigSessionResponse =
   | { type: 'page-manifest'; pages: FigPageManifestEntry[] }
   | {
       type: 'graph'
-      graph: SerializedSceneGraph
-      checkpoint: FigSessionCheckpoint
+      graph?: SerializedSceneGraph
+      checkpoint?: FigSessionCheckpoint
+      /** Taken while the records are decoded, for writing the archive back later. */
+      archiveInfo?: FigArchiveRecordInfo
+      error?: string
       originalBuffer?: ArrayBuffer
+      phase?: FigSessionWorkerPhase
     }
-  | { type: 'graph'; error: string; phase: FigSessionWorkerPhase }
   | {
       type: 'population-result'
       requestId: string
@@ -66,4 +104,12 @@ export type FigSessionResponse =
     }
   | { type: 'population-error'; requestId?: string; error: string }
   | { type: 'original-archive-result'; requestId: string; bytes: Uint8Array }
+  | {
+      type: 'archive-info-result'
+      requestId: string
+      info: FigArchiveRecordInfo
+    }
+  | { type: 'component-pages-result'; requestId: string; pageIds: string[] }
+  | { type: 'patch-archive-result'; requestId: string; bytes: Uint8Array }
+  | { type: 'archive-error'; requestId: string; error: string }
   | { type: 'disposed' }

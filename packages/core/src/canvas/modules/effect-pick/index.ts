@@ -123,8 +123,8 @@ function drawDiagonalButton(
           height: box.height - BUTTON_BORDER_WIDTH * 2
         },
         () =>
-          canvas.drawParagraph(
-            paragraph,
+          paragraph.draw(
+            canvas,
             (node.width - textWidth) / 2,
             (node.height - paragraph.getHeight()) / 2
           )
@@ -175,8 +175,8 @@ function drawEffectCopy(
         canvas,
         { x: inset, y: inset + 6, width, height: Math.max(0, height - 6) },
         () =>
-          canvas.drawParagraph(
-            paragraph,
+          paragraph.draw(
+            canvas,
             inset,
             Math.max(inset + 6, (node.height - paragraph.getHeight()) / 2)
           )

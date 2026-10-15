@@ -73,7 +73,7 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
       y: 100,
       width: 200,
       height: 0,
-      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 }, opacity: 1, visible: true }],
+      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }],
       strokes: [{ color: BLACK, weight: 4, align: 'CENTER', opacity: 1, visible: true }]
     })
     const jsx = tw(graph, node.id)

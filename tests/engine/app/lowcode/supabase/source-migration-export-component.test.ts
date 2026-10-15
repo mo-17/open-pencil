@@ -1,19 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 import { compileScript, compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
-const componentPath = resolve(
-  import.meta.dir,
-  '../../../../../src/components/properties/Lowcode/SupabaseSourceMigrationExport.vue'
+import { repoPath } from '#tests/helpers/paths'
+
+const componentPath = repoPath(
+  'src/components/properties/Lowcode/SupabaseSourceMigrationExport.vue'
 )
 const source = readFileSync(componentPath, 'utf8')
 const controllerSource = readFileSync(
-  resolve(
-    import.meta.dir,
-    '../../../../../src/components/properties/Lowcode/supabase-source-migration-export-controller.ts'
-  ),
+  repoPath('src/components/properties/Lowcode/supabase-source-migration-export-controller.ts'),
   'utf8'
 )
 

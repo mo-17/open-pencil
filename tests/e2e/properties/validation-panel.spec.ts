@@ -8,6 +8,8 @@ function validationPanel() {
 
 function selectedLowcodeProps() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -23,6 +25,8 @@ function selectedLowcodeProps() {
 
 async function selectInputWithValueBinding() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.updateNode(store.graph.rootId, {
@@ -40,6 +44,8 @@ async function selectInputWithValueBinding() {
 
 async function selectForm() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('FORM', 120, 120, 320, 200)
@@ -51,6 +57,8 @@ async function selectForm() {
 
 async function selectValidatedInputWithoutBinding() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('INPUT', 120, 120, 220, 36)
@@ -70,6 +78,8 @@ async function selectValidatedInputWithoutBinding() {
 
 async function selectInputWithoutBinding() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('INPUT', 120, 120, 220, 36)
@@ -82,6 +92,8 @@ async function selectInputWithoutBinding() {
 
 async function selectInputWithInvalidBinding() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('INPUT', 120, 120, 220, 36)
@@ -98,6 +110,8 @@ async function selectInputWithInvalidBinding() {
 
 async function selectDynamicCheckbox() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -124,6 +138,8 @@ async function selectDynamicCheckbox() {
 
 async function selectValidatedInputInsideComponentMaster() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -272,6 +288,8 @@ test('validated control can create matching page state and value binding in one 
   await editor.canvas.waitForRender()
 
   const result = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]

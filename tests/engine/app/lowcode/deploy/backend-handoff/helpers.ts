@@ -9,7 +9,10 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
+
+import { compact } from 'es-toolkit/array'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { BACKEND_ARTIFACT_MANIFEST_PATH } from '@open-pencil/compiler/backend'
@@ -42,7 +45,14 @@ import {
 
 import { loadDocument } from '#cli/headless'
 
-const ROOT = resolve(import.meta.dir, '../../../../../..')
+import {
+  backendArtifactManifestSchema,
+  hostReportSchema,
+  providerObservationSchema
+} from '#tests/helpers/lowcode/deploy/backend-handoff'
+import { repoPath } from '#tests/helpers/paths'
+
+const ROOT = repoPath('.')
 const READY_PREFIX = 'OPENPENCIL_BACKEND_READY '
 const PROVIDER_URL = 'https://api.vercel.com/v13/deployments'
 const PROVIDER_FILES_URL = 'https://api.vercel.com/v2/files'
@@ -92,7 +102,7 @@ function record(directory: string, event: string): void {
 }
 
 function readLines(path: string): string[] {
-  return existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n').filter(Boolean) : []
+  return existsSync(path) ? compact(readFileSync(path, 'utf8').trim().split('\n')) : []
 }
 
 /** Only the native transport is replaced; the nested CLI loads the actual .fig and builds in TMPDIR. */
@@ -128,10 +138,13 @@ export async function runBackendHandoffBridge(scenario: BridgeScenario): Promise
       cliStdout: readLines(join(directory, 'cli-stdout.log')).join('\n'),
       cliStderr: readLines(join(directory, 'cli-stderr.log')).join('\n'),
       events: readLines(join(directory, 'events.log')),
-      requests: readLines(join(directory, 'requests.jsonl')).map(
-        (line) => JSON.parse(line) as ProviderObservation
+      requests: readLines(join(directory, 'requests.jsonl')).map((line) =>
+        v.parse(v.pipe(v.string(), v.parseJson(), providerObservationSchema), line)
       ),
-      report: JSON.parse(readFileSync(join(directory, 'report.json'), 'utf8')) as HostReport,
+      report: v.parse(
+        v.pipe(v.string(), v.parseJson(), hostReportSchema),
+        readFileSync(join(directory, 'report.json'), 'utf8')
+      ),
       temporaryEntries: readdirSync(temporaryDirectory).sort()
     }
   } finally {
@@ -165,13 +178,24 @@ function providerDouble(directory: string, scenario: string): typeof fetch {
       if (outputNames.length !== 1) throw new Error('Expected one CLI-owned build directory')
       const backend = join(tmpdir(), outputNames[0], 'openpencil-server')
       const manifestText = readFileSync(join(backend, BACKEND_ARTIFACT_MANIFEST_PATH), 'utf8')
-      const manifest = JSON.parse(manifestText) as BackendArtifactManifestV1
+      const manifest = v.parse(
+        v.pipe(v.string(), v.parseJson(), backendArtifactManifestSchema),
+        manifestText
+      )
       const proposal = manifest.artifacts.find((artifact) => artifact.kind === 'migration-plan')
       if (!proposal) throw new Error('Expected the reviewed migration proposal artifact')
       const staticPaths =
         url === PROVIDER_URL
-          ? (JSON.parse(String(init.body)) as { files: { file: string }[] }).files
-              .map((entry) => `/${entry.file}`)
+          ? v
+              .parse(
+                v.pipe(
+                  v.string(),
+                  v.parseJson(),
+                  v.looseObject({ files: v.array(v.looseObject({ file: v.string() })) })
+                ),
+                String(init.body)
+              )
+              .files.map((entry) => `/${entry.file}`)
               .sort()
           : []
       const observation: ProviderObservation = {

@@ -1,11 +1,11 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { renderDatePickerContent } from '#core/canvas/datepicker'
 import { renderShapeUncached } from '#core/canvas/scene'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer, mockCalls } from './effects/helpers'
 
@@ -23,7 +23,7 @@ function draw(overrides: Partial<SceneNode> = {}) {
   })
   const canvas = createMockCanvas()
   const renderer = createMockRenderer()
-  const render = () => renderDatePickerContent(renderer, canvas as Canvas, node, graph)
+  const render = () => renderDatePickerContent(renderer, asCanvas(canvas), node, graph)
   const labels = () =>
     mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
   return { graph, node, canvas, renderer, render, labels }
@@ -32,7 +32,7 @@ function draw(overrides: Partial<SceneNode> = {}) {
 test('the normal scene renderer overlays date content on its authored field shape', () => {
   const { graph, node, canvas } = draw({ interactiveProps: { value: '2026-09-24' } })
   const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-  renderShapeUncached(renderer, canvas as Canvas, node, graph)
+  renderShapeUncached(renderer, asCanvas(canvas), node, graph)
   expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
     type: 'TEXT',
     text: '2026-09-24'
@@ -99,7 +99,7 @@ test('page and document binding defaults take priority, including empty and inva
       })
       render()
       expect(labels().at(-1)).toMatchObject({ text: value === '2024-02-29' ? value : 'YYYY-MM-DD' })
-      expect(node.interactiveProps.value).toBe('2026-01-01')
+      expect(node.interactiveProps?.value).toBe('2026-01-01')
     }
   }
 })

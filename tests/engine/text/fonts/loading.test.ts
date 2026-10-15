@@ -6,6 +6,7 @@ import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import {
   chooseLocalFontMatch,
+  fontWeightMatchOrder,
   fontManager,
   isVariableFont,
   normalizeFontFamily,
@@ -18,6 +19,7 @@ import {
 } from '@open-pencil/core'
 
 import { expectDefined } from '#tests/helpers/assert'
+import { fetchStub } from '#tests/helpers/fetch'
 
 function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id
@@ -106,6 +108,26 @@ describe('chooseLocalFontMatch', () => {
 
   test('does not substitute nearby weights for explicit style requests', () => {
     expect(chooseLocalFontMatch(fonts, 'Inter', 'Bold')).toBeUndefined()
+  })
+
+  test('without a style, takes the face CSS font matching picks for regular', () => {
+    const faces = [
+      { family: 'Inter', style: 'Black' },
+      { family: 'Inter', style: 'Light Italic' },
+      { family: 'Inter', style: 'Medium' },
+      { family: 'Inter', style: 'Light' }
+    ]
+    // Regular falls to medium before lighter weights, and the upright slant before italic.
+    expect(chooseLocalFontMatch(faces, 'Inter')?.style).toBe('Medium')
+    expect(chooseLocalFontMatch(faces.slice(0, 2), 'Inter')?.style).toBe('Black')
+  })
+})
+
+describe('fontWeightMatchOrder', () => {
+  test('tries weights in CSS font matching order', () => {
+    expect(fontWeightMatchOrder(400)).toEqual([400, 500, 300, 200, 100, 600, 700, 800, 900])
+    expect(fontWeightMatchOrder(700)).toEqual([700, 800, 900, 600, 500, 400, 300, 200, 100])
+    expect(fontWeightMatchOrder(300)).toEqual([300, 200, 100, 400, 500, 600, 700, 800, 900])
   })
 })
 
@@ -269,16 +291,16 @@ describe('FontManager loaded font cache', () => {
     const manager = new FontManager()
     const recording = createRecordingProvider()
     const originalFetch = globalThis.fetch
-    globalThis.fetch = (() => {
+    globalThis.fetch = fetchStub(() => {
       throw new Error('network disabled')
-    }) as typeof fetch
+    })
 
     try {
       manager.attachProvider({} as CanvasKit, recording.provider)
-      const data = await manager.loadFont('Inter', 'ExtraBold')
+      const data = expectDefined(await manager.loadFont('Inter', 'ExtraBold'), 'Inter ExtraBold')
 
-      expect(data?.byteLength).toBeGreaterThan(0)
-      expect(recording.registrations).toEqual([{ family: 'Inter', byteLength: data?.byteLength }])
+      expect(data.byteLength).toBeGreaterThan(0)
+      expect(recording.registrations).toEqual([{ family: 'Inter', byteLength: data.byteLength }])
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -458,12 +480,12 @@ describe('collectFontKeys', () => {
       styleRuns: [
         {
           start: 0,
-          end: 5,
+          length: 5,
           style: { fontFamily: 'Roboto', fontWeight: 400 }
         },
         {
           start: 6,
-          end: 11,
+          length: 5,
           style: { fontFamily: 'Montserrat', fontWeight: 700 }
         }
       ]
@@ -488,7 +510,7 @@ describe('collectFontKeys', () => {
       styleRuns: [
         {
           start: 0,
-          end: 5,
+          length: 5,
           style: {}
         }
       ]

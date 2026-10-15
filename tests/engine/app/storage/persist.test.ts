@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
-import { createMemoryLocalCanvasStore } from '@/app/storage/local-store'
+import { createMemoryLocalCanvasStore, resolveLocalCanvasLocator } from '@/app/storage/local-store'
 import type { LocalCanvasLocator, LocalCanvasStore } from '@/app/storage/local-store'
 import {
   StorageProfileMutationFrozenError,
@@ -137,7 +137,7 @@ describe('local-first storage persistence', () => {
       store,
       readCurrentAuthority: async () => authority,
       enqueueCanvas: async (locator: LocalCanvasLocator) => {
-        queued.push(locator.documentId)
+        queued.push(resolveLocalCanvasLocator(locator).documentId)
       }
     }
     const firstSave = persistStorageCanvasLocally(

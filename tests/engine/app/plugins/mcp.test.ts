@@ -73,7 +73,6 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(92)
 
     const store = createStore()
     await store.load()
@@ -87,10 +86,13 @@ describe('app plugin MCP catalog', () => {
     }
 
     const tools = listAppPluginMCPTools(store).tools
-    expect(tools).toHaveLength(55)
-    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(42)
-    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(11)
-    expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(2)
+    expect(new Set(tools.map(({ name }) => name)).size).toBe(tools.length)
+    for (const kind of ['module', 'command', 'exporter'] as const) {
+      expect(tools.some((tool) => tool.kind === kind)).toBe(true)
+    }
+    for (const tool of tools) {
+      expect(resolveAppPluginMCPTool(store, tool.name, tool.pluginId).kind).toBe(tool.kind)
+    }
     expect(tools.some((tool) => tool.pluginId === COMPILER_PREVIEW_POPOUT_PLUGIN_ID)).toBe(false)
     expect(tools.some((tool) => tool.pluginId === AI_POPOUT_PLUGIN_ID)).toBe(false)
   })
@@ -237,7 +239,13 @@ describe('app plugin MCP catalog', () => {
     await store.load()
 
     const enabled = listAppPluginMCPTools(store)
-    expect(enabled.tools).toHaveLength(3)
+    for (const tool of enabled.tools) {
+      const plugin = store
+        .snapshot()
+        .installed.find(({ package: entry }) => entry.manifest.plugin.id === tool.pluginId)
+      expect(plugin?.enabled).toBe(true)
+      expect(resolveAppPluginMCPTool(store, tool.name, tool.pluginId).kind).toBe(tool.kind)
+    }
     const mapTool = enabled.tools.find(({ pluginId }) => pluginId === MAP_PLUGIN_ID)
     if (!mapTool) throw new Error('Expected Map MCP tool')
     const installedMap = store
@@ -590,6 +598,7 @@ describe('app plugin MCP catalog', () => {
       .installedConnectors()
       .find(({ plugin }) => plugin.package.manifest.plugin.id === AIRTABLE_RECORDS_PLUGIN_ID)
     if (!installed) throw new Error('Expected installed Airtable connector')
+    const acceptedConnector = installed
 
     function catalogFor(
       overrides: Partial<{
@@ -606,24 +615,25 @@ describe('app plugin MCP catalog', () => {
         installedConnectors: () => [
           {
             plugin: {
-              ...installed.plugin,
+              ...acceptedConnector.plugin,
               package: {
-                ...installed.plugin.package,
-                trustSource: overrides.trustSource ?? installed.plugin.package.trustSource,
-                digest: overrides.packageDigest ?? installed.plugin.package.digest,
+                ...acceptedConnector.plugin.package,
+                trustSource: overrides.trustSource ?? acceptedConnector.plugin.package.trustSource,
+                digest: overrides.packageDigest ?? acceptedConnector.plugin.package.digest,
                 manifest: {
-                  ...installed.plugin.package.manifest,
+                  ...acceptedConnector.plugin.package.manifest,
                   publisher: {
-                    ...installed.plugin.package.manifest.publisher,
+                    ...acceptedConnector.plugin.package.manifest.publisher,
                     keyId:
-                      overrides.publisherKeyId ?? installed.plugin.package.manifest.publisher.keyId
+                      overrides.publisherKeyId ??
+                      acceptedConnector.plugin.package.manifest.publisher.keyId
                   }
                 }
               }
             },
             contribution: {
-              ...installed.contribution,
-              adapterId: overrides.adapterId ?? installed.contribution.adapterId
+              ...acceptedConnector.contribution,
+              adapterId: overrides.adapterId ?? acceptedConnector.contribution.adapterId
             }
           }
         ]

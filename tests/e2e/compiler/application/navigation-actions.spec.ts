@@ -2,14 +2,14 @@ import { execFileSync } from 'node:child_process'
 
 import { expect, test } from '@playwright/test'
 
-import type { ApplicationBrowserOutput } from '#tests/helpers/compiler/application-mode/browser'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
 
 for (const target of ['react', 'vue'] as const) {
   test(`${target} authored replacement and repeated Back stay within application-owned history`, async ({
     page
   }, info) => {
-    const result = JSON.parse(
+    const result = parseCompilerBrowserOutput(
       execFileSync(
         'bun',
         [
@@ -18,7 +18,7 @@ for (const target of ['react', 'vue'] as const) {
         ],
         { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
       )
-    ) as ApplicationBrowserOutput
+    )
     expect(result.warnings).toEqual([])
     await page.goto('data:text/html,<title>External host</title><h1>External host</h1>')
     await withComponentTemplateFiles(page, target, new Map(result.files), async () => {

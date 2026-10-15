@@ -1,6 +1,6 @@
 import { expect, mock, spyOn, test } from 'bun:test'
 
-import type { Canvas, Image as CKImage, ImageInfo, SkPicture, Surface } from 'canvaskit-wasm'
+import type { Canvas, Image as CKImage, ImageInfo, Paint, SkPicture, Surface } from 'canvaskit-wasm'
 
 import { getAbsolutePositionFull, SceneGraph } from '@open-pencil/scene-graph'
 
@@ -14,9 +14,11 @@ import {
   sceneBackingScaleForViewport
 } from '#core/canvas/renderer/retained-backing'
 
+import { asCanvas, asCanvasKit, asDouble, asRenderer } from '#tests/engine/render/canvas/helpers'
+
 function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
   const renderer: Partial<SkiaRenderer> = {
-    ck: {
+    ck: asCanvasKit({
       AlphaType: { Premul: 'Premul' },
       ColorSpace: { SRGB: 'SRGB' },
       ColorType: { RGBA_8888: 'RGBA_8888' },
@@ -30,20 +32,20 @@ function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
       ClipOp: { Intersect: 'Intersect' },
       FilterMode: { Linear: 'Linear', Nearest: 'Nearest' },
       MipmapMode: { None: 'None' }
-    } as SkiaRenderer['ck'],
-    surface: {
+    }),
+    surface: asDouble<Surface>({
       makeSurface: mock(surfaceFactory)
-    } as SkiaRenderer['surface'],
-    opacityPaint: {
+    }),
+    opacityPaint: asDouble<Paint>({
       setAlphaf: mock()
-    } as SkiaRenderer['opacityPaint'],
+    }),
     panX: 0,
     panY: 0,
     zoom: 1,
     dpr: 1,
     viewportWidth: 100,
     viewportHeight: 100,
-    pageColor: { r: 1, g: 1, b: 1 },
+    pageColor: { r: 1, g: 1, b: 1, a: 1 },
     pageId: 'page',
     fontGeneration: 0,
     navigationPhase: 'idle',
@@ -66,7 +68,7 @@ function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
     worldViewport: { x: 0, y: 0, w: 0, h: 0 },
     renderNode: mock()
   }
-  return renderer as SkiaRenderer
+  return asRenderer(renderer)
 }
 
 function createCanvas() {
@@ -78,11 +80,11 @@ function createCanvas() {
     translate: mock(),
     scale: mock()
   }
-  return canvas as Canvas
+  return asCanvas(canvas)
 }
 
 function createGraph(positionPreviewVersion = 0) {
-  const graph: Partial<SceneGraph> = {
+  return asDouble<SceneGraph>({
     rootId: 'root',
     positionPreviewVersion,
     getNode: mock((id: string) => {
@@ -90,8 +92,7 @@ function createGraph(positionPreviewVersion = 0) {
       return null
     }),
     getAbsolutePosition: mock(() => ({ x: 0, y: 0 }))
-  }
-  return graph as SceneGraph
+  })
 }
 
 test('retained subtree bounds include descendants transformed by rotated ancestors', () => {
@@ -163,9 +164,9 @@ test('retained scene backing falls back when CanvasKit cannot create an offscree
 })
 
 test('retained scene backing caps device-pixel allocations on large high-DPI viewports', () => {
-  let allocation: { width: number; height: number } | null = null
+  const allocations: { width: number; height: number }[] = []
   const r = createRenderer((descriptor) => {
-    allocation = descriptor as { width: number; height: number }
+    allocations.push(descriptor as { width: number; height: number })
     return null
   })
   r.viewportWidth = 2_560
@@ -174,15 +175,16 @@ test('retained scene backing caps device-pixel allocations on large high-DPI vie
 
   expect(sceneBackingScaleForViewport(r.viewportWidth, r.viewportHeight, r.dpr)).toBe(1)
   expect(renderSceneBacking(r, createCanvas(), createGraph(), 1)).toBe(false)
-  expect(allocation).not.toBeNull()
+  const allocation = allocations[0]
+  expect(allocation).toBeDefined()
   if (!allocation) throw new Error('Expected a retained-backing allocation attempt')
   expect(allocation.width * allocation.height).toBeLessThanOrEqual(12_000_000)
 })
 
 test('resource-saving retained backing reduces coverage and allocation footprint', () => {
-  let allocation: { width: number; height: number } | null = null
+  const allocations: { width: number; height: number }[] = []
   const r = createRenderer((descriptor) => {
-    allocation = descriptor as { width: number; height: number }
+    allocations.push(descriptor as { width: number; height: number })
     return null
   })
   r.performanceMode = 'resource-saving'
@@ -194,7 +196,8 @@ test('resource-saving retained backing reduces coverage and allocation footprint
     Math.sqrt(6_000_000 / 3_200_000)
   )
   expect(renderSceneBacking(r, createCanvas(), createGraph(), 1)).toBe(false)
-  expect(allocation).not.toBeNull()
+  const allocation = allocations[0]
+  expect(allocation).toBeDefined()
   if (!allocation) throw new Error('Expected a retained-backing allocation attempt')
   expect(allocation.width * allocation.height).toBeLessThanOrEqual(6_000_000)
 })
@@ -215,7 +218,7 @@ test('last-good recovery is no-throw even when the surface cannot return a canva
       throw new Error('surface lost')
     })
   }
-  r.surface = lostSurface as Surface
+  r.surface = asDouble<Surface>(lostSurface)
 
   expect(() => recoverLastGoodFrame(r)).not.toThrow()
   expect(recoverLastGoodFrame(r)).toBe(false)
@@ -227,13 +230,13 @@ test('clearing an overlay surface is not reported as a recovered scene frame', (
     clear: mock(),
     restoreToCount: mock()
   }
-  const canvas = partialCanvas as Canvas
+  const canvas = asCanvas(partialCanvas)
   const r = createRenderer(() => null)
   const overlaySurface: Partial<Surface> = {
     getCanvas: mock(() => canvas),
     flush: mock()
   }
-  r.surface = overlaySurface as Surface
+  r.surface = asDouble<Surface>(overlaySurface)
 
   expect(recoverLastGoodFrame(r, 'overlays')).toBe(false)
   expect(r.surface.flush).toHaveBeenCalled()
@@ -242,7 +245,7 @@ test('clearing an overlay surface is not reported as a recovered scene frame', (
 test('last-good scene backing can be restored after graph metadata changes', () => {
   const r = createRenderer(() => null)
   r.sceneBacking = {
-    image: { delete: mock() } as CKImage,
+    image: asDouble<CKImage>({ delete: mock() }),
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
@@ -267,17 +270,17 @@ test('last-good scene backing can be restored after graph metadata changes', () 
 test('balanced to smooth hot switch reuses identical completed backing geometry', () => {
   const r = createRenderer(() => null)
   r.sceneBacking = {
-    image: { delete: mock() } as CKImage,
-    anchorPanX: 0,
-    anchorPanY: 0,
-    marginDeviceX: 100,
-    marginDeviceY: 100,
+    image: asDouble<CKImage>({ delete: mock() }),
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
     fontGeneration: 0,
     panX: 100,
     panY: 100,
+    anchorPanX: 100,
+    anchorPanY: 100,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     zoom: 1,
     width: 300,
     height: 300,
@@ -305,18 +308,18 @@ test('scene-version changes rebuild incrementally while presenting the last-good
     clipRect: mock(),
     restoreToCount: mock()
   }
-  const buildCanvas = partialBuildCanvas as Canvas
+  const buildCanvas = asCanvas(partialBuildCanvas)
   const partialBuildSurface: Partial<Surface> = {
     getCanvas: mock(() => buildCanvas),
     flush: mock(),
     makeImageSnapshot: mock(),
     delete: mock()
   }
-  const buildSurface = partialBuildSurface as Surface
+  const buildSurface = asDouble<Surface>(partialBuildSurface)
   const r = createRenderer(() => buildSurface)
   r.viewportWidth = 400
   r.viewportHeight = 400
-  const oldImage = { delete: mock() } as CKImage
+  const oldImage = asDouble<CKImage>({ delete: mock() })
   r.sceneBacking = {
     image: oldImage,
     pageId: 'page',
@@ -325,6 +328,10 @@ test('scene-version changes rebuild incrementally while presenting the last-good
     fontGeneration: 0,
     panX: 100,
     panY: 100,
+    anchorPanX: 100,
+    anchorPanY: 100,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     zoom: 1,
     width: 300,
     height: 300,
@@ -337,8 +344,12 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
   r.pageId = page.id
+  if (!r.sceneBacking) throw new Error('Retained backing fixture unavailable')
   r.sceneBacking.pageId = page.id
-  const first = graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
+  const first = graph.createNode('RECTANGLE', page.id, {
+    width: 10,
+    height: 10
+  })
   graph.createNode('RECTANGLE', page.id, { x: 20, width: 10, height: 10 })
   const stalePicture = { delete: mock() }
   r.subtreePictureCachePageId = page.id
@@ -346,7 +357,7 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
   r.subtreePictureCacheFontGeneration = r.fontGeneration
   r.subtreePictureCache.set(first.id, {
-    picture: stalePicture as SkPicture,
+    picture: asDouble<SkPicture>(stalePicture),
     pageId: page.id,
     sceneVersion: 2,
     positionPreviewVersion: graph.positionPreviewVersion,
@@ -376,15 +387,15 @@ test('first retained backing slices one huge top-level root and installs only th
     clipRect: mock(),
     restoreToCount: mock()
   }
-  const buildCanvas = partialBuildCanvas as Canvas
-  const snapshot = { delete: mock() } as CKImage
+  const buildCanvas = asCanvas(partialBuildCanvas)
+  const snapshot = asDouble<CKImage>({ delete: mock() })
   const partialBuildSurface: Partial<Surface> = {
     getCanvas: mock(() => buildCanvas),
     flush: mock(),
     makeImageSnapshot: mock(() => snapshot),
     delete: mock()
   }
-  const r = createRenderer(() => partialBuildSurface as Surface)
+  const r = createRenderer(() => asDouble<Surface>(partialBuildSurface))
   r.viewportWidth = 400
   r.viewportHeight = 400
   const graph = new SceneGraph()
@@ -445,12 +456,12 @@ test('smooth mode advances at most four retained tiles in one build step', () =>
     restoreToCount: mock()
   }
   const partialBuildSurface: Partial<Surface> = {
-    getCanvas: mock(() => partialBuildCanvas as Canvas),
+    getCanvas: mock(() => asCanvas(partialBuildCanvas)),
     flush: mock(),
     makeImageSnapshot: mock(),
     delete: mock()
   }
-  const r = createRenderer(() => partialBuildSurface as Surface)
+  const r = createRenderer(() => asDouble<Surface>(partialBuildSurface))
   r.performanceMode = 'smooth'
   r.viewportWidth = 400
   r.viewportHeight = 400
@@ -487,12 +498,12 @@ test('smooth mode stops retained tile work when its six millisecond step budget 
       restoreToCount: mock()
     }
     const partialBuildSurface: Partial<Surface> = {
-      getCanvas: mock(() => partialBuildCanvas as Canvas),
+      getCanvas: mock(() => asCanvas(partialBuildCanvas)),
       flush: mock(),
       makeImageSnapshot: mock(),
       delete: mock()
     }
-    const r = createRenderer(() => partialBuildSurface as Surface)
+    const r = createRenderer(() => asDouble<Surface>(partialBuildSurface))
     r.performanceMode = 'smooth'
     r.viewportWidth = 400
     r.viewportHeight = 400
@@ -526,12 +537,12 @@ test('retained backing expands tile culling for effects larger than the default 
     restoreToCount: mock()
   }
   const partialBuildSurface: Partial<Surface> = {
-    getCanvas: mock(() => partialBuildCanvas as Canvas),
+    getCanvas: mock(() => asCanvas(partialBuildCanvas)),
     flush: mock(),
     makeImageSnapshot: mock(),
     delete: mock()
   }
-  const r = createRenderer(() => partialBuildSurface as Surface)
+  const r = createRenderer(() => asDouble<Surface>(partialBuildSurface))
   r.viewportWidth = 400
   r.viewportHeight = 400
   const graph = new SceneGraph()
@@ -630,7 +641,7 @@ test('retained scene backing filters cross-zoom previews instead of falling back
     anchorPanY: 0,
     marginDeviceX: 0,
     marginDeviceY: 0,
-    image: { delete: mock() } as CKImage,
+    image: asDouble<CKImage>({ delete: mock() }),
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
@@ -669,7 +680,7 @@ test('retained scene backing allows same-zoom previews while panning', () => {
     anchorPanY: 0,
     marginDeviceX: 0,
     marginDeviceY: 0,
-    image: { delete: mock() } as CKImage,
+    image: asDouble<CKImage>({ delete: mock() }),
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
@@ -706,7 +717,7 @@ test('retained scene backing falls back live when a metadata rebuild cannot star
     anchorPanY: 0,
     marginDeviceX: 0,
     marginDeviceY: 0,
-    image: { delete: mock() } as CKImage,
+    image: asDouble<CKImage>({ delete: mock() }),
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 1,

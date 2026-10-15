@@ -27,7 +27,10 @@ function captureRegistration(sendRPC: () => Promise<unknown>): {
     }
   })
 
-  registerTools(server, { policy: { allowEval: false, disabledTools: [] }, sendRPC })
+  registerTools(server, {
+    policy: { allowEval: false, disabledTools: [], scope: 'document' },
+    sendRPC
+  })
   return { definitions, handlers }
 }
 
@@ -40,7 +43,7 @@ describe('MCP tool result registration', () => {
     const cancelled = Promise.withResolvers<undefined>()
     let calls = 0
     registerTools(server, {
-      policy: { allowEval: false, disabledTools: [] },
+      policy: { allowEval: false, disabledTools: [], scope: 'document' },
       mcpRoot: tmpdir(),
       async sendRPC(_request, context) {
         calls++

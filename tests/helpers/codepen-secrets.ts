@@ -1,5 +1,3 @@
-import { Buffer } from 'node:buffer'
-
 import { encode } from 'js-base64'
 
 export interface CodePenSecretFixture {

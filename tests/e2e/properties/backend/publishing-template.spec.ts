@@ -13,6 +13,8 @@ for (const fixture of publishingCases) {
     await canvas.waitForInit()
     const settle = () =>
       page.evaluate(async () => {
+        if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
         const navigation = window.openPencil?.test?.navigation
         if (!navigation) throw new Error('Canvas settlement hook not initialized')
         await navigation.waitForSettlement()

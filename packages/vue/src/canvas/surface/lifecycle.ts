@@ -14,15 +14,26 @@ import {
   supportsWideGamutPresentation,
   type PresentationColorSpace
 } from '#vue/canvas/surface/color-space'
-import { makeGLSurface, sizeCanvas, type CanvasGLContext } from '#vue/canvas/surface/gl-surface'
+import {
+  makeGLSurface,
+  releaseWebGLContext,
+  sizeCanvas,
+  type CanvasGLContext,
+  type CanvasGLHandle
+} from '#vue/canvas/surface/gl-surface'
+import { createImagePreviewDecoder } from '#vue/canvas/surface/image-preview'
 import { useCanvasKitLoader } from '#vue/canvas/surface/kit-loader'
 import { createCanvasRenderLoop } from '#vue/canvas/surface/render-loop'
 import { useCanvasResizeObserver } from '#vue/canvas/surface/resize-observer'
+import { createShaderRasterizer } from '#vue/canvas/surface/shader/rasterizer'
 import type { UseCanvasOptions } from '#vue/canvas/surface/types'
 
 type SurfaceManagerState = {
   renderer: SkiaRenderer | null
   glContext: CanvasGLContext | null
+  glHandle: CanvasGLHandle | null
+  /** The canvas the WebGL context belongs to, kept until the context is released. */
+  glCanvas: HTMLCanvasElement | null
   presentation: PresentationColorSpace | null
   contextLost: boolean
 }
@@ -63,6 +74,8 @@ export function createCanvasSurfaceManager({
   const state: SurfaceManagerState = {
     renderer: null,
     glContext: null,
+    glHandle: null,
+    glCanvas: null,
     contextLost: false,
     presentation: null
   }
@@ -119,6 +132,10 @@ export function createCanvasSurfaceManager({
         editor.graph.documentColorSpace
       )
       state.glContext = result.glContext
+      if (result.glHandle !== null) {
+        state.glHandle = result.glHandle
+        state.glCanvas = canvas
+      }
       state.presentation = result.presentation
       options?.onPresentation?.(result.presentation)
       return (
@@ -143,6 +160,8 @@ export function createCanvasSurfaceManager({
   ): SkiaRenderer | null {
     try {
       const renderer = createRenderer(ck, surface, canvas.getContext('webgl2') ?? null)
+      renderer.onImagePreviewReady = () => renderLoop.markDirty()
+      renderer.imagePreviews.setDecoder(createImagePreviewDecoder())
       renderer.presentationColorSpace = state.presentation ?? 'srgb'
       renderer.setPerformanceMode(performanceMode)
       renderer.tracksSceneSettlement = options?.layer !== 'overlays'
@@ -167,6 +186,8 @@ export function createCanvasSurfaceManager({
   ): boolean {
     try {
       editor.setCanvasKit(ck, renderer)
+      if (options?.layer !== 'overlays' && !editor.hasShaderRasterizer())
+        editor.setShaderRasterizer(createShaderRasterizer())
       return true
     } catch (error) {
       editor.removeCanvasRenderer(renderer)
@@ -201,6 +222,15 @@ export function createCanvasSurfaceManager({
       if (!isDestroyed() && state.renderer === renderer) renderNow()
       return undefined
     })
+  }
+
+  function releaseGLContext() {
+    state.glContext?.delete()
+    state.glContext = null
+    const ck = getCanvasKit()
+    if (ck && state.glHandle !== null) releaseWebGLContext(ck, state.glHandle, state.glCanvas)
+    state.glHandle = null
+    state.glCanvas = null
   }
 
   function createSurface(
@@ -287,6 +317,16 @@ export function createCanvasSurfaceManager({
     return options?.getOverlayObstacles?.() ?? []
   }
 
+  function scheduleSceneBackingRender(renderer: SkiaRenderer) {
+    if (options?.layer === 'scene' && renderer.tiledScenePending) {
+      renderLoop.markDirty()
+    }
+    if (options?.layer === 'scene' && renderer.sceneBackingNeedsCrispRender) {
+      const delay = Math.max(0, renderer.sceneBackingPreviewUntil - performance.now())
+      sceneBackingRenderTimer = setTimeout(() => renderLoop.markDirty(), delay)
+    }
+  }
+
   function renderNow(): boolean {
     const renderState = options?.getRenderState?.() ?? editor.state
     if (renderState.loading) {
@@ -315,18 +355,13 @@ export function createCanvasSurfaceManager({
         editor.isInteractiveEditing()
       )
       renderLoop.markRendered()
+      options?.onFrame?.({ panX: renderState.panX, panY: renderState.panY, zoom: renderState.zoom })
       acknowledgePresentation(renderer, renderState)
       clearSceneBackingRenderTimer()
       clearSurfaceRecoveryTimer()
       surfaceRecoveryAttempts = 0
       delete canvas.dataset.surfaceError
-      if (options?.layer === 'scene' && renderer.tiledScenePending) {
-        renderLoop.markDirty()
-      }
-      if (options?.layer === 'scene' && renderer.sceneBackingNeedsCrispRender) {
-        const delay = Math.max(0, renderer.sceneBackingPreviewUntil - performance.now())
-        sceneBackingRenderTimer = setTimeout(() => renderLoop.markDirty(), delay)
-      }
+      scheduleSceneBackingRender(renderer)
       return true
     } catch (error) {
       console.error('CanvasKit render failed; restoring the last completed frame', error)
@@ -427,9 +462,7 @@ export function createCanvasSurfaceManager({
     renderLoop.pause()
     if (state.renderer) editor.removeCanvasRenderer(state.renderer)
     state.renderer?.destroy()
-    state.glContext?.delete()
-    state.renderer = null
-    state.glContext = null
+    releaseGLContext()
   }
 
   return {

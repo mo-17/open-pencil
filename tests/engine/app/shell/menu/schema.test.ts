@@ -1,9 +1,35 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+
+import * as v from 'valibot'
 
 import type { AppMenuEntry } from '@/app/shell/menu/schema'
 import { APP_MENU_SCHEMA, PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
+
+import { repoPath } from '#tests/helpers/paths'
+
+const NativeMenuEntrySchema: v.GenericSchema<AppMenuEntry> = v.lazy(() =>
+  v.union([
+    v.object({ type: v.literal('separator') }),
+    v.object({
+      type: v.optional(v.literal('item')),
+      id: v.string(),
+      label: v.string(),
+      sub: v.optional(v.array(NativeMenuEntrySchema))
+    })
+  ])
+)
+
+function readGeneratedMenu() {
+  return v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.array(v.object({ label: v.string(), items: v.array(NativeMenuEntrySchema) }))
+    ),
+    readFileSync(repoPath('desktop/generated/menu.json'), 'utf8')
+  )
+}
 
 function actionItems(entries: readonly AppMenuEntry[]): AppMenuEntry[] {
   const result: AppMenuEntry[] = []
@@ -27,12 +53,12 @@ describe('APP_MENU_SCHEMA', () => {
   })
 
   test('exposes every menu-backed editor command to shared dispatch', () => {
-    const commandIds = actionItems(APP_MENU_SCHEMA.flatMap((group) => group.items)).flatMap(
-      (entry) => {
-        if ('type' in entry || !entry.command) return []
-        return [entry.command]
-      }
-    )
+    const commandIds = actionItems(
+      APP_MENU_SCHEMA.flatMap<AppMenuEntry>((group) => group.items)
+    ).flatMap((entry) => {
+      if ('type' in entry || !entry.command) return []
+      return [entry.command]
+    })
 
     expect(commandIds).toContain('selection.frameSelection')
     expect(commandIds).toContain('selection.toggleMask')
@@ -46,20 +72,21 @@ describe('APP_MENU_SCHEMA', () => {
   })
 
   test('marks route-neutral native actions for shell dispatch', () => {
-    const shellEntries = actionItems(APP_MENU_SCHEMA.flatMap((group) => group.items)).filter(
-      (entry) => !('type' in entry) && entry.handler === 'shell'
-    )
+    const shellEntries = actionItems(
+      APP_MENU_SCHEMA.flatMap<AppMenuEntry>((group) => group.items)
+    ).filter((entry) => !('type' in entry) && entry.handler === 'shell')
 
     expect(shellEntries.map((entry) => ('type' in entry ? '' : entry.id))).toEqual([
       'open-storage-workspace',
+      'open-tour',
+      'settings',
       'view-design-issues',
       'theme-light',
       'theme-dark',
       'theme-auto',
       'snap-geometry',
       'snap-objects',
-      'snap-pixel-grid',
-      'settings'
+      'snap-pixel-grid'
     ])
   })
 
@@ -114,9 +141,7 @@ describe('APP_MENU_SCHEMA', () => {
       })
     )
 
-    const generated = JSON.parse(
-      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
-    ) as Array<{ label: string; items: AppMenuEntry[] }>
+    const generated = readGeneratedMenu()
     const nativeFile = generated.find((group) => group.label === 'File')
     const nativeIds = nativeFile
       ? actionItems(nativeFile.items).map((entry) => ('type' in entry ? null : entry.id))
@@ -187,9 +212,7 @@ describe('APP_MENU_SCHEMA', () => {
       ])
     )
 
-    const generated = JSON.parse(
-      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
-    ) as Array<{ label: string; items: AppMenuEntry[] }>
+    const generated = readGeneratedMenu()
     const nativeFile = generated.find((group) => group.label === 'File')
     const nativeEdit = generated.find((group) => group.label === 'Edit')
     const nativeIds = [nativeFile, nativeEdit].flatMap((group) =>
@@ -227,12 +250,10 @@ describe('APP_MENU_SCHEMA', () => {
         label: 'Application Runtime Guide'
       })
     ])
-    expect(helpMenu?.target).toBeUndefined()
+    expect(helpMenu && 'target' in helpMenu ? helpMenu.target : undefined).toBeUndefined()
     expect(entries[0] && 'target' in entries[0] ? entries[0].target : undefined).toBeUndefined()
 
-    const generated = JSON.parse(
-      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
-    ) as Array<{ label: string; items: Array<{ id?: string; label?: string }> }>
+    const generated = readGeneratedMenu()
     const nativeHelp = generated.find((group) => group.label === 'Help')
 
     expect(nativeHelp?.items).toContainEqual({

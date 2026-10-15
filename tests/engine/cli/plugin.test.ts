@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import {
   PLUGIN_CATALOG_FORMAT,
@@ -198,10 +199,14 @@ describe('plugin manifest CLI', () => {
       '--json'
     ])
     expect(signed).toMatchObject({ exitCode: 0, stderr: '' })
-    const signedReport = JSON.parse(signed.stdout) as {
-      schemaVersion: number
-      manifest: unknown
-    }
+    const signedReport = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ schemaVersion: v.number(), manifest: v.unknown() })
+      ),
+      signed.stdout
+    )
     expect(signedReport.schemaVersion).toBe(2)
     expect(parseVersionedPluginManifest(signedReport.manifest).schemaVersion).toBe(2)
 
@@ -258,7 +263,14 @@ describe('plugin manifest CLI', () => {
 
     expect(signed).toMatchObject({ exitCode: 0, stderr: '' })
     expect(signed.stdout).not.toContain(privatePem.trim())
-    const signedReport = JSON.parse(signed.stdout) as { manifest: unknown; output: string }
+    const signedReport = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ manifest: v.unknown(), output: v.string() })
+      ),
+      signed.stdout
+    )
     expect(signedReport.output).toBe(manifestPath)
     expect(parsePluginManifest(signedReport.manifest).integrity.signature.keyId).toBe(
       'example-key-1'

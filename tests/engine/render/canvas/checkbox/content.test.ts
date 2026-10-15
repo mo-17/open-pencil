@@ -1,12 +1,12 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { checkboxDesignContent } from '#core/canvas/checkbox/state'
 import { renderShapeUncached } from '#core/canvas/scene'
 import { collectGraphFontRequirements } from '#core/text/requirements'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer, mockCalls } from '../effects/helpers'
 
@@ -16,14 +16,14 @@ test('CHECKBOX draws a checked mark and grouped option labels through the ordina
   const node = graph.createNode('CHECKBOX', page.id, { interactiveProps: { checked: true } })
   const canvas = createMockCanvas()
   const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-  renderShapeUncached(renderer, canvas as Canvas, node, graph)
+  renderShapeUncached(renderer, asCanvas(canvas), node, graph)
   expect(canvas.drawLine).toHaveBeenCalledTimes(2)
   graph.updateNode(node.id, {
     width: 220,
     height: 88,
     interactiveProps: { options: ['个人', '团队'] }
   })
-  renderShapeUncached(renderer, canvas as Canvas, node, graph)
+  renderShapeUncached(renderer, asCanvas(canvas), node, graph)
   expect(
     mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
   ).toMatchObject([{ text: '个人' }, { text: '团队' }])
@@ -114,12 +114,12 @@ test('CHECKBOX uses bounded geometry, authored label color and disabled opacity'
   })
   const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
   const canvas = createMockCanvas()
-  renderShapeUncached(renderer, canvas as Canvas, node, graph)
+  renderShapeUncached(renderer, asCanvas(canvas), node, graph)
   expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 0.45)
   expect(canvas.clipRect).toHaveBeenCalledWith(new Float32Array([0, 0, 72, 44]), 0, true)
   graph.updateNode(node.id, { width: 4 })
   const smallCanvas = createMockCanvas()
-  renderShapeUncached(renderer, smallCanvas as Canvas, node, graph)
+  renderShapeUncached(renderer, asCanvas(smallCanvas), node, graph)
   expect(smallCanvas.drawLine).not.toHaveBeenCalled()
   expect(smallCanvas.drawRRect).not.toHaveBeenCalled()
 })
@@ -151,6 +151,6 @@ test('CHECKBOX balances nested clips and translations when drawing a selected ma
     throw new Error('paint failed')
   })
   const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-  expect(() => renderShapeUncached(renderer, canvas as Canvas, node, graph)).toThrow('paint failed')
+  expect(() => renderShapeUncached(renderer, asCanvas(canvas), node, graph)).toThrow('paint failed')
   expect(canvas.restore).toHaveBeenCalledTimes(canvas.save.mock.calls.length)
 })

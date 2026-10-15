@@ -22,6 +22,8 @@ for (const theme of ['light', 'dark']) {
       await page.goto('/?test')
       await new CanvasHelper(page).waitForInit()
       await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil?.getStore?.()
         if (!editor) throw new Error('Editor unavailable')
         const id = editor.createShape('FRAME', 0, 0, 12345, 6789)

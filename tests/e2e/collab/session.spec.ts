@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import {
   collaborationErrors,
   connect,
+  share,
   createPeer,
   startRelay,
   type Peer
@@ -14,8 +15,8 @@ test('mobile presence popover returns focus and disconnects the peer', async ({ 
   try {
     peer = await createPeer(browser, 'Mobile', relay.url)
     await peer.page.setViewportSize({ width: 390, height: 844 })
-    await connect(peer)
-    const trigger = peer.page.getByRole('button', { name: 'Online: 1', exact: true })
+    await share(peer)
+    const trigger = peer.page.getByRole('button', { name: 'In this room: Mobile', exact: true })
     await expect(trigger).toBeVisible()
     await trigger.focus()
     await trigger.press('Enter')
@@ -37,22 +38,36 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
 }) => {
   test.setTimeout(120_000)
   const relay = await startRelay()
-  let host: Peer | null = null
-  let guest: Peer | null = null
+  let hostToClose: Peer | null = null
+  let guestToClose: Peer | null = null
   try {
-    host = await createPeer(browser, 'Host', relay.url)
-    guest = await createPeer(browser, 'Guest', relay.url)
+    const host = await createPeer(browser, 'Host', relay.url)
+    hostToClose = host
+    const guest = await createPeer(browser, 'Guest', relay.url)
+    guestToClose = guest
 
-    await connect(host)
-    await connect(guest)
+    const invite = await share(host)
+    await connect(guest, invite)
     await expect
-      .poll(() => host.page.evaluate(() => window.openPencil?.test?.collab?.peerCount()))
+      .poll(() =>
+        host.page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.collab?.peerCount()
+        })
+      )
       .toBe(1)
     await expect
-      .poll(() => guest.page.evaluate(() => window.openPencil?.test?.collab?.peerCount()))
+      .poll(() =>
+        guest.page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.collab?.peerCount()
+        })
+      )
       .toBe(1)
 
     const nodeId = await host.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const node = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -68,11 +83,16 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
 
     await expect
       .poll(() =>
-        guest.page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.name, nodeId)
+        guest.page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.name
+        }, nodeId)
       )
       .toBe('Shared rectangle')
 
     await guest.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.updateNode(id, { name: 'Edited by Guest', x: 320 })
@@ -82,20 +102,32 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
 
     await expect
       .poll(() =>
-        host.page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.name, nodeId)
+        host.page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.name
+        }, nodeId)
       )
       .toBe('Edited by Guest')
     await expect
-      .poll(() => host.page.evaluate(() => window.openPencil?.test?.collab?.peerSelections()[0]))
+      .poll(() =>
+        host.page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.collab?.peerSelections()[0]
+        })
+      )
       .toEqual([nodeId])
 
     relay.pause()
     await guest.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.updateNode(id, { y: 280 })
     }, nodeId)
     await host.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.updateNode(id, { name: 'Host partition edit' })
@@ -106,6 +138,8 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
       await expect
         .poll(() =>
           peer.page.evaluate((id) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
             const node = window.openPencil?.getStore?.().graph.getNode(id)
             return node ? { name: node.name, y: node.y } : null
           }, nodeId)
@@ -114,46 +148,66 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
     }
 
     await guest.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       window.openPencil?.test?.collab?.updateCursor(420, 260, store.state.currentPageId)
     })
     await expect
       .poll(() =>
-        host.page.evaluate(() => window.openPencil?.getStore?.().state.presenceCursors.length)
+        host.page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().state.presenceCursors.length
+        })
       )
       .toBe(1)
 
     expect(collaborationErrors(guest)).toEqual([])
     await guest.context.close()
-    guest = null
+    guestToClose = null
     await expect
-      .poll(() => host.page.evaluate(() => window.openPencil?.test?.collab?.peerCount()))
+      .poll(() =>
+        host.page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.collab?.peerCount()
+        })
+      )
       .toBe(0)
     await expect
       .poll(() =>
-        host.page.evaluate(() => window.openPencil?.getStore?.().state.presenceCursors.length)
+        host.page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().state.presenceCursors.length
+        })
       )
       .toBe(0)
 
     const reconnectingGuest = await createPeer(browser, 'Guest', relay.url)
     try {
       await host.page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         store.updateNode(id, { name: 'Edited while offline', y: 260 })
       }, nodeId)
-      await connect(reconnectingGuest)
+      await connect(reconnectingGuest, invite)
       await expect
         .poll(() =>
-          reconnectingGuest.page.evaluate(
-            (id) => window.openPencil?.getStore?.().graph.getNode(id)?.name,
-            nodeId
-          )
+          reconnectingGuest.page.evaluate((id) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().graph.getNode(id)?.name
+          }, nodeId)
         )
         .toBe('Edited while offline')
       await expect
-        .poll(() => host.page.evaluate(() => window.openPencil?.test?.collab?.peerCount()))
+        .poll(() =>
+          host.page.evaluate(() => {
+            if (!window.openPencil) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.test?.collab?.peerCount()
+          })
+        )
         .toBe(1)
       expect(collaborationErrors(reconnectingGuest)).toEqual([])
     } finally {
@@ -163,10 +217,10 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
     expect(collaborationErrors(host)).toEqual([])
   } finally {
     try {
-      await guest?.context.close()
+      await guestToClose?.context.close()
     } finally {
       try {
-        await host?.context.close()
+        await hostToClose?.context.close()
       } finally {
         await relay.close()
       }

@@ -4,9 +4,9 @@ import { computed, ref } from 'vue'
 
 import { createEditor } from '@open-pencil/core/editor'
 import type { SceneNode } from '@open-pencil/scene-graph'
-import { MIXED, type MixedValue } from '@open-pencil/vue'
 
 import { createAppearanceActions, createAppearanceState } from '#vue/controls/appearance/helpers'
+import { MIXED, type MixedValue } from '#vue/controls/node-props/use'
 
 import { createRect, firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -98,7 +98,7 @@ describe('appearance control state', () => {
       node: computed(() => graph.getNode(rect.id) ?? null),
       nodes: computed(() => []),
       isMulti: computed(() => false),
-      merged: () => MIXED
+      merged: <K extends keyof SceneNode>(): MixedValue<SceneNode[K]> => MIXED
     }
     const actions = createAppearanceActions(options)
     actions.toggleIndependentCorners()
@@ -182,7 +182,7 @@ describe('appearance control state', () => {
       node: computed(() => null),
       nodes,
       isMulti: computed(() => true),
-      merged: () => MIXED
+      merged: <K extends keyof SceneNode>(): MixedValue<SceneNode[K]> => MIXED
     })
 
     actions.updateCornerProp('cornerSmoothing', 1.4)

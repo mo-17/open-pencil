@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite'
+import { expect, within } from 'storybook/test'
 
 import ChatMarkdown from './ChatMarkdown.vue'
 
@@ -7,10 +8,28 @@ type ChatMarkdownStoryArgs = {
   mode?: 'static' | 'streaming'
 }
 
+/**
+ * vue-stream-markdown wraps each code block in its own <header> and <main>, which its component
+ * overrides cannot replace; until upstream drops them they read as page landmarks.
+ */
+const codeBlockLandmarks = {
+  a11y: {
+    config: {
+      rules: [
+        'landmark-banner-is-top-level',
+        'landmark-main-is-top-level',
+        'landmark-no-duplicate-banner',
+        'landmark-no-duplicate-main',
+        'landmark-unique'
+      ].map((id) => ({ id, enabled: false }))
+    }
+  }
+}
+
 type Story = StoryObj<ChatMarkdownStoryArgs>
 
 const meta = {
-  title: 'Chat/Markdown',
+  title: 'App/Chat/Markdown',
   component: ChatMarkdown,
   parameters: { layout: 'centered' },
   render: (args) => ({
@@ -48,6 +67,7 @@ export const InlineCode: Story = {
 }
 
 export const CodeBlock: Story = {
+  parameters: codeBlockLandmarks,
   args: {
     content: `\`\`\`typescript
 const button = {
@@ -59,6 +79,7 @@ const button = {
 }
 
 export const MixedContent: Story = {
+  parameters: codeBlockLandmarks,
   args: {
     content: `## Updated layout
 
@@ -70,6 +91,36 @@ const rows = 4
 \`\`\`
 
 > Names remain stable when cells move.`
+  }
+}
+
+export const Table: Story = {
+  args: {
+    content: `The button now has these states:
+
+| State | Look |
+| --- | --- |
+| Default | Burnt orange \`#c2410c\` with the soft glow |
+| Hover | Brighter \`#ea580c\` with a bigger glow |
+| Disabled | Muted \`#374151\` with grey text |`
+  }
+}
+
+export const TaskList: Story = {
+  args: {
+    content: `- [x] Variants created
+- [ ] Checked in preview
+
+See [the guide](https://openpencil.dev/guide).`
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const completed = await canvas.findByRole('checkbox', { name: 'Variants created' })
+    const pending = await canvas.findByRole('checkbox', { name: 'Checked in preview' })
+    await expect(completed).toBeChecked()
+    await expect(pending).not.toBeChecked()
+    await expect(completed).toBeDisabled()
+    await expect(pending).toBeDisabled()
   }
 }
 

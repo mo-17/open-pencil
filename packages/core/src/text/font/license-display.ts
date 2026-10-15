@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import {
   bundledFontFamilyFaces,
   bundledFontLicense,
@@ -158,9 +160,7 @@ function declaredOpenDisplay(licenseIds: string[]): FontFamilyLicenseDisplay {
 }
 
 function uniqueLicenseIds(values: readonly (string | undefined)[]): string[] {
-  return [...new Set(values.filter((value): value is string => !!value))].sort((a, b) =>
-    a.localeCompare(b)
-  )
+  return uniq(values.filter((value): value is string => !!value)).sort((a, b) => a.localeCompare(b))
 }
 
 function reviewedPermission(permission: FontLicensePermission): boolean {

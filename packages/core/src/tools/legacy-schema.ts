@@ -5,7 +5,7 @@ import type { ParamDef } from './schema'
 
 /** Convert the retained fork declaration format once; every transport uses this same schema. */
 export function legacyToolInput(params: Record<string, ParamDef>) {
-  return v.object(legacyEntries(params))
+  return v.strictObject(legacyEntries(params))
 }
 
 function legacyEntries(params: Record<string, ParamDef>): v.ObjectEntries {
@@ -43,7 +43,11 @@ function parameterValue(param: ParamDef): v.GenericSchema {
       return v.pipe(
         v.array(
           param.items
-            ? legacyParameter({ ...param.items, required: true, default: undefined })
+            ? legacyParameter({
+                ...param.items,
+                required: true,
+                default: undefined
+              })
             : v.unknown()
         ),
         v.minLength(param.minItems ?? 0),

@@ -6,11 +6,13 @@ import { checkTypes } from './checks/attw'
 import { formatPackageDiagnostics, validatePackageMetadata } from './checks/metadata'
 import { checkPublint } from './checks/publint'
 import { repositoryRoot } from './packages'
+import { verifyPackagingGuards } from './smoke/guards'
 import { verifyPackedPackages } from './smoke/verify'
 import { measurePhase } from './timing'
 
 async function smoke(root: string): Promise<void> {
   if (root !== repositoryRoot) return verifyPackedPackages(root)
+  await measurePhase('packaging guards', () => verifyPackagingGuards())
   await runCommand({
     command: 'bun',
     args: ['tools/checks/package-quality/src/smoke.ts'],

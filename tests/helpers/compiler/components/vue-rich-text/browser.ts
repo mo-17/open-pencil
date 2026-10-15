@@ -1,19 +1,21 @@
 import { execFileSync } from 'node:child_process'
 
 import type { Locator, Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { withComponentTemplateFiles } from '../templates/browser'
 
 export async function withVueRichText(page: Page, run: () => Promise<void>): Promise<void> {
   const source = `import { vueRichTextFixture } from './tests/helpers/compiler/components/vue-rich-text/fixture'; process.stdout.write(JSON.stringify([...vueRichTextFixture()]));`
   const files = new Map(
-    JSON.parse(
+    v.parse(
+      v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
       execFileSync('bun', ['-e', source], {
         cwd: process.cwd(),
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024
       })
-    ) as [string, string][]
+    )
   )
   await withComponentTemplateFiles(page, 'vue', files, run)
 }

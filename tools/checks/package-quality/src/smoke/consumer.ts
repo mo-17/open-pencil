@@ -6,6 +6,7 @@ import { inspectTarball } from '@open-pencil/package-artifacts-tools/tarball'
 
 import { measurePhase } from '../timing'
 import { installPackedPackages } from './install'
+import { collectPatternExportChecks, verifyPatternExports } from './pattern-exports'
 import { verifyPackageBinaries, verifyPublicImports, verifyRuntimeScenarios } from './runtime'
 import { runtimeScenarios } from './scenarios'
 import { verifyTypeConsumer } from './type-consumer'
@@ -34,6 +35,14 @@ export async function verifyArtifactConsumers(root: string, tarballs: string[]):
   const consumer = await mkdtemp(join(tmpdir(), 'open-pencil-artifact-consumer-'))
   try {
     await measurePhase('consumer install', () => installPackedPackages(consumer, tarballs))
+    const patterns = (
+      await Promise.all(
+        inspections.map((inspection) =>
+          collectPatternExportChecks(inspection.tarballPath, inspection)
+        )
+      )
+    ).flat()
+    await measurePhase('pattern exports', () => verifyPatternExports(patterns, consumer))
     await measurePhase('public imports', () =>
       verifyPublicImports(
         inspections.map(({ manifest }) => manifest),

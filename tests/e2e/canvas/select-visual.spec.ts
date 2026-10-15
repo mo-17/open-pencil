@@ -19,6 +19,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const canvas = new CanvasHelper(page)
     await canvas.waitForInit()
     const ids = await page.evaluate(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const graph = editor.graph
       const moduleURL = performance
@@ -136,9 +138,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       editor.requestRender()
       return { root: root.id, bound: bound.id, authored: structuredClone(bound.interactiveProps) }
     })
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-select-live-initial.png`) })
     const initial = await page.evaluate(async (id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const png = await window.openPencil.getStore().renderExportImage([id], 1, 'PNG')
       if (!png) throw new Error('Select PNG export unavailable')
       return Array.from(png)
@@ -148,6 +155,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
       threshold: 0.2
     })
     await page.evaluate(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const graph = editor.graph
       graph.updateNode(graph.rootId, {
@@ -173,9 +182,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       )
       editor.requestRender()
     })
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-select-live-updated.png`) })
     const updated = await page.evaluate(async (ids) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const png = await editor.renderExportImage([ids.root], 1, 'PNG')
       if (!png) throw new Error('Updated select PNG export unavailable')

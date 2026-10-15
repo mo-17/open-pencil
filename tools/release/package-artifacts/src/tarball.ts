@@ -31,6 +31,7 @@ export function packageExportTargetPaths(manifest: Pick<PackageManifest, 'export
 }
 
 export interface TarballContents {
+  files: ReadonlyMap<string, Uint8Array>
   entries: Set<string>
   manifest: PackageManifest
 }
@@ -45,7 +46,7 @@ export async function readTarball(tarballPath: string): Promise<TarballContents>
     new TextDecoder().decode(manifestFile.data),
     `${tarballPath}: package/package.json`
   )
-  return { entries, manifest }
+  return { entries, manifest, files: new Map(files.map(({ name, data }) => [name, data])) }
 }
 
 function exportTargetPattern(target: string): RegExp {
@@ -54,8 +55,18 @@ function exportTargetPattern(target: string): RegExp {
 }
 
 function targetExists(entries: Set<string>, target: string): boolean {
-  const relativeTarget = target.replace(/^\.\//, '')
-  if (relativeTarget.startsWith('/') || relativeTarget.split('/').includes('..')) return false
+  let relativeTarget: string
+  try {
+    relativeTarget = decodeURIComponent(target.replace(/^\.\//, ''))
+  } catch {
+    return false
+  }
+  if (
+    relativeTarget.startsWith('/') ||
+    relativeTarget.includes('\\') ||
+    relativeTarget.split('/').includes('..')
+  )
+    return false
   if (!relativeTarget.includes('*')) return entries.has(`package/${relativeTarget}`)
   const pattern = exportTargetPattern(relativeTarget)
   return [...entries].some((entry) =>
@@ -78,6 +89,18 @@ export async function inspectTarball(tarballPath: string): Promise<TarballInspec
   }
   for (const { field, target } of collectExportTargets(manifest.exports, ['exports'])) {
     if (!targetExists(entries, target)) report(field, `target is missing (${target})`)
+  }
+  for (const [alias, value] of Object.entries(manifest.imports ?? {})) {
+    if (!alias.startsWith('#') || alias === '#' || alias.startsWith('#/')) {
+      report(`imports[${JSON.stringify(alias)}]`, 'invalid package import specifier')
+    }
+    for (const { field, target } of collectExportTargets(value, ['imports', alias])) {
+      if (!target.startsWith('./')) {
+        report(field, `target must be package-relative (${target})`)
+      } else if (!targetExists(entries, target)) {
+        report(field, `target is missing (${target})`)
+      }
+    }
   }
   return { diagnostics, entries, manifest, tarballPath }
 }
@@ -103,6 +126,12 @@ export async function validateTarballBinTargets(tarballPath: string): Promise<vo
 export async function validateTarballExportTargets(tarballPath: string): Promise<void> {
   const inspection = await inspectTarball(tarballPath)
   const diagnostics = inspection.diagnostics.filter(({ field }) => field.startsWith('exports'))
+  if (diagnostics.length > 0) throw new Error(diagnostics.map(formatDiagnostic).join('\n'))
+}
+
+export async function validateTarballImportTargets(tarballPath: string): Promise<void> {
+  const inspection = await inspectTarball(tarballPath)
+  const diagnostics = inspection.diagnostics.filter(({ field }) => field.startsWith('imports'))
   if (diagnostics.length > 0) throw new Error(diagnostics.map(formatDiagnostic).join('\n'))
 }
 

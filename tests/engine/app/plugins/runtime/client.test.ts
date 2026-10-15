@@ -23,6 +23,7 @@ import {
 import { digestCanonicalManifest, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { createMemoryRemotePluginCacheStorage, createPluginRuntimeClient } from '@/app/plugins'
+import { parseRemotePluginCacheRecord } from '@/app/plugins/remote/cache'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
 
@@ -220,7 +221,7 @@ describe('remote plugin runtime client', () => {
     })
     expect(cached.source).toBe('cache')
     expect(cached.refreshError?.message).toBe('offline')
-    const records = await cache.list()
+    const records = (await cache.list()).map(parseRemotePluginCacheRecord)
     expect(records.find(({ kind }) => kind === 'runtime-index')?.expiresAt).toBe(
       Date.parse(data.marketplace.snapshot.expiresAt)
     )

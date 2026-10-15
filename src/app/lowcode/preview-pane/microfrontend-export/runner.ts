@@ -1,6 +1,7 @@
 import { decodeTauriStderr } from '@/app/shell/ui'
 
 import { asCLIOutputError } from '../cli-output'
+import { createPreviewNativeCommand } from '../host/native-command'
 import {
   buildMicrofrontendExportArgs,
   parseMicrofrontendExportResult,
@@ -34,8 +35,7 @@ export interface MicrofrontendExportRunnerDependencies {
 
 const DEFAULT_DEPENDENCIES: MicrofrontendExportRunnerDependencies = Object.freeze({
   async createCommand(args: string[]) {
-    const { Command } = await import('@tauri-apps/plugin-shell')
-    return Command.create(MICROFRONTEND_COMMAND, args, {
+    return createPreviewNativeCommand(MICROFRONTEND_COMMAND, args, {
       cwd: __OPENPENCIL_PROJECT_ROOT__
     })
   }

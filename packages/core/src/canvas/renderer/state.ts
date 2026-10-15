@@ -1,11 +1,13 @@
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { EffectRasterCache } from '#core/canvas/renderer/effect-raster-cache'
 import { clearDecodedImageCache } from '#core/canvas/renderer/image-cache'
-import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
+import { changesShaping } from '#core/canvas/text/paragraph/inputs'
+import { TextPreparationCache } from '#core/canvas/text/preparation/cache'
 
 export function invalidateScenePicture(r: SkiaRenderer): void {
+  r.lastLiveSceneContent = null
   r.scenePicture?.delete()
   r.scenePicture = null
   r.scenePictureVersion = -1
@@ -24,6 +26,7 @@ export function invalidateScenePicture(r: SkiaRenderer): void {
  * reuse it or replace it with geometry matching the new viewport.
  */
 export function prepareSurfaceReplacement(r: SkiaRenderer): void {
+  r.lastLiveSceneContent = null
   r.tiledScene.destroy()
   const build = r.sceneBackingBuild
   r.sceneBackingBuild = null
@@ -46,6 +49,9 @@ export function transferLastGoodFrame(source: SkiaRenderer, target: SkiaRenderer
   target.sceneBacking?.image.delete()
   target.sceneBacking = backing
   source.sceneBacking = null
+  // A transferred recovery image is not a live frame presented on the target surface.
+  target.lastLiveSceneContent = null
+  source.lastLiveSceneContent = null
 
   // Prime the replacement with the presentation state needed to display the transferred image
   // before its first renderFromEditorState call. A failed first render refreshes these values from
@@ -234,8 +240,14 @@ export function withIsolatedDocumentCaches<T>(
   }
 }
 
-export function invalidateNodePicture(r: SkiaRenderer, nodeId: string): void {
-  r.textPreparationCache.deleteNode(nodeId)
+export function invalidateNodePicture(
+  r: SkiaRenderer,
+  nodeId: string,
+  changedKeys?: readonly (keyof SceneNode)[]
+): void {
+  r.textPreparationCache.deleteNode(nodeId, {
+    keepShaping: changedKeys !== undefined && !changesShaping(changedKeys)
+  })
   r.effectRasterCache.delete(nodeId)
   r.effectRasterCache.deleteDependencies(nodeId)
   for (const [ownerId, dependencyIds] of r.nodePictureCacheDependencies) {

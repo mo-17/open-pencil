@@ -65,9 +65,7 @@ export function drawChartText(
     { halfLeading: true }
   )
   try {
-    withModulePreviewRectClip(renderer, canvas, item, () =>
-      canvas.drawParagraph(paragraph, item.x, item.y)
-    )
+    withModulePreviewRectClip(renderer, canvas, item, () => paragraph.draw(canvas, item.x, item.y))
   } finally {
     paragraph.delete()
   }

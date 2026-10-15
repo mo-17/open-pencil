@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
+import { MCP_AGENT_HEADER } from '@open-pencil/core/constants'
+
 import * as automationMCP from '@/app/automation/mcp/spawn'
 import {
   buildACPMCPServers,
   createMCPConnectionDraft,
+  mcpConnectionCredentialRef,
   mcpConnectionSettingsSnapshot,
   parseMCPConnectionSettings,
   removeMCPConnection,
@@ -92,6 +95,35 @@ describe('MCP connections', () => {
     ).toEqual(['mcp-valid'])
   })
 
+  test("keeps a stored token only when it is the connection's own credential", () => {
+    const stored = (credentialRef: unknown) => ({
+      version: 1,
+      connections: [
+        {
+          id: 'mcp-tools',
+          name: '  Tools  ',
+          enabled: 'yes',
+          transport: { type: 'streamable-http', url: ' https://example.com/mcp ' },
+          authentication: { type: 'bearer', credentialRef }
+        }
+      ]
+    })
+    const own = mcpConnectionCredentialRef('mcp-tools')
+    expect(parseMCPConnectionSettings(stored(own)).connections).toEqual([
+      {
+        id: 'mcp-tools',
+        name: 'Tools',
+        enabled: false,
+        transport: { type: 'streamable-http', url: 'https://example.com/mcp' },
+        authentication: { type: 'bearer', credentialRef: own }
+      }
+    ])
+    const other = mcpConnectionCredentialRef('mcp-other')
+    expect(parseMCPConnectionSettings(stored(other)).connections[0]?.authentication).toEqual({
+      type: 'none'
+    })
+  })
+
   test('defaults new connections to disabled and reserves unique names', async () => {
     const draft = createMCPConnectionDraft()
     expect(draft.enabled).toBeFalse()
@@ -129,7 +161,10 @@ describe('MCP connections', () => {
           type: 'http',
           name: 'open-pencil-editor',
           url: 'http://127.0.0.1:17600/mcp',
-          headers: [{ name: 'Authorization', value: 'Bearer built-in-token' }]
+          headers: [
+            { name: MCP_AGENT_HEADER, value: 'acp' },
+            { name: 'Authorization', value: 'Bearer built-in-token' }
+          ]
         },
         {
           type: 'http',
@@ -183,7 +218,10 @@ describe('MCP connections', () => {
         type: 'http',
         name: 'open-pencil-editor',
         url: 'http://127.0.0.1:17600/mcp',
-        headers: [{ name: 'Authorization', value: 'Bearer built-in-token' }]
+        headers: [
+          { name: MCP_AGENT_HEADER, value: 'acp' },
+          { name: 'Authorization', value: 'Bearer built-in-token' }
+        ]
       },
       {
         type: 'http',

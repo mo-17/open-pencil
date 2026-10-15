@@ -71,15 +71,15 @@ describe('application shell FIG references', () => {
         'page'
       )
       const frame = expectDefined(
-        current.getAllNodes().find((node) => node.name === 'Shell'),
+        [...current.getAllNodes()].find((node) => node.name === 'Shell'),
         'frame'
       )
       const column = expectDefined(
-        current.getAllNodes().find((node) => node.name === 'Column'),
+        [...current.getAllNodes()].find((node) => node.name === 'Column'),
         'column'
       )
       const slot = expectDefined(
-        current.getAllNodes().find((node) => node.name === 'Slot'),
+        [...current.getAllNodes()].find((node) => node.name === 'Slot'),
         'slot'
       )
       expect(root.lowcodeApplication).toEqual({
@@ -137,11 +137,11 @@ describe('application shell FIG references', () => {
     const current = await reopen(graph)
     const restored = expectDefined(current.getNode(current.rootId), 'root')
     const frame = expectDefined(
-      current.getAllNodes().find((node) => node.name === 'Shell'),
+      [...current.getAllNodes()].find((node) => node.name === 'Shell'),
       'frame'
     )
     const slot = expectDefined(
-      current.getAllNodes().find((node) => node.name === 'Slot'),
+      [...current.getAllNodes()].find((node) => node.name === 'Slot'),
       'slot'
     )
     expect(restored.lowcodeApplication?.enabled).toBe(false)

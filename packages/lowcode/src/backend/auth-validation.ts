@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { discriminatedRecord } from './discriminated-record'
 import { BACKEND_LIMITS } from './limits'
 import { parseAuthConditions } from './row-access/conditions'
@@ -126,11 +128,11 @@ function tenant(
     source.membershipTenantFieldId === undefined
       ? undefined
       : id(source.membershipTenantFieldId, `${path}.membershipTenantFieldId`, context)
-  const membershipCount = [
+  const membershipCount = compact([
     membershipEntityId,
     membershipIdentityFieldId,
     membershipTenantFieldId
-  ].filter(Boolean).length
+  ]).length
   if (membershipCount !== 0 && membershipCount !== 3) {
     context.diagnostics.push({
       code: 'backend-tenant-membership-incomplete',

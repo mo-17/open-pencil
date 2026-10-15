@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 import { test, expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
+
+import type { ExportSetting } from '@open-pencil/scene-graph'
 
 import { expectInViewport } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
@@ -36,9 +39,11 @@ function exportButton() {
   return page.getByTestId('export-button')
 }
 
-async function createRectangles(count: number, settings: unknown[][] = []) {
+async function createRectangles(count: number, settings: ExportSetting[][] = []) {
   const ids = await page.evaluate(
     ({ count: nodeCount, settingsByNode }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       for (const node of store.graph.getChildren(store.state.currentPageId)) {
@@ -68,6 +73,8 @@ async function createRectangles(count: number, settings: unknown[][] = []) {
 
 async function selectedExportSettings() {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds].map((id) => store.graph.getNode(id)?.exportSettings ?? [])
@@ -187,8 +194,10 @@ async function forceBlobDownload() {
 // `createRectangles` makes fill-less rectangles, which have no visual bounds and
 // export to nothing. Use createShape so the rectangle has a real fill and is
 // actually exportable, then attach the export settings under test.
-async function createExportableRect(settings: { scale: number; format: string }[]) {
+async function createExportableRect(settings: ExportSetting[]) {
   await page.evaluate((nodeSettings) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     for (const node of store.graph.getChildren(store.state.currentPageId)) {
@@ -204,6 +213,8 @@ async function createExportableRect(settings: { scale: number; format: string }[
 
 async function createAnimatedExportableRect() {
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     for (const node of store.graph.getChildren(store.state.currentPageId)) {
@@ -237,6 +248,8 @@ async function createAnimatedExportableRect() {
 
 async function createAnimatedSceneExport() {
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -275,7 +288,7 @@ async function createAnimatedSceneExport() {
         tracks: [
           {
             id: 'move',
-            trigger: 'manual',
+            trigger: 'mount',
             keyframes: [
               { offset: 0, x: 0 },
               { offset: 1, x: 30 }
@@ -398,15 +411,25 @@ test('Motion export panel exposes only a real WebM capability and declares opaqu
     'json',
     path as string
   ])
-  const inspected = JSON.parse(stdout) as {
-    streams: Array<{
-      codec_name?: string
-      width?: number
-      height?: number
-      nb_read_frames?: string
-    }>
-    format: { duration?: string }
-  }
+  const inspected = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.object({
+        streams: v.array(
+          v.object({
+            codec_name: v.optional(v.string()),
+            width: v.optional(v.number()),
+            height: v.optional(v.number()),
+            nb_read_frames: v.optional(v.string())
+          })
+        ),
+        format: v.object({ duration: v.optional(v.string()) })
+      })
+    ),
+    stdout
+  )
+
   expect(inspected.streams[0]).toMatchObject({
     codec_name: 'vp8',
     width: 90,
@@ -422,7 +445,7 @@ test('Motion export panel cancels before publishing a partial download', async (
 
   const format = page.getByTestId('motion-export-format')
   await format.click()
-  await page.locator('[role="option"]').filter({ hasText: /^GIF$/ }).click()
+  await page.getByRole('option', { name: 'GIF', exact: true }).click()
   await page.getByTestId('motion-export-fps').fill('100')
   await page.getByTestId('motion-export-loops').fill('100')
 

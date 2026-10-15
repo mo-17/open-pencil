@@ -9,6 +9,8 @@ import {
   selectOptionIssues
 } from '@/app/lowcode/controls/select-options'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 test('changing a submitted value keeps its default atomic without editing bound business state', () => {
   const editor = createEditor()
   const page = editor.graph.getNode(editor.state.currentPageId)
@@ -35,14 +37,14 @@ test('changing a submitted value keeps its default atomic without editing bound 
     patch: { value: 'company' }
   })
   editor.updateNodeWithUndo(node.id, { interactiveProps: next as JSONObject }, 'Edit option')
-  expect(node.interactiveProps.value).toBe('company')
-  expect(node.interactiveProps.validation).toEqual({ required: true })
+  expect(expectDefined(node.interactiveProps).value).toBe('company')
+  expect(expectDefined(node.interactiveProps).validation).toEqual({ required: true })
   expect(page.state?.[0].defaultValue).toBe('team')
   expect(node.bindings).toEqual({ value: { kind: 'ref', stateId: 'plan' } })
   editor.undo.undo()
   expect(node.interactiveProps).toEqual(properties)
   editor.undo.redo()
-  expect(node.interactiveProps.value).toBe('company')
+  expect(expectDefined(node.interactiveProps).value).toBe('company')
 })
 
 test('reordering or relabeling leaves the submitted value and disabled state intact', () => {

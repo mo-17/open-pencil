@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { Buffer } from 'node:buffer'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
@@ -140,7 +139,10 @@ function writeRuntimeManifest(
   mkdirSync(dirname(destination), { recursive: true })
   const bytes = new TextEncoder().encode(serializeOpenPencilMicrofrontendRuntimeManifest(manifest))
   writeFileSync(destination, bytes)
-  return { digest: microfrontendSha256Base64URL(bytes), byteLength: bytes.byteLength }
+  return {
+    digest: microfrontendSha256Base64URL(bytes),
+    byteLength: bytes.byteLength
+  }
 }
 
 function listBrowserBuildFiles(root: string): string[] {

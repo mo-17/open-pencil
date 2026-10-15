@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import { createDefaultEditorState } from '@open-pencil/core/editor'
+
 import { readReloadSource } from '@/app/document/io/reload-source'
 import { chooseTauriFigSavePath } from '@/app/document/io/save-targets'
 import { createDocumentWriter } from '@/app/document/io/write'
@@ -60,7 +62,7 @@ describe('Tauri document IO helpers', () => {
     await mockTauriIPC(() => null)
     const savedVersions: number[] = []
     const write = createDocumentWriter({
-      state: { sceneVersion: 42 } as Parameters<typeof createDocumentWriter>[0]['state'],
+      state: { ...createDefaultEditorState('page'), documentName: 'Document', sceneVersion: 17 },
       getFilePath: () => '/tmp/document.fig',
       getFileHandle: () => null,
       getStorageBinding: () => null,

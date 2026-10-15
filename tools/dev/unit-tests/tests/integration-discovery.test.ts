@@ -14,7 +14,8 @@ test('all committed app, integration and package contract suites are assigned ex
     'packages/*/tests/**/*.test.ts'
   ]) {
     for await (const path of new Bun.Glob(pattern).scan({ cwd: root })) {
-      if (!path.startsWith('packages/harness/')) expected.push(path)
+      if (!['packages/harness/', 'packages/feedback/'].some((suite) => path.startsWith(suite)))
+        expected.push(path)
     }
   }
   const plan = await buildUnitTestRunPlan('all', { includeHeavy: true })

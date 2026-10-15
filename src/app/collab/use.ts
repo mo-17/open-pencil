@@ -1,178 +1,148 @@
-import { tryOnScopeDispose, useLocalStorage } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { tryOnScopeDispose } from '@vueuse/core'
+import { computed, watch, type WatchStopHandle } from 'vue'
 
-import { generateRoomId, generateRoomKey } from '@/app/collab/awareness'
 import type { DocStateConflictKind } from '@/app/collab/conflict'
-import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
+import { useCollabIdentity } from '@/app/collab/identity'
 import {
-  MOTION_TIMELINE_CRDT_LIMITS,
-  type MotionTimelineConflict
-} from '@/app/collab/motion-timeline-yjs'
-import {
-  createCollabConnectionActions,
-  createCollabRuntime,
-  createInitialCollabState
-} from '@/app/collab/session'
+  activeRoom,
+  activeTabLeftRoom,
+  dismissLeftRoomNote,
+  joinRoom,
+  leaveRoom,
+  shareDocument,
+  type JoinRoomOptions
+} from '@/app/collab/rooms'
 import {
   DEFAULT_COLLAB_STATE,
   type CollabState,
+  type RemotePeer,
   type MotionTimelinePresence,
   type PresenceEditingKind,
   type PresenceEditingTarget,
-  type PreviewDocStatePayload,
-  type RemotePeer
+  type PreviewDocStatePayload
 } from '@/app/collab/types'
-import { createYjsGraphSync } from '@/app/collab/yjs-sync'
-import type { EditorStore } from '@/app/editor/active-store'
 import { follow, presenceOf } from '@/app/presence/registry'
 import type { FollowTarget } from '@/app/presence/types'
+import { activeTab } from '@/app/tabs'
 
 export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
 export type {
   CollabState,
+  RemotePeer,
   MotionTimelinePresence,
   PresenceEditingKind,
   PresenceEditingTarget,
-  PreviewDocStatePayload,
-  RemotePeer
+  PreviewDocStatePayload
 }
 
-export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
-  const getStore = () =>
-    typeof storeOrGetter === 'function' ? (storeOrGetter as () => EditorStore)() : storeOrGetter
-  const storedName = useLocalStorage('op-collab-name', '')
-  const state = ref<CollabState>(createInitialCollabState(storedName.value))
-  const runtime = createCollabRuntime()
-  const remotePeers = computed(() => state.value.peers)
-  const getActiveStore = () => runtime.connectedStore.value ?? getStore()
+/**
+ * The collaboration UI's view of the active tab: its room, if it is in one, and the app-wide
+ * identity. Each room tab keeps its own session in `src/app/collab/rooms.ts`; switching tabs
+ * switches what this shows.
+ */
+export function useCollab() {
+  const identity = useCollabIdentity()
 
-  const following = computed(() => presenceOf(getActiveStore()).following.value)
+  const state = computed<CollabState>(() => {
+    const room = activeRoom.value
+    return {
+      inRoom: room !== undefined,
+      connected: room !== undefined,
+      roomKey: room?.roomKey ?? null,
+      motionConflicts: room?.motionConflicts.value ?? [],
+      roomId: room?.roomId ?? null,
+      status: room?.status.value ?? null,
+      peers: room?.peers.value ?? [],
+      localName: identity.name.value,
+      localColor: identity.color,
+      hasChosenName: identity.hasChosenName.value
+    }
+  })
+  const remotePeers = computed(() => state.value.peers)
+  const leftRoom = computed(() => activeTabLeftRoom.value)
+  const following = computed(() => {
+    const store = activeTab.value?.store
+    return store ? presenceOf(store).following.value : null
+  })
   const followingPeer = computed(() =>
     following.value?.kind === 'person' ? following.value.clientId : null
   )
-  const {
-    broadcastAwareness,
-    updateCursor,
-    flushCursor,
-    clearCursorBroadcast,
-    updateSelection,
-    updateEditingTarget,
-    updateMotionTimelinePresence,
-    updatePeersList,
-    setLocalName
-  } = createLocalAwarenessActions({
-    state,
-    storedName,
-    getStore: getActiveStore,
-    getAwareness: () => runtime.awareness
+
+  function followTarget(target: FollowTarget | null) {
+    const store = activeTab.value?.store
+    if (store) follow(store, target)
+  }
+
+  let stopConflict: WatchStopHandle | undefined
+  let stopPreview: WatchStopHandle | undefined
+  tryOnScopeDispose(() => {
+    stopConflict?.()
+    stopPreview?.()
   })
-
-  // Phase 3 §4.5 — the app registers a handler that toasts when a remote
-  // docState/page-state update would overwrite a concurrent local edit.
-  let conflictHandler: ((kind: DocStateConflictKind) => void) | undefined
-  function onDocStateConflict(handler: ((kind: DocStateConflictKind) => void) | null) {
-    conflictHandler = handler ?? undefined
-  }
-
-  function recordMotionConflict(conflict: MotionTimelineConflict): void {
-    const key = `${conflict.nodeId}:${conflict.trackId ?? ''}:${conflict.keyframeId ?? ''}:${conflict.code}`
-    const next = state.value.motionConflicts.filter(
-      (current) =>
-        `${current.nodeId}:${current.trackId ?? ''}:${current.keyframeId ?? ''}:${current.code}` !==
-        key
-    )
-    next.push(conflict)
-    state.value.motionConflicts = next.slice(-MOTION_TIMELINE_CRDT_LIMITS.maxConflicts)
-  }
-
-  function clearMotionTimelineConflicts(): void {
-    state.value.motionConflicts = []
-  }
-
-  // Phase 3 §4.6 — preview runtime docState collaboration. The PreviewPane
-  // relays bridge messages both ways: `sendPreviewDocState` broadcasts a local
-  // change (no-op when disconnected); `onPreviewDocState` registers the receiver
-  // that posts remote changes back into the local iframe.
-  function sendPreviewDocState(payload: PreviewDocStatePayload) {
-    runtime.sendPreviewDocState?.(payload)
-  }
-  function onPreviewDocState(handler: ((payload: PreviewDocStatePayload) => void) | null) {
-    runtime.previewDocStateHandler = handler
-  }
-
-  const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph, applyYjsMotionToGraph } =
-    createYjsGraphSync({
-      getStore: getActiveStore,
-      getYdoc: () => runtime.ydoc,
-      getYnodes: () => runtime.ynodes,
-      getYimages: () => runtime.yimages,
-      getYmotions: () => runtime.ymotions,
-      getSuppressYjsEvents: () => runtime.suppressYjsEvents,
-      setSuppressYjsEvents: (value) => {
-        runtime.suppressYjsEvents = value
-      },
-      getConflictHandler: () => conflictHandler,
-      getMotionConflictHandler: () => recordMotionConflict
-    })
-  const { connect, disconnect } = createCollabConnectionActions({
-    runtime,
-    state,
-    getStore,
-    updatePeersList,
-    broadcastAwareness,
-    applyYjsToGraph,
-    applyYjsMotionToGraph,
-    syncNodeToYjs,
-    flushCursor,
-    clearCursorBroadcast
-  })
-
-  // Phase 3 §4.2 — minting a room also mints a random key (Trystero password).
-  // The key rides the share-link URL fragment; callers embed it in the invite.
-  function shareCurrentDoc(): { roomId: string; key: string } {
-    const roomId = generateRoomId()
-    const key = generateRoomKey()
-    connect(roomId, key)
-    syncAllNodesToYjs()
-    // Seeding a new room establishes its baseline; the first collaborative
-    // undo must target a user edit instead of deleting the imported timeline.
-    runtime.motionUndoManager?.clear()
-    return { roomId, key }
-  }
-
-  tryOnScopeDispose(disconnect)
-
-  function undoMotionTimeline(): void {
-    runtime.motionUndoManager?.undo()
-  }
-
-  function redoMotionTimeline(): void {
-    runtime.motionUndoManager?.redo()
-  }
-
   return {
     state,
+    updateEditingTarget: (target: PresenceEditingTarget | null) =>
+      activeRoom.value?.updateEditingTarget(target),
+    updateMotionTimelinePresence: (target: MotionTimelinePresence | null) =>
+      activeRoom.value?.updateMotionTimelinePresence(target),
+    flushCursor: () => activeRoom.value?.flushCursor(),
+    clearMotionTimelineConflicts: () => activeRoom.value?.clearMotionTimelineConflicts(),
+    undoMotionTimeline: () => activeRoom.value?.undoMotionTimeline(),
+    redoMotionTimeline: () => activeRoom.value?.redoMotionTimeline(),
+    sendPreviewDocState: (payload: PreviewDocStatePayload) =>
+      activeRoom.value?.sendPreviewDocState(payload),
+    onPreviewDocState: (handler: ((payload: PreviewDocStatePayload) => void) | null) => {
+      stopPreview?.()
+      stopPreview = watch(
+        activeRoom,
+        (room, previous) => {
+          previous?.onPreviewDocState(null)
+          room?.onPreviewDocState(handler)
+        },
+        { immediate: true, flush: 'sync' }
+      )
+    },
+    onDocStateConflict: (handler: ((kind: DocStateConflictKind) => void) | null) => {
+      stopConflict?.()
+      stopConflict = watch(
+        activeRoom,
+        (room, previous) => {
+          previous?.setDocStateConflictHandler(null)
+          room?.setDocStateConflictHandler(handler)
+        },
+        { immediate: true, flush: 'sync' }
+      )
+    },
     remotePeers,
-    followingPeer,
-    connect,
-    disconnect,
-    shareCurrentDoc,
-    updateCursor,
-    flushCursor,
-    updateSelection,
-    updateEditingTarget,
-    updateMotionTimelinePresence,
-    onDocStateConflict,
-    clearMotionTimelineConflicts,
-    undoMotionTimeline,
-    redoMotionTimeline,
-    sendPreviewDocState,
-    onPreviewDocState,
-    setLocalName,
+    leftRoom,
     following,
-    follow: (target: FollowTarget | null) => follow(getActiveStore(), target),
+    followingPeer,
+    /** Opens a room in its own tab; false when the ID is not a room ID. */
+    join: (roomId: string, options: JoinRoomOptions) => joinRoom(roomId, options) !== null,
+    /** Puts the active tab's document into a room and returns the room ID. */
+    shareCurrentDoc: (roomId?: string): string | null => {
+      const store = activeTab.value?.store
+      if (!store || activeTab.value?.kind === 'home') return null
+      return shareDocument(store, roomId).roomId
+    },
+    disconnect: () => {
+      const room = activeRoom.value
+      if (room) leaveRoom(room)
+    },
+    updateCursor: (x: number, y: number, pageId: string, fpsCap?: number) => {
+      activeRoom.value?.updateCursor(x, y, pageId, fpsCap)
+    },
+    updateSelection: (ids: string[]) => {
+      activeRoom.value?.updateSelection(ids)
+    },
+    dismissLeftRoomNote: () => {
+      const store = activeTab.value?.store
+      if (store) dismissLeftRoomNote(store)
+    },
+    setLocalName: identity.setName,
+    follow: followTarget,
     followPeer: (clientId: number | null) =>
-      follow(getActiveStore(), clientId === null ? null : { kind: 'person', clientId })
+      followTarget(clientId === null ? null : { kind: 'person', clientId })
   }
 }

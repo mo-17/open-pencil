@@ -48,11 +48,7 @@ export function drawDateRangeText(
     renderer.color4f(tint.r, tint.g, tint.b, opacity),
     { halfLeading: true },
     (paragraph) => {
-      canvas.drawParagraph(
-        paragraph,
-        run.x,
-        run.y + Math.max(0, (run.height - paragraph.getHeight()) / 2)
-      )
+      paragraph.draw(canvas, run.x, run.y + Math.max(0, (run.height - paragraph.getHeight()) / 2))
     }
   )
 }

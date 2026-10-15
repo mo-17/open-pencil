@@ -182,7 +182,7 @@ const errorMessage = computed(() => {
     <p
       v-if="errorMessage"
       data-test-id="lowcode-supabase-source-migration-error"
-      class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
       role="alert"
     >
       {{ errorMessage }}
@@ -191,9 +191,9 @@ const errorMessage = computed(() => {
     <article
       v-if="result"
       data-test-id="lowcode-supabase-source-migration-result"
-      class="flex flex-col gap-1 rounded border border-green-500/40 bg-green-500/5 p-2"
+      class="flex flex-col gap-1 rounded border border-success/40 bg-success/5 p-2"
     >
-      <p class="text-[10px] text-green-500">
+      <p class="text-[10px] text-success">
         {{ panels.lowcodeSupabaseSourceMigrationSaved }}
       </p>
       <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
@@ -214,7 +214,7 @@ const errorMessage = computed(() => {
           }}
         </dd>
       </dl>
-      <p class="text-[9px] text-amber-500">
+      <p class="text-[9px] text-warning">
         {{ panels.lowcodeSupabaseSourceMigrationPostSaveHint }}
       </p>
     </article>

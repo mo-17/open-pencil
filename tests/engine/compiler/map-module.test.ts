@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -197,9 +199,14 @@ describe('compiler built-in map module', () => {
     })
     const app = out.files.get('src/App.tsx') as string
     const runtime = out.files.get('src/__openpencil_map.tsx') as string
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilMap from './__openpencil_map'")
     expect(app).toContain('<OpenPencilMap config={{')
@@ -234,9 +241,14 @@ describe('compiler built-in map module', () => {
     graph.createNode('FRAME', pageId, { width: 320, height: 180 })
 
     const out = compile({ graph, pageIds: [pageId], options: withDefaults() })
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(out.files.has('src/__openpencil_map.tsx')).toBe(false)
     expect(pkg.dependencies['maplibre-gl']).toBeUndefined()
@@ -257,9 +269,14 @@ describe('compiler built-in map module', () => {
 
     const out = compile({ graph, pageIds: [pageId], options: withDefaults() })
     const app = out.files.get('src/App.tsx') as string
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(app).toContain('<OpenPencilMap config={{')
     expect(app).not.toContain("from 'lucide-react'")
@@ -312,9 +329,14 @@ describe('compiler built-in map module', () => {
       options: withDefaults({ packageName: 'map-component' })
     })
     const component = out.files.get('src/components/MapCard.tsx') as string
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(component).toContain("import OpenPencilMap from '../__openpencil_map'")
     expect(component).toContain('<OpenPencilMap config={{')

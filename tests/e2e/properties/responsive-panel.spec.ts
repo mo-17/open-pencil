@@ -27,16 +27,18 @@ async function editNumber(page: Page, key: string, value: string, commit = true)
   return input
 }
 async function overrides(page: Page, id: string) {
-  return page.evaluate(
-    (id) => window.openPencil?.getStore?.().graph.getNode(id)?.responsiveOverrides,
-    id
-  )
+  return page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().graph.getNode(id)?.responsiveOverrides
+  }, id)
 }
 async function prepare(page: Page) {
   await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const id = store.createShape('FRAME', 120, 120, 320, 220)
@@ -62,9 +64,15 @@ test('responsive branch editing restores inheritance, null limits and one-step u
   // Pin explicitly authors an inherited same-value; unchanged input remains read-only.
   await row(page, 'width').locator('[data-command="author-responsive-field"]').click()
   expect((await overrides(page, id))?.lg).toEqual({ width: 640 })
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   expect((await overrides(page, id))?.lg).toBeUndefined()
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.redo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.redo()
+  })
   await expect(row(page, 'width')).toHaveAttribute('data-overridden', 'true')
   await editNumber(page, 'height', '330')
   expect((await overrides(page, id))?.lg?.height).toBe(330)
@@ -81,12 +89,20 @@ test('responsive branch editing restores inheritance, null limits and one-step u
   await expect(row(page, 'width')).toHaveAttribute('data-source', 'md')
   await panel(page).locator('[data-command="clear-responsive-breakpoint"]').click()
   expect((await overrides(page, id))?.lg).toBeUndefined()
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   expect((await overrides(page, id))?.lg).toEqual({ maxWidth: null })
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.redo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.redo()
+  })
   expect(await overrides(page, id)).toEqual({ sm: { itemSpacing: 12 }, md: { width: 640 } })
   expect(
     await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const node = window.openPencil?.getStore?.().graph.getNode(id)
       return node && { x: node.x, y: node.y, width: node.width, height: node.height }
     }, id)
@@ -103,6 +119,8 @@ test('responsive numeric drafts cancel on breakpoint, source, selection, protect
   expect((await overrides(page, id))?.compact).toBeUndefined()
   await editNumber(page, 'width', '998', false)
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     store.graph.updateNode(id, {
@@ -117,6 +135,8 @@ test('responsive numeric drafts cancel on breakpoint, source, selection, protect
     .elementHandle()
   if (!oldClear) throw new Error('Missing branch Clear button')
   const second = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const second = store.createShape('FRAME', 480, 120, 200, 200)
@@ -127,6 +147,8 @@ test('responsive numeric drafts cancel on breakpoint, source, selection, protect
   expect((await overrides(page, id))?.md?.width).toBe(700)
   // A delayed click from an old selection's Clear button must not clear the new node.
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     store.graph.updateNode(id, { responsiveOverrides: { md: { width: 480 } } })
@@ -137,20 +159,25 @@ test('responsive numeric drafts cancel on breakpoint, source, selection, protect
   )
   expect((await overrides(page, second))?.md?.width).toBe(480)
   expect((await overrides(page, id))?.md?.width).toBe(700)
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), id)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, id)
   await editNumber(page, 'width', '996', false)
-  await page.evaluate(
-    (id) => window.openPencil?.getStore?.().graph.updateNode(id, { locked: true }),
-    id
-  )
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().graph.updateNode(id, { locked: true })
+  }, id)
   await expect(row(page, 'width').locator('input')).toHaveCount(0)
   expect((await overrides(page, id))?.md?.width).toBe(700)
-  await page.evaluate(
-    (id) => window.openPencil?.getStore?.().graph.updateNode(id, { locked: false }),
-    id
-  )
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().graph.updateNode(id, { locked: false })
+  }, id)
   await editNumber(page, 'width', '995', false)
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const original = store.graph
@@ -161,7 +188,10 @@ test('responsive numeric drafts cancel on breakpoint, source, selection, protect
     for (const [id, node] of original.nodes) replacement.nodes.set(id, structuredClone(node))
     store.replaceGraph(replacement)
   })
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), id)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, id)
   await expect(row(page, 'width').locator('input')).toHaveCount(0)
   expect((await overrides(page, id))?.md?.width).toBe(700)
   canvas.assertNoErrors()
@@ -173,6 +203,8 @@ test('branch width preview retains the Web frame, route, height and draft, and o
   test.setTimeout(120_000)
   const { canvas, id } = await prepare(page)
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const parent = store.graph.createNode('FRAME', store.state.currentPageId, {

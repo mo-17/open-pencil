@@ -120,7 +120,7 @@ export function drawModuleLabel(
     { halfLeading: true }
   )
   try {
-    canvas.drawParagraph(paragraph, options.x, options.baseline - paragraph.getAlphabeticBaseline())
+    paragraph.draw(canvas, options.x, options.baseline - paragraph.getAlphabeticBaseline())
   } finally {
     paragraph.delete()
   }

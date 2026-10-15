@@ -6,10 +6,23 @@ import { createInterface } from 'node:readline'
 
 import { PiHarnessBackend } from '#harness/backends/pi'
 import type { PiHarnessBackendOptions } from '#harness/backends/pi'
+import { reserveProtocolOutput } from '#harness/output'
 import type { HarnessRequest, HarnessSidecarMessage } from '#harness/protocol'
 import { parseHarnessRequest } from '#harness/protocol'
 import { HarnessSessionService } from '#harness/service'
 import { FileResumeStateStore } from '#harness/session-store'
+import { loadTypeScriptDependencies } from '#harness/typescript-dependencies'
+
+import packageJSON from '../package.json' with { type: 'json' }
+
+// The app reads this to check that the companion matches it, before anything else starts.
+if (process.argv.includes('--version')) {
+  process.stdout.write(`${packageJSON.version}\n`)
+  process.exit(0)
+}
+
+const writeProtocol = reserveProtocolOutput()
+loadTypeScriptDependencies()
 
 const stateRoot =
   process.env.OPENPENCIL_HARNESS_STATE_DIR ?? join(homedir(), '.open-pencil', 'harness-sessions')
@@ -25,7 +38,7 @@ const service = new HarnessSessionService(
 )
 
 async function emit(message: HarnessSidecarMessage): Promise<void> {
-  if (process.stdout.write(`${JSON.stringify(message)}\n`)) return
+  if (writeProtocol(`${JSON.stringify(message)}\n`)) return
   await new Promise<void>((resolve) => {
     process.stdout.once('drain', resolve)
   })
@@ -61,10 +74,17 @@ async function dispatch(line: string): Promise<boolean> {
       return true
     }
     if (request.method === 'session.turn') {
-      for await (const event of service.runTurn(request.params.sessionId, request.params.prompt)) {
+      const { sessionId, prompt } = request.params
+      for await (const event of service.runTurn(sessionId, prompt)) {
         await emit({ type: 'turn.event', id: request.id, event })
       }
-      await emit({ type: 'response', id: request.id, result: { completed: true } })
+      // A cancelled turn ends its stream quietly; its answer says it was cancelled.
+      const cancelled = service.lastTurnCancelled(sessionId)
+      await emit({
+        type: 'response',
+        id: request.id,
+        result: cancelled ? { cancelled: true } : { completed: true }
+      })
       return true
     }
     if (request.method === 'session.cancel') {

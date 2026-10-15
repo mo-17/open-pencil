@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import type { PluginManifest } from '@open-pencil/plugin-contracts'
 
 import { DEFAULT_APP_PLUGIN_MCP_OPTIONS } from '@/app/automation/bridge/plugin-mcp-handler'
@@ -27,12 +29,13 @@ import { closeTab, createTab, getActiveTabId, switchTab } from '@/app/tabs'
 
 const TEST_AUTOMATION_URL = 'ws://127.0.0.1:25500'
 
-interface AutomationTestMessage {
-  type?: string
-  id?: string
-  ok?: boolean
-  error?: string
-}
+const AutomationTestMessageSchema = v.object({
+  type: v.optional(v.string()),
+  id: v.optional(v.string()),
+  ok: v.optional(v.boolean()),
+  error: v.optional(v.string())
+})
+type AutomationTestMessage = v.InferOutput<typeof AutomationTestMessageSchema>
 
 test('automation bridge announces the current dynamic plugin tool revision after registration', () => {
   const originalWebSocket = globalThis.WebSocket
@@ -359,7 +362,9 @@ test('automation bridge aborts a bound publisher request when its exact grant is
     let response: AutomationTestMessage | undefined
     for (let index = 0; index < 100 && !response; index += 1) {
       response = sent
-        .map((value) => JSON.parse(value) as AutomationTestMessage)
+        .map((value) =>
+          v.parse(v.pipe(v.string(), v.parseJson(), AutomationTestMessageSchema), value)
+        )
         .find((value) => value.type === 'response' && value.id === 'publisher-request')
       if (!response) {
         await new Promise<void>((resolve) => {

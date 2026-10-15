@@ -7,7 +7,7 @@
 // so an unconfigured editor behaves exactly as before and self-hosting is
 // opt-in. Pure + env-as-argument so it's unit-testable.
 
-import { TRYSTERO_APP_ID } from '@/constants'
+import { COLLAB_APP_ID } from '@/constants'
 
 /** Signaling transport. `mqtt` = public/self-hosted MQTT broker (default);
  *  `supabase` = Supabase Realtime (no public broker), §4.3-S. */
@@ -113,7 +113,7 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
     return { strategy: 'supabase', appId: supabaseURL, supabaseKey, iceServers }
   }
 
-  const appId = nonEmpty(env.VITE_COLLAB_APP_ID) ?? TRYSTERO_APP_ID
+  const appId = nonEmpty(env.VITE_COLLAB_APP_ID) ?? COLLAB_APP_ID
   const relayUrls = parseRelayUrls(env.VITE_COLLAB_RELAY_URLS)
   return relayUrls
     ? { strategy: 'mqtt', appId, relayUrls, iceServers }

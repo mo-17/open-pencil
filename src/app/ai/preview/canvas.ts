@@ -1,25 +1,72 @@
 import type { CanvasKit, SkPicture } from 'canvaskit-wasm'
+import { uniq } from 'es-toolkit/array'
 import { watch } from 'vue'
 
-import { recordJSXPreview, stageJSXPreview } from '@open-pencil/core/design-jsx'
+import {
+  recordJSXPreview,
+  stageJSXPreview,
+  type StagedJSXPreview
+} from '@open-pencil/core/design-jsx'
+import { computeContentBounds } from '@open-pencil/core/io'
 import type { JSXPreviewNode } from '@open-pencil/design-jsx'
 import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import {
   getActiveEditorStoreOrNull,
   useActiveEditorStoreRef,
   type EditorStore
 } from '@/app/editor/active-store'
+import { MAX_OUTLINE } from '@/app/presence/schema'
 
 import { createJSXPreviewController, type PreviewArtifact } from './controller'
 import type { RenderPreviewInput } from './input'
 
-interface PreviewTarget {
-  graph: SceneGraph
-  pageId: string
-}
+type PreviewTarget = Pick<EditorStore, 'graph'> & { pageId: string }
 
 const MAX_RENDERED_PREVIEW_NODES = 500
+
+/** Where streamed JSX is being built, in world coordinates: its newest element, and outlines. */
+export interface PreviewFocus {
+  cursor: Vector
+  outline: Rect[]
+}
+
+function nodeRect(graph: SceneGraph, nodeId: string): Rect | null {
+  const bounds = computeContentBounds(graph, [nodeId])
+  if (!bounds) return null
+  return {
+    x: bounds.minX,
+    y: bounds.minY,
+    width: bounds.maxX - bounds.minX,
+    height: bounds.maxY - bounds.minY
+  }
+}
+
+/** The element that appeared last: the source's last element is the end of the last-child chain. */
+function newestElement(graph: SceneGraph, rootIds: readonly string[]): string | undefined {
+  const rootId = rootIds.at(-1)
+  let node = rootId ? graph.getNode(rootId) : undefined
+  while (node) {
+    const last = node.childIds.at(-1)
+    const child = last ? graph.getNode(last) : undefined
+    if (!child) return node.id
+    node = child
+  }
+  return undefined
+}
+
+/** The cursor at the newest element's trailing corner, and outlines of the JSX and that element. */
+export function previewFocus(staged: Pick<StagedJSXPreview, 'graph' | 'renderedIds'>) {
+  const newest = newestElement(staged.graph, staged.renderedIds)
+  const newestRect = newest ? nodeRect(staged.graph, newest) : null
+  if (!newest || !newestRect) return null
+  const outlined = uniq([...staged.renderedIds, newest]).slice(-MAX_OUTLINE)
+  const outline = outlined.flatMap((id) => nodeRect(staged.graph, id) ?? [])
+  // The trailing corner, where content grows, so the agent's name sits beside what it writes.
+  const cursor = { x: newestRect.x + newestRect.width, y: newestRect.y + newestRect.height }
+  return { cursor, outline } satisfies PreviewFocus
+}
 
 function countNodes(tree: JSXPreviewNode): number {
   return (
@@ -31,16 +78,33 @@ function countNodes(tree: JSXPreviewNode): number {
   )
 }
 
+export interface CanvasJSXPreviewOptions {
+  /** Told where each shown preview is being built, so the agent can point there. */
+  onFocus?: (focus: PreviewFocus) => void
+  /**
+   * Show previews only while this document is the active tab, and drop them when another tab
+   * becomes active, as the chat's own preview does. A room shows its peers' previews whenever
+   * the document's canvas is drawn, which is also true of several documents on one page.
+   */
+  activeTabOnly?: boolean
+}
+
 /**
  * Bind speculative pictures to this editor. Previews belong to `pageId()`, the run's page:
  * the renderer shows them only while that page is on screen, so page switches hide them.
  */
-export function createCanvasJSXPreview(store: EditorStore, pageId: () => string) {
+export function createCanvasJSXPreview(
+  store: EditorStore,
+  pageId: () => string,
+  { onFocus, activeTabOnly = true }: CanvasJSXPreviewOptions = {}
+) {
   let subscriptions: (() => void)[] = []
+
+  const isShown = () => !activeTabOnly || getActiveEditorStoreOrNull() === store
 
   function isCurrent(target: PreviewTarget): boolean {
     return (
-      getActiveEditorStoreOrNull() === store &&
+      isShown() &&
       store.graph === target.graph &&
       store.graph.getNode(target.pageId)?.type === 'CANVAS'
     )
@@ -52,7 +116,7 @@ export function createCanvasJSXPreview(store: EditorStore, pageId: () => string)
   }
 
   function capture(): PreviewTarget | null {
-    if (getActiveEditorStoreOrNull() !== store || !store.renderer) return null
+    if (!isShown() || !store.renderer) return null
     if (subscriptions.length === 0) {
       subscriptions = [
         store.onEditorEvent('graph:replaced', () => controller.clear()),
@@ -61,15 +125,19 @@ export function createCanvasJSXPreview(store: EditorStore, pageId: () => string)
         store.onEditorEvent('node:updated', () => controller.invalidate()),
         store.onEditorEvent('node:deleted', () => controller.invalidate()),
         store.onEditorEvent('node:reparented', () => controller.invalidate()),
-        store.onEditorEvent('node:reordered', () => controller.invalidate()),
-        watch(
-          useActiveEditorStoreRef(),
-          (active) => {
-            if (active !== store) controller.clear()
-          },
-          { flush: 'sync' }
-        )
+        store.onEditorEvent('node:reordered', () => controller.invalidate())
       ]
+      if (activeTabOnly) {
+        subscriptions.push(
+          watch(
+            useActiveEditorStoreRef(),
+            (active) => {
+              if (active !== store) controller.clear()
+            },
+            { flush: 'sync' }
+          )
+        )
+      }
     }
     return { graph: store.graph, pageId: pageId() }
   }
@@ -104,6 +172,7 @@ export function createCanvasJSXPreview(store: EditorStore, pageId: () => string)
       throw error
     }
     if (pictures.size === 0) return null
+    const focus = previewFocus(staged)
     const id = crypto.randomUUID()
     const attached = new Set<EditorStore['canvasRenderers'][number]>()
     let disposed = false
@@ -122,6 +191,7 @@ export function createCanvasJSXPreview(store: EditorStore, pageId: () => string)
           attached.add(canvasRenderer)
         }
         store.requestRepaint()
+        if (focus) onFocus?.(focus)
       },
       dispose() {
         if (disposed) return

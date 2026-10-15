@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { AliyunDriveClient } from '@/app/integrations/storage/aliyun-drive/client'
 import { ALIYUN_DRIVE_OPENAPI_ORIGIN } from '@/app/integrations/storage/aliyun-drive/config'
-import type { AliyunDriveError } from '@/app/integrations/storage/aliyun-drive/errors'
 import type {
   AliyunDriveDocumentFile,
   AliyunDriveItem,
@@ -51,7 +52,7 @@ function json(value: unknown, status = 200): Response {
 
 function parseBody(init?: RequestInit): JSONObject {
   if (typeof init?.body !== 'string') throw new Error('expected JSON body')
-  return JSON.parse(init.body) as JSONObject
+  return v.parse(v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())), init.body)
 }
 
 function item(
@@ -175,7 +176,7 @@ describe('AliyunDriveClient', () => {
     }
     const client = createClient(transport)
 
-    await expect(client.listDocuments()).rejects.toMatchObject<Partial<AliyunDriveError>>({
+    await expect(client.listDocuments()).rejects.toMatchObject({
       code: 'invalid-response'
     })
   })

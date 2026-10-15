@@ -2,14 +2,14 @@ import process from 'node:process'
 
 import { expect, test } from '../fixtures'
 
-const BROWSER_RUNTIME_MODULE = `http://localhost:1420/@fs${process.cwd()}/packages/dom-css/src/runtime/browser.ts`
+const BROWSER_RUNTIME_MODULE = `/@fs${process.cwd()}/packages/dom-css/src/runtime/browser.ts`
 const REMOTE_ORIGIN = 'https://security-probe.invalid'
 
 test.describe('@open-pencil/dom-css inert browser boundary', () => {
   test('does not execute active markup or fetch external resources in either sandbox', async ({
     page
   }) => {
-    await page.goto('http://localhost:1420/@vite/client', { waitUntil: 'domcontentloaded' })
+    await page.goto('/@vite/client', { waitUntil: 'domcontentloaded' })
     await page.setContent('<main>DOM/CSS security probe</main>')
     const externalRequests: string[] = []
     page.on('request', (request) => {

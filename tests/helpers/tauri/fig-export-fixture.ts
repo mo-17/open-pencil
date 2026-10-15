@@ -57,7 +57,10 @@ mockIPC((cmd, args) => {
   if (imageCount !== 1) throw new Error(`Expected one image, received ${imageCount}`)
   const nameLength = reader.u32()
   const dataLength = reader.u32()
-  if (new TextDecoder().decode(reader.bytes(nameLength)) !== 'images/test-image') {
+  if (
+    new TextDecoder().decode(reader.bytes(nameLength)) !==
+    'images/12dada1fff4d4787ade3333147202c3b443e376f'
+  ) {
     throw new Error('Unexpected image name')
   }
   if (!reader.bytes(dataLength).every((value, index) => value === index + 1)) {
@@ -68,7 +71,7 @@ mockIPC((cmd, args) => {
 })
 
 const [{ exportFigFile }, { SceneGraph }] = await Promise.all([
-  import('@open-pencil/core/io/formats/fig/export'),
+  import('@open-pencil/core/io'),
   import('@open-pencil/scene-graph')
 ])
 const graph = new SceneGraph()

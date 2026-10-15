@@ -62,7 +62,7 @@ test('editing, restoring and clearing a branch preserve base geometry, undo and 
     expect(node.responsiveOverrides).toEqual(restored)
     expect(node).toMatchObject({ x: 24, y: 32, width: 1200, height: 800 })
     const reopened = await parseFigFile((await exportFigFile(graph)).slice().buffer)
-    const frame = reopened.getAllNodes().find((current) => current.name === node.name)
+    const frame = [...reopened.getAllNodes()].find((current) => current.name === node.name)
     expect(frame?.responsiveOverrides).toEqual(restored)
     expect(frame).toMatchObject({ x: 24, y: 32, width: 1200, height: 800 })
   } finally {

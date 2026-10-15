@@ -8,6 +8,7 @@ description = "Exact public Google Fonts browser API key"
 regexTarget = "secret"
 regexes = ['''^AIzaSyD1tYDR_dUEiV-Tw1vksEhZbUytgKW5p[c]8$''']
 
+
 [[allowlists]]
 description = "Exact keyboard shortcut metadata values"
 regexTarget = "secret"
@@ -94,3 +95,8 @@ regexes = ['''^26164e029c485511adfa634522024c7c23e7bb8[1]$''', '''^jSxlQDCrjsvqE
 description = "Exact public upstream Figma file identifier in gold-input-layout fixture"
 regexTarget = "secret"
 regexes = ['''^NmoHzskYNiSKOaRX14bMd[w]$''']
+
+[[allowlists]]
+description = "Exact SHA-1 of the public three-byte image rejection fixture [1, 2, 3]"
+regexTarget = "secret"
+regexes = ['^(?:7037807198c22a7d2b0807371d763779a84fdfcf)$']

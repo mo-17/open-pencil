@@ -11,6 +11,8 @@ import {
   useCanvasFontLoading
 } from '@/app/editor/fonts/canvas-font-loading'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 class FakeTimers {
   #now = 0
   #nextId = 1
@@ -153,13 +155,13 @@ describe('canvas font loading presenter', () => {
   test('the composable subscribes to editor progress and releases both listeners with its scope', () => {
     const timers = new FakeTimers()
     const listeners = new Map<string, (...args: never[]) => void>()
-    const store = {
+    const store = asDouble<EditorStore>({
       state: reactive({ currentPageId: 'page-1' }),
       onEditorEvent: (event: string, listener: (...args: never[]) => void) => {
         listeners.set(event, listener)
         return () => listeners.delete(event)
       }
-    } as EditorStore
+    })
     const scope = effectScope()
     const state = scope.run(() =>
       useCanvasFontLoading(store, {

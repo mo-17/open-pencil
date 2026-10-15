@@ -37,8 +37,8 @@ test('model Save and Test explain missing fields and focus the first error', asy
       )
     })
   ).toBe(true)
-  await expect(name).toHaveCSS('border-top-color', 'rgb(248, 113, 113)')
-  await expect(editor.getByRole('alert').first()).toHaveCSS('color', 'rgb(248, 113, 113)')
+  await expect(name).toHaveCSS('border-top-color', 'rgb(250, 133, 133)')
+  await expect(editor.getByRole('alert').first()).toHaveCSS('color', 'rgb(250, 133, 133)')
   await name.fill('My model')
   await expect(name).toHaveAttribute('aria-invalid', 'false')
   const testConnection = page.getByTestId('provider-test-connection')
@@ -50,27 +50,78 @@ test('model Save and Test explain missing fields and focus the first error', asy
 test('storage validates preferences and test credentials without saving', async ({ page }) => {
   await openSettings(page)
   await page.getByTestId('settings-section-storage').click()
-  await expect(
-    page.getByText('Configure the connection before opening the workspace.')
-  ).toBeVisible()
-  await page.getByRole('button', { name: /S3 storage/ }).click()
-  const endpoint = page.getByRole('textbox', { name: 'Endpoint', exact: true })
-  const bucket = page.getByRole('textbox', { name: 'Bucket', exact: true })
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  const storage = page.getByTestId('settings-storage-panel')
+  await storage
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
+  const s3 = storage.getByTestId('settings-storage-s3')
+  const workspace = storage.getByTestId('settings-storage-open-workspace')
+  await expect(workspace).toBeDisabled()
+  const endpoint = s3.getByRole('textbox', { name: 'Endpoint', exact: true })
+  const bucket = s3.getByRole('textbox', { name: 'Bucket', exact: true })
+  await s3.locator('[data-command="save-storage-settings"]').click()
   await expect(endpoint).toBeFocused()
   await expect(endpoint).toHaveAttribute('aria-invalid', 'true')
   await endpoint.fill('https://example.com')
   await bucket.fill('designs')
   await expect(endpoint).toHaveAttribute('aria-invalid', 'false')
-  await page.getByTestId('settings-storage-test').click()
-  const key = page.getByRole('textbox', { name: 'Access key ID', exact: true })
+  await s3.getByTestId('settings-storage-test').click()
+  const key = s3.getByLabel('Access key ID', { exact: true })
   await expect(key).toBeFocused()
   await expect(key).toHaveAttribute('aria-invalid', 'true')
   await expect(key).toHaveAccessibleDescription('This field is required.')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(
-    page.getByText('Configure the connection before opening the workspace.')
-  ).toBeVisible()
+  await s3.locator('[data-command="cancel-storage-settings"]').click()
+  await expect(endpoint).toHaveValue('')
+  await expect(bucket).toHaveValue('')
+  await expect(workspace).toBeDisabled()
+  const saved = await page.evaluate(async () => {
+    const path = '/src/app/integrations/storage/index.ts'
+    const { readStoragePreferences, storageCredentialStatuses } = await import(path)
+    return {
+      preferences: readStoragePreferences('s3-compatible'),
+      credentials: await storageCredentialStatuses('s3-compatible')
+    }
+  })
+  expect(saved.preferences.endpoint ?? '').toBe('')
+  expect(saved.preferences.bucket ?? '').toBe('')
+  expect(saved.credentials['access-key-id']).not.toBe('configured')
+  expect(saved.credentials['secret-access-key']).not.toBe('configured')
+})
+
+test('storage retains replacement secrets after a partial Save and succeeds on retry', async ({
+  page
+}) => {
+  await openSettings(page)
+  await page.getByTestId('settings-section-storage').click()
+  await page
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
+  const s3 = page.getByTestId('settings-storage-s3')
+  await s3.getByRole('textbox', { name: 'Endpoint', exact: true }).fill('https://fixture.example')
+  await s3.getByRole('textbox', { name: 'Bucket', exact: true }).fill('fixture-designs')
+  const key = s3.getByLabel('Access key ID', { exact: true })
+  const secret = s3.getByLabel('Secret access key', { exact: true })
+  await key.fill('test-access-key')
+  await secret.fill('test-secret-key')
+  const failure = await failCredentialWrites(page)
+  try {
+    await s3.locator('[data-command="save-storage-settings"]').click()
+    await expect(key).toHaveValue('test-access-key')
+    await expect(secret).toHaveValue('test-secret-key')
+    await expect(secret).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(
+      s3.getByRole('alert').filter({ hasText: 'Some changes may already be saved.' })
+    ).toBeVisible()
+  } finally {
+    await failure.evaluate((handle) => handle.restore())
+    await failure.dispose()
+  }
+  await s3.locator('[data-command="save-storage-settings"]').click()
+  await expect(key).toHaveValue('')
+  await expect(secret).toHaveValue('')
+  await expect(key).toHaveAttribute('placeholder', /Key saved/)
+  await expect(secret).toHaveAttribute('placeholder', /Key saved/)
+  await expect(page.getByTestId('settings-storage-open-workspace')).toBeEnabled()
 })
 
 async function failCredentialWrites(page: Page) {

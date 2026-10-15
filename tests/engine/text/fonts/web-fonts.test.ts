@@ -1,12 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  normalizedCoverageText,
-  WebFontResolver,
-  webFontSubsetsForText
-} from '@open-pencil/core/text'
-import { webFontAssetFamilySlug } from '@open-pencil/core/text/web-font/assets'
-
+import { normalizedCoverageText, WebFontResolver, webFontSubsetsForText } from '#core/text'
+import { webFontAssetFamilySlug } from '#core/text/web-font/assets'
 import { retryableCachedPromise, withWebFontFetchProxy } from '#core/text/web-font/fetch-proxy'
 
 describe('web font coverage requests', () => {
@@ -18,60 +13,52 @@ describe('web font coverage requests', () => {
   test('aborts a font load queued behind an active provider request', async () => {
     const resolver = new WebFontResolver()
     resolver.setEnabled({ google: true })
-    let requestStarted: (() => void) | null = null
-    let releaseRequest: (() => void) | null = null
-    const started = new Promise<void>((resolve) => {
-      requestStarted = resolve
-    })
-    const blocked = new Promise<Response>((resolve) => {
-      releaseRequest = () => resolve(new Response('{}', { status: 200 }))
-    })
+    const started = Promise.withResolvers<undefined>()
+    const blocked = Promise.withResolvers<Response>()
     resolver.setRemoteFetch(async () => {
-      requestStarted?.()
-      return blocked
+      started.resolve(undefined)
+      return blocked.promise
     })
     const first = resolver.listFamilies('google')
-    await started
+    await started.promise
     const abort = new AbortController()
     const queued = resolver.fetchFont(['Inter'], 'Regular', '', abort.signal)
 
     abort.abort()
 
     await expect(queued).rejects.toHaveProperty('name', 'AbortError')
-    releaseRequest?.()
+    blocked.resolve(Response.json({ familyMetadataList: [] }))
     await first
   })
 
   test('aborts promptly while provider resolution is pending', async () => {
     const resolver = new WebFontResolver()
     resolver.setEnabled({ google: true })
-    let providerRequestStarted: (() => void) | null = null
-    let releaseProviderRequest: (() => void) | null = null
-    const started = new Promise<void>((resolve) => {
-      providerRequestStarted = resolve
-    })
-    const blocked = new Promise<Response>((resolve) => {
-      releaseProviderRequest = () => resolve(new Response('{}', { status: 200 }))
-    })
+    const started = Promise.withResolvers<undefined>()
+    const blocked = Promise.withResolvers<Response>()
     resolver.setRemoteFetch(async () => {
-      providerRequestStarted?.()
-      return blocked
+      started.resolve(undefined)
+      return blocked.promise
     })
     const abort = new AbortController()
     const loading = resolver.fetchFont(['Inter'], 'Regular', '', abort.signal)
-    await started
+    await started.promise
 
     abort.abort()
 
     await expect(loading).rejects.toHaveProperty('name', 'AbortError')
-    releaseProviderRequest?.()
+    blocked.resolve(Response.json({ familyMetadataList: [] }))
   })
 
   test('keeps shared provider initialization alive when one waiter aborts', async () => {
     const resolver = new WebFontResolver()
     resolver.setEnabled({ google: true })
-    let providerRequestStarted: (() => void) | null = null
-    let releaseProviderRequest: (() => void) | null = null
+    let providerRequestStarted: () => void = () => {
+      throw new Error('Provider request was not started')
+    }
+    let releaseProviderRequest: () => void = () => {
+      throw new Error('Provider request was not started')
+    }
     const started = new Promise<void>((resolve) => {
       providerRequestStarted = resolve
     })
@@ -85,7 +72,7 @@ describe('web font coverage requests', () => {
     })
     resolver.setRemoteFetch(async (url) => {
       if (url.includes('fonts.google.com/metadata/fonts')) {
-        providerRequestStarted?.()
+        providerRequestStarted()
         return blocked
       }
       if (url.includes('fonts.googleapis.com/css2')) {
@@ -108,7 +95,7 @@ describe('web font coverage requests', () => {
     firstAbort.abort()
 
     await expect(first).rejects.toHaveProperty('name', 'AbortError')
-    releaseProviderRequest?.()
+    releaseProviderRequest()
     const result = await second
     expect(result?.provider).toBe('google')
     expect(result?.buffers).toHaveLength(1)

@@ -26,7 +26,7 @@ test('five chart recipes declare their module requirement and preserve local pai
       if (!resolved?.ok) throw new Error('Missing chart template module')
       expect(node?.type).toBe('FRAME')
       expect(node?.interactiveProps?.lang).toBe('zh-CN')
-      expect(resolved.config.chartType).toBe(template.id.replace('-chart', ''))
+      expect<unknown>(resolved.config.chartType).toBe(template.id.replace('-chart', ''))
       expect(resolved.config.labels).toHaveLength(resolved.config.values.length)
       expect(resolved.config.labels.every((label) => /\p{Script=Han}/u.test(label))).toBe(true)
       expect(resolved.config.showValues).toBe(true)

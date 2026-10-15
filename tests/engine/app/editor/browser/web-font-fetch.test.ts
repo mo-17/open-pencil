@@ -5,6 +5,8 @@ import {
   createBrowserWebFontFetch
 } from '@/app/editor/fonts/browser/web-font-fetch'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 function responseAt(url: string, body: BodyInit | null, init: ResponseInit = {}): Response {
   const response = new Response(body, init)
   Object.defineProperty(response, 'url', { configurable: true, value: url })
@@ -43,7 +45,7 @@ describe('createBrowserWebFontFetch', () => {
     const originalFetch = globalThis.fetch
     const url = 'https://api.fontsource.org/v1/fonts'
     let invoked = false
-    const nativeStyleFetch = function (this: unknown, input: RequestInfo | URL) {
+    const nativeStyleFetch = fetchStub(function (this: unknown, input: RequestInfo | URL) {
       if (this !== globalThis) throw new TypeError('Illegal invocation')
       invoked = true
       let requestURL: string
@@ -51,7 +53,7 @@ describe('createBrowserWebFontFetch', () => {
       else if (input instanceof URL) requestURL = input.href
       else requestURL = input.url
       return Promise.resolve(responseAt(requestURL, '[]'))
-    } as typeof globalThis.fetch
+    })
     Reflect.set(globalThis, 'fetch', nativeStyleFetch)
 
     try {
@@ -68,12 +70,12 @@ describe('createBrowserWebFontFetch', () => {
     let captured: { url: string; init?: RequestInit } | undefined
     const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400'
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async (input, init) => {
+      fetch: fetchStub(async (input, init) => {
         captured = { url: String(input), init }
         return responseAt(url, '@font-face {}', {
           headers: { 'content-type': 'text/css' }
         })
-      }
+      })
     })
 
     const result = await fontFetch(url, {
@@ -97,18 +99,30 @@ describe('createBrowserWebFontFetch', () => {
     const url = 'https://api.fontsource.org/v1/fonts/inter'
     const details = validFontsourceDetail()
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async (input) =>
+      fetch: fetchStub(async (input) =>
         responseAt(String(input), JSON.stringify(details), {
           headers: { 'content-type': 'application/json' }
         })
+      )
     })
 
     const response = await fontFetch(url)
-    const pinned = (await response.json()) as typeof details
+    const pinned: unknown = await response.json()
 
-    expect(pinned.variants[400].normal.latin.url.woff2).toBe(
-      'https://cdn.jsdelivr.net/fontsource/fonts/inter@5.3.0/latin-400-normal.woff2'
-    )
+    expect(pinned).toMatchObject({
+      variants: {
+        400: {
+          normal: {
+            latin: {
+              url: {
+                woff2:
+                  'https://cdn.jsdelivr.net/fontsource/fonts/inter@5.3.0/latin-400-normal.woff2'
+              }
+            }
+          }
+        }
+      }
+    })
     expect(response.headers.get('content-length')).toBe(
       String(new TextEncoder().encode(JSON.stringify(pinned)).byteLength)
     )
@@ -127,7 +141,7 @@ describe('createBrowserWebFontFetch', () => {
       value: { polluted: true }
     })
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async (input) => {
+      fetch: fetchStub(async (input) => {
         const url = String(input)
         const body =
           url === listURL
@@ -146,10 +160,10 @@ describe('createBrowserWebFontFetch', () => {
               ])
             : JSON.stringify(details)
         return responseAt(url, body, { headers: { 'content-type': 'application/json' } })
-      }
+      })
     })
 
-    const list = (await (await fontFetch(listURL)).json()) as unknown[]
+    const list: unknown = await (await fontFetch(listURL)).json()
     expect(list).toEqual([
       {
         defSubset: 'latin',
@@ -174,11 +188,11 @@ describe('createBrowserWebFontFetch', () => {
   test('accepts the exact Fontsource catalog and pinned asset request shapes', async () => {
     const seen: string[] = []
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async (input) => {
+      fetch: fetchStub(async (input) => {
         const url = String(input)
         seen.push(url)
         return responseAt(url, url.includes('/v1/fonts') ? '[]' : new Uint8Array([1, 2, 3]))
-      }
+      })
     })
 
     await expect(
@@ -198,10 +212,10 @@ describe('createBrowserWebFontFetch', () => {
   test('fails closed for Google metadata and all Fontsource variable paths', async () => {
     let calls = 0
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () => {
+      fetch: fetchStub(async () => {
         calls++
         throw new Error('must not run')
-      }
+      })
     })
 
     await expect(fontFetch('https://fonts.google.com/metadata/fonts')).rejects.toMatchObject({
@@ -222,7 +236,7 @@ describe('createBrowserWebFontFetch', () => {
   test('rejects mismatched exact versions in Fontsource details', async () => {
     const url = 'https://api.fontsource.org/v1/fonts/inter'
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () =>
+      fetch: fetchStub(async () =>
         responseAt(
           url,
           JSON.stringify({
@@ -242,6 +256,7 @@ describe('createBrowserWebFontFetch', () => {
             }
           })
         )
+      )
     })
 
     await expect(fontFetch(url)).rejects.toMatchObject({
@@ -313,7 +328,7 @@ describe('createBrowserWebFontFetch', () => {
     ]
     let index = 0
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () => responseAt(url, JSON.stringify(payloads[index++]))
+      fetch: fetchStub(async () => responseAt(url, JSON.stringify(payloads[index++])))
     })
 
     for (const _payload of payloads) {
@@ -326,7 +341,9 @@ describe('createBrowserWebFontFetch', () => {
   test('rejects Fontsource catalogs over the bounded entry count', async () => {
     const url = 'https://api.fontsource.org/v1/fonts'
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () => responseAt(url, JSON.stringify(Array.from({ length: 4_097 }, () => null)))
+      fetch: fetchStub(async () =>
+        responseAt(url, JSON.stringify(Array.from({ length: 4_097 }, () => null)))
+      )
     })
 
     await expect(fontFetch(url)).rejects.toMatchObject({
@@ -358,11 +375,12 @@ describe('createBrowserWebFontFetch', () => {
       variants[String(weight)] = styles
     }
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () =>
+      fetch: fetchStub(async () =>
         responseAt(
           url,
           JSON.stringify({ id: 'inter', npmVersion: '5.3.0', unicodeRange, variants })
         )
+      )
     })
 
     await expect(fontFetch(url)).rejects.toMatchObject({
@@ -378,12 +396,12 @@ describe('createBrowserWebFontFetch', () => {
       [detailURL, String(512 * 1024 + 1)]
     ])
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async (input) => {
+      fetch: fetchStub(async (input) => {
         const url = String(input)
         return responseAt(url, '[]', {
           headers: { 'content-length': declaredLengths.get(url) ?? '0' }
         })
-      }
+      })
     })
 
     await expect(fontFetch(listURL)).rejects.toMatchObject({
@@ -397,10 +415,10 @@ describe('createBrowserWebFontFetch', () => {
   test('rejects credentials, bodies, non-GET methods, sensitive headers, and unknown hosts', async () => {
     let calls = 0
     const fontFetch = createBrowserWebFontFetch({
-      fetch: async () => {
+      fetch: fetchStub(async () => {
         calls++
         throw new Error('must not run')
-      }
+      })
     })
     const url = 'https://api.fontsource.org/v1/fonts'
 
@@ -429,7 +447,7 @@ describe('createBrowserWebFontFetch', () => {
     const requestedURL = 'https://api.fontsource.org/v1/fonts'
     const redirected = responseAt(requestedURL, '[]')
     Object.defineProperty(redirected, 'redirected', { configurable: true, value: true })
-    const fontFetch = createBrowserWebFontFetch({ fetch: async () => redirected })
+    const fontFetch = createBrowserWebFontFetch({ fetch: fetchStub(async () => redirected) })
 
     await expect(fontFetch(requestedURL)).rejects.toMatchObject({
       code: 'url-not-allowed'
@@ -450,7 +468,7 @@ describe('createBrowserWebFontFetch', () => {
     })
     const fontFetch = createBrowserWebFontFetch({
       maxResponseBytes: 6,
-      fetch: async () => responseAt(url, stream)
+      fetch: fetchStub(async () => responseAt(url, stream))
     })
 
     await expect(fontFetch(url)).rejects.toMatchObject({
@@ -463,7 +481,7 @@ describe('createBrowserWebFontFetch', () => {
     const url = 'https://api.fontsource.org/v1/fonts'
     const totalLimited = createBrowserWebFontFetch({
       maxTotalBytes: 3,
-      fetch: async () => responseAt(url, '[]')
+      fetch: fetchStub(async () => responseAt(url, '[]'))
     })
     await expect(totalLimited(url)).resolves.toBeInstanceOf(Response)
     await expect(totalLimited(url)).rejects.toMatchObject({
@@ -471,13 +489,13 @@ describe('createBrowserWebFontFetch', () => {
     } satisfies Partial<BrowserWebFontFetchError>)
     const renewedAfterTotalLimit = createBrowserWebFontFetch({
       maxTotalBytes: 3,
-      fetch: async () => responseAt(url, '[]')
+      fetch: fetchStub(async () => responseAt(url, '[]'))
     })
     await expect(renewedAfterTotalLimit(url)).resolves.toBeInstanceOf(Response)
 
     const requestLimited = createBrowserWebFontFetch({
       maxRequests: 1,
-      fetch: async () => responseAt(url, '[]')
+      fetch: fetchStub(async () => responseAt(url, '[]'))
     })
     await expect(requestLimited(url)).resolves.toBeInstanceOf(Response)
     await expect(requestLimited(url)).rejects.toMatchObject({
@@ -485,19 +503,21 @@ describe('createBrowserWebFontFetch', () => {
     } satisfies Partial<BrowserWebFontFetchError>)
     const renewedAfterRequestLimit = createBrowserWebFontFetch({
       maxRequests: 1,
-      fetch: async () => responseAt(url, '[]')
+      fetch: fetchStub(async () => responseAt(url, '[]'))
     })
     await expect(renewedAfterRequestLimit(url)).resolves.toBeInstanceOf(Response)
   })
 
   test('combines factory cancellation, request cancellation, and timeout', async () => {
     const url = 'https://api.fontsource.org/v1/fonts'
-    const hangingFetch: typeof globalThis.fetch = async (_input, init) =>
-      new Promise<Response>((_resolve, reject) => {
-        const signal = init?.signal
-        if (signal?.aborted) reject(signal.reason)
-        else signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
-      })
+    const hangingFetch: typeof globalThis.fetch = fetchStub(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal
+          if (signal?.aborted) reject(signal.reason)
+          else signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+    )
 
     const timed = createBrowserWebFontFetch({ fetch: hangingFetch, timeoutMs: 5 })
     await expect(timed(url)).rejects.toMatchObject({

@@ -2,10 +2,7 @@ import { readFile } from 'node:fs/promises'
 
 import { compile } from 'tailwindcss'
 
-import {
-  collectResponsiveTailwindClasses,
-  collectTailwindClasses
-} from '@open-pencil/core/io/formats/jsx'
+import { collectResponsiveTailwindClasses, collectTailwindClasses } from '@open-pencil/core/io'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 /** Desktop grid/flex lists become a bounded vertical flow on compact screens. */

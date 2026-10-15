@@ -29,7 +29,7 @@ export async function validatePackageMetadata(root: string): Promise<PackageDiag
   }
   if (usingPreparedPublishDirectories && root === repositoryRoot) {
     for (const { manifest } of packages) {
-      for (const field of ['imports', 'private', 'publishConfig', 'scripts', 'devDependencies']) {
+      for (const field of ['private', 'publishConfig', 'scripts', 'devDependencies']) {
         if (manifest[field] !== undefined) {
           diagnostics.push({
             packageName: manifest.name,

@@ -1,6 +1,7 @@
 /* oxlint-disable eslint(max-lines) -- Promotion, inspected-ledger, CI, and capability fixtures exercise one fail-closed Host boundary. */
 import { describe, expect, test } from 'bun:test'
 
+import { uniq } from 'es-toolkit'
 import { decode, fromUint8Array } from 'js-base64'
 
 import {
@@ -1089,11 +1090,11 @@ async function reconciliationResponseRow(
     receiptCount: 0,
     exactReceiptZeroCount: 0,
     headCount: 0,
-    headRevision: null,
+    headRevision: null as number | null,
     exactInitialHeadCount: 0,
     chainCount: 0,
-    chainMinimumRevision: null,
-    chainMaximumRevision: null,
+    chainMinimumRevision: null as number | null,
+    chainMaximumRevision: null as number | null,
     headTimestampMatchesLatestReceipt: false,
     executionTimestampMatchesHead: false
   }
@@ -2242,10 +2243,10 @@ describe('Supabase backfill Receipt-zero CAS transaction review', () => {
       encoding: 'rfc3339'
     })
     expect(decode(String(values[11]))).toBe(
-      trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalScopeJSON
+      trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalScopeJSON ?? ''
     )
     expect(decode(String(values[26]))).toBe(
-      trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalReceiptJSON
+      trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalReceiptJSON ?? ''
     )
     expect(first.review.bindings.parameterValuesDigest).toBe(
       await digestCanonicalManifest({
@@ -4269,13 +4270,13 @@ describe('Supabase backfill Receipt V2 chain first-page review', () => {
     expect(context?.staticSqlSafetyContext).toBe(staticSqlSafetyContext)
     expect(context?.sourceParameters).toBe(reconciliationContext.parameters)
     expect(context?.parameters).not.toBe(reconciliationContext.parameters)
-    expect(context?.parameters.slice(0, 28)).toEqual(reconciliationContext.parameters)
+    expect(context?.parameters.slice(0, 28)).toEqual([...reconciliationContext.parameters])
     expect(context?.parameters.slice(28)).toEqual(['0', null, null, null, null])
     expect(context?.parameters).toHaveLength(33)
     expect(Object.isFrozen(context?.parameters)).toBe(true)
-    expect(first.review.parameters.schema.slice(0, 28)).toEqual(
-      source.casReview.review.parameters.schema
-    )
+    expect(first.review.parameters.schema.slice(0, 28)).toEqual([
+      ...source.casReview.review.parameters.schema
+    ])
     for (let index = 0; index < 28; index += 1) {
       expect(first.review.parameters.schema[index]).toBe(
         source.casReview.review.parameters.schema[index]
@@ -4348,8 +4349,8 @@ describe('Supabase backfill Receipt V2 chain first-page review', () => {
     expect(first.review.bindings.pageRequestSizeCertificateDigest).toBe(
       await digestCanonicalManifest(first.review.transportSize.request)
     )
-    expect(first.review.blockers).toEqual([
-      ...new Set([
+    expect(first.review.blockers).toEqual(
+      uniq([
         ...source.reconciliationReview.review.blockers,
         'receipt-v2-chain-first-page-review-only',
         'receipt-v2-chain-page-host-transport-unavailable',
@@ -4357,7 +4358,7 @@ describe('Supabase backfill Receipt V2 chain first-page review', () => {
         'receipt-v2-chain-cross-page-head-freshness-unavailable',
         'receipt-v2-chain-production-response-authentication-unavailable'
       ])
-    ])
+    )
     expect(first.review.blockers).not.toContain('receipt-v2-chain-response-size-not-certified')
     expect(first.review.blockers).not.toContain(
       'receipt-v2-chain-fixed-query-request-size-not-certified'
@@ -4387,9 +4388,9 @@ describe('Supabase backfill Receipt V2 chain first-page review', () => {
       .split('\n')
       .map((line) => `  ${line}`)
       .join('\n')
-    const placeholders = [
-      ...new Set([...sql.matchAll(/\$(\d+)/gu)].map((match) => Number(match[1])))
-    ].sort((left, right) => left - right)
+    const placeholders = uniq([...sql.matchAll(/\$(\d+)/gu)].map((match) => Number(match[1]))).sort(
+      (left, right) => left - right
+    )
     const managedRelationReferences = [
       ...sql.matchAll(
         /(?:FROM(?:\s+ONLY)?|JOIN(?:\s+ONLY)?)\s+"openpencil_release"\."(?:backfill_executions_v1|backfill_receipts_v2|backfill_heads_v1)"/gu
@@ -5134,9 +5135,10 @@ describe('Supabase backfill Receipt V2 chain continuation review', () => {
     const context = trustedSupabaseBackfillReceiptV2ChainContinuationReviewContextV1(first)
     expect(context?.envelope).toBe(first)
     expect(context?.sourceObservationContext.observation).toBe(observation)
+    if (!firstPageContext) throw new TypeError('Expected trusted first-page context.')
     expect(context?.firstPageReviewContext).toBe(firstPageContext)
     expect(context?.sourceParameters).toBe(firstPageContext?.sourceParameters)
-    expect(context?.parameters.slice(0, 28)).toEqual(firstPageContext?.sourceParameters)
+    expect(context?.parameters.slice(0, 28)).toEqual([...firstPageContext.sourceParameters])
     expect(context?.parameters.slice(28)).toEqual([
       '4',
       '5',
@@ -5907,7 +5909,7 @@ describe('Supabase backfill Receipt V2 chain page collector', () => {
       proofError
     )
 
-    const sparse: unknown[] = []
+    const sparse: (typeof thirdPage)[] = []
     sparse.length = 2
     sparse[1] = thirdPage
     await receiptV2ChainPageCollectionError(

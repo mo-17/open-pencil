@@ -26,14 +26,10 @@ import {
   lockedHighWaterResponse,
   type BackfillLockedHighWaterCaptureFixture
 } from '#tests/engine/app/plugins/deployment/supabase/backfill/locked-high-water/helpers'
+import { parseDatabaseApplyBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 import type { RecordedRequest } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 const QUERY_URL = `${INSTALL_PROJECT_URL}/database/query`
-
-interface CaptureRequestBody {
-  readonly query: string
-  readonly read_only: boolean
-}
 
 function withURL(response: Response, url: string): Response {
   Object.defineProperty(response, 'url', { value: url })
@@ -210,7 +206,7 @@ describe('Supabase Management locked high-water capture transport', () => {
 
     const bodyText = requests[1]?.init.body
     if (typeof bodyText !== 'string') throw new TypeError('Expected exact capture JSON body')
-    const body = JSON.parse(bodyText) as CaptureRequestBody
+    const body = parseDatabaseApplyBody(bodyText)
     expect(Object.keys(body)).toEqual(['query', 'read_only'])
     expect(body).toEqual({ query: fixture.captureReview.captureSql, read_only: false })
     expect(bodyText).not.toContain(BACKFILL_CAPTURE_FIXTURE_PAT)

@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { fontManager, weightToStyle } from '#core/text/fonts'
@@ -35,9 +37,7 @@ export async function prepareFigmaProjectionFonts(nodes: readonly SceneNode[]): 
   const candidates = textNodes.filter(needsCJKProjectionFont)
   if (candidates.length === 0) return
 
-  const characters = Array.from(new Set(candidates.flatMap((node) => Array.from(node.text)))).join(
-    ''
-  )
+  const characters = uniq(candidates.flatMap((node) => Array.from(node.text))).join('')
   const loaded = await fontManager.loadFont(FIGMA_CJK_PROJECTION_FONT, 'Regular', characters)
   if (!loaded) return
 

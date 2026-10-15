@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'bun:test'
 
 import { Font, Glyph, Path } from 'opentype.js'
+import * as v from 'valibot'
 
 import { resolveCompilerWebFonts } from '@open-pencil/compiler'
 import {
@@ -222,9 +223,16 @@ describe('Tauri font helpers', () => {
     await expect(listImportedFontCacheFaces()).resolves.toEqual([])
     const manifestBytes = files.get('cache/v1/font-cache/v1/manifest')
     expect(manifestBytes).toBeDefined()
-    const manifestEnvelope = JSON.parse(new TextDecoder().decode(manifestBytes)) as {
-      value?: { entries?: Record<string, unknown> }
-    }
+    const manifestEnvelope = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.object({
+          value: v.optional(v.object({ entries: v.optional(v.record(v.string(), v.unknown())) }))
+        })
+      ),
+      new TextDecoder().decode(manifestBytes)
+    )
     expect(manifestEnvelope.value?.entries).toEqual({})
     expect(importedFontRevision.value).toBe(revisionBefore)
     expect(fontManager.renderFamily('Inter', 'Regular')).toBe(renderFamilyBefore)

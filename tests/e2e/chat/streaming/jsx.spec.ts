@@ -43,6 +43,8 @@ test('renders streamed JSX without document mutations, then commits once with un
     )
     expect(await documentState(chat.page)).toEqual({ children: [], undo: false })
     await chat.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       store.state.panX = 30
@@ -61,7 +63,10 @@ test('renders streamed JSX without document mutations, then commits once with un
     const committed = await documentState(chat.page)
     expect(committed.children).toHaveLength(1)
     expect(committed.undo).toBe(true)
-    await chat.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+    await chat.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undoAction()
+    })
     expect(await documentState(chat.page)).toEqual({ children: [], undo: false })
   } finally {
     await stream.evaluate((s) => s.dispose())
@@ -74,6 +79,8 @@ test('preserves a replacement target until completion and restores it on undo', 
 }) => {
   await setupCanvas(chat.page)
   const originalId = await chat.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const node = store.graph.createNode('FRAME', store.state.currentPageId, {
@@ -99,7 +106,10 @@ test('preserves a replacement target until completion and restores it on undo', 
     await stream.evaluate((s) => s.complete())
     await expect(chat.assistantMessage()).toContainText('Rendered.')
     expect((await documentState(chat.page)).children).not.toContain(originalId)
-    await chat.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+    await chat.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undoAction()
+    })
     expect(await documentState(chat.page)).toEqual({ children: [originalId], undo: false })
   } finally {
     await stream.evaluate((s) => s.dispose())
@@ -143,7 +153,10 @@ test('keeps the run and its preview on their page while the user views another',
     expect((await documentState(chat.page, pages.current)).children).toHaveLength(1)
     expect((await documentState(chat.page, pages.added)).children).toHaveLength(0)
     expect(
-      await chat.page.evaluate(() => window.openPencil?.getStore?.().state.currentPageId)
+      await chat.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().state.currentPageId
+      })
     ).toBe(pages.added)
   } finally {
     await stream.evaluate((s) => s.dispose())
@@ -176,3 +189,50 @@ for (const outcome of ['cancel', 'error', 'disconnect'] as const) {
     }
   })
 }
+
+test("the chat's agent moves through the streamed elements and outlines them", async ({
+  configuredChat: chat
+}) => {
+  await setupCanvas(chat.page)
+  const stream = await installRenderStream(chat.page, scenario)
+  const agentCursor = () =>
+    chat.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+      const cursor = window.openPencil
+        ?.getStore?.()
+        .state.presenceCursors.find((entry) => entry.kind === 'agent')
+      return cursor
+        ? {
+            x: cursor.x,
+            y: cursor.y,
+            outlines: cursor.outline?.length ?? 0,
+            selection: cursor.selection
+          }
+        : null
+    })
+  try {
+    await chat.submit('Render a card')
+    await expect.poll(() => stream.evaluate((s) => s.ready())).toBe(true)
+    await stream.evaluate((s) => s.advance())
+    await expect.poll(() => previewKey(chat.page)).not.toBe('')
+    // The text streams first: the cursor sits at its trailing corner, inside the outlined card,
+    // so the agent's name does not cover the text being written.
+    await expect.poll(agentCursor).toMatchObject({ outlines: 2 })
+    const onText = await agentCursor()
+    expect(onText?.x).toBeGreaterThan(100)
+    expect(onText?.y).toBeGreaterThan(100)
+
+    await stream.evaluate((s) => s.advance())
+    // The last element to appear is the button bar below the text.
+    await expect.poll(async () => (await agentCursor())?.y).toBeGreaterThan(130)
+
+    await stream.evaluate((s) => s.complete())
+    await expect(chat.assistantMessage()).toContainText('Rendered.')
+    // Once the tool ran, the agent outlines the real layer instead of the preview.
+    await expect.poll(async () => (await agentCursor())?.outlines ?? 0).toBe(0)
+  } finally {
+    await stream.evaluate((s) => s.dispose())
+    await stream.dispose()
+  }
+})

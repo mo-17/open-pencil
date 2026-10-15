@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -6,38 +6,6 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { applyImportedDocument } from '@/app/document/io/imported-document'
 import { createEditorPreparationController } from '@/app/editor/preparation/controller'
 import { createInitialAppEditorState } from '@/app/editor/session/types'
-
-import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
-import type { FigSessionRequest, FigSessionResponse } from '#core/kiwi/fig/session/protocol'
-
-import { createOwnershipWorker } from '#tests/helpers/worker'
-
-function trackGraphResource(graph: SceneGraph) {
-  const terminate = mock(() => undefined)
-  const worker = createOwnershipWorker(terminate)
-  // The document lifecycle now prepares the page before transferring ownership.
-  // This already materialized graph must acknowledge population, just as its real
-  // session worker does; an ownership-only silent double would never settle.
-  worker.postMessage = (request: FigSessionRequest) => {
-    if (request.type !== 'populate') return
-    const result: FigSessionResponse = {
-      type: 'population-result',
-      requestId: request.requestId,
-      baseRevision: request.baseRevision,
-      populated: false,
-      delta: {
-        created: [],
-        updated: [],
-        deleted: [],
-        instanceIndex: [],
-        populatedRootIds: [request.pageId]
-      }
-    }
-    queueMicrotask(() => worker.onmessage?.(new MessageEvent('message', { data: result })))
-  }
-  registerFigPopulationWorker(graph, worker)
-  return terminate
-}
 
 test('cancelled imported-document staging preserves the live graph', async () => {
   const liveGraph = new SceneGraph()
@@ -50,20 +18,24 @@ test('cancelled imported-document staging preserves the live graph', async () =>
     createInitialAppEditorState(liveGraph.rootId)
   )
   const preparation = controller.begin({ kind: 'document-open' })
-  const terminateLive = trackGraphResource(liveGraph)
-  const terminateImported = trackGraphResource(imported)
-  preparation.cancel()
+  const releaseGraphResources = spyOn(liveEditor, 'releaseGraphResources')
+  try {
+    preparation.cancel()
 
-  await expect(applyImportedDocument(liveEditor, imported, preparation)).rejects.toHaveProperty(
-    'name',
-    'AbortError'
-  )
-  expect(liveEditor.graph).toBe(liveGraph)
-  expect(terminateImported).toHaveBeenCalledTimes(1)
-  expect(terminateLive).not.toHaveBeenCalled()
-  liveEditor.releaseGraphResources()
-  liveEditor.dispose()
-  controller.dispose()
+    await expect(applyImportedDocument(liveEditor, imported, preparation)).rejects.toHaveProperty(
+      'name',
+      'AbortError'
+    )
+    expect(liveEditor.graph).toBe(liveGraph)
+    expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+    expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(imported)
+    expect(releaseGraphResources.mock.calls.some(([graph]) => graph === liveGraph)).toBe(false)
+  } finally {
+    releaseGraphResources.mockRestore()
+    liveEditor.releaseGraphResources()
+    liveEditor.dispose()
+    controller.dispose()
+  }
 })
 
 test('prepared imported documents replace the live graph only after staging', async () => {
@@ -73,15 +45,19 @@ test('prepared imported documents replace the live graph only after staging', as
   const page = imported.getPages()[0]
   if (!page) throw new Error('Expected imported page')
   imported.updateNode(page.id, { name: 'Imported' })
-  const terminateLive = trackGraphResource(liveGraph)
-  const terminateImported = trackGraphResource(imported)
+  const releaseGraphResources = spyOn(liveEditor, 'releaseGraphResources')
 
-  await applyImportedDocument(liveEditor, imported)
+  try {
+    await applyImportedDocument(liveEditor, imported)
 
-  expect(liveEditor.graph).toBe(imported)
-  expect(liveEditor.state.currentPageId).toBe(page.id)
-  expect(terminateLive).toHaveBeenCalledTimes(1)
-  expect(terminateImported).not.toHaveBeenCalled()
-  liveEditor.releaseGraphResources()
-  liveEditor.dispose()
+    expect(liveEditor.graph).toBe(imported)
+    expect(liveEditor.state.currentPageId).toBe(page.id)
+    expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+    expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(liveGraph)
+    expect(releaseGraphResources.mock.calls.some(([graph]) => graph === imported)).toBe(false)
+  } finally {
+    releaseGraphResources.mockRestore()
+    liveEditor.releaseGraphResources()
+    liveEditor.dispose()
+  }
 })

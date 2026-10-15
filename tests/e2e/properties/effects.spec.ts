@@ -10,6 +10,8 @@ async function expectCanvas(name: string) {
 
 test('drop shadow on white card', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -41,6 +43,8 @@ test('drop shadow on white card', async () => {
 
 test('drop shadow with spread', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -72,6 +76,8 @@ test('drop shadow with spread', async () => {
 
 test('inner shadow', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -105,6 +111,8 @@ test('inner shadow', async () => {
 
 test('inner shadow with spread', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -138,6 +146,8 @@ test('inner shadow with spread', async () => {
 
 test('blend modes', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -213,6 +223,8 @@ test('blend modes', async () => {
 
 test('alpha mask stack', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -288,6 +300,8 @@ test('alpha mask stack', async () => {
 
 test('smoothed corners with blended shadow', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -370,6 +384,8 @@ test('smoothed corners with blended shadow', async () => {
 
 test('drop shadow on ellipse', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -402,6 +418,8 @@ test('drop shadow on ellipse', async () => {
 
 test('combined drop and inner shadow', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -441,6 +459,8 @@ test('combined drop and inner shadow', async () => {
 
 test('text drop shadow on glyphs', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -477,6 +497,8 @@ test('text drop shadow on glyphs', async () => {
 
 test('layer blur', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -510,6 +532,8 @@ test('layer blur', async () => {
 
 test('invisible effect has no visual impact', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId

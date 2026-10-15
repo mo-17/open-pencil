@@ -10,6 +10,8 @@ import {
   type PreviewFiles
 } from '@open-pencil/compiler/vfs'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 const PREFIX = '/scan-root/'
 const ASSET = 'assets/vr-tour/residence.jpg'
 const BYTES = new Uint8Array([0xff, 0xd8, 1, 2, 0xff, 0xd9])
@@ -54,7 +56,7 @@ function request(files: PreviewFiles, url: string) {
       body = value
     }
   }
-  handlers[0]({ url } as IncomingMessage, response as ServerResponse, () => {
+  handlers[0](asDouble<IncomingMessage>({ url }), asDouble<ServerResponse>(response), () => {
     passed = true
   })
   return { headers, body, passed, status: response.statusCode }

@@ -132,7 +132,9 @@ export function mixedFormFixture(target: 'react' | 'vue') {
       width: 130,
       height: 36,
       interactiveProps: { text, type: 'button' },
-      events: { onClick: [{ kind: 'setState', targetStateId: stateId, valueExpr }] }
+      events: {
+        onClick: [{ id: 'fixture-action-1', kind: 'setState', targetStateId: stateId, valueExpr }]
+      }
     })
   button('External number', 'pageQuantity', '8')
   button('Hide city', 'showCity', 'pageQuantity > 100')
@@ -145,7 +147,14 @@ export function mixedFormFixture(target: 'react' | 'vue') {
     height: 36,
     interactiveProps: { text: 'External document number', type: 'button' },
     events: {
-      onClick: [{ kind: 'setVariable', targetName: 'documentQuantity', valueExpr: '7' }]
+      onClick: [
+        {
+          id: 'fixture-action-2',
+          kind: 'setVariable',
+          targetName: 'documentQuantity',
+          valueExpr: '7'
+        }
+      ]
     }
   })
   for (const [index, stateId, value] of [
@@ -159,7 +168,11 @@ export function mixedFormFixture(target: 'react' | 'vue') {
       width: 180,
       height: 36,
       interactiveProps: { text: `External ${index}`, type: 'button' },
-      events: { onClick: [{ kind: 'setState', targetStateId: stateId, valueExpr: value }] }
+      events: {
+        onClick: [
+          { id: 'fixture-action-3', kind: 'setState', targetStateId: stateId, valueExpr: value }
+        ]
+      }
     })
   for (const [index, name, value] of [
     [0, 'mainEmbedded', '7'],
@@ -172,7 +185,11 @@ export function mixedFormFixture(target: 'react' | 'vue') {
       width: 180,
       height: 36,
       interactiveProps: { text: `External ${name}`, type: 'button' },
-      events: { onClick: [{ kind: 'setVariable', targetName: name, valueExpr: value }] }
+      events: {
+        onClick: [
+          { id: 'fixture-action-4', kind: 'setVariable', targetName: name, valueExpr: value }
+        ]
+      }
     })
   graph.createNode('TEXT', page.id, {
     name: 'Mixed state',

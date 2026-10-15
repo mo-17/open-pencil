@@ -44,8 +44,8 @@ export function drawPaginationText(
     renderer.color4f(color.r, color.g, color.b, color.a * style.opacity),
     { halfLeading: true },
     (paragraph) => {
-      canvas.drawParagraph(
-        paragraph,
+      paragraph.draw(
+        canvas,
         cell.x + 2,
         style.top + Math.max(0, (style.height - paragraph.getHeight()) / 2)
       )

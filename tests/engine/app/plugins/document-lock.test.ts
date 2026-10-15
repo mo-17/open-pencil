@@ -40,7 +40,7 @@ function changeReferencedModule(
   graph: SceneGraph,
   changes: Partial<{ moduleType: string; configVersion: number }>
 ): void {
-  const node = graph.getAllNodes().find((candidate) => candidate.interactiveProps?.module)
+  const node = [...graph.getAllNodes()].find((candidate) => candidate.interactiveProps?.module)
   if (!node) throw new Error('Expected module node')
   const module = readModuleInstance(node.interactiveProps?.module)
   if (!module) throw new Error('Expected valid module instance')
@@ -224,7 +224,7 @@ describe('app plugin document lock', () => {
 
   test('fails closed when the accepted manifest has no reviewed host adapter', async () => {
     const catalog = createBundledPluginCatalog().map((entry) =>
-      entry.manifest.plugin.id === 'open-pencil.map'
+      entry.trustSource === 'app-bundle' && entry.manifest.plugin.id === 'open-pencil.map'
         ? {
             ...entry,
             manifest: {
@@ -252,7 +252,7 @@ describe('app plugin document lock', () => {
 
   test('reports an invalid module envelope instead of silently omitting it from the lock', async () => {
     const { graph, store } = await fixture()
-    const node = graph.getAllNodes().find((candidate) => candidate.interactiveProps?.module)
+    const node = [...graph.getAllNodes()].find((candidate) => candidate.interactiveProps?.module)
     if (!node) throw new Error('Expected module node')
     graph.updateNode(node.id, {
       interactiveProps: {
@@ -274,7 +274,7 @@ describe('app plugin document lock', () => {
 
   test('validates every module instance config with the reviewed host definition', async () => {
     const { graph, store } = await fixture()
-    const node = graph.getAllNodes().find((candidate) => candidate.interactiveProps?.module)
+    const node = [...graph.getAllNodes()].find((candidate) => candidate.interactiveProps?.module)
     if (!node) throw new Error('Expected module node')
     const module = readModuleInstance(node.interactiveProps?.module)
     if (!module) throw new Error('Expected valid module instance')

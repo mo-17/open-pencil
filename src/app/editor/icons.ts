@@ -16,13 +16,17 @@ import IconSection from '~icons/lucide/layout-grid'
 import IconLayoutList from '~icons/lucide/layout-list'
 import IconList from '~icons/lucide/list'
 import IconMap from '~icons/lucide/map'
+import IconMessageCircle from '~icons/lucide/message-circle'
 import IconMinus from '~icons/lucide/minus'
 import IconMousePointer from '~icons/lucide/mouse-pointer'
 import IconMousePointerSquare from '~icons/lucide/mouse-pointer-square'
 import IconPalette from '~icons/lucide/palette'
 import IconPenTool from '~icons/lucide/pen-tool'
+import IconPencil from '~icons/lucide/pencil'
 import IconRows from '~icons/lucide/rows-3'
+import IconSmile from '~icons/lucide/smile'
 import IconSquare from '~icons/lucide/square'
+import IconSlot from '~icons/lucide/square-dashed'
 import IconStar from '~icons/lucide/star'
 import IconText from '~icons/lucide/text'
 import IconToggleLeft from '~icons/lucide/toggle-left'
@@ -32,6 +36,9 @@ import IconType from '~icons/lucide/type'
 import {
   isAutoLayoutMode,
   readModuleInstance,
+  readIcon,
+  slotPropertyId,
+  type SceneNode,
   type LayoutMode,
   type ModuleInstanceV1
 } from '@open-pencil/scene-graph'
@@ -51,6 +58,7 @@ export const toolIcons: Record<Tool, Component> = {
   POLYGON: IconTriangle,
   STAR: IconStar,
   PEN: IconPenTool,
+  PENCIL: IconPencil,
   TEXT: IconType,
   HAND: IconHand,
   INPUT: IconFormInput,
@@ -63,7 +71,8 @@ export const toolIcons: Record<Tool, Component> = {
   TEXTAREA: IconText,
   DATEPICKER: IconCalendar,
   SWITCH: IconToggleLeft,
-  MAP: IconMap
+  MAP: IconMap,
+  COMMENT: IconMessageCircle
 }
 
 export const NODE_ICONS: Partial<Record<string, Component>> = {
@@ -105,17 +114,24 @@ interface NodeIconSource {
   layoutMode: LayoutMode
   interactiveProps?: JSONObject
   moduleIdentity?: Pick<ModuleInstanceV1, 'pluginId' | 'moduleType'>
+  slot?: boolean
+  icon?: boolean
 }
 
 export function nodeIcon(node: NodeIconSource) {
+  if (node.slot) return IconSlot
+  if (node.icon && node.type === 'FRAME') return IconSmile
   if (node.type === 'INPUT' && node.interactiveProps?.inputType === 'color') return IconPalette
   if (node.type === 'FRAME') {
     const module = node.moduleIdentity ?? readModuleInstance(node.interactiveProps?.module)
     if (module) return moduleIcon(module.pluginId, module.moduleType)
   }
-  // Phase 2 §6: only auto-layout frames pick from AUTO_LAYOUT_ICONS;
-  // FREE (and any future non-auto-layout mode) falls back to IconFrame.
   if (node.type === 'FRAME' && isAutoLayoutMode(node.layoutMode))
     return AUTO_LAYOUT_ICONS[node.layoutMode] ?? IconFrame
   return NODE_ICONS[node.type] ?? IconSquare
+}
+
+/** `nodeIcon` for a scene node, which carries slot and icon identity in its data. */
+export function sceneNodeIcon(node: SceneNode) {
+  return nodeIcon({ ...node, slot: !!slotPropertyId(node), icon: !!readIcon(node) })
 }

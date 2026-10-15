@@ -3,11 +3,10 @@ import { describe, expect, test } from 'bun:test'
 import { tool } from 'ai'
 import * as v from 'valibot'
 
-import { ALL_TOOLS, FigmaAPI, SceneGraph, toolsToAI } from '@open-pencil/core'
-
+import { ALL_TOOLS, FigmaAPI, SceneGraph, toolsToAI } from '#core/index'
 import { defineTool, isToolExposed } from '#core/tools/schema'
 
-import { expectDefined } from '#tests/helpers/assert'
+import { expectDefined, expectFills } from '#tests/helpers/assert'
 
 type AdapterTool = {
   description: string
@@ -35,7 +34,10 @@ function adapterTool(tools: Record<string, unknown>, name: string): AdapterTool 
   return {
     description: sdkTool.description,
     execute: (args, execution) =>
-      sdkTool.execute(args, { ...execution, toolCallId: execution?.toolCallId ?? `${name}-call` })
+      sdkTool.execute(args, {
+        ...execution,
+        toolCallId: execution?.toolCallId ?? `${name}-call`
+      })
   }
 }
 
@@ -93,7 +95,11 @@ describe('AI adapter', () => {
       [
         { ...base, name: 'default', exposure: {} },
         { ...base, name: 'hidden', exposure: { ai: false } },
-        { ...base, name: 'other-interface', exposure: { webmcp: false, mcp: false } }
+        {
+          ...base,
+          name: 'other-interface',
+          exposure: { webmcp: false, mcp: false }
+        }
       ],
       { getFigma: () => figma },
       { tool }
@@ -112,8 +118,7 @@ describe('AI adapter', () => {
 
   test('each tool has description and execute', () => {
     const { tools } = setup()
-    for (const t of Object.values(tools)) {
-      const aiTool = t as AdapterTool
+    for (const aiTool of Object.values(tools)) {
       expect(aiTool.description).toBeTruthy()
       expect(typeof aiTool.execute).toBe('function')
     }
@@ -180,7 +185,10 @@ describe('AI adapter', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).name).toBe('AbortError')
     expect(flashes).toEqual([])
-    expect(afterContext).toMatchObject({ status: 'aborted', signal: controller.signal })
+    expect(afterContext).toMatchObject({
+      status: 'aborted',
+      signal: controller.signal
+    })
   })
 
   test('reports cancellation when abort arrives during the after-execute hook', async () => {
@@ -213,6 +221,109 @@ describe('AI adapter', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).name).toBe('AbortError')
     expect(flashes).toEqual([])
+  })
+
+  test('finish-started commits the active call and rejects a stopped queued call', async () => {
+    const figma = new FigmaAPI(new SceneGraph())
+    const controller = new AbortController()
+    const started = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const executed: string[] = []
+    const completed: string[] = []
+    const def = defineTool({
+      name: 'finish_started',
+      description: 'test',
+      input: v.object({ id: v.string() }),
+      execution: { kind: 'async', mutation: 'document' },
+      execute: async (_figma, args) => {
+        executed.push(args.id)
+        started.resolve(undefined)
+        await release.promise
+        return { id: args.id }
+      }
+    })
+    const tools = toolsToAI(
+      [def],
+      {
+        getFigma: () => figma,
+        startedCallCancellation: 'finish',
+        onAfterExecute: (_def, context) => {
+          completed.push(context.status)
+        }
+      },
+      { tool }
+    )
+    const mutation = adapterTool(tools, def.name)
+    const active = mutation.execute({ id: 'active' }, { abortSignal: controller.signal })
+    await started.promise
+    const queued = mutation
+      .execute({ id: 'queued' }, { abortSignal: controller.signal })
+      .catch((error: Error) => error)
+    controller.abort()
+    release.resolve(undefined)
+    expect(await active).toEqual({ id: 'active' })
+    expect(await queued).toMatchObject({ name: 'AbortError' })
+    expect(executed).toEqual(['active'])
+    expect(completed).toEqual(['success'])
+  })
+
+  test('finish-started still reports an explicit AbortError as cancellation', async () => {
+    const def = defineTool({
+      name: 'explicit_abort',
+      description: 'test',
+      input: v.object({}),
+      execution: { kind: 'async', mutation: 'document' },
+      execute: async () => {
+        throw new DOMException('tool aborted', 'AbortError')
+      }
+    })
+    const tools = toolsToAI(
+      [def],
+      {
+        getFigma: () => new FigmaAPI(new SceneGraph()),
+        startedCallCancellation: 'finish'
+      },
+      { tool }
+    )
+    await expect(adapterTool(tools, def.name).execute({})).rejects.toMatchObject({
+      name: 'AbortError'
+    })
+  })
+
+  test('captures the originating host context before a mutating call waits in the queue', async () => {
+    const figma = new FigmaAPI(new SceneGraph())
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    let sessionChanged = false
+    const seen: boolean[] = []
+    const def = defineTool({
+      name: 'capture_session',
+      description: 'test',
+      input: v.object({}),
+      execution: { kind: 'async', mutation: 'document' },
+      execute: async (_figma, _args, context) => {
+        seen.push(context?.deferLayout ?? true)
+        entered.resolve(undefined)
+        await release.promise
+        return { ok: true }
+      }
+    })
+    const tools = toolsToAI(
+      [def],
+      {
+        getFigma: () => figma,
+        getToolContext: () => ({ deferLayout: sessionChanged })
+      },
+      { tool }
+    )
+    const mutation = adapterTool(tools, def.name)
+    const first = mutation.execute({})
+    await entered.promise
+    const second = mutation.execute({})
+    sessionChanged = true
+    release.resolve(undefined)
+    await Promise.all([first, second])
+    expect(seen).toEqual([false, false])
   })
 
   test('serializes mutating tools through their after-execute hooks', async () => {
@@ -302,7 +413,11 @@ describe('AI adapter', () => {
           description: 'test',
           params: {},
           mutates: true,
-          execute: () => ({ ok: false, error: 'invalid input', id: 'not-created' })
+          execute: () => ({
+            ok: false,
+            error: 'invalid input',
+            id: 'not-created'
+          })
         })
       ],
       {
@@ -316,7 +431,11 @@ describe('AI adapter', () => {
     )
 
     const result = await adapterTool(tools, 'rejected_mutation').execute({})
-    expect(result).toEqual({ ok: false, error: 'invalid input', id: 'not-created' })
+    expect(result).toEqual({
+      ok: false,
+      error: 'invalid input',
+      id: 'not-created'
+    })
     expect(status).toBe('error')
     expect(flashes).toEqual([])
   })
@@ -372,7 +491,10 @@ describe('AI adapter', () => {
     )
 
     await adapterTool(tools, 'return_result').execute({})
-    expect(afterContext).toMatchObject({ status: 'success', result: { ok: true, value: 42 } })
+    expect(afterContext).toMatchObject({
+      status: 'success',
+      result: { ok: true, value: 42 }
+    })
   })
 
   test('create_shape tool works through adapter', async () => {
@@ -405,7 +527,7 @@ describe('AI adapter', () => {
     const setFill = adapterTool(tools, 'set_fill')
     await setFill.execute({ id: rect.id, color: '#00ff00' })
 
-    const fills = expectDefined(figma.getNodeById(rect.id), 'filled rectangle').fills
+    const fills = expectFills(expectDefined(figma.getNodeById(rect.id), 'filled rectangle').fills)
     expect(fills.length).toBe(1)
     expect(fills[0].color.g).toBeCloseTo(1)
   })
@@ -506,7 +628,9 @@ describe('AI adapter', () => {
     figma.createRectangle().name = 'Button Secondary'
 
     const findNodes = adapterTool(tools, 'find_nodes')
-    const result = (await findNodes.execute({ name: 'button' })) as { count: number }
+    const result = (await findNodes.execute({ name: 'button' })) as {
+      count: number
+    }
     expect(result.count).toBe(2)
   })
 

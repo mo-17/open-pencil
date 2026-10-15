@@ -2,12 +2,14 @@ import { describe, expect, test } from 'bun:test'
 
 import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
-import { FontManager, fontManager } from '@open-pencil/core/text'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { isTextPictureCurrent } from '#core/canvas/renderer/fonts'
 import { nodeFontReadiness } from '#core/canvas/text'
+import { FontManager, fontManager } from '#core/text/fonts'
 import { fontFaceDemand, fontResolver } from '#core/text/resolver'
+
+import { asDouble } from '#tests/helpers/doubles'
 
 function pageId(graph: SceneGraph): string {
   return graph.getPages()[0].id
@@ -17,11 +19,11 @@ describe('font lifecycle', () => {
   test('advances generation only for provider epochs and unique registrations', () => {
     const manager = new FontManager()
     const registrations: string[] = []
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont(_data: ArrayBuffer, family: string) {
         registrations.push(family)
       }
-    } as TypefaceFontProvider
+    })
     const data = new ArrayBuffer(12)
 
     expect(manager.generation()).toBe(0)
@@ -55,11 +57,11 @@ describe('font lifecycle', () => {
 
   test('does not report a font as loaded when CanvasKit rejects its bytes', () => {
     const manager = new FontManager()
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont() {
         throw new Error('invalid font bytes')
       }
-    } as TypefaceFontProvider
+    })
 
     manager.attachProvider({} as CanvasKit, provider)
     const generationBeforeLoad = manager.generation()
@@ -72,11 +74,11 @@ describe('font lifecycle', () => {
   test('does not treat retained bytes as loaded after a provider rejects replay', async () => {
     const manager = new FontManager()
     const data = new ArrayBuffer(12)
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont() {
         throw new Error('invalid retained font bytes')
       }
-    } as TypefaceFontProvider
+    })
 
     manager.markLoaded('Rejected Retained Font', 'Regular', data)
     expect(manager.isStyleLoaded('Rejected Retained Font', 'Regular')).toBe(true)
@@ -93,12 +95,12 @@ describe('font lifecycle', () => {
 
   test('requires every active provider to accept a retained face', () => {
     const manager = new FontManager()
-    const accepting = { registerFont: () => undefined } as TypefaceFontProvider
-    const rejecting = {
+    const accepting = asDouble<TypefaceFontProvider>({ registerFont: () => undefined })
+    const rejecting = asDouble<TypefaceFontProvider>({
       registerFont() {
         throw new Error('provider rejected font')
       }
-    } as TypefaceFontProvider
+    })
 
     manager.attachProvider({} as CanvasKit, accepting)
     manager.markLoaded('Shared Canvas Font', 'Regular', new ArrayBuffer(12))
@@ -114,11 +116,11 @@ describe('font lifecycle', () => {
   test('does not persist or advance coverage for a remote face rejected by CanvasKit', async () => {
     const manager = new FontManager()
     const data = new ArrayBuffer(12)
-    const rejecting = {
+    const rejecting = asDouble<TypefaceFontProvider>({
       registerFont() {
         throw new Error('invalid remote font bytes')
       }
-    } as TypefaceFontProvider
+    })
     let cacheWrites = 0
     const webFonts = Reflect.get(manager, 'webFonts') as {
       fetchFont: () => Promise<ArrayBuffer[]>
@@ -144,7 +146,7 @@ describe('font lifecycle', () => {
     manager.detachProvider(rejecting)
     manager.attachProvider(
       {} as CanvasKit,
-      { registerFont: () => undefined } as TypefaceFontProvider
+      asDouble<TypefaceFontProvider>({ registerFont: () => undefined })
     )
     await expect(manager.loadRemoteFont('Rejected Remote Font', 'Regular', 'ABC')).resolves.toBe(
       data
@@ -156,11 +158,11 @@ describe('font lifecycle', () => {
   test('keeps cumulative subset registrations under the source family', () => {
     const manager = new FontManager()
     const registrations: string[] = []
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont(_data: ArrayBuffer, family: string) {
         registrations.push(family)
       }
-    } as TypefaceFontProvider
+    })
 
     manager.attachProvider({} as CanvasKit, provider)
     manager.markLoaded('Subset Font', 'Regular', new ArrayBuffer(8))
@@ -175,11 +177,11 @@ describe('font lifecycle', () => {
   test('deduplicates concurrent host loads and byte-identical buffers', async () => {
     const manager = new FontManager()
     const registrations: string[] = []
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont(_data: ArrayBuffer, family: string) {
         registrations.push(family)
       }
-    } as TypefaceFontProvider
+    })
     let hostLoads = 0
 
     manager.attachProvider({} as CanvasKit, provider)
@@ -278,11 +280,11 @@ describe('font lifecycle', () => {
   test('resolves twenty Simplified Chinese fallback requests after one host probe', async () => {
     const manager = new FontManager()
     const registrations: string[] = []
-    const provider = {
+    const provider = asDouble<TypefaceFontProvider>({
       registerFont(_data: ArrayBuffer, family: string) {
         registrations.push(family)
       }
-    } as TypefaceFontProvider
+    })
     let hostLoads = 0
 
     manager.attachProvider({} as CanvasKit, provider)
@@ -473,5 +475,21 @@ describe('font lifecycle', () => {
 
     expect(nodeFontReadiness({}, node)).toBe('ready')
     fontResolver.reset(demand)
+  })
+
+  test('shares one bundled font request between concurrent loads', async () => {
+    const manager = new FontManager()
+
+    const [first, second] = await Promise.all([
+      manager.fetchBundledFont('/Inter-Regular.ttf'),
+      manager.fetchBundledFont('/Inter-Regular.ttf')
+    ])
+    expect(first).not.toBeNull()
+    expect(second).toBe(first)
+
+    // A settled request is not kept, so a later load (or a retry after a failure) reads again.
+    const later = await manager.fetchBundledFont('/Inter-Regular.ttf')
+    expect(later).not.toBe(first)
+    expect(later?.byteLength).toBe(first?.byteLength)
   })
 })

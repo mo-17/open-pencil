@@ -331,16 +331,44 @@ describe('preview browser — carousel and data grid runtimes', () => {
       expect(await firstGrid.locator('th[aria-sort="ascending"]').count()).toBe(1)
 
       await page.locator('[data-test-lottie-marker]').waitFor({ state: 'attached' })
-      const destroyCallsBeforeUnmount = await page.evaluate(
-        () => window.__openPencilLottieTest.destroyCalls
-      )
+      const destroyCallsBeforeUnmount = await page.evaluate(() => {
+        const value: unknown = Reflect.get(window, '__openPencilLottieTest')
+        if (
+          !value ||
+          typeof value !== 'object' ||
+          !('destroyCalls' in value) ||
+          typeof value.destroyCalls !== 'number'
+        )
+          throw new Error('Expected Lottie instrumentation')
+        return value.destroyCalls
+      })
       await page.getByRole('button', { name: 'Unmount Lottie', exact: true }).click()
       expect(
-        await page.evaluate(() => window.__openPencilLottieTest.lastContainer?.childElementCount)
+        await page.evaluate(() => {
+          const value: unknown = Reflect.get(window, '__openPencilLottieTest')
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            !('lastContainer' in value) ||
+            !(value.lastContainer instanceof HTMLElement)
+          )
+            throw new Error('Expected last Lottie container')
+          return value.lastContainer.childElementCount
+        })
       ).toBe(0)
-      expect(await page.evaluate(() => window.__openPencilLottieTest.destroyCalls)).toBe(
-        destroyCallsBeforeUnmount + 1
-      )
+      expect(
+        await page.evaluate(() => {
+          const value: unknown = Reflect.get(window, '__openPencilLottieTest')
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            !('destroyCalls' in value) ||
+            typeof value.destroyCalls !== 'number'
+          )
+            throw new Error('Expected Lottie instrumentation')
+          return value.destroyCalls
+        })
+      ).toBe(destroyCallsBeforeUnmount + 1)
     },
     timeoutMs
   )

@@ -277,9 +277,10 @@ describe('live VFS with a fixed local NestJS backend', () => {
         return
       }
       validators.push(
-        request.headers['if-none-match'],
-        request.headers['if-modified-since'],
-        request.headers['if-range']
+        ...['if-none-match', 'if-modified-since', 'if-range'].map((name) => {
+          const value = request.headers[name]
+          return Array.isArray(value) ? value.join(',') : value
+        })
       )
       if (request.headers['if-none-match']) {
         response.writeHead(304)

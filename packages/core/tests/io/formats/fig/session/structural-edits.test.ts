@@ -30,7 +30,7 @@ for (const mutation of ['delete', 'reorder', 'add'] as const) {
     if (mutation === 'delete') expect(after?.childIds).toHaveLength(1)
     else if (mutation === 'add') {
       expect(after?.childIds).toHaveLength(3)
-      const placed = Array.from(session.graph.getAllNodes()).find(
+      const placed = [...session.graph.getAllNodes()].find(
         (node) => node.type === 'INSTANCE' && node.parentId === session.graph.getPages()[1].id
       )
       expect(placed && session.graph.getChildren(placed.id).map((node) => node.name)).toEqual([

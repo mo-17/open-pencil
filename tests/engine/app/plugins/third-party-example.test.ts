@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
 import { parseMarketplaceListingMetadata } from '@open-pencil/marketplace'
 import {
@@ -13,6 +13,7 @@ import {
 } from '@open-pencil/plugin-contracts'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { createEditorStore, type EditorStore } from '@/app/editor/session'
 import {
   createBundledPluginCatalog,
   inspectPluginCommandCompatibility,
@@ -38,6 +39,8 @@ import {
   EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT,
   runExampleVariableOverview
 } from '@/app/plugins/host/example/variable-overview'
+
+import { repoPath } from '#tests/helpers/paths'
 
 interface ExampleHostContract {
   readonly pluginId: string
@@ -76,7 +79,7 @@ const EXAMPLES = Object.freeze([
 }>[])
 
 function exampleRoot(directory: string): URL {
-  return new URL(`../../../../examples/third-party-plugin/${directory}/`, import.meta.url)
+  return pathToFileURL(repoPath(`examples/third-party-plugin/${directory}/`) + '/')
 }
 
 async function exampleManifest(directory: string): Promise<PluginManifestPayloadV2> {
@@ -106,12 +109,14 @@ async function installedPlugin(manifest: PluginManifestPayloadV2): Promise<Insta
   }
 }
 
-function exampleEditor() {
-  const graph = new SceneGraph()
-  return {
-    graph,
-    state: { selectedIds: new Set<string>() }
-  } satisfies ExampleDocumentSummaryEditor
+const editors: EditorStore[] = []
+afterEach(() => {
+  for (const editor of editors.splice(0)) editor.dispose()
+})
+function exampleEditor(): EditorStore & ExampleDocumentSummaryEditor {
+  const editor = createEditorStore(new SceneGraph())
+  editors.push(editor)
+  return editor
 }
 
 async function exampleContribution(directory: string) {
@@ -123,13 +128,8 @@ async function exampleContribution(directory: string) {
 
 describe('third-party Manifest v2 examples', () => {
   test('publisher key helper rejects repository and symlinked repository paths', async () => {
-    const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url))
-    const scriptPath = fileURLToPath(
-      new URL(
-        '../../../../examples/third-party-plugin/scripts/generate-keypair.mjs',
-        import.meta.url
-      )
-    )
+    const repositoryRoot = repoPath('')
+    const scriptPath = repoPath('examples/third-party-plugin/scripts/generate-keypair.mjs')
     const safetySuffix = `${process.pid}`
     const repositoryOutput = path.join(
       repositoryRoot,

@@ -1,4 +1,11 @@
-import { isAutoLayoutMode, type LayoutSizing, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  isAutoLayoutMode,
+  layoutSizingInParent,
+  layoutSizingOptions,
+  layoutSizingUpdates,
+  type LayoutSizing,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 
 type Axis = 'width' | 'height'
 
@@ -28,12 +35,12 @@ function stretchesCross(node: SceneNode, parent: SceneNode) {
   )
 }
 
-function gridAxisSizing(node: SceneNode, axis: Axis): LayoutSizing {
-  if (node.layoutGrow > 0 || node.layoutAlignSelf === 'STRETCH') return 'FILL'
-  if (axis === 'width' && isAutoLayoutMode(node.layoutMode) && node.layoutAlignSelf === 'AUTO') {
-    return 'FILL'
-  }
-  return 'FIXED'
+function parentGraph(parent: SceneNode | null): Parameters<typeof layoutSizingUpdates>[0] {
+  return { getNode: (id) => (parent?.id === id ? parent : undefined) }
+}
+
+function sizingAxis(axis: Axis) {
+  return axis === 'width' ? 'HORIZONTAL' : 'VERTICAL'
 }
 
 /** Effective physical-axis mode, including the parent's flow and inherited alignment. */
@@ -44,7 +51,7 @@ export function axisSizingForParent(
 ): LayoutSizing {
   if (!node) return 'FIXED'
   const flow = flowParent(node, parent)
-  if (flow?.layoutMode === 'GRID') return gridAxisSizing(node, axis)
+  if (flow?.layoutMode === 'GRID') return layoutSizingInParent(flow, node, sizingAxis(axis))
   const own = node[ownSizingKey(node, axis)]
   if (flow) {
     if (isMainAxis(flow, axis) && node.layoutGrow > 0) return 'FILL'
@@ -66,29 +73,16 @@ export function axisSizingForParent(
   return 'FIXED'
 }
 
-function patchGridAxis(node: SceneNode, axis: Axis, sizing: LayoutSizing): Partial<SceneNode> {
-  if (sizing === 'FILL') {
-    if (gridAxisSizing(node, axis) === 'FILL') return {}
-    return { layoutAlignSelf: 'STRETCH' }
-  }
-  if (gridAxisSizing(node, axis) !== 'FILL') return {}
-  // Grid currently shares explicit stretch across both axes. Release the shared mechanism;
-  // stored geometry preserves the untouched axis, but its future stretch is not retained.
-  const patch: Partial<SceneNode> = { layoutGrow: 0, layoutAlignSelf: 'MIN' }
-  const other = axis === 'width' ? 'height' : 'width'
-  if (isFlex(node) && gridAxisSizing(node, other) === 'FILL') {
-    patch[ownSizingKey(node, other)] = 'FIXED'
-  }
-  return patch
-}
-
-/** Patch only the requested flex axis; Grid's shared stretch follows its existing contract. */
+/** Patch one physical axis; Grid follows the owning independent-axis model. */
 export function axisSizingPatchForParent(
   node: SceneNode,
   axis: Axis,
   sizing: LayoutSizing,
   parent: SceneNode | null
 ): Partial<SceneNode> {
+  const flow = flowParent(node, parent)
+  if (flow?.layoutMode === 'GRID')
+    return layoutSizingUpdates(parentGraph(flow), node, sizingAxis(axis), sizing)
   const key = ownSizingKey(node, axis)
   const patch: Partial<SceneNode> = {}
   if (isFlex(node)) patch[key] = sizing
@@ -96,9 +90,7 @@ export function axisSizingPatchForParent(
     patch[key] = sizing === 'HUG' ? 'HUG' : 'FIXED'
   }
 
-  const flow = flowParent(node, parent)
   if (!flow) return patch
-  if (flow.layoutMode === 'GRID') return { ...patch, ...patchGridAxis(node, axis, sizing) }
   if (isMainAxis(flow, axis)) {
     patch.layoutGrow = sizing === 'FILL' ? 1 : 0
   } else if (sizing === 'FILL') {
@@ -115,6 +107,11 @@ export function sizingOptionsForParent(
   parent: SceneNode | null,
   labels: Partial<Record<LayoutSizing, string>> = {}
 ): { value: LayoutSizing; label: string }[] {
+  if (node && flowParent(node, parent)?.layoutMode === 'GRID')
+    return layoutSizingOptions(parentGraph(parent), node).map((value) => ({
+      value,
+      label: labels[value] ?? value
+    }))
   const values: LayoutSizing[] = ['FIXED']
   if (node) {
     const flow = flowParent(node, parent)

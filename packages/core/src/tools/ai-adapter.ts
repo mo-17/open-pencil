@@ -21,6 +21,8 @@ export interface ToolLogEntry {
   args: Record<string, unknown>
   result: unknown
   error?: string
+  /** What the tool threw, kept for diagnostics; the model gets only `error`. */
+  cause?: unknown
   timestamp: number
   durationMs: number
   mutates: boolean
@@ -37,7 +39,11 @@ export interface ToolLogEntry {
 export interface ToolDebugLog {
   entries: ToolLogEntry[]
   /** Detect repeated tool calls with identical args */
-  duplicates: Array<{ tool: string; args: Record<string, unknown>; count: number }>
+  duplicates: Array<{
+    tool: string
+    args: Record<string, unknown>
+    count: number
+  }>
   /** Entries where mutating tool succeeded but node didn't change */
   noopMutations: ToolLogEntry[]
   /** Total bytes of tool results sent to model (rough token proxy) */
@@ -62,6 +68,8 @@ export interface AIAdapterExecutionContext {
 
 export interface AIAdapterOptions {
   getFigma: () => FigmaAPI
+  /** A host may finish a started call after Stop; queued calls still abort. Defaults to abort. */
+  startedCallCancellation?: 'abort' | 'finish'
   /** Share this key across adapter instances that mutate the same SceneGraph. */
   mutationKey?: object
   getToolContext?: (def: ToolDef, args: Record<string, unknown>) => ToolCtx | undefined
@@ -149,14 +157,14 @@ function emitToolLog(
   figma: FigmaAPI,
   nodeBefore: Record<string, unknown> | undefined,
   execResult: unknown,
-  error?: string
+  failure?: { error: string; cause: unknown }
 ): void {
   if (!options.onToolLog) return
 
   let nodeAfter: Record<string, unknown> | undefined
   let unchangedProps: string[] | undefined
 
-  if (def.mutates && !error) {
+  if (def.mutates && !failure) {
     nodeAfter = captureNodeSnapshot(figma, args)
     if (nodeBefore && nodeAfter) {
       unchangedProps = detectUnchangedProps(def.name, args, nodeBefore, nodeAfter)
@@ -167,7 +175,8 @@ function emitToolLog(
     tool: def.name,
     args,
     result: execResult,
-    error,
+    error: failure?.error,
+    cause: failure?.cause,
     timestamp: startTime,
     durationMs: Date.now() - startTime,
     mutates: !!def.mutates,
@@ -198,13 +207,18 @@ async function executeToolDefinition(
   signal: AbortSignal | undefined
 ): Promise<ToolExecutionOutcome> {
   try {
-    options.onBeforeExecute?.(def, { args, signal, toolCallId: hostContext?.toolCallId })
+    options.onBeforeExecute?.(def, {
+      args,
+      signal,
+      toolCallId: hostContext?.toolCallId
+    })
     if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
     const toolContext = { ...hostContext, signal }
     const result = options.executeTool
       ? await options.executeTool(def, figma, args, toolContext)
       : await def.execute(figma, args, toolContext)
-    if (signal?.aborted && !isAtomicTool(def)) throw abortError(TOOL_ABORT_MESSAGE)
+    if (signal?.aborted && !isAtomicTool(def) && options.startedCallCancellation !== 'finish')
+      throw abortError(TOOL_ABORT_MESSAGE)
     return {
       context: {
         args,
@@ -265,7 +279,10 @@ function finishToolExecution(
   const failure = outcome.primaryError ?? afterError
   if (failure !== undefined) {
     const errorMsg = toolFailureMessage(failure)
-    emitToolLog(options, def, args, startTime, figma, nodeBefore, null, errorMsg)
+    emitToolLog(options, def, args, startTime, figma, nodeBefore, null, {
+      error: errorMsg,
+      cause: failure
+    })
     return { error: errorMsg }
   }
 
@@ -273,7 +290,25 @@ function finishToolExecution(
     const ids = extractNodeIds(outcome.result)
     if (ids.length > 0) options.onFlashNodes(ids)
   }
-  emitToolLog(options, def, args, startTime, figma, nodeBefore, outcome.result)
+  emitToolLog(
+    options,
+    def,
+    args,
+    startTime,
+    figma,
+    nodeBefore,
+    outcome.result,
+    outcome.context.status === 'error'
+      ? {
+          error: toolFailureMessage(
+            outcome.result && typeof outcome.result === 'object' && 'error' in outcome.result
+              ? outcome.result.error
+              : outcome.result
+          ),
+          cause: undefined
+        }
+      : undefined
+  )
   const budget = options.getStepBudget?.()
   return budget ? appendStepWarning(outcome.result, budget) : outcome.result
 }
@@ -294,12 +329,11 @@ async function executeAdapterTool(
   def: ToolDef,
   options: AIAdapterOptions,
   args: Record<string, unknown>,
-  execution?: { abortSignal?: AbortSignal; toolCallId?: string }
+  figma: FigmaAPI,
+  hostContext: ToolCtx,
+  signal: AbortSignal | undefined
 ): Promise<unknown> {
   const startTime = Date.now()
-  const figma = options.getFigma()
-  const hostContext = { ...options.getToolContext?.(def, args), toolCallId: execution?.toolCallId }
-  const signal = execution?.abortSignal ?? hostContext.signal
   if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
   const nodeBefore = def.mutates && options.onToolLog ? captureNodeSnapshot(figma, args) : undefined
   const outcome = await executeToolDefinition(def, options, figma, args, hostContext, signal)
@@ -307,8 +341,11 @@ async function executeAdapterTool(
 
   // A successful synchronous property transaction is already committed before
   // asynchronous font work. Preserve its truthful result if cancellation arrives later.
-  if (!isAtomicTool(def) || outcome.primaryError || afterError)
+  if (outcome.primaryError || afterError) {
     throwIfToolCancelled(signal, outcome.primaryError, afterError)
+  } else if (!isAtomicTool(def) && options.startedCallCancellation !== 'finish') {
+    throwIfToolCancelled(signal, undefined, undefined)
+  }
   return finishToolExecution(def, options, args, startTime, figma, nodeBefore, outcome, afterError)
 }
 
@@ -353,7 +390,14 @@ export function toolsToAI(
         args: Record<string, unknown>,
         execution?: { abortSignal?: AbortSignal; toolCallId?: string }
       ) => {
-        const run = () => executeAdapterTool(def, options, args, execution)
+        // Capture the originating host session before waiting for another mutation's hooks.
+        const figma = options.getFigma()
+        const hostContext = {
+          ...options.getToolContext?.(def, args),
+          toolCallId: execution?.toolCallId
+        }
+        const signal = execution?.abortSignal ?? hostContext.signal
+        const run = () => executeAdapterTool(def, options, args, figma, hostContext, signal)
 
         return def.mutates ? serializeToolMutation(mutationKey, run) : run()
       }
@@ -461,7 +505,11 @@ export function buildDebugLog(entries: ToolLogEntry[]): ToolDebugLog {
       existing.count++
       if (entry.mutates) entry.isDuplicate = true
     } else {
-      callCounts.set(key, { args: entry.args, count: 1, mutates: entry.mutates })
+      callCounts.set(key, {
+        args: entry.args,
+        count: 1,
+        mutates: entry.mutates
+      })
     }
 
     if (entry.mutates && !entry.error && entry.unchangedProps?.length) {

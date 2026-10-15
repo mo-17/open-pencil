@@ -106,10 +106,12 @@ describe('Supabase Management native bridge', () => {
 
   test('preserves an explicit review-only null organization binding', async () => {
     const requests: unknown[] = []
-    const bridge = createSupabaseManagementNativeBridge(<T>(_command, args) => {
-      requests.push(args?.request)
-      return Promise.resolve(result() as T)
-    })
+    const bridge = createSupabaseManagementNativeBridge(
+      <T>(_command: string, args?: Parameters<SupabaseManagementNativeInvoke>[1]) => {
+        requests.push(args?.request)
+        return Promise.resolve(result() as T)
+      }
+    )
 
     await bridge.inspectPgCatalogV1({
       projectRef: PROJECT_REF,

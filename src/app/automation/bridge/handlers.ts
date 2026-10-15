@@ -1,5 +1,13 @@
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 
+import { endAgentSession } from '@/app/automation/agents'
+import {
+  handleActivateDocument,
+  handleGetSettings,
+  handleRedo,
+  handleUndo,
+  handleUpdateSettings
+} from '@/app/automation/bridge/app-handlers'
 import { createAutomationEvalHandler } from '@/app/automation/bridge/eval-handler'
 import { handleExport, handleExportJSX } from '@/app/automation/bridge/export-handlers'
 import {
@@ -50,7 +58,10 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     save_file: handleSaveFile,
     close_file: handleCloseFile,
     new_document: handleNewDocument,
-    open_file: handleOpenFile
+    open_file: handleOpenFile,
+    activate_document: handleActivateDocument,
+    undo: handleUndo,
+    redo: handleRedo
   }
 
   /** Runs a command on a resolved document page, loading the page first if it was never shown. */
@@ -78,6 +89,13 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     if (command === 'list_documents') {
       return { ok: true, result: { documents: listAutomationDocuments(store) } }
     }
+    if (command === 'agent_session_closed') {
+      const session = isUnknownRecord(args) ? args.session : undefined
+      if (typeof session === 'string') endAgentSession(session)
+      return { ok: true, result: null }
+    }
+    if (command === 'get_settings') return handleGetSettings()
+    if (command === 'update_settings') return handleUpdateSettings(args)
 
     // Plugin tool discovery is document-independent. Calls still flow through the normal target
     // resolver below so document_id/page_id remain host-owned and cannot be supplied by a plugin.

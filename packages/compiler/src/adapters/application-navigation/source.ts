@@ -3,6 +3,7 @@ export const applicationNavigationFile = 'src/_application_navigation.ts'
 const trackerSource = `
 const markerKey = '__openpencil_application_nav'
 type Entry = { session: string; position: number; href: string; key: string }
+type BackSnapshot = { entry: Entry | undefined; cancelled: boolean }
 function internalFallback(value: string): boolean {
   return value.startsWith('/') && !value.startsWith('//') && !/[\\\\\\x00-\\x1f\\x7f]/.test(value)
     && !value.split(/[?#]/, 1)[0].split('/').some(segment => segment.startsWith(':') || segment.includes('*'))
@@ -12,7 +13,9 @@ function createTracker() {
     ? crypto.randomUUID() : String(Date.now()) + ':' + String(Math.random())
   const entries = new Map<number, Entry>()
   let current: Entry | undefined
-  let backPending = false
+  let backPending: number | undefined
+  let backSequence = 0
+  let pendingCommit: { position: number; key: string; href: string; resolve: (snapshot: BackSnapshot) => void } | undefined
   function marker(): Entry | undefined {
     if (typeof window === 'undefined') return undefined
     const value = window.history.state?.[markerKey]
@@ -24,6 +27,10 @@ function createTracker() {
     const index = position as number
     const previous = entries.get(index)
     const marked = marker()
+    // A repeated layout effect is not a new navigation and must not release an active Back.
+    if (current && marked && previous === current && current.position === index
+      && current.href === href && current.key === key && marked.position === index
+      && marked.href === href && marked.key === key) return
     if (current && mode === 'POP' && (!previous || !marked || marked.position !== index
       || previous.href !== href || previous.key !== key || marked.href !== href || marked.key !== key)) {
       entries.clear()
@@ -32,9 +39,15 @@ function createTracker() {
     const entry = { session, position: index, href, key }
     entries.set(index, entry)
     current = entry
-    backPending = false
+    const waiting = pendingCommit
+    pendingCommit = undefined
+    if (!waiting) backPending = undefined
     if (!marked || marked.position !== index || marked.href !== href || marked.key !== key)
       window.history.replaceState({ ...window.history.state, [markerKey]: entry }, '', window.location.href)
+    if (waiting) {
+      const matches = waiting.position === index && waiting.key === key && waiting.href === window.location.href
+      waiting.resolve({ entry: matches ? entry : undefined, cancelled: !matches })
+    }
   }
   function snapshot(): Entry | undefined {
     const value = marker()
@@ -44,13 +57,29 @@ function createTracker() {
   function canBack(entry: Entry): boolean {
     return snapshot() === entry && entries.has(entry.position - 1)
   }
-  function claimBack(): boolean {
-    if (backPending) return false
-    backPending = true
-    return true
+  function snapshotWhenCommitted(position: unknown, key: unknown, href: string): Promise<BackSnapshot> {
+    const entry = snapshot()
+    if (entry || !current || !Number.isSafeInteger(position) || typeof key !== 'string'
+      || (position === current.position && key === current.key)) {
+      return Promise.resolve({ entry, cancelled: false })
+    }
+    // React Router has written its native entry but its layout effect has not committed it.
+    // Only that later commit can grant history authority; native idx/length alone never do.
+    return new Promise(resolve => { pendingCommit = { position: position as number, key, href, resolve } })
   }
-  function releaseBack(): void { backPending = false }
-  return { commit, snapshot, canBack, claimBack, releaseBack, hasMarker: () => marker() !== undefined }
+  function claimBack(): number | undefined {
+    if (backPending !== undefined) return undefined
+    backPending = ++backSequence
+    return backPending
+  }
+  function releaseBack(claim?: number): void {
+    if (claim !== undefined && backPending !== claim) return
+    backPending = undefined
+    const waiting = pendingCommit
+    pendingCommit = undefined
+    waiting?.resolve({ entry: undefined, cancelled: true })
+  }
+  return { commit, snapshot, snapshotWhenCommitted, canBack, claimBack, releaseBack, hasMarker: () => marker() !== undefined }
 }
 `
 
@@ -66,6 +95,7 @@ export function ApplicationNavigationTracker() {
   useCommitEffect(() => {
     tracker.commit(window.history.state?.idx, location.pathname + location.search + location.hash, location.key, mode)
   }, [location, mode])
+  useCommitEffect(() => () => { tracker.releaseBack() }, [])
   return null
 }
 export function useApplicationBack() {
@@ -80,13 +110,23 @@ ${
     : ''
 }  return useCallback(async (fallback: string): Promise<void> => {
 ${guards ? '    if (!active.current || latest.current !== origin) return\n' : ''}    if (typeof window === 'undefined' || !internalFallback(fallback)) return
-    const entry = tracker.snapshot()
-    await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.()
-${guards ? '    if (!active.current || latest.current !== origin) return\n' : ''}    if (tracker.snapshot() !== entry || !tracker.claimBack()) return
+    const claim = tracker.claimBack()
+    if (claim === undefined) return
+    let dispatched = false
     try {
+      let entry = tracker.snapshot()
+      if (!entry) {
+        const state = window.history.state
+        const settled = await tracker.snapshotWhenCommitted(state?.idx, state?.key, window.location.href)
+        if (settled.cancelled) return
+        entry = settled.entry
+      }
+      await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.()
+${guards ? '      if (!active.current || latest.current !== origin) return\n' : ''}      if (tracker.snapshot() !== entry) return
       if (entry && tracker.canBack(entry)) navigate(-1)
       else navigate(fallback, { replace: true })
-    } catch (error) { tracker.releaseBack(); throw error }
+      dispatched = true
+    } finally { if (!dispatched) tracker.releaseBack(claim) }
   }, [navigate${guards ? ', origin' : ''}])
 }
 ${guards ? 'export function releaseApplicationBack(): void { tracker.releaseBack() }\n' : ''}`

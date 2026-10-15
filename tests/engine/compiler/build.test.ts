@@ -17,9 +17,9 @@ import {
   createSupabaseBuildDefines,
   assertSafeBuildOutputDirectory,
   assertSafeClientBuildEnvironment,
-  OPENPENCIL_BUILD_OUTPUT_MANIFEST,
-  type PreviewFiles
+  OPENPENCIL_BUILD_OUTPUT_MANIFEST
 } from '@open-pencil/compiler/build'
+import type { PreviewFiles } from '@open-pencil/compiler/vfs'
 
 /**
  * Phase 3 §5 step 2: end-to-end smoke for the static build. Runs a real Vite
@@ -31,7 +31,7 @@ import {
  * The exact resolution rules are pinned cheaply in vfs.test.ts; this guards
  * the Vite-build wiring (input/plugins/outDir) that those pure functions feed.
  */
-const fixture: PreviewFiles = new Map([
+const fixture: PreviewFiles = new Map<string, string | Uint8Array>([
   [
     'index.html',
     '<!doctype html><html><head><title>t</title></head><body>' +
@@ -66,7 +66,7 @@ const fixture: PreviewFiles = new Map([
 
 const outDir = mkdtempSync(join(tmpdir(), 'op-build-'))
 
-const vueFixture: PreviewFiles = new Map([
+const vueFixture: PreviewFiles = new Map<string, string | Uint8Array>([
   [
     'index.html',
     '<!doctype html><html><body><div id="app"></div>' +

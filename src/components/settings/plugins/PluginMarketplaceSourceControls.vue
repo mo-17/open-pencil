@@ -277,7 +277,7 @@ function remove(): void {
         </button>
         <button
           type="button"
-          class="rounded border border-danger/40 px-2.5 py-1.5 text-[10px] text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded border border-error/40 px-2.5 py-1.5 text-[10px] text-error hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/60 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="operationBusy || blockerVisible"
           data-test-id="plugin-marketplace-source-remove"
           @click="requestRemoval"
@@ -475,7 +475,7 @@ function remove(): void {
       </AlertDialogCancel>
       <button
         type="button"
-        class="rounded bg-danger px-3 py-1.5 text-[11px] font-medium text-white hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60 disabled:cursor-not-allowed disabled:opacity-50"
+        class="rounded bg-error-fill px-3 py-1.5 text-[11px] font-medium text-white hover:bg-error/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/60 disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="busy === 'remove' || blockerVisible"
         data-test-id="plugin-marketplace-source-remove-confirm"
         @click="remove"

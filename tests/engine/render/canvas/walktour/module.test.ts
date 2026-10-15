@@ -7,6 +7,8 @@ import { walktourTextNode } from '#core/canvas/modules/walktour/text'
 import { createWalktourModuleFrameOverrides } from '#core/plugins/walktour'
 import { collectGraphFontRequirements, requiredNodeFontFaces } from '#core/text/requirements'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('Walktour Canvas paints only the closed 44px CJK trigger, retaining editable child content beneath', async () => {
@@ -122,7 +124,7 @@ test('Walktour small hosts clip only their trigger and invalid contracts fail cl
       graph.getPages()[0].id,
       createWalktourModuleFrameOverrides()
     )
-    const module = host.interactiveProps?.module
+    const module = expectModuleInstance(host.interactiveProps?.module)
     if (!module) throw new Error('Expected guide fixture')
     module.configVersion = 99
     expect(renderWalktourModulePreview(h.renderer, h.canvas, host)).toBe(false)

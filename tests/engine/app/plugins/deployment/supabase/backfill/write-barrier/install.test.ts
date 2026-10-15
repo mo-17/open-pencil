@@ -233,12 +233,11 @@ describe('Supabase backfill write-barrier endpoint installer', () => {
     )
 
     const wrongPermission = await createBackfillWriteBarrierInstallReviewFixture()
+    const invalidAuthority = { ...wrongPermission.writeAuthority }
+    Reflect.set(invalidAuthority, 'permission', 'database_read')
     await installError(
       authorize(wrongPermission, {
-        writeAuthority: {
-          ...wrongPermission.writeAuthority,
-          permission: 'database_read'
-        } as SupabaseBackfillWriteBarrierWriteAuthorityV1
+        writeAuthority: invalidAuthority
       }),
       'supabase-backfill-write-barrier-install-write-authority-invalid'
     )

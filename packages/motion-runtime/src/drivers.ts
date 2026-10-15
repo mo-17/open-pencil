@@ -243,7 +243,7 @@ function bindDriverTargets(
     })
     const current = element.getAttribute('data-op-motion-driver-tracks')
     if (!markerSnapshots.has(element)) markerSnapshots.set(element, current)
-    const trackIds = new Set((current ?? '').split(' ').filter(Boolean))
+    const trackIds = new Set((current ?? '').split(' ').filter((token) => token.length > 0))
     trackIds.add(driver.target.trackId)
     element.setAttribute('data-op-motion-driver-tracks', [...trackIds].sort().join(' '))
   }

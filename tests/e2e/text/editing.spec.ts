@@ -6,6 +6,8 @@ const editor = useEditorSetup()
 
 function getPageChildren() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(store.state.currentPageId).map((n) => ({
@@ -20,6 +22,8 @@ test('pressing T activates text tool', async () => {
   await editor.page.keyboard.press('t')
 
   const tool = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.activeTool
@@ -77,6 +81,8 @@ test('dragging with the text tool creates a fixed-width text box', async () => {
   expect(node.textAutoResize).toBe('NONE')
 
   const editingTextId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.editingTextId
@@ -89,6 +95,8 @@ test('creating text via store works', async () => {
   await editor.canvas.waitForRender()
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 100, 300, 200, 30)
@@ -130,6 +138,8 @@ test('Enter key opens text editing and selects all without erasing', async () =>
   await editor.canvas.waitForRender()
 
   const textId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 300, 300, 200, 30)
@@ -148,6 +158,8 @@ test('Enter key opens text editing and selects all without erasing', async () =>
   await editor.page.waitForTimeout(200)
 
   const editing = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.editingTextId
@@ -155,6 +167,8 @@ test('Enter key opens text editing and selects all without erasing', async () =>
   expect(editing).toBe(textId)
 
   const after = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.state.editingTextId

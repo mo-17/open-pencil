@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const source = readFileSync(
-  resolve(import.meta.dir, '../../../../src/components/properties/Lowcode/TableContentEditor.vue'),
+  repoPath('src/components/properties/Lowcode/TableContentEditor.vue'),
   'utf8'
 )
 

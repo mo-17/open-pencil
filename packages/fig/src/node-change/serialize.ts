@@ -1,31 +1,24 @@
-import { normalizeFontFamily, weightToStyle } from '@open-pencil/scene-graph'
+import {
+  DEFAULT_STROKE_WEIGHT,
+  normalizeFontFamily,
+  OPEN_PENCIL_PLUGIN_DATA,
+  withPluginData
+} from '@open-pencil/scene-graph'
+import { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
 
 import { effectiveFigmaRawNodeFields } from '../source-metadata'
-import { computeExportTransform, fractionalPosition, mapToFigmaType } from './basics'
-import { bytesToHex } from './bytes'
+import { computeExportTransform, mapToFigmaType } from './basics'
 import { isFigmaOpaqueNodeType } from './convert'
-import {
-  alignGeneratedSingleLineGlyphs,
-  generatedBaselineWithinLine
-} from './derived-text/alignment'
-import { buildDerivedTextData as buildSharedDerivedTextData } from './derived-text/data'
-import { buildDerivedTextFontMetaData } from './derived-text/font-metadata'
+import { buildNodeDerivedTextData } from './derived-text/build'
+import { buildLegacyDerivedTextData } from './derived-text/legacy-build'
 import type { FigNodeExportCaches } from './export/context'
+import { fillsOwnSizingAxis } from './export/fill-sizing'
 import { EMPTY_EXPORT_RUNTIME, type FigNodeChangeExportRuntime } from './export/runtime'
 import { applyFontFeaturesToKiwi } from './font/features'
 import { weightToFigmaStyle } from './font/style'
 import { hasNativeLayoutPreferences } from './layout-preferences'
 import { serializeImportedPadding } from './padding'
 import { fillToKiwiPaint, safeColor } from './paint'
-import { bakeGlyphScale, encodePathCommandsBlob } from './path/commands'
-import {
-  BOUND_VARIABLES_PLUGIN_KEY,
-  removePluginData,
-  LAYOUT_DIRECTION_PLUGIN_KEY,
-  TEXT_DIRECTION_PLUGIN_KEY,
-  upsertPluginData,
-  OPEN_PENCIL_PLUGIN_ID
-} from './plugin-data'
 import {
   exportedVariableConsumptionEntries,
   mergeVariableConsumptionMaps
@@ -44,7 +37,12 @@ export {
 } from '@open-pencil/kiwi/fig/container'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { guidToString, stringToGuid } from '@open-pencil/kiwi/fig/guid'
-import type { ComponentPropertyDefinition, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type {
+  ComponentPropertyDefinition,
+  PluginDataEntry,
+  SceneGraph,
+  SceneNode
+} from '@open-pencil/scene-graph'
 import type { GUID, JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
@@ -54,122 +52,8 @@ import {
   type KiwiNodeChange
 } from './export/node'
 import { exportTextData, fontVariationToKiwi } from './text/data-export'
+import { FIGMA_AUTO_LINE_HEIGHT } from './text/values'
 import { toKiwiWindingRule } from './vector/geometry'
-
-function textLines(text: string): NonNullable<NodeChange['textData']>['lines'] {
-  const lineCount = Math.max(1, text.split('\n').length)
-  return Array.from({ length: lineCount }, () => ({ lineType: 'PLAIN' }))
-}
-
-function appendGlyphBlob(
-  blobs: Uint8Array[],
-  glyphBlobMap: Map<string, number>,
-  blob: Uint8Array
-): number {
-  const key = bytesToHex(blob)
-  const existing = glyphBlobMap.get(key)
-  if (existing !== undefined) return existing
-  const index = blobs.push(blob) - 1
-  glyphBlobMap.set(key, index)
-  return index
-}
-
-function generatedGlyphMetrics(
-  node: SceneNode,
-  runtime: FigNodeChangeExportRuntime,
-  enabled: boolean
-) {
-  if (!enabled) return []
-  return (
-    runtime.getGlyphOutlineMetrics(
-      node.fontFamily,
-      weightToStyle(node.fontWeight, node.italic),
-      node.text,
-      node.fontSize
-    ) ?? []
-  )
-}
-
-function buildDerivedTextData(
-  node: SceneNode,
-  digestMap: Map<string, Uint8Array>,
-  blobs: Uint8Array[],
-  glyphBlobMap: Map<string, number>,
-  runtime: FigNodeChangeExportRuntime,
-  generateMissingGlyphs: boolean
-): NodeChange['derivedTextData'] {
-  const fontMeta = buildDerivedTextFontMetaData(node, digestMap, runtime)
-
-  const lineHeight = node.lineHeight ?? Math.ceil(node.fontSize * 1.2)
-  const verticalMetrics = runtime.getFontVerticalMetrics?.(
-    normalizeFontFamily(node.fontFamily),
-    weightToStyle(node.fontWeight, node.italic),
-    node.fontSize
-  )
-  const baselineWithinLine = generatedBaselineWithinLine(lineHeight, verticalMetrics)
-  const characterCount = Array.from(node.text).length
-  const glyphAdvance = characterCount > 0 ? node.width / characterCount : 0
-
-  const derivedGlyphs = node.derivedTextGlyphs ?? []
-  const glyphs =
-    derivedGlyphs.length > 0
-      ? derivedGlyphs.map((glyph, index) => ({
-          commandsBlob: appendGlyphBlob(
-            blobs,
-            glyphBlobMap,
-            bakeGlyphScale(
-              glyph.commandsBlob,
-              glyph.scaleX ?? 1,
-              glyph.scaleY ?? 1,
-              glyph.rotation ?? 0
-            )
-          ),
-          position: { x: glyph.x, y: glyph.y },
-          fontSize: glyph.fontSize,
-          firstCharacter: index,
-          advance:
-            index + 1 < derivedGlyphs.length
-              ? Math.max(derivedGlyphs[index + 1].x - glyph.x, 0)
-              : glyphAdvance,
-          // Preserve path-text radians; hardcoding 0 used to flatten circular text on re-export.
-          rotation: glyph.rotation ?? 0
-        }))
-      : generatedGlyphMetrics(node, runtime, generateMissingGlyphs).map((glyph, index) => ({
-          commandsBlob: appendGlyphBlob(
-            blobs,
-            glyphBlobMap,
-            encodePathCommandsBlob(glyph.commands, node.fontSize)
-          ),
-          position: { x: glyph.x, y: baselineWithinLine },
-          fontSize: node.fontSize,
-          firstCharacter: index,
-          advance: glyph.advance,
-          rotation: 0
-        }))
-
-  const generatedAlignment =
-    derivedGlyphs.length === 0 ? alignGeneratedSingleLineGlyphs(node, glyphs, lineHeight) : null
-
-  const logicalIndexToCharacterOffsetMap =
-    generatedAlignment?.logicalOffsets.length === characterCount
-      ? generatedAlignment.logicalOffsets
-      : Array.from({ length: characterCount }, (_, index) => index * glyphAdvance)
-
-  return buildSharedDerivedTextData({
-    node,
-    glyphs,
-    fontMetaData: fontMeta,
-    baseline: generatedAlignment?.baselineY ?? baselineWithinLine,
-    baselineX: generatedAlignment?.baselineX,
-    baselineLineY: generatedAlignment?.lineY,
-    width: generatedAlignment?.lineWidth ?? node.width,
-    lineHeight: Math.max(lineHeight, verticalMetrics?.naturalLineHeight ?? 0),
-    lineAscent: Math.floor(
-      verticalMetrics?.ascent ?? Math.max(lineHeight - node.fontSize * 0.2, 0)
-    ),
-    logicalIndexToCharacterOffsetMap
-  })
-}
 
 function serializeCornerRadii(node: SceneNode, nc: KiwiNodeChange): void {
   const anyIndividual =
@@ -201,24 +85,57 @@ function serializeCornerRadii(node: SceneNode, nc: KiwiNodeChange): void {
   }
 }
 
+/** Paragraph spacing and list layout, which `.fig` keeps beside the lines in `textData`. */
+function serializeParagraphProps(node: SceneNode, nc: KiwiNodeChange): void {
+  if (node.paragraphSpacing !== 0) nc.paragraphSpacing = node.paragraphSpacing
+  if (node.paragraphIndent !== 0) nc.paragraphIndent = node.paragraphIndent
+  if (node.listSpacing !== 0) nc.listSpacing = node.listSpacing
+  if (node.hangingList) nc.hangingList = true
+}
+
+function buildRuntimeDerivedTextData(
+  node: SceneNode,
+  digestMap: Map<string, Uint8Array>,
+  blobs: Uint8Array[],
+  glyphBlobMap: Map<string, number> | undefined,
+  runtime: FigNodeChangeExportRuntime,
+  generateMissingGlyphs: boolean
+): KiwiNodeChange['derivedTextData'] {
+  const cache = glyphBlobMap ?? new Map<string, number>()
+  if (!runtime.shapeText && runtime.getGlyphOutlineMetrics) {
+    return buildLegacyDerivedTextData(node, digestMap, blobs, cache, runtime, generateMissingGlyphs)
+  }
+  return buildNodeDerivedTextData(node, {
+    digestMap,
+    blobs,
+    glyphBlobMap: cache,
+    shapeText: (textNode) => runtime.shapeText?.(textNode) ?? null,
+    textDecorations: (textNode, glyphs) => runtime.textDecorations?.(textNode, glyphs) ?? []
+  })
+}
+
 function serializeTextProps(
   node: SceneNode,
   nc: KiwiNodeChange,
-  graph: SceneGraph,
+  _graph: SceneGraph,
   fontDigestMap: Map<string, Uint8Array> | undefined,
   blobs: Uint8Array[],
   glyphBlobMap: Map<string, number> | undefined,
   runtime: FigNodeChangeExportRuntime,
   generateMissingGlyphs = true
 ): void {
-  upsertPluginData(node, TEXT_DIRECTION_PLUGIN_KEY, node.textDirection)
+  node.pluginData = withPluginData(
+    node.pluginData,
+    OPEN_PENCIL_PLUGIN_DATA.textDirection,
+    node.textDirection
+  )
   nc.fontSize = node.fontSize
   nc.fontName = {
     family: normalizeFontFamily(node.fontFamily),
     style: weightToFigmaStyle(node.fontWeight, node.italic),
     postscript: ''
   }
-  nc.textData = exportTextData(node, textLines, fillToKiwiPaint)
+  nc.textData = exportTextData(node, fillToKiwiPaint)
   if (node.fontVariations.length > 0) {
     nc.fontVariations = node.fontVariations.map(fontVariationToKiwi)
   }
@@ -241,28 +158,38 @@ function serializeTextProps(
   if (node.textCase !== 'ORIGINAL') nc.textCase = node.textCase
   if (node.textTruncation === 'ENDING') nc.textTruncation = 'ENDING'
   if (node.maxLines != null) nc.maxLines = node.maxLines
+  serializeParagraphProps(node, nc)
   if (fontDigestMap) {
-    nc.derivedTextData = buildDerivedTextData(
+    nc.derivedTextData = buildRuntimeDerivedTextData(
       node,
       fontDigestMap,
       blobs,
-      glyphBlobMap ?? new Map(),
+      glyphBlobMap,
       runtime,
       generateMissingGlyphs
     )
   }
   if (node.leadingTrim !== 'NONE') nc.leadingTrim = node.leadingTrim
-  if (node.lineHeight != null) nc.lineHeight = { value: node.lineHeight, units: 'PIXELS' }
+  nc.lineHeight =
+    node.lineHeight === null
+      ? { ...FIGMA_AUTO_LINE_HEIGHT }
+      : { value: node.lineHeight, units: 'PIXELS' }
   nc.letterSpacing = { value: node.letterSpacing, units: 'PIXELS' }
   if (node.textDecoration !== 'NONE') {
     nc.textDecoration = node.textDecoration === 'UNDERLINE' ? 'UNDERLINE' : 'STRIKETHROUGH'
   }
   if (node.textDecorationStyle !== 'SOLID') nc.textDecorationStyle = node.textDecorationStyle
   if (node.textDecorationThickness != null) {
-    nc.textDecorationThickness = { value: node.textDecorationThickness, units: 'PIXELS' }
+    nc.textDecorationThickness = {
+      value: node.textDecorationThickness,
+      units: 'PIXELS'
+    }
   }
   if (node.textUnderlineOffset != null) {
-    nc.textUnderlineOffset = { value: node.textUnderlineOffset, units: 'PIXELS' }
+    nc.textUnderlineOffset = {
+      value: node.textUnderlineOffset,
+      units: 'PIXELS'
+    }
   }
   if (node.textDecorationFills.length > 0) {
     nc.textDecorationFillPaints = node.textDecorationFills.map(fillToKiwiPaint)
@@ -312,6 +239,7 @@ function serializeInheritedCounterAxisStretch(
 }
 
 function serializeSizeConstraints(node: SceneNode, nc: KiwiNodeChange): void {
+  if (node.targetAspectRatio) nc.targetAspectRatio = { value: { ...node.targetAspectRatio } }
   if (node.minWidth != null || node.minHeight != null) {
     nc.minSize = { value: { x: node.minWidth ?? 0, y: node.minHeight ?? 0 } }
   }
@@ -325,8 +253,35 @@ function serializeSizeConstraints(node: SceneNode, nc: KiwiNodeChange): void {
   }
 }
 
+/**
+ * Hug as Figma desktop 126 writes it for its own frames, which counts the children stretched
+ * across the frame; the older `RESIZE_TO_FIT` leaves them out, so a row hugging a stretched
+ * column shrank to its other layers when pasted into Figma.
+ */
 function exportSizing(value: SceneNode['primaryAxisSizing']) {
-  return value === 'HUG' ? 'RESIZE_TO_FIT' : 'FIXED'
+  return value === 'HUG' ? 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' : 'FIXED'
+}
+
+/** Layout fields whose edits decide whether a frame's own sizing still matches its fill. */
+const OWN_SIZING_FIELDS: ReadonlySet<string> = new Set([
+  'layoutMode',
+  'primaryAxisSizing',
+  'counterAxisSizing',
+  'layoutGrow',
+  'layoutAlignSelf',
+  'layoutPositioning'
+])
+
+/**
+ * Writes a frame's own sizing as fixed along an axis it fills, the way Figma stores fill (see
+ * `fillsOwnSizingAxis`). Unedited imported layers keep their stored sizing, since Figma's own
+ * files also hold hugging axes on stretched children.
+ */
+function fixFilledOwnSizing(node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph): void {
+  const imported = Boolean(node.source.fig.layout)
+  if (imported && !node.source.editedFields.some((field) => OWN_SIZING_FIELDS.has(field))) return
+  if (fillsOwnSizingAxis(graph, node, 'stackPrimarySizing')) nc.stackPrimarySizing = 'FIXED'
+  if (fillsOwnSizingAxis(graph, node, 'stackCounterSizing')) nc.stackCounterSizing = 'FIXED'
 }
 
 function applyEditedLayoutFields(node: SceneNode, nc: KiwiNodeChange): void {
@@ -337,9 +292,15 @@ function applyEditedLayoutFields(node: SceneNode, nc: KiwiNodeChange): void {
     paddingRight: { stackPaddingRight: node.paddingRight },
     paddingTop: { stackVerticalPadding: node.paddingTop },
     paddingBottom: { stackPaddingBottom: node.paddingBottom },
-    primaryAxisSizing: { stackPrimarySizing: exportSizing(node.primaryAxisSizing) },
-    counterAxisSizing: { stackCounterSizing: exportSizing(node.counterAxisSizing) },
-    primaryAxisAlign: { stackPrimaryAlignItems: normalizeStackJustify(node.primaryAxisAlign) },
+    primaryAxisSizing: {
+      stackPrimarySizing: exportSizing(node.primaryAxisSizing)
+    },
+    counterAxisSizing: {
+      stackCounterSizing: exportSizing(node.counterAxisSizing)
+    },
+    primaryAxisAlign: {
+      stackPrimaryAlignItems: normalizeStackJustify(node.primaryAxisAlign)
+    },
     counterAxisAlign: {
       stackCounterAlignItems: normalizeStackCounterAlignItems(node.counterAxisAlign)
     },
@@ -354,13 +315,19 @@ function applyEditedLayoutFields(node: SceneNode, nc: KiwiNodeChange): void {
   for (const field of node.source.editedFields) {
     if (field in values) Object.assign(nc, values[field as keyof SceneNode])
   }
-  if (node.source.editedFields.includes('layoutDirection')) {
-    upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
-  }
+  if (node.source.editedFields.includes('layoutDirection')) writeLayoutDirection(node)
+}
+
+function writeLayoutDirection(node: SceneNode): void {
+  node.pluginData = withPluginData(
+    node.pluginData,
+    OPEN_PENCIL_PLUGIN_DATA.layoutDirection,
+    node.layoutDirection
+  )
 }
 
 function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph): void {
-  if (!node.source.id) upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
+  if (!node.source.id) writeLayoutDirection(node)
   serializeSizeConstraints(node, nc)
   const figLayout = node.source.fig.layout
   if (figLayout) {
@@ -386,6 +353,7 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
     if (figLayout.stackReverseZIndex) nc.stackReverseZIndex = true
     serializeInheritedCounterAxisStretch(node, nc, graph)
     applyEditedLayoutFields(node, nc)
+    fixFilledOwnSizing(node, nc, graph)
     return
   }
   if (hasNativeLayoutPreferences(node)) {
@@ -412,6 +380,7 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
   } else {
     serializeInheritedCounterAxisStretch(node, nc, graph)
   }
+  fixFilledOwnSizing(node, nc, graph)
 }
 
 function serializeGeometry(node: SceneNode, nc: KiwiNodeChange, blobs: Uint8Array[]): void {
@@ -443,7 +412,10 @@ function serializeGeometry(node: SceneNode, nc: KiwiNodeChange, blobs: Uint8Arra
         }
       }
       const styleID = styleOverrides.length + 1
-      styleOverrides.push({ styleID, fillPaints: geometry.fills.map(fillToKiwiPaint) })
+      styleOverrides.push({
+        styleID,
+        fillPaints: geometry.fills.map(fillToKiwiPaint)
+      })
       return {
         windingRule: toKiwiWindingRule(geometry.windingRule),
         commandsBlob: blobIdx,
@@ -459,7 +431,10 @@ function serializeGeometry(node: SceneNode, nc: KiwiNodeChange, blobs: Uint8Arra
     nc.strokeGeometry = node.strokeGeometry.map((g) => {
       const blobIdx = blobs.length
       blobs.push(g.commandsBlob)
-      return { windingRule: toKiwiWindingRule(g.windingRule), commandsBlob: blobIdx }
+      return {
+        windingRule: toKiwiWindingRule(g.windingRule),
+        commandsBlob: blobIdx
+      }
     })
   }
 }
@@ -480,16 +455,26 @@ function serializeVariableBindings(
   }
   // An entry the node was imported with is dropped rather than emptied: nothing reads an
   // empty map, and writing one leaves the record in every file the node is exported to.
-  if (Object.keys(roundtripBindings).length > 0)
-    upsertPluginData(node, BOUND_VARIABLES_PLUGIN_KEY, JSON.stringify(roundtripBindings))
-  else removePluginData(node, BOUND_VARIABLES_PLUGIN_KEY)
+  node.pluginData = withPluginData(
+    node.pluginData,
+    OPEN_PENCIL_PLUGIN_DATA.boundVariables,
+    Object.keys(roundtripBindings).length > 0 ? roundtripBindings : undefined
+  )
   if (entries.length > 0) {
     nc.variableConsumptionMap = { entries }
+    const bindings = mergeVariableConsumptionMaps(effectiveFigmaRawNodeFields(node), {
+      parameterConsumptionMap: { entries }
+    })
+    // Component property references were written to the record before its bindings; a
+    // record carries both in one map, so the bindings join them rather than replace them.
+    const references = nc.parameterConsumptionMap
     Object.assign(
       nc,
-      mergeVariableConsumptionMaps(effectiveFigmaRawNodeFields(node), {
-        parameterConsumptionMap: { entries }
-      })
+      references
+        ? mergeVariableConsumptionMaps(bindings, {
+            parameterConsumptionMap: references
+          })
+        : bindings
     )
   }
 }
@@ -508,6 +493,11 @@ export interface SceneNodeToKiwiOptions {
   modeIdToGuid?: Map<string, GUID>
   propertyIdToGuid?: Map<string, GUID>
   slotContentRecords?: KiwiNodeChange[]
+  /** Plugin data a node is written with instead of its own, by node ID. */
+  pluginDataOverrides?: ReadonlyMap<string, PluginDataEntry[]>
+  recordOwners?: ReadonlyMap<string, string>
+  orderKeys?: ReadonlyMap<string, string>
+  writeChildren?: boolean
 }
 
 export function sceneNodeToKiwi(
@@ -531,7 +521,11 @@ export function sceneNodeToKiwi(
     componentPropertyDefinitionsById = buildComponentPropIndex(graph),
     modeIdToGuid,
     propertyIdToGuid = new Map<string, GUID>(),
-    slotContentRecords
+    slotContentRecords,
+    pluginDataOverrides,
+    recordOwners,
+    orderKeys,
+    writeChildren
   } = options
   // Raw paints retain library asset refs; effects use this map because their
   // Kiwi schema accepts only GUID-backed aliases.
@@ -539,6 +533,7 @@ export function sceneNodeToKiwi(
   return sceneNodeToKiwiWithContext(node, parentGuid, childIndex, localIdCounter, {
     graph,
     styleReferences: caches?.styleReferences,
+    styleNodeIds: caches?.styleNodeIds,
     siblingOrderKeys: caches?.siblingOrderKeys,
     blobs,
     blobIndexByHex,
@@ -552,6 +547,10 @@ export function sceneNodeToKiwi(
     componentPropertyDefinitionsById,
     propertyIdToGuid,
     slotContentRecords,
+    pluginDataOverrides,
+    recordOwners,
+    orderKeys,
+    writeChildren,
     fractionalPosition,
     getExportNode: (exportNode) => runtime.getExportNode?.(exportNode, graph) ?? exportNode,
     mapToFigmaType: (exportNode) => {
@@ -599,7 +598,6 @@ export function sceneNodeToKiwi(
 }
 
 const IDENTITY_TRANSFORM = { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
-const DEFAULT_STROKE_WEIGHT = 1
 
 export function makeDocumentNodeChange(
   guid: GUID,

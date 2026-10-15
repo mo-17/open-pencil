@@ -9,7 +9,7 @@ import {
   createDescriptionsModuleFrameOverrides,
   createDescriptionsModuleInstance
 } from '@open-pencil/core/plugins'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { createDefaultNode, SceneGraph } from '@open-pencil/scene-graph'
 
 beforeAll(initCodec)
 
@@ -17,13 +17,21 @@ test('Descriptions lowerer preserves literal strings and rejects unsupported ver
   const instance = createDescriptionsModuleInstance({
     items: [{ id: 'literal', label: '<b>Label</b>', value: '{{value}} & 中文' }]
   })
-  expect(DESCRIPTIONS_COMPILER_MODULE_LOWERER.lower(instance)).toEqual({
+  expect(
+    DESCRIPTIONS_COMPILER_MODULE_LOWERER.lower(
+      instance,
+      createDefaultNode(() => 'lowerer-host', 'FRAME')
+    )
+  ).toEqual({
     ok: true,
     payload: instance.config
   })
-  expect(DESCRIPTIONS_COMPILER_MODULE_LOWERER.lower({ ...instance, configVersion: 2 }).ok).toBe(
-    false
-  )
+  expect(
+    DESCRIPTIONS_COMPILER_MODULE_LOWERER.lower(
+      { ...instance, configVersion: 2 },
+      createDefaultNode(() => 'lowerer-host', 'FRAME')
+    ).ok
+  ).toBe(false)
 })
 
 test('Descriptions ordinary FRAME and authored layout survive two FIG save/reopen cycles', async () => {

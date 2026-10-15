@@ -14,10 +14,29 @@ export function shadcnControlsFixture(target: 'react' | 'vue' = 'react', kit = t
     bindings: { value: { kind: 'ref', stateId: 'delivery' } },
     events: {
       onChange: [
-        { kind: 'setState', targetStateId: 'signal', valueExpr: '"select-change:" + $value' }
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'signal',
+          valueExpr: '"select-change:" + $value'
+        }
       ],
-      onFocus: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"select-focus"' }],
-      onBlur: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"select-blur"' }]
+      onFocus: [
+        {
+          id: 'fixture-action-2',
+          kind: 'setState',
+          targetStateId: 'signal',
+          valueExpr: '"select-focus"'
+        }
+      ],
+      onBlur: [
+        {
+          id: 'fixture-action-3',
+          kind: 'setState',
+          targetStateId: 'signal',
+          valueExpr: '"select-blur"'
+        }
+      ]
     }
   })
   graph.createNode('CHECKBOX', parentId, {
@@ -28,6 +47,7 @@ export function shadcnControlsFixture(target: 'react' | 'vue' = 'react', kit = t
     events: {
       onChange: [
         {
+          id: 'fixture-action-4',
           kind: 'setState',
           targetStateId: 'signal',
           valueExpr: '$event.target.checked ? "checked:" + $value : "unchecked:" + $value'
@@ -40,7 +60,16 @@ export function shadcnControlsFixture(target: 'react' | 'vue' = 'react', kit = t
     width: 40,
     height: 36,
     interactiveProps: { ariaLabel: 'Click checkbox' },
-    events: { onClick: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"clicked"' }] }
+    events: {
+      onClick: [
+        {
+          id: 'fixture-action-5',
+          kind: 'setState',
+          targetStateId: 'signal',
+          valueExpr: '"clicked"'
+        }
+      ]
+    }
   })
   for (const type of ['RADIO', 'CHECKBOX'] as const) {
     graph.createNode(type, parentId, {
@@ -49,7 +78,14 @@ export function shadcnControlsFixture(target: 'react' | 'vue' = 'react', kit = t
       height: 60,
       interactiveProps: { ariaLabel: 'Event ' + type, options: ['Alpha', 'Beta'] },
       events: {
-        onChange: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"option:" + $value' }]
+        onChange: [
+          {
+            id: 'fixture-action-6',
+            kind: 'setState',
+            targetStateId: 'signal',
+            valueExpr: '"option:" + $value'
+          }
+        ]
       }
     })
   }

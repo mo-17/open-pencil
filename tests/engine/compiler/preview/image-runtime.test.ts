@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 import type { SceneGraph } from '@open-pencil/scene-graph'
@@ -85,7 +87,7 @@ async function fetchCSS(server: PreviewServer): Promise<string> {
   const body = await fetchText(`${server.url}src/index.css?t=${Date.now()}`)
   const match = body.match(/const __vite__css = "((?:[^"\\]|\\.)*)"/)
   if (!match) throw new Error('index.css did not transform to a Vite CSS module')
-  return JSON.parse(`"${match[1]}"`) as string
+  return v.parse(v.pipe(v.string(), v.parseJson(), v.string()), `"${match[1]}"`)
 }
 
 describe('preview runtime — image fills and responsive images (Phase 4 §24)', () => {

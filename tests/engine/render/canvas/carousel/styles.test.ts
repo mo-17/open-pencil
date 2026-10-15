@@ -8,7 +8,8 @@ import {
 } from '#core/plugins/carousel'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 
-import { expectDefined } from '#tests/helpers/assert'
+import { asDouble } from '#tests/engine/render/canvas/helpers'
+import { expectModuleInstance, expectDefined } from '#tests/helpers/assert'
 
 import { carouselPixelHarness } from './helpers'
 
@@ -44,7 +45,7 @@ test('real Carousel overlay aligns shaped text, masks the media, and bounds ever
   const fetchMock = mock(() =>
     Promise.reject(new Error('Canvas carousel cannot load remote media'))
   )
-  globalThis.fetch = fetchMock as typeof fetch
+  globalThis.fetch = asDouble<typeof fetch>(fetchMock)
   const paint = (config: Partial<CarouselModuleConfigV2>, width = 320, height = 220) => {
     const value = fixture(config, width, height)
     renderer.clearDocumentCaches()
@@ -205,7 +206,9 @@ test('real Carousel overlay aligns shaped text, masks the media, and bounds ever
     }
 
     const current = paint({ slides: [imageSlide], showDots: true })
-    const module = expectDefined(current.node.interactiveProps?.module, 'Carousel module')
+    const module = expectModuleInstance(
+      expectDefined(current.node.interactiveProps?.module, 'Carousel module')
+    )
     const {
       layout,
       imageFit,
@@ -244,8 +247,10 @@ test('real Carousel overlay aligns shaped text, masks the media, and bounds ever
       canvas.clear(ck.WHITE)
       renderer.renderNode(canvas, current.graph, current.node.id, {})
       expect(pixels()).toEqual(current.data)
-      expect(current.node.interactiveProps?.module?.configVersion).toBe(version)
-      expect(current.node.interactiveProps?.module?.config).toEqual(config)
+      expect(expectModuleInstance(current.node.interactiveProps?.module).configVersion).toBe(
+        version
+      )
+      expect(expectModuleInstance(current.node.interactiveProps?.module).config).toEqual(config)
     }
     expect(fetchMock).not.toHaveBeenCalled()
   } finally {

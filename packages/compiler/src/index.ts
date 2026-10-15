@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import {
   auditLowcodeNavigation,
   compactLowcodeHeadMetadata,
@@ -454,7 +456,7 @@ export function withDefaults(overrides: Partial<CompilerOptions> = {}): Compiler
 function withPersistedThemeCSS(graph: SceneGraph, options: CompilerOptions): CompilerOptions {
   const generated = buildDesignTokenThemeCSS(graph)
   const explicit = options.themeCss?.trim()
-  const themeCSS = [generated.trim(), explicit].filter(Boolean).join('\n\n')
+  const themeCSS = compact([generated.trim(), explicit]).join('\n\n')
   return themeCSS ? { ...options, themeCss: `${themeCSS}\n` } : options
 }
 

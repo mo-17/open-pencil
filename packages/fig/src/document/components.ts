@@ -14,10 +14,11 @@ export interface ComponentConstruction {
 
 /** Resolve source ownership and dependency order without mutating a destination graph. */
 export function planComponentConstruction(
-  changes: readonly NodeChange[],
   roots: readonly InstanceOccurrence[],
   readComponent: (id: string) => InstanceOccurrence,
-  index: ReadonlyMap<string, NodeChange>
+  index: ReadonlyMap<string, NodeChange>,
+  /** Components an earlier pass already built, which are neither read nor planned again. */
+  isBuilt: (id: string) => boolean = () => false
 ): ComponentConstruction[] {
   const sources = index
   const pageComponents = new Map<string, InstanceOccurrence>()
@@ -51,6 +52,10 @@ export function planComponentConstruction(
   }
   const ensure = (id: string): void => {
     if (complete.has(id)) return
+    if (isBuilt(id)) {
+      complete.add(id)
+      return
+    }
     if (pending.has(id)) throw new Error(`Cyclic component dependency ${id}`)
     pending.add(id)
     const source = sources.get(id)

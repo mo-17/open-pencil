@@ -1,19 +1,17 @@
 import * as v from 'valibot'
 
-import type { CharacterStyleOverride, SceneNode } from '@open-pencil/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 import { parseColor } from '@open-pencil/scene-graph/color'
 
-import { styleToWeight } from '#core/text/fonts'
-import { applyStyleToRange } from '#core/text/style-runs'
-import { nodeIdInput } from '#core/tools/input'
-import { defineTool, nodeNotFound } from '#core/tools/schema'
+import { toolNumber, nodeIdInput } from '#core/tools/input'
+import { defineTool, nodeNotFound, toolFailure } from '#core/tools/schema'
 
 export const setText = defineTool({
   name: 'set_text',
 
   description: 'Set text content of a text node.',
   execution: { kind: 'sync', mutation: 'properties' },
-  input: v.object({
+  input: v.strictObject({
     id: nodeIdInput,
     text: v.pipe(v.string(), v.description('Text content'))
   }),
@@ -30,21 +28,29 @@ export const setFont = defineTool({
   description:
     'Set font properties of a TEXT node or visible lowcode BUTTON/INPUT/TEXTAREA content. After changing family or style, call check_font with the expected values to verify live renderer effectiveness.',
   execution: { kind: 'sync', mutation: 'properties' },
-  params: {
-    id: { type: 'string', description: 'Text-capable node ID', required: true },
-    family: { type: 'string', description: 'Font family name' },
-    size: { type: 'number', description: 'Font size', min: 1 },
-    style: { type: 'string', description: 'Font style (e.g. "Bold", "Regular", "Bold Italic")' }
-  },
+  input: v.strictObject({
+    id: nodeIdInput,
+    family: v.optional(v.pipe(v.string(), v.description('Font family name'))),
+    size: v.optional(toolNumber(v.pipe(v.number(), v.minValue(1), v.description('Font size')))),
+    style: v.optional(
+      v.pipe(v.string(), v.description('Font style (e.g. "Bold", "Regular", "Bold Italic")'))
+    )
+  }),
   execute: (figma, args) => {
     const node = figma.getNodeById(args.id)
     if (!node) return nodeNotFound(args.id)
     if (args.size !== undefined) node.fontSize = args.size
     if (args.family || args.style) {
-      const current = node.fontName
+      // Text set in several fonts takes the given family or style for all of it, keeping the
+      // rest from its first character.
+      const fontName =
+        typeof node.fontName === 'symbol' && node.characters.length > 0
+          ? node.getRangeFontName(0, 1)
+          : node.fontName
+      const current = typeof fontName === 'symbol' ? null : fontName
       node.fontName = {
-        family: args.family ?? current.family,
-        style: args.style ?? current.style
+        family: args.family ?? current?.family ?? '',
+        style: args.style ?? current?.style ?? 'Regular'
       }
     }
     return { id: args.id, fontName: node.fontName, fontSize: node.fontSize }
@@ -56,34 +62,49 @@ export const setFontRange = defineTool({
   description:
     'Set font properties for a text range. Call check_font on the node afterwards to detect mixed assignments, pending loads, synthesized styles, or unresolved glyphs.',
   execution: { kind: 'sync', mutation: 'properties' },
-  params: {
-    id: { type: 'string', description: 'Node ID', required: true },
-    start: { type: 'number', description: 'Start character index', required: true, min: 0 },
-    end: { type: 'number', description: 'End character index', required: true, min: 0 },
-    family: { type: 'string', description: 'Font family name' },
-    size: { type: 'number', description: 'Font size', min: 1 },
-    style: { type: 'string', description: 'Font style' },
-    color: { type: 'color', description: 'Text color (hex)' }
-  },
+  input: v.strictObject({
+    id: nodeIdInput,
+    start: toolNumber(v.pipe(v.number(), v.minValue(0), v.description('Start character index'))),
+    end: toolNumber(v.pipe(v.number(), v.minValue(0), v.description('End character index'))),
+    family: v.optional(v.pipe(v.string(), v.description('Font family name'))),
+    size: v.optional(toolNumber(v.pipe(v.number(), v.minValue(1), v.description('Font size')))),
+    style: v.optional(v.pipe(v.string(), v.description('Font style'))),
+    color: v.optional(v.pipe(v.string(), v.description('Text color (hex)')))
+  }),
   execute: (figma, args) => {
     const node = figma.getNodeById(args.id)
     if (!node) return nodeNotFound(args.id)
-    const override: CharacterStyleOverride = {}
-    if (args.family) override.fontFamily = args.family
-    if (args.size) override.fontSize = args.size
-    if (args.style) {
-      const s = args.style.toLowerCase()
-      if (s.includes('italic')) override.italic = true
-      override.fontWeight = styleToWeight(args.style)
+    const { start, end } = args
+    if (!args.family && !args.size && !args.style && !args.color) {
+      return {
+        error: 'set_font_range needs at least one of family, size, style, or color'
+      }
     }
-    if (args.color) {
-      override.fills = [{ type: 'SOLID', color: parseColor(args.color), opacity: 1, visible: true }]
+    // The range methods reject an empty range or one past the text, before changing anything.
+    try {
+      if (args.size) node.setRangeFontSize(start, end, args.size)
+      if (args.family || args.style) {
+        const current = node.getRangeFontName(start, start + 1)
+        const fontName = typeof current === 'symbol' ? null : current
+        node.setRangeFontName(start, end, {
+          family: args.family ?? fontName?.family ?? '',
+          style: args.style ?? fontName?.style ?? 'Regular'
+        })
+      }
+      if (args.color) {
+        node.setRangeFills(start, end, [
+          {
+            type: 'SOLID',
+            color: parseColor(args.color),
+            opacity: 1,
+            visible: true
+          }
+        ])
+      }
+    } catch (error) {
+      return toolFailure(error)
     }
-    const raw = figma.graph.getNode(node.id)
-    if (!raw) return { error: `Node "${args.id}" not found` }
-    const runs = applyStyleToRange(raw.styleRuns, args.start, args.end, override, raw.text.length)
-    figma.graph.updateNode(node.id, { styleRuns: runs })
-    return { id: args.id, range: { start: args.start, end: args.end } }
+    return { id: args.id, range: { start, end } }
   }
 })
 
@@ -92,7 +113,7 @@ export const setTextResize = defineTool({
 
   description: 'Set text auto-resize mode.',
   execution: { kind: 'sync', mutation: 'properties' },
-  input: v.object({
+  input: v.strictObject({
     id: nodeIdInput,
     mode: v.pipe(
       v.picklist(['NONE', 'WIDTH_AND_HEIGHT', 'HEIGHT', 'TRUNCATE']),
@@ -113,7 +134,7 @@ export const setTextProperties = defineTool({
   description:
     'Set text layout properties: alignment, auto-resize, text case, decoration, truncation.',
   execution: { kind: 'sync', mutation: 'properties' },
-  input: v.object({
+  input: v.strictObject({
     id: v.pipe(v.string(), v.description('Text node ID')),
     align_horizontal: v.optional(
       v.pipe(

@@ -8,7 +8,7 @@ import { defineAsyncComponent, onMounted, watch, computed } from 'vue'
 import { provideEditor, useI18n } from '@open-pencil/vue'
 
 import { useDocumentCloseProtection } from '@/app/document/close/use'
-import { useEditorStore } from '@/app/editor/active-store'
+import { useFollowingEditorStore } from '@/app/editor/active-store'
 import { applicationRuntimeGuideOpen } from '@/app/help/application-runtime-guide'
 import {
   GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
@@ -21,18 +21,21 @@ import { useApplicationRuntimeGuideMenu } from '@/app/shell/menu/help-actions'
 import { animationsEnabled } from '@/app/shell/motion'
 import { useAppTheme } from '@/app/shell/theme'
 import { toast } from '@/app/shell/ui'
-import { scheduleStartupUpdateCheck } from '@/app/shell/updater'
+import { useRestartApprovals } from '@/app/shell/updater/approvals'
+import { scheduleStartupUpdateCheck } from '@/app/shell/updater/check'
 import { kickSyncEngine, resumeStorageSync } from '@/app/storage/sync'
 import { prepareForReload } from '@/app/tabs'
 import UnsavedChangesDialog from '@/components/document/UnsavedChangesDialog.vue'
 import PublishLibraryDialog from '@/components/libraries/PublishLibraryDialog.vue'
 import LibraryUpdateReviewDialog from '@/components/libraries/review/LibraryUpdateReviewDialog.vue'
 import RecoveryDialog from '@/components/recovery/RecoveryDialog.vue'
+import AISetupDialog from '@/components/settings/ai-setup/AISetupDialog.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
+import UsageStatsPrompt from '@/components/sharing/UsageStatsPrompt.vue'
 import AppShell from '@/components/shell/AppShell.vue'
 import Toaster from '@/components/shell/Toaster.vue'
+import VoiceCallAudio from '@/components/voice-call/VoiceCallAudio.vue'
 
-const store = useEditorStore()
 const { updates, locale } = useI18n()
 const ApplicationRuntimeGuideDialog = defineAsyncComponent(
   () => import('@/components/help/ApplicationRuntimeGuideDialog.vue')
@@ -46,7 +49,7 @@ useHead({
   }
 })
 
-provideEditor(store)
+provideEditor(useFollowingEditorStore())
 useAppTheme()
 useApplicationRuntimeGuideMenu()
 
@@ -69,6 +72,7 @@ watch(
 )
 
 useDocumentCloseProtection()
+useRestartApprovals()
 useEventListener(window, 'pagehide', () => {
   void prepareForReload()
 })
@@ -88,11 +92,14 @@ onMounted(() => {
       </AppShell>
       <SettingsDialog />
       <ApplicationRuntimeGuideDialog v-if="applicationRuntimeGuideOpen" />
+      <AISetupDialog />
       <RecoveryDialog />
       <UnsavedChangesDialog />
       <PublishLibraryDialog />
       <LibraryUpdateReviewDialog />
+      <UsageStatsPrompt />
       <Toaster />
+      <VoiceCallAudio />
     </TooltipProvider>
   </MotionConfig>
 </template>

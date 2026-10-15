@@ -265,7 +265,7 @@ describe('inMemoryVFS @/ alias (Phase 3 §15)', () => {
 
 describe('inMemoryVFS Vue and binary modules', () => {
   const PREFIX = '/scan-root/'
-  const files: PreviewFiles = new Map([
+  const files: PreviewFiles = new Map<string, string | Uint8Array>([
     ['src/App.vue', '<template><p>Vue</p></template>'],
     ['src/assets/pixel.png', new Uint8Array([1, 2, 3])]
   ])

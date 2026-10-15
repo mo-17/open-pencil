@@ -8,6 +8,8 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/?test')
     await new CanvasHelper(page).waitForInit()
     const id = await page.evaluate(async (mode) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const path = '/src/app/shell/theme.ts'
       const module = await import(path)
       module.useAppTheme().setTheme(mode)
@@ -25,23 +27,22 @@ for (const theme of ['light', 'dark']) {
     await section.getByRole('button', { name: 'Align center horizontally', exact: true }).click()
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id)?.textAlignHorizontal,
-          id
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.textAlignHorizontal
+        }, id)
       )
       .toBe('CENTER')
     await section.getByRole('switch', { name: 'Standard ligatures', exact: true }).click()
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) =>
-            window.openPencil
-              ?.getStore?.()
-              .graph.getNode(id)
-              ?.fontFeatures.find((feature) => feature.tag === 'LIGA')?.enabled,
-          id
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil
+            ?.getStore?.()
+            .graph.getNode(id)
+            ?.fontFeatures.find((feature) => feature.tag === 'LIGA')?.enabled
+        }, id)
       )
       .toBe(false)
   })

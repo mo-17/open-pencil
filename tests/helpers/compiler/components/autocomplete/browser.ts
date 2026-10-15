@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Locator, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
 
@@ -13,13 +14,14 @@ export async function withAutocomplete(
   const name = runtime ? 'autocompleteRuntimeFixture' : 'autocompleteFixture',
     file = runtime ? 'runtime' : 'model'
   const script = `import {${name}} from './tests/helpers/compiler/components/autocomplete/${file}';const result=${name}(${JSON.stringify(target)});if(result.warnings.length)throw new Error(JSON.stringify(result.warnings));process.stdout.write(JSON.stringify(result.files));`
-  const files = JSON.parse(
+  const files = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
     execFileSync('bun', ['-e', script], {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024
     })
-  ) as [string, string][]
+  )
   await withComponentTemplateFiles(page, target, new Map(files), run)
 }
 export async function composedInput(input: Locator, value: string) {

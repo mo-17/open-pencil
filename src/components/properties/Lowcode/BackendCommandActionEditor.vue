@@ -62,7 +62,7 @@ function setParameter(key: string, valueExpr: string): void {
         </option>
       </select>
     </label>
-    <p v-if="!commands.length" class="text-[10px] text-amber-500">{{ text.empty }}</p>
+    <p v-if="!commands.length" class="text-[10px] text-warning">{{ text.empty }}</p>
     <template v-if="action.kind === 'backendCommand'">
       <label class="flex items-center gap-2 text-[10px] text-muted">
         <input
@@ -171,7 +171,7 @@ function setParameter(key: string, valueExpr: string): void {
         </option>
       </select>
     </label>
-    <ul v-if="diagnostics.length" class="space-y-1 text-[10px] text-red-500">
+    <ul v-if="diagnostics.length" class="space-y-1 text-[10px] text-error">
       <li v-for="(entry, index) in diagnostics" :key="index">{{ entry.message }}</li>
     </ul>
   </div>

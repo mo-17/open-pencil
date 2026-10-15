@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed } from 'vue'
 
 import type {
@@ -233,10 +234,7 @@ function updateTrackProperties(next: (current: TrackProperty[]) => TrackProperty
 function uniqueTrackPropertyKey(base: string, index?: number): string {
   const stem = base.trim() || 'prop'
   const existing = new Set(
-    trackProperties.value
-      .filter((_, i) => i !== index)
-      .map((entry) => entry.key)
-      .filter(Boolean)
+    compact(trackProperties.value.filter((_, i) => i !== index).map((entry) => entry.key))
   )
   if (!existing.has(stem)) return stem
   let suffix = 2
@@ -341,10 +339,7 @@ const invokeServerArgs = computed<InvokeServerArg[]>(() => {
 function uniqueInvokeServerArgName(base: string, index?: number): string {
   const stem = base.trim() || 'arg'
   const existing = new Set(
-    invokeServerArgs.value
-      .filter((_, i) => i !== index)
-      .map((entry) => entry.key)
-      .filter(Boolean)
+    compact(invokeServerArgs.value.filter((_, i) => i !== index).map((entry) => entry.key))
   )
   if (!existing.has(stem)) return stem
   let suffix = 2
@@ -428,7 +423,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-target"
           :class="[
             'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.target ? 'border-red-500' : 'border-border'
+            errors.target ? 'border-error' : 'border-border'
           ]"
           @change="patch({ targetStateId: ($event.target as HTMLSelectElement).value })"
         >
@@ -444,7 +439,7 @@ function changeServerWorkflow(id: string): void {
           spellcheck="false"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.expr ? 'border-red-500' : 'border-border'
+            errors.expr ? 'border-error' : 'border-border'
           ]"
           @change="patch({ valueExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -465,7 +460,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-variable-name"
           :class="[
             'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.target ? 'border-red-500' : 'border-border'
+            errors.target ? 'border-error' : 'border-border'
           ]"
           @change="patch({ targetName: ($event.target as HTMLSelectElement).value })"
         >
@@ -483,7 +478,7 @@ function changeServerWorkflow(id: string): void {
           spellcheck="false"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.expr ? 'border-red-500' : 'border-border'
+            errors.expr ? 'border-error' : 'border-border'
           ]"
           @change="patch({ valueExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -521,7 +516,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="https://api.example.com/users"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.url ? 'border-red-500' : 'border-border'
+            errors.url ? 'border-error' : 'border-border'
           ]"
           @change="patch({ url: ($event.target as HTMLInputElement).value })"
         />
@@ -533,7 +528,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-api-target"
           :class="[
             'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.target ? 'border-red-500' : 'border-border'
+            errors.target ? 'border-error' : 'border-border'
           ]"
           @change="patch({ targetName: ($event.target as HTMLSelectElement).value })"
         >
@@ -554,7 +549,7 @@ function changeServerWorkflow(id: string): void {
           :placeholder="panels.lowcodeActionSupabaseTablePlaceholder"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.table ? 'border-red-500' : 'border-border'
+            errors.table ? 'border-error' : 'border-border'
           ]"
           @change="patch({ table: ($event.target as HTMLInputElement).value })"
         />
@@ -566,7 +561,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-supabase-result-target"
           :class="[
             'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.target ? 'border-red-500' : 'border-border'
+            errors.target ? 'border-error' : 'border-border'
           ]"
           @change="patch({ resultTarget: ($event.target as HTMLSelectElement).value })"
         >
@@ -601,7 +596,7 @@ function changeServerWorkflow(id: string): void {
           :placeholder="panels.lowcodeActionSupabaseTablePlaceholder"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.table ? 'border-red-500' : 'border-border'
+            errors.table ? 'border-error' : 'border-border'
           ]"
           @change="patch({ table: ($event.target as HTMLInputElement).value })"
         />
@@ -634,7 +629,7 @@ function changeServerWorkflow(id: string): void {
           placeholder='"Saved!"'
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.message ? 'border-red-500' : 'border-border'
+            errors.message ? 'border-error' : 'border-border'
           ]"
           @change="patch({ messageExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -664,7 +659,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="email"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.expr ? 'border-red-500' : 'border-border'
+            errors.expr ? 'border-error' : 'border-border'
           ]"
           @change="patch({ valueExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -681,7 +676,7 @@ function changeServerWorkflow(id: string): void {
           placeholder='"signup_click"'
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.expr ? 'border-red-500' : 'border-border'
+            errors.expr ? 'border-error' : 'border-border'
           ]"
           @change="patch({ eventNameExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -706,7 +701,7 @@ function changeServerWorkflow(id: string): void {
           :placeholder="action.kind === 'stripeCheckout' ? '/api/checkout' : '/api/customer-portal'"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.endpoint ? 'border-red-500' : 'border-border'
+            errors.endpoint ? 'border-error' : 'border-border'
           ]"
           @change="patch({ endpoint: ($event.target as HTMLInputElement).value })"
         />
@@ -723,7 +718,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-delay-ms"
           :class="[
             'w-24 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.ms ? 'border-red-500' : 'border-border'
+            errors.ms ? 'border-error' : 'border-border'
           ]"
           @change="patch({ ms: Number(($event.target as HTMLInputElement).value) })"
         />
@@ -738,7 +733,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-motion-target"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.target ? 'border-red-500' : 'border-border'
+            errors.target ? 'border-error' : 'border-border'
           ]"
           @change="changeMotionTarget(($event.target as HTMLSelectElement).value)"
         >
@@ -767,7 +762,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-motion-track"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent disabled:opacity-50',
-            errors.track ? 'border-red-500' : 'border-border'
+            errors.track ? 'border-error' : 'border-border'
           ]"
           @change="changeMotionTrack(($event.target as HTMLSelectElement).value)"
         >
@@ -803,7 +798,7 @@ function changeServerWorkflow(id: string): void {
             :placeholder="panels.lowcodeActionMotionTimeout"
             :class="[
               'w-24 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-              errors.ms ? 'border-red-500' : 'border-border'
+              errors.ms ? 'border-error' : 'border-border'
             ]"
             @change="
               patch({
@@ -838,7 +833,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="count > 0"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.condExpr ? 'border-red-500' : 'border-border'
+            errors.condExpr ? 'border-error' : 'border-border'
           ]"
           @change="patch({ condExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -854,7 +849,7 @@ function changeServerWorkflow(id: string): void {
           placeholder='"Delete this?"'
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.message ? 'border-red-500' : 'border-border'
+            errors.message ? 'border-error' : 'border-border'
           ]"
           @change="patch({ messageExpr: ($event.target as HTMLInputElement).value })"
         />
@@ -872,7 +867,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-workflow"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.workflow ? 'border-red-500' : 'border-border'
+            errors.workflow ? 'border-error' : 'border-border'
           ]"
           @change="changeWorkflow(($event.target as HTMLSelectElement).value)"
         >
@@ -892,7 +887,7 @@ function changeServerWorkflow(id: string): void {
           data-test-id="lowcode-action-server-workflow"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            errors.workflow ? 'border-red-500' : 'border-border'
+            errors.workflow ? 'border-error' : 'border-border'
           ]"
           @change="changeServerWorkflow(($event.target as HTMLSelectElement).value)"
         >
@@ -911,7 +906,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="workflow-id"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.workflow ? 'border-red-500' : 'border-border'
+            errors.workflow ? 'border-error' : 'border-border'
           ]"
           @change="patch({ workflowId: ($event.target as HTMLInputElement).value.trim() })"
         />
@@ -925,7 +920,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="result (optional)"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.resultName ? 'border-red-500' : 'border-border'
+            errors.resultName ? 'border-error' : 'border-border'
           ]"
           @change="
             patch({ resultName: ($event.target as HTMLInputElement).value.trim() || undefined })
@@ -953,7 +948,7 @@ function changeServerWorkflow(id: string): void {
       :placeholder="panels.lowcodeActionApiBody"
       :class="[
         'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-        errors.body ? 'border-red-500' : 'border-border'
+        errors.body ? 'border-error' : 'border-border'
       ]"
       @change="patch({ bodyJson: ($event.target as HTMLInputElement).value })"
     />
@@ -968,7 +963,7 @@ function changeServerWorkflow(id: string): void {
       :placeholder="panels.lowcodeActionAuthEmailPlaceholder"
       :class="[
         'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-        errors.email ? 'border-red-500' : 'border-border'
+        errors.email ? 'border-error' : 'border-border'
       ]"
       @change="patch({ emailExpr: ($event.target as HTMLInputElement).value })"
     />
@@ -982,7 +977,7 @@ function changeServerWorkflow(id: string): void {
       :placeholder="panels.lowcodeActionAuthPasswordPlaceholder"
       :class="[
         'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-        errors.password ? 'border-red-500' : 'border-border'
+        errors.password ? 'border-error' : 'border-border'
       ]"
       @change="patch({ passwordExpr: ($event.target as HTMLInputElement).value })"
     />
@@ -992,13 +987,10 @@ function changeServerWorkflow(id: string): void {
       data-test-id="lowcode-action-track-event-properties"
       class="flex flex-col gap-1 pl-1"
     >
-      <Tip
-        v-if="!analyticsConfigured"
-        label="Open the empty-selection Services & Workflows panel to add a GA4, Plausible, or PostHog provider id."
-      >
+      <Tip v-if="!analyticsConfigured" :label="panels.lowcodeAnalyticsConfigureProviderHint">
         <p
           data-test-id="lowcode-action-track-event-config-hint"
-          class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
+          class="rounded border border-warning/40 bg-warning/10 px-2 py-1 text-[10px] text-warning"
         >
           {{ ANALYTICS_TRACK_EVENT_CONFIG_HINT }}
         </p>
@@ -1019,7 +1011,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="plan"
           :class="[
             'w-20 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-            errors.properties?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+            errors.properties?.get(i)?.keyError ? 'border-error' : 'border-border'
           ]"
           @change="updateTrackProperty(i, { key: ($event.target as HTMLInputElement).value })"
         />
@@ -1032,7 +1024,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="selectedPlan"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-            errors.properties?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+            errors.properties?.get(i)?.valueError ? 'border-error' : 'border-border'
           ]"
           @change="
             updateTrackProperty(i, {
@@ -1099,7 +1091,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="priceId"
           :class="[
             'w-24 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-            errors.entries?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+            errors.entries?.get(i)?.keyError ? 'border-error' : 'border-border'
           ]"
           @change="updateStripePayloadEntry(i, { key: ($event.target as HTMLInputElement).value })"
         />
@@ -1112,7 +1104,7 @@ function changeServerWorkflow(id: string): void {
           placeholder="selectedPriceId"
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-            errors.entries?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+            errors.entries?.get(i)?.valueError ? 'border-error' : 'border-border'
           ]"
           @change="
             updateStripePayloadEntry(i, {
@@ -1175,7 +1167,7 @@ function changeServerWorkflow(id: string): void {
       <p
         v-if="errors.payloadSourceConflict"
         data-test-id="lowcode-action-supabase-payload-source-conflict"
-        class="pl-1 text-[10px] text-orange-500"
+        class="pl-1 text-[10px] text-warning"
       >
         {{ panels.lowcodeActionSupabasePayloadSourceConflict }}
       </p>
@@ -1188,7 +1180,7 @@ function changeServerWorkflow(id: string): void {
         :placeholder="panels.lowcodeActionSupabasePayload"
         :class="[
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-          errors.payload ? 'border-red-500' : 'border-border'
+          errors.payload ? 'border-error' : 'border-border'
         ]"
         @change="patch({ payloadJson: ($event.target as HTMLInputElement).value })"
       />
@@ -1211,7 +1203,7 @@ function changeServerWorkflow(id: string): void {
             :placeholder="panels.lowcodeActionSupabasePayloadEntryKey"
             :class="[
               'w-20 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-              errors.entries?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+              errors.entries?.get(i)?.keyError ? 'border-error' : 'border-border'
             ]"
             @change="updateEntry(i, { key: ($event.target as HTMLInputElement).value })"
           />
@@ -1224,7 +1216,7 @@ function changeServerWorkflow(id: string): void {
             :placeholder="panels.lowcodeActionSupabasePayloadEntryValuePlaceholder"
             :class="[
               'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-              errors.entries?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+              errors.entries?.get(i)?.valueError ? 'border-error' : 'border-border'
             ]"
             @change="updateEntry(i, { valueExpr: ($event.target as HTMLInputElement).value })"
           />
@@ -1288,7 +1280,7 @@ function changeServerWorkflow(id: string): void {
             :placeholder="panels.lowcodeActionSupabaseFilterValuePlaceholder"
             :class="[
               'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-              errors.filters?.has(i) ? 'border-red-500' : 'border-border'
+              errors.filters?.has(i) ? 'border-error' : 'border-border'
             ]"
             @change="updateFilter(i, { valueExpr: ($event.target as HTMLInputElement).value })"
           />
@@ -1439,7 +1431,7 @@ function changeServerWorkflow(id: string): void {
             placeholder="argument"
             :class="[
               'w-24 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-              errors.argErrors?.has(entry.key) ? 'border-red-500' : 'border-border'
+              errors.argErrors?.has(entry.key) ? 'border-error' : 'border-border'
             ]"
             @change="updateInvokeServerArg(i, { key: ($event.target as HTMLInputElement).value })"
           />
@@ -1452,7 +1444,7 @@ function changeServerWorkflow(id: string): void {
             placeholder="expression"
             :class="[
               'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
-              errors.argErrors?.has(entry.key) ? 'border-red-500' : 'border-border'
+              errors.argErrors?.has(entry.key) ? 'border-error' : 'border-border'
             ]"
             @change="
               updateInvokeServerArg(i, {
@@ -1473,7 +1465,7 @@ function changeServerWorkflow(id: string): void {
         <p
           v-if="errors.argErrors?.has(entry.key)"
           data-test-id="lowcode-action-server-workflow-arg-error"
-          class="pl-1 text-[10px] text-red-500"
+          class="pl-1 text-[10px] text-error"
         >
           {{ entry.key }}: {{ errors.argErrors?.get(entry.key) }}
         </p>
@@ -1510,7 +1502,7 @@ function changeServerWorkflow(id: string): void {
             :placeholder="arg.optional ? 'optional' : 'expression'"
             :class="[
               'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-              errors.argErrors?.has(arg.name) ? 'border-red-500' : 'border-border'
+              errors.argErrors?.has(arg.name) ? 'border-error' : 'border-border'
             ]"
             @change="setArg(arg.name, ($event.target as HTMLInputElement).value)"
           />
@@ -1518,7 +1510,7 @@ function changeServerWorkflow(id: string): void {
         <p
           v-if="errors.argErrors?.has(arg.name)"
           data-test-id="lowcode-action-workflow-arg-error"
-          class="pl-1 text-[10px] text-red-500"
+          class="pl-1 text-[10px] text-error"
         >
           {{ arg.name }}: {{ errors.argErrors?.get(arg.name) }}
         </p>
@@ -1528,7 +1520,7 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.workflow"
       data-test-id="lowcode-action-workflow-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       workflow: {{ errors.workflow }}
     </p>
@@ -1536,7 +1528,7 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.resultName"
       data-test-id="lowcode-action-server-workflow-result-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       result: {{ errors.resultName }}
     </p>
@@ -1544,7 +1536,7 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.track"
       data-test-id="lowcode-action-motion-track-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       track: {{ errors.track }}
     </p>
@@ -1552,14 +1544,14 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.email"
       data-test-id="lowcode-action-auth-email-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       email: {{ errors.email }}
     </p>
     <p
       v-if="errors.password"
       data-test-id="lowcode-action-auth-password-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       password: {{ errors.password }}
     </p>
@@ -1594,28 +1586,28 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.target"
       data-test-id="lowcode-action-target-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       target: {{ errors.target }}
     </p>
     <p
       v-if="errors.table"
       data-test-id="lowcode-action-table-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       table: {{ errors.table }}
     </p>
     <p
       v-if="errors.payload"
       data-test-id="lowcode-action-payload-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       payload: {{ errors.payload }}
     </p>
     <p
       v-if="errors.url"
       data-test-id="lowcode-action-url-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       url: {{ errors.url }}
     </p>
@@ -1629,43 +1621,35 @@ function changeServerWorkflow(id: string): void {
     <p
       v-if="errors.body"
       data-test-id="lowcode-action-body-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       body: {{ errors.body }}
     </p>
     <p
       v-if="errors.expr"
       data-test-id="lowcode-action-expr-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       expression: {{ errors.expr }}
     </p>
     <p
       v-if="errors.condExpr"
       data-test-id="lowcode-action-cond-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       condition: {{ errors.condExpr }}
     </p>
     <p
       v-if="errors.message"
       data-test-id="lowcode-action-message-error"
-      class="pl-1 text-[10px] text-red-500"
+      class="pl-1 text-[10px] text-error"
     >
       message: {{ errors.message }}
     </p>
-    <p
-      v-if="errors.ms"
-      data-test-id="lowcode-action-ms-error"
-      class="pl-1 text-[10px] text-red-500"
-    >
+    <p v-if="errors.ms" data-test-id="lowcode-action-ms-error" class="pl-1 text-[10px] text-error">
       delay: {{ errors.ms }}
     </p>
-    <p
-      v-if="errors.to"
-      data-test-id="lowcode-action-to-error"
-      class="pl-1 text-[10px] text-red-500"
-    >
+    <p v-if="errors.to" data-test-id="lowcode-action-to-error" class="pl-1 text-[10px] text-error">
       to: {{ errors.to }}
     </p>
   </li>

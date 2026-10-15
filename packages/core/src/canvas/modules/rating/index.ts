@@ -56,7 +56,7 @@ function drawLabel(
     label,
     renderer.color4f(color.r, color.g, color.b, color.a * (box.muted ? 0.45 : 1)),
     { halfLeading: true },
-    (paragraph) => canvas.drawParagraph(paragraph, box.x, box.top)
+    (paragraph) => paragraph.draw(canvas, box.x, box.top)
   )
 }
 

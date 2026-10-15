@@ -1,13 +1,13 @@
-import type { SceneNode } from '@open-pencil/scene-graph'
-
 import { abortError, isAbortError, throwIfAborted } from '#core/async-work'
 import type { FigmaAPI } from '#core/figma-api'
+import type { FigmaNodeProxy } from '#core/figma-api/proxy'
 
 import type { StockPhotoProvider, StockPhotoResult } from './providers'
 
 const STOCK_PHOTO_ABORT_MESSAGE = 'Stock photo request cancelled'
-const STOCK_PHOTO_TARGET_TYPES: ReadonlySet<SceneNode['type']> = new Set([
+const STOCK_PHOTO_TARGET_TYPES: ReadonlySet<FigmaNodeProxy['type']> = new Set([
   'FRAME',
+  'SLOT',
   'RECTANGLE',
   'ROUNDED_RECTANGLE',
   'ELLIPSE',
@@ -63,7 +63,10 @@ export async function applyPhoto(
   }
 
   if (node.type !== 'BOOLEAN_OPERATION' && node.children.length > 0) {
-    return { id: req.id, error: `"${node.name}" has children — use a leaf image placeholder` }
+    return {
+      id: req.id,
+      error: `"${node.name}" has children — use a leaf image placeholder`
+    }
   }
 
   const perPage = Math.min((req.index ?? 0) + 3, 15)
@@ -72,10 +75,18 @@ export async function applyPhoto(
 
   let results: StockPhotoResult[]
   try {
-    results = await provider.search(req.query, { perPage, orientation, targetDim, signal })
+    results = await provider.search(req.query, {
+      perPage,
+      orientation,
+      targetDim,
+      signal
+    })
   } catch (err) {
     if (isAbortError(err, signal)) throw abortError(STOCK_PHOTO_ABORT_MESSAGE)
-    return { id: req.id, error: err instanceof Error ? err.message : String(err) }
+    return {
+      id: req.id,
+      error: err instanceof Error ? err.message : String(err)
+    }
   }
   throwIfAborted(signal, STOCK_PHOTO_ABORT_MESSAGE)
 
@@ -89,7 +100,10 @@ export async function applyPhoto(
     imageBytes = new Uint8Array(await response.arrayBuffer())
   } catch (err) {
     if (isAbortError(err, signal)) throw abortError(STOCK_PHOTO_ABORT_MESSAGE)
-    return { id: req.id, error: `Download: ${err instanceof Error ? err.message : String(err)}` }
+    return {
+      id: req.id,
+      error: `Download: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
   throwIfAborted(signal, STOCK_PHOTO_ABORT_MESSAGE)
 

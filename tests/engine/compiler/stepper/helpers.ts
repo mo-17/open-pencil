@@ -32,9 +32,14 @@ export function stepperGraph() {
     bindings: { currentIndex: { kind: 'ref', stateId: 'step' } },
     events: {
       onChange: [
-        { kind: 'setState', targetStateId: 'changed', valueExpr: '$value' },
-        { kind: 'setState', targetStateId: 'previous', valueExpr: '$event.detail.previousIndex' },
-        { kind: 'setState', targetStateId: 'calls', valueExpr: 'calls + 1' }
+        { id: 'set-value', kind: 'setState', targetStateId: 'changed', valueExpr: '$value' },
+        {
+          id: 'set-value',
+          kind: 'setState',
+          targetStateId: 'previous',
+          valueExpr: '$event.detail.previousIndex'
+        },
+        { id: 'set-value', kind: 'setState', targetStateId: 'calls', valueExpr: 'calls + 1' }
       ]
     }
   })

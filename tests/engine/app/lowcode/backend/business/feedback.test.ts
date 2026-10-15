@@ -18,7 +18,7 @@ function actionsIn(actions: readonly ActionDef[]): ActionDef[] {
 
 describe('business template feedback boundaries', () => {
   for (const target of ['react', 'vue'] as const)
-    test.each(BUSINESS_TEMPLATE_IDS)(
+    test.each([...BUSINESS_TEMPLATE_IDS])(
       `${target} %s confirms completed commands but keeps inspect, error and cancel silent`,
       async (kind) => {
         const fixture = await businessBrowserFixture(kind, target, [], 'zh-CN')

@@ -11,6 +11,7 @@ import { STATE_VALUE_TYPES, defaultAsString, useStateRowEditor } from './state-r
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const structuredStateTypes: ReadonlySet<StateValueType> = new Set(['array', 'object'])
 const { panels } = useI18n()
 const presence = usePresenceTarget('docState')
 const conflictBanner = usePresenceConflictBanner('docState')
@@ -48,7 +49,7 @@ const { valueErrors, nameErrors, addState, removeState, renameState, changeType,
     <p
       v-if="conflictBanner"
       data-test-id="lowcode-document-state-conflict"
-      class="mb-1.5 text-[10px] text-amber-500"
+      class="mb-1.5 text-[10px] text-warning"
     >
       {{ conflictBanner }}
     </p>
@@ -83,7 +84,7 @@ const { valueErrors, nameErrors, addState, removeState, renameState, changeType,
             data-test-id="lowcode-document-state-name"
             :class="[
               'min-w-0 flex-1 rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
-              nameErrors.has(state.id) ? 'border-red-500' : 'border-border'
+              nameErrors.has(state.id) ? 'border-error' : 'border-border'
             ]"
             @change="renameState(state.id, ($event.target as HTMLInputElement).value)"
           />
@@ -126,10 +127,8 @@ const { valueErrors, nameErrors, addState, removeState, renameState, changeType,
             "
             :class="[
               'rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
-              state.type === 'array' || state.type === 'object'
-                ? 'min-w-0 flex-1 font-mono'
-                : 'w-20',
-              valueErrors.has(state.id) ? 'border-red-500' : 'border-border'
+              structuredStateTypes.has(state.type) ? 'min-w-0 flex-1 font-mono' : 'w-20',
+              valueErrors.has(state.id) ? 'border-error' : 'border-border'
             ]"
             @change="changeDefault(state.id, ($event.target as HTMLInputElement).value, state.type)"
           />
@@ -146,14 +145,14 @@ const { valueErrors, nameErrors, addState, removeState, renameState, changeType,
         <p
           v-if="nameErrors.has(state.id)"
           data-test-id="lowcode-document-state-name-error"
-          class="pl-1 text-[10px] text-red-500"
+          class="pl-1 text-[10px] text-error"
         >
           {{ nameErrors.get(state.id) }}
         </p>
         <p
           v-if="valueErrors.has(state.id)"
           data-test-id="lowcode-document-state-default-error"
-          class="pl-1 text-[10px] text-red-500"
+          class="pl-1 text-[10px] text-error"
         >
           {{ valueErrors.get(state.id) }}
         </p>

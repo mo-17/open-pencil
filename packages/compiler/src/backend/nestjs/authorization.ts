@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import type {
   AuthAccessOperation,
   AuthOwnershipIR,
@@ -135,11 +137,9 @@ export function nestJSAuthorization(
       ),
       public:
         operation === 'select' && policies.some(({ principal }) => principal.kind === 'anonymous'),
-      roles: [
-        ...new Set(
-          policies.flatMap(({ principal }) => (principal.kind === 'role' ? [principal.roleId] : []))
-        )
-      ].sort()
+      roles: uniq(
+        policies.flatMap(({ principal }) => (principal.kind === 'role' ? [principal.roleId] : []))
+      ).sort()
     }
   }
   return {

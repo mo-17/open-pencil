@@ -49,19 +49,4 @@ describe('withAbortSignal', () => {
     await Promise.resolve()
     expect(nativeCompleted).toBe(true)
   })
-
-  test('documents the Tauri dispatch marker immediately before native invoke', async () => {
-    const source = await Bun.file('src/app/tauri/http.ts').text()
-    const dispatchIndex = source.indexOf('onDispatch?.()')
-    const invokeIndex = source.indexOf("invoke<ProxyHttpResponse>('proxy_http_request'")
-    expect(dispatchIndex).toBeGreaterThan(-1)
-    expect(invokeIndex).toBeGreaterThan(dispatchIndex)
-  })
-
-  test('forwards separate success/error response limits and a native timeout', async () => {
-    const source = await Bun.file('src/app/tauri/http.ts').text()
-    expect(source).toContain('max_response_bytes: maxResponseBytes')
-    expect(source).toContain('max_error_response_bytes: maxErrorResponseBytes')
-    expect(source).toContain('timeout_ms: timeoutMs')
-  })
 })

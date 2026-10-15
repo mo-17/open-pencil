@@ -26,7 +26,14 @@ export function formFeedbackFixture(target: 'react' | 'vue', kit = false) {
     paddingTop: 16,
     paddingLeft: 16,
     events: {
-      onSubmit: [{ kind: 'setState', targetStateId: 'submitted', valueExpr: 'submitted + 1' }]
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submitted',
+          valueExpr: 'submitted + 1'
+        }
+      ]
     }
   })
   const field = (type: NodeType, name: string, state: string, props: JSONObject = {}) =>
@@ -56,7 +63,11 @@ export function formFeedbackFixture(target: 'react' | 'vue', kit = false) {
   })
   const choice = field('RADIO', 'Choice', 'choice', { options: ['Alpha', 'Beta'] })
   graph.updateNode(choice.id, {
-    events: { onBlur: [{ kind: 'setState', targetStateId: 'blur', valueExpr: '"choice"' }] }
+    events: {
+      onBlur: [
+        { id: 'fixture-action-2', kind: 'setState', targetStateId: 'blur', valueExpr: '"choice"' }
+      ]
+    }
   })
   field('CHECKBOX', 'Tags', 'tags', { options: ['One', 'Two'] })
   field('SELECT', 'City', 'city', {

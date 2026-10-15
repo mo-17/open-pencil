@@ -2,13 +2,15 @@ import { describe, expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { compact } from 'es-toolkit'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 
 import { repoPath } from '#tests/helpers/paths'
 
 const registry = new IORegistry(BUILTIN_IO_FORMATS)
 const FIXTURE_PATH = repoPath('tests/fixtures/pencil_button.pen')
-const ROOT = resolve(import.meta.dir, '../../../..')
+const ROOT = repoPath()
 const PEN_READ_MODULE_URL = pathToFileURL(
   resolve(ROOT, 'packages/core/src/io/formats/pen/read.ts')
 ).href
@@ -164,7 +166,7 @@ describe('untrusted .pen IO reader', () => {
       process.exited
     ])
 
-    expect(exitCode, [stdout, stderr].filter(Boolean).join('\n')).toBe(0)
+    expect(exitCode, compact([stdout, stderr]).join('\n')).toBe(0)
   })
 
   test('explicit non-browser fallback skips an ambient Worker and remains bounded', async () => {
@@ -211,6 +213,6 @@ describe('untrusted .pen IO reader', () => {
       process.exited
     ])
 
-    expect(exitCode, [stdout, stderr].filter(Boolean).join('\n')).toBe(0)
+    expect(exitCode, compact([stdout, stderr]).join('\n')).toBe(0)
   })
 })

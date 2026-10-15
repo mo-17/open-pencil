@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { taroAdapter } from '#compiler/adapters/taro'
 import { vrTourHybridKey } from '#compiler/adapters/vr-tour/hybrid'
 import type { ComponentDef, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -14,6 +15,8 @@ import {
   createVRTourModuleInstance,
   createVRTourSampleScenes
 } from '@open-pencil/core/plugins'
+
+import { repoPath } from '#tests/helpers/paths'
 
 import { tourFixture } from './helpers'
 
@@ -161,9 +164,7 @@ test('persisted 8K media remains in the web sidecar and passes the unchanged min
   const bytesByURL = new Map<string, Uint8Array>()
   for (const sample of VR_TOUR_SAMPLE_ASSETS) {
     const bytes = new Uint8Array(
-      readFileSync(
-        new URL(`../../../../packages/demos/vr-tour/${sample.fileName}`, import.meta.url)
-      )
+      readFileSync(repoPath(`packages/demos/vr-tour/${sample.fileName}`))
     )
     graph.images.set(sample.graphImageHash, bytes)
     bytesByURL.set(sample.panoramaUrl, bytes)
@@ -175,9 +176,18 @@ test('persisted 8K media remains in the web sidecar and passes the unchanged min
       ([path, content]) => path.startsWith('src/') && content instanceof Uint8Array
     )
   ).toBe(false)
-  const manifest = JSON.parse(textFile(output.files, 'vr-tour-web/manifest.json')) as {
-    assets: Array<{ url: string; chunks: string[]; byteLength: number }>
-  }
+  const manifest = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        assets: v.array(
+          v.looseObject({ url: v.string(), chunks: v.array(v.string()), byteLength: v.number() })
+        )
+      })
+    ),
+    textFile(output.files, 'vr-tour-web/manifest.json')
+  )
   expect(manifest.assets).toHaveLength(2)
   for (const asset of manifest.assets) {
     const parts = asset.chunks.map((path) => {
@@ -186,7 +196,7 @@ test('persisted 8K media remains in the web sidecar and passes the unchanged min
       expect(bytes.byteLength).toBeLessThanOrEqual(1024 * 1024)
       return bytes
     })
-    expect(new Uint8Array(Buffer.concat(parts))).toEqual(bytesByURL.get(asset.url))
+    expect<unknown>(new Uint8Array(Buffer.concat(parts))).toEqual(bytesByURL.get(asset.url))
   }
   expect(textFile(output.files, 'vr-tour-web/SOURCES.json')).toContain('CC0')
 })

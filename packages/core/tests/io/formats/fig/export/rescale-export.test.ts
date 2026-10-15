@@ -1,25 +1,23 @@
 import { expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
-import type { NestedBindingCapture } from '#core-tests/helpers/fig/captures'
-import { readFixtureJSON } from '#core-tests/helpers/fig/fixtures'
+import { CapturedFigRecords, readFixture } from '#core-tests/helpers/fig/fixtures'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { exportFigFile } from '@open-pencil/core/io'
 import { initCodec } from '@open-pencil/core/kiwi'
 import { materializeDocument, parseFigBuffer } from '@open-pencil/fig'
-import type { SymbolData } from '@open-pencil/fig/instance-overrides'
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import { symbolDataOf } from '@open-pencil/fig/instance-overrides'
 import { setInstanceOverride } from '@open-pencil/scene-graph'
 
-const fixture = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const fixture = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 for (const scale of [0.5, 2]) {
   for (const literalClaim of [false, true]) {
     test(`rescaling an imported owner by ${scale} exports current coordinates (literal claim: ${literalClaim})`, async () => {
       const { graph, sources } = materializeDocument(
-        fixture.nodeChanges as NodeChange[],
+        fixture.nodeChanges,
         fixture.blobs.map((value) => Uint8Array.fromBase64(value)),
         { derivedBounds: true }
       )
@@ -29,7 +27,9 @@ for (const scale of [0.5, 2]) {
       api.bindVariable(root.id, 'paddingRight', '293742:7')
       api.bindVariable(nested.id, 'paddingRight', '293742:7')
       if (literalClaim) {
-        createEditor({ graph }).updateNodeWithUndo(root.id, { paddingLeft: 12 })
+        createEditor({ graph }).updateNodeWithUndo(root.id, {
+          paddingLeft: 12
+        })
         setInstanceOverride(root.instanceOverrides, root.id, root.id, 'paddingLeft', 12)
       }
       expectDefined(api.getNodeById(root.id)).rescale(scale)
@@ -55,15 +55,16 @@ for (const scale of [0.5, 2]) {
       const exported = expectDefined(
         parsed.nodeChanges.find((node) => node.name === 'Rescaled owner')
       )
-      const symbol = exported.symbolData as SymbolData
+      const symbol = expectDefined(symbolDataOf(exported), 'exported symbol data')
+      const symbolID = expectDefined(symbol.symbolID)
       expect(
         symbol.symbolOverrides?.filter((entry) => entry.size).map((entry) => entry.guidPath?.guids)
-      ).toEqual([[expectDefined(symbol.symbolID, 'main component guid')]])
+      ).toEqual([[symbolID]])
       const reopened = materializeDocument(parsed.nodeChanges, parsed.blobs, {
         derivedBounds: true
       }).graph
       const restored = expectDefined(
-        Array.from(reopened.getAllNodes()).find((node) => node.name === 'Rescaled owner')
+        [...reopened.getAllNodes()].find((node) => node.name === 'Rescaled owner')
       )
       const child = expectDefined(reopened.getChildren(restored.id)[0])
       expect([

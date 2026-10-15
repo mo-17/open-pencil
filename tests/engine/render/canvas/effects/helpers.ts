@@ -1,7 +1,37 @@
-import { mock } from 'bun:test'
+import { mock, type Mock } from 'bun:test'
+
+import type { Canvas, InputRect, Paint } from 'canvaskit-wasm'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderEffects } from '#core/canvas/shadows'
+
+type RendererMockMethods =
+  | 'color4f'
+  | 'ltrb'
+  | 'renderText'
+  | 'applyClippedBlur'
+  | 'clipNodeShape'
+  | 'applyFill'
+  | 'renderShape'
+  | 'renderSection'
+  | 'renderComponentSet'
+  | 'drawNodeFill'
+  | 'drawNodeStroke'
+  | 'drawStrokeWithAlign'
+  | 'resolveStrokeColor'
+  | 'isRectangularType'
+export type MockRenderer = SkiaRenderer & { [K in RendererMockMethods]: Mock<SkiaRenderer[K]> }
+
+type CanvasArguments<K extends keyof Canvas> = Canvas[K] extends (...args: infer A) => unknown
+  ? A
+  : never
+
+/** A no-op drawing method with the CanvasKit call signature preserved for recorded arguments. */
+export function canvasMock<K extends keyof Canvas>(
+  _method: K
+): Mock<(...args: CanvasArguments<K>) => undefined> {
+  return mock<(...args: CanvasArguments<K>) => undefined>(() => undefined)
+}
 
 export interface MockCanvasPath {
   sourceBuilder?: MockCanvasPathBuilder
@@ -15,11 +45,20 @@ export interface MockCanvasPathBuilder {
   detachAndDelete: ReturnType<typeof mock>
 }
 
-export function mockCalls(fn: ReturnType<typeof mock>): unknown[][] {
-  return (fn as { mock: { calls: unknown[][] } }).mock.calls
+import { asRenderer, asDouble } from '../helpers'
+
+/**
+ * Reads the recorded calls off a stand-in method. The renderer stand-ins are widened to the real
+ * CanvasKit and `SkiaRenderer` shapes, so their members are typed as the plain functions they
+ * replace rather than as mocks, and the mock state has to be recovered at the read.
+ */
+export function mockCalls(fn: unknown): unknown[][] {
+  const calls = (fn as { mock?: { calls?: unknown[][] } }).mock?.calls
+  if (!calls) throw new Error('expected a mock function with recorded calls')
+  return calls
 }
 
-export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaRenderer {
+export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): MockRenderer {
   class MockPath implements MockCanvasPath {
     sourceBuilder?: MockCanvasPathBuilder
     delete = mock(() => undefined)
@@ -46,7 +85,7 @@ export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaR
     })
   }
 
-  return {
+  return asDouble<MockRenderer>({
     ck: {
       Color4f: mock((r, g, b, a) => new Float32Array([r, g, b, a])),
       LTRBRect: mock((l, t, r, b) => new Float32Array([l, t, r, b])),
@@ -156,7 +195,9 @@ export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaR
     renderShape: mock(() => undefined),
     renderSection: mock(() => undefined),
     renderComponentSet: mock(() => undefined),
-    renderEffects: mock((...args) => renderEffects(overrides as SkiaRenderer, ...args)),
+    renderEffects: mock((...args: Parameters<SkiaRenderer['renderEffects']>) =>
+      renderEffects(asRenderer(overrides), ...args)
+    ),
     drawNodeFill: mock(() => undefined),
     drawNodeStroke: mock(() => undefined),
     drawStrokeWithAlign: mock(() => undefined),
@@ -168,28 +209,34 @@ export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaR
     isRectangularType: mock(() => true),
     worldViewport: { x: 0, y: 0, w: 1000, h: 1000 },
     ...overrides
-  } as SkiaRenderer
+  })
 }
 
 export function createMockCanvas() {
   return {
-    save: mock(() => undefined),
-    restore: mock(() => undefined),
-    translate: mock(() => undefined),
-    concat: mock(() => undefined),
-    rotate: mock(() => undefined),
-    scale: mock(() => undefined),
-    drawOval: mock(() => undefined),
-    drawRRect: mock(() => undefined),
-    drawCircle: mock(() => undefined),
-    drawLine: mock(() => undefined),
-    drawRect: mock(() => undefined),
-    drawPath: mock(() => undefined),
-    saveLayer: mock(() => undefined),
-    clipPath: mock(() => undefined),
-    clipRRect: mock(() => undefined),
-    clipRect: mock(() => undefined),
-    drawPicture: mock(() => undefined),
-    drawParagraph: mock(() => undefined)
+    save: canvasMock('save'),
+    restore: canvasMock('restore'),
+    translate: canvasMock('translate'),
+    concat: canvasMock('concat'),
+    rotate: canvasMock('rotate'),
+    scale: canvasMock('scale'),
+    drawOval: canvasMock('drawOval'),
+    drawRRect: canvasMock('drawRRect'),
+    drawCircle: canvasMock('drawCircle'),
+    drawLine: canvasMock('drawLine'),
+    drawRect: canvasMock('drawRect'),
+    drawPath: canvasMock('drawPath'),
+    saveLayer: mock((_paint?: Paint, _bounds?: InputRect | null) => undefined),
+    clipPath: canvasMock('clipPath'),
+    clipRRect: canvasMock('clipRRect'),
+    clipRect: canvasMock('clipRect'),
+    drawPicture: canvasMock('drawPicture'),
+    drawParagraph: canvasMock('drawParagraph')
   }
+}
+
+/** Stand-in rectangles are ordinary float buffers, never WASM allocations. */
+export function rectValues(rect: InputRect): number[] {
+  if (rect instanceof Float32Array || Array.isArray(rect)) return Array.from(rect)
+  throw new Error('Expected a recorded rectangle buffer')
 }

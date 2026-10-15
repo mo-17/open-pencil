@@ -75,7 +75,11 @@ export function paginationGraph() {
       width: 330,
       height: 36,
       interactiveProps: { text },
-      events: { onClick: [{ kind: 'setState', targetStateId: state, valueExpr: value }] }
+      events: {
+        onClick: [
+          { id: 'fixture-action-1', kind: 'setState', targetStateId: state, valueExpr: value }
+        ]
+      }
     })
   return { graph, page, main, doc, frame }
 }

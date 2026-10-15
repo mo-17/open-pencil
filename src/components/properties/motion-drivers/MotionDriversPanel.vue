@@ -202,7 +202,7 @@ function checkboxValue(event: Event): boolean {
             />
             <button
               type="button"
-              class="rounded border border-border px-2 text-[10px] text-danger hover:bg-hover"
+              class="rounded border border-border px-2 text-[10px] text-error hover:bg-hover"
               data-test-id="motion-driver-delete"
               @click="deleteSelected"
             >
@@ -378,7 +378,7 @@ function checkboxValue(event: Event): boolean {
 
         <p
           v-if="localError"
-          class="rounded border border-danger/40 bg-danger/10 px-2 py-1.5 text-[10px] leading-4 text-danger"
+          class="rounded border border-error/40 bg-error/10 px-2 py-1.5 text-[10px] leading-4 text-error"
           data-test-id="motion-driver-error"
         >
           {{ localError }}

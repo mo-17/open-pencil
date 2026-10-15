@@ -13,7 +13,9 @@ export function openPencilPwaPlugin() {
       // asset would be misleading and makes Workbox reject production builds.
       globIgnores: ['**/esbuild-*.wasm'],
 
-      navigateFallback: '/index.html'
+      navigateFallback: '/index.html',
+      // OAuth callbacks are standalone pages that relay a redirect, not app routes.
+      navigateFallbackDenylist: [/^\/oauth\//]
     },
     manifest: {
       name: 'OpenPencil',

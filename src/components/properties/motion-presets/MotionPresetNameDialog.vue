@@ -130,7 +130,7 @@ function submit(): void {
           data-test-id="motion-preset-custom-category"
         />
       </div>
-      <p v-if="error" role="alert" class="mt-1 text-[10px] text-danger">{{ error }}</p>
+      <p v-if="error" role="alert" class="mt-1 text-[10px] text-error">{{ error }}</p>
     </AppDialogBody>
     <AppDialogFooter>
       <button

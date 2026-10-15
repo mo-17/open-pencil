@@ -77,7 +77,7 @@ test('generic module field name becomes the FORM serialization key and invalid n
 })
 test('module audits and repairs preserve both endpoints, independent types and unrelated bindings', () => {
   const { graph, page, form, slider } = moduleValuesGraph()
-  graph.updateNode(slider.id, { bindings: { text: { kind: 'literal', value: 'keep' } } })
+  graph.updateNode(slider.id, { bindings: { text: { kind: 'literal', literalValue: 'keep' } } })
   const result = planValidatedFormValueBindings(graph, form.id, { moduleFields: moduleValueFields })
   expect(result.ok).toBe(true)
   if (!result.ok) return
@@ -85,7 +85,10 @@ test('module audits and repairs preserve both endpoints, independent types and u
   for (const repair of result.data.bindings)
     graph.updateNode(repair.nodeId, { bindings: repair.bindings })
   graph.updateNode(page.id, { state: result.data.nextState })
-  expect(graph.getNode(slider.id)?.bindings?.text).toEqual({ kind: 'literal', value: 'keep' })
+  expect<unknown>(graph.getNode(slider.id)?.bindings?.text).toEqual({
+    kind: 'literal',
+    literalValue: 'keep'
+  })
   const audit = auditValidatedFormControls(graph, form.id, { moduleFields: moduleValueFields })
   expect(audit.ok).toBe(true)
   if (audit.ok) expect(audit.data.summary).toMatchObject({ validated: 6, valid: 6, missing: 0 })

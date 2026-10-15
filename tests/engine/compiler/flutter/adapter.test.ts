@@ -170,7 +170,7 @@ describe('Flutter compiler adapter', () => {
       layoutMode: 'VERTICAL',
       width: 360,
       height: 640,
-      gap: 12,
+      itemSpacing: 12,
       paddingTop: 16,
       paddingRight: 16,
       paddingBottom: 16,
@@ -724,7 +724,7 @@ describe('Flutter compiler adapter', () => {
     const component = graph.createNode('COMPONENT', pageId, { name: 'class' })
     graph.createNode('TEXT', component.id, { name: 'Title', text: 'Default' })
     graph.createInstance(component.id, pageId, {
-      componentProperties: { Title: { type: 'TEXT', value: 'Override' } }
+      componentPropertyValues: { Title: 'Override' }
     })
 
     const output = compile({ graph, pageIds: [pageId], options: flutterOptions() })

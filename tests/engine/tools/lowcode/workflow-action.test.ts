@@ -36,7 +36,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects malformed invokeServerWorkflow args and unknown fields', () => {
@@ -90,7 +90,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('persists a delay and a stop', () => {
@@ -102,7 +102,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     ]
     const result = update(btn.id, { onClick: actions }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick).toEqual(actions)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick).toEqual(actions)
   })
 
   test('rejects a condition whose then is not an array', () => {
@@ -153,7 +153,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     const action = { id: 'to-1', kind: 'toast', messageExpr: '"Saved"', variant: 'success' }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects a toast with an unknown variant', () => {
@@ -193,7 +193,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects a confirm whose consequent is not an array, reporting the path', () => {
@@ -235,7 +235,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     const action = { id: 'cb-1', kind: 'clipboard', valueExpr: '"https://x.y"' }
     const ok = update(btn.id, { onClick: [action] }, figma)
     expect(ok.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
     const bad = update(
       btn.id,
@@ -252,7 +252,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     const action = { id: 'cw-1', kind: 'callWorkflow', workflowId: 'wf-1' }
     const ok = update(btn.id, { onClick: [action] }, figma)
     expect(ok.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
     const bad = update(
       btn.id,
@@ -271,7 +271,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     const action = { id: 'cw-1', kind: 'callWorkflow', workflowId: 'wf-1', args: { msg: '"hi"' } }
     const ok = update(btn.id, { onClick: [action] }, figma)
     expect(ok.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
     const notObj = update(
       btn.id,
@@ -305,7 +305,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     }
     const ok = update(btn.id, { onClick: [action] }, figma)
     expect(ok.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects an invalid toast position and an invalid durationMs', () => {
@@ -341,7 +341,7 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     }
     const ok = update(btn.id, { onClick: [action] }, figma)
     expect(ok.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
     const bad = update(
       btn.id,
@@ -385,7 +385,7 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
     const r = setWorkflows(JSON.stringify(workflows), figma)
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.data).toEqual({ workflows: 1, actions: 2 })
-    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
+    expect<unknown>(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
 
     const read = getTool('read_workflows').execute(figma, {}) as Result<typeof workflows>
     expect(read.ok).toBe(true)

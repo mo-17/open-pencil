@@ -10,6 +10,14 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 
+import { compact } from 'es-toolkit/array'
+import * as v from 'valibot'
+
+import {
+  concreteImportSpecifiers,
+  parsePackageManifest,
+  type PackageManifest
+} from '@open-pencil/package-artifacts-tools'
 import { inspectTarball } from '@open-pencil/package-artifacts-tools/tarball'
 
 import {
@@ -19,6 +27,8 @@ import {
   usingPreparedPublishDirectories
 } from './packages'
 import { resolveExactReleaseTarballs } from './release-tarballs'
+import { collectPatternExportChecks, verifyPatternExports } from './smoke/pattern-exports'
+import type { PatternExportCheck } from './smoke/pattern-exports'
 
 const rootDir = repositoryRoot
 const privateDependencyDirs = usingPreparedPublishDirectories ? [] : ['packages/compiler']
@@ -50,14 +60,12 @@ function run(command: string[], cwd = rootDir, env: Record<string, string> = {})
   const stderr = proc.stderr.toString()
   if (!proc.success) {
     throw new Error(
-      [
+      compact([
         `$ ${command.join(' ')}`,
         stdout.trim(),
         stderr.trim(),
         `Exited with code ${proc.exitCode || 1}`
-      ]
-        .filter(Boolean)
-        .join('\n')
+      ]).join('\n')
     )
   }
   return stdout.trim()
@@ -196,19 +204,9 @@ function checkTypeConsumer(cwd: string): void {
   run([tsgoBin, '--noEmit', '-p', 'tsconfig.package-smoke.json'], cwd)
 }
 
-interface PackageJSON {
-  name: string
-  version: string
-  types?: string
-  exports?: unknown
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function readPackageJSON(packageDir: string): PackageJSON {
-  return JSON.parse(readFileSync(join(publicPackagePath(packageDir), 'package.json'), 'utf8'))
+function readPackageJSON(packageDir: string): PackageManifest {
+  const path = join(publicPackagePath(packageDir), 'package.json')
+  return parsePackageManifest(readFileSync(path, 'utf8'), path)
 }
 
 function collectExportTypePaths(value: unknown, paths: string[] = []): string[] {
@@ -223,40 +221,6 @@ function collectExportTypePaths(value: unknown, paths: string[] = []): string[] 
 
 function packageArchivePath(path: string): string {
   return `package/${path.replace(/^\.\//, '')}`
-}
-
-function exportKeyToSpecifier(packageName: string, exportKey: string): string | null {
-  if (exportKey === './package.json') return null
-  if (exportKey === '.') return packageName
-  if (!exportKey.startsWith('./')) {
-    throw new Error(`${packageName}: unsupported export key ${exportKey}`)
-  }
-  if (exportKey.includes('*')) {
-    throw new Error(
-      `${packageName}: package smoke cannot exhaustively import pattern export ${exportKey}`
-    )
-  }
-  return `${packageName}/${exportKey.slice(2)}`
-}
-
-function collectPublicImportSpecifiers(packageJSON: PackageJSON): string[] {
-  const { exports } = packageJSON
-  if (!exports) return []
-  if (typeof exports === 'string') return [packageJSON.name]
-  if (!isRecord(exports)) return []
-
-  const keys = Object.keys(exports)
-  if (keys.length === 0) return []
-
-  const hasExportMapKeys = keys.some((key) => key.startsWith('.'))
-  if (!hasExportMapKeys) return [packageJSON.name]
-
-  const specifiers: string[] = []
-  for (const key of keys) {
-    const specifier = exportKeyToSpecifier(packageJSON.name, key)
-    if (specifier) specifiers.push(specifier)
-  }
-  return specifiers
 }
 
 function bunEval(code: string, cwd: string): void {
@@ -357,17 +321,16 @@ const selector = testIdSelector('framework-smoke')
   run([viteBin, 'build', '--config', 'vite.config.mjs'], vueDir)
 }
 
-interface PackedCLIBuildReport {
-  files?: unknown
-  outDir?: unknown
-  packageName?: unknown
-  target?: unknown
-}
-
-interface PackedCLIBuildMarker {
-  files?: unknown
-  version?: unknown
-}
+const packedCLIBuildReportSchema = v.looseObject({
+  files: v.array(v.string()),
+  outDir: v.string(),
+  packageName: v.string(),
+  target: v.string()
+})
+const packedCLIBuildMarkerSchema = v.looseObject({
+  files: v.array(v.string()),
+  version: v.number()
+})
 
 function buildPackedCLIConsumers(cwd: string): void {
   const penPath = join(cwd, 'packed-cli-smoke.pen')
@@ -427,9 +390,9 @@ function buildPackedCLIConsumers(cwd: string): void {
         VITE_SUPABASE_URL: ''
       }
     )
-    let report: PackedCLIBuildReport
+    let report: v.InferOutput<typeof packedCLIBuildReportSchema>
     try {
-      report = JSON.parse(stdout) as PackedCLIBuildReport
+      report = v.parse(v.pipe(v.string(), v.parseJson(), packedCLIBuildReportSchema), stdout)
     } catch {
       throw new Error(`Packed CLI ${target} build did not return a JSON report: ${stdout}`)
     }
@@ -456,9 +419,10 @@ function buildPackedCLIConsumers(cwd: string): void {
       }
     }
 
-    const marker = JSON.parse(
+    const marker = v.parse(
+      v.pipe(v.string(), v.parseJson(), packedCLIBuildMarkerSchema),
       readFileSync(join(outDir, '.openpencil-build-output.json'), 'utf8')
-    ) as PackedCLIBuildMarker
+    )
     if (
       marker.version !== 1 ||
       !Array.isArray(marker.files) ||
@@ -519,7 +483,7 @@ try {
     if (usingPreparedPublishDirectories && !packageJSON.name.startsWith(PUBLISHED_SCOPE_PREFIX)) {
       throw new Error(`Prepared package did not use the publish scope: ${packageJSON.name}`)
     }
-    for (const specifier of collectPublicImportSpecifiers(packageJSON)) {
+    for (const specifier of concreteImportSpecifiers(packageJSON)) {
       publicImportSpecifiers.add(specifier)
     }
   }
@@ -531,6 +495,7 @@ try {
         )
       : undefined
   const tarballs: string[] = []
+  const patternExports: PatternExportCheck[] = []
   for (const [index, { packageDir, packageJSON }] of packages.entries()) {
     const tarball = preparedTarballs?.[index] ?? packPackage(packageDir)
     tarballs.push(tarball)
@@ -542,6 +507,7 @@ try {
           .join('\n')
       )
     }
+    patternExports.push(...(await collectPatternExportChecks(tarball, inspection)))
     const contents = run(['tar', '-tf', tarball])
     const entries = new Set(contents.split('\n'))
     const typePaths = [
@@ -565,6 +531,8 @@ try {
   run(['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs], tempDir, {
     npm_config_cache: Bun.env.npm_config_cache ?? join(tempDir, '.npm-cache')
   })
+
+  await verifyPatternExports(patternExports, tempDir)
 
   if (usingPreparedPublishDirectories) {
     buildFrameworkConsumers(tempDir)

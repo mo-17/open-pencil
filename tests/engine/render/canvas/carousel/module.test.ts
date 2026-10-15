@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas, Paragraph, TypefaceFontProvider } from 'canvaskit-wasm'
+import type { TypefaceFontProvider } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -16,7 +16,12 @@ import {
   type CarouselModuleConfigV1
 } from '#core/plugins/carousel'
 
-import { createMockCanvas, createMockRenderer } from '../effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asDouble, asCanvas, textLayoutDouble } from '#tests/engine/render/canvas/helpers'
 
 const CONFIG: CarouselModuleConfigV1 = {
   label: 'Featured projects',
@@ -73,12 +78,12 @@ function rendererWithFont() {
   const renderer = createMockRenderer({
     zoom: 1,
     labelFont: labelFont as never,
-    fontProvider: {} as TypefaceFontProvider,
+    fontProvider: asDouble<TypefaceFontProvider>({}),
     fontsLoaded: true,
     nodeFontReadiness: () => 'ready',
     buildParagraph: (node) => {
       labels.push(node)
-      return { getHeight: () => node.fontSize * 1.5, delete: dispose } as Paragraph
+      return textLayoutDouble({ getHeight: () => node.fontSize * 1.5, delete: dispose })
     }
   })
   return { renderer, labelFont, labels, dispose }
@@ -94,9 +99,9 @@ describe('carousel module canvas preview', () => {
     const { renderer, labelFont, labels, dispose } = rendererWithFont()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas carousel must remain offline')))
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = asDouble<typeof fetch>(fetchMock)
     try {
-      expect(renderCarouselModulePreview(renderer, canvas as Canvas, carouselFrame())).toBe(true)
+      expect(renderCarouselModulePreview(renderer, asCanvas(canvas), carouselFrame())).toBe(true)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -114,30 +119,30 @@ describe('carousel module canvas preview', () => {
   })
 
   test('keeps empty, fontless, invalid, and throwing previews balanced', () => {
-    const emptyCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const emptyCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const { renderer, dispose } = rendererWithFont()
     expect(
-      renderCarouselModulePreview(renderer, emptyCanvas as Canvas, carouselFrame({ width: 0 }))
+      renderCarouselModulePreview(renderer, asCanvas(emptyCanvas), carouselFrame({ width: 0 }))
     ).toBe(true)
     expect(emptyCanvas.save).not.toHaveBeenCalled()
 
-    const fontlessCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const fontlessCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     expect(
       renderCarouselModulePreview(
         createMockRenderer({ zoom: 1, labelFont: null }),
-        fontlessCanvas as Canvas,
+        asCanvas(fontlessCanvas),
         carouselFrame()
       )
     ).toBe(true)
     expect(fontlessCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const invalid = carouselFrame({
       interactiveProps: {
         module: { ...createCarouselModuleInstance(CONFIG), configVersion: 99 }
       }
     })
-    expect(renderCarouselModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderCarouselModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.save).not.toHaveBeenCalled()
 
     const throwingCanvas = {
@@ -147,7 +152,7 @@ describe('carousel module canvas preview', () => {
       })
     }
     expect(() =>
-      renderCarouselModulePreview(renderer, throwingCanvas as Canvas, carouselFrame())
+      renderCarouselModulePreview(renderer, asCanvas(throwingCanvas), carouselFrame())
     ).toThrow('draw failed')
     expect(throwingCanvas.restore.mock.calls.length).toBe(throwingCanvas.save.mock.calls.length)
     expect(dispose).toHaveBeenCalledTimes(1)
@@ -167,7 +172,7 @@ describe('carousel module canvas preview', () => {
       }
     })
     const original = structuredClone(node)
-    expect(renderCarouselModulePreview(renderer, canvas as Canvas, node)).toBe(true)
+    expect(renderCarouselModulePreview(renderer, asCanvas(canvas), node)).toBe(true)
     expect(labels.map((label) => label.text)).toEqual(['Second project', 'Another project.'])
     expect(canvas.drawCircle).not.toHaveBeenCalled()
     expect(canvas.drawLine).not.toHaveBeenCalled()
@@ -191,7 +196,7 @@ describe('carousel module canvas preview', () => {
         })
       }
     })
-    expect(renderCarouselModulePreview(renderer, canvas as Canvas, node)).toBe(true)
+    expect(renderCarouselModulePreview(renderer, asCanvas(canvas), node)).toBe(true)
     expect(canvas.drawCircle).not.toHaveBeenCalled()
     expect(canvas.drawLine).not.toHaveBeenCalled()
     expect(labels.map((label) => label.text)).toEqual(['Second project', 'Another project.'])

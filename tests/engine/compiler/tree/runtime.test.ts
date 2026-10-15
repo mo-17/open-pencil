@@ -20,6 +20,7 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { inspectFormOverview } from '@/app/lowcode/form-overview'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
 import {
   treeBindingFixture,
   treeBindingGraph
@@ -178,7 +179,7 @@ test('Vue module host passes readOnly as a component prop', () => {
 test('switching Tree from multiple to single makes an array binding unavailable without rewriting state', () => {
   const { graph, page, manyPage } = treeBindingGraph(),
     before = structuredClone(page.state),
-    module = manyPage.interactiveProps?.module
+    module = expectModuleInstance(manyPage.interactiveProps?.module)
   if (!module) throw new Error('Tree module unavailable')
   graph.updateNode(manyPage.id, {
     interactiveProps: {

@@ -9,6 +9,9 @@ import {
   orderPackagesByDependencies,
   parseNpmPack,
   parsePackageManifest,
+  parseJSONObject,
+  parseWorkspace,
+  parseWorkspacePackageJSON,
   isRegistryNotFound,
   validateRegistryVersion,
   readPackageManifest,
@@ -29,9 +32,10 @@ import {
   PUBLIC_PACKAGE_NAME_MAP,
   PREPARED_PUBLISH_PLAN,
   type PackageFileLister,
-  type PreparedPublishPlan
+  parsePreparedPublishPlan
 } from './publish-dirs'
 import { validatePackedTarballs as validateForkTarballs } from './tarballs'
+import { isPrerelease, PRERELEASE_DIST_TAG } from './version'
 
 export interface PublicationPlanEntry {
   package: WorkspacePackage
@@ -140,31 +144,49 @@ export async function packReleasePackages(
   isPublished?: PackagePublicationLookup,
   options: PackReleaseOptions = {}
 ): Promise<PublicationPlanEntry[]> {
+  const plan = await createPublicationPlan(root, isPublished)
+  await packPreparedReleasePackages(root, options, plan)
+  return plan
+}
+
+/** Packs the prepared release set locally without reading publication status from npm. */
+async function packPreparedReleasePackages(
+  root: string,
+  options: PackReleaseOptions = {},
+  publicationPlan?: PublicationPlanEntry[]
+): Promise<void> {
   const paths = releasePaths(root)
   const packDirectory = options.packDirectory ?? npmPackDirectory
-  const plan = await createPublicationPlan(root, isPublished)
+  const preparedPlan = parsePreparedPublishPlan(
+    await readFile(join(paths.prepared, PREPARED_PUBLISH_PLAN), 'utf8')
+  )
   await rm(paths.artifacts, { recursive: true, force: true })
   await mkdir(paths.artifacts, { recursive: true })
 
-  for (const entry of plan) {
-    const { manifest } = entry.package
-    const preparedDirectory = join(paths.prepared, basename(entry.package.directory))
+  const packages = publicationPlan
+    ? publicationPlan.map(({ package: pkg }) => ({
+        dir: pkg.directory,
+        name: pkg.manifest.name
+      }))
+    : preparedPlan.packages
+  for (const pkg of packages) {
+    const preparedDirectory = join(paths.prepared, basename(pkg.dir))
     const filename = await packDirectory(preparedDirectory, paths.artifacts)
-    console.log(`Packed ${manifest.name}: ${filename}`)
+    console.log(`Packed ${pkg.name}: ${filename}`)
   }
 
   await validatePackedTarballs(paths.artifacts)
-  const preparedPlan = JSON.parse(
-    await readFile(join(paths.prepared, PREPARED_PUBLISH_PLAN), 'utf8')
-  ) as PreparedPublishPlan
-  const workspace = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
-    workspaces: string[]
-  }
+  const workspace = parseWorkspace(
+    parseJSONObject(await readFile(join(root, 'package.json'), 'utf8'), root),
+    root
+  )
   const workspaceNames = await Promise.all(
     workspace.workspaces.map(async (directory) => {
-      const manifest = JSON.parse(
-        await readFile(join(root, directory, 'package.json'), 'utf8')
-      ) as { name: string }
+      const manifest = parseWorkspacePackageJSON(
+        await readFile(join(root, directory, 'package.json'), 'utf8'),
+        directory
+      )
+      if (!manifest.name) throw new Error(`${directory}: workspace package name is missing`)
       return manifest.name
     })
   )
@@ -174,7 +196,26 @@ export async function packReleasePackages(
     await readFile(join(root, 'LICENSE')),
     workspaceNames
   )
-  return plan
+}
+
+/** Verifies the same prepared npm artifacts used by publication, without publishing. */
+export async function verifyReleasePackages(root: string): Promise<void> {
+  await prepareReleasePackages(root)
+  await packPreparedReleasePackages(root)
+  const paths = releasePaths(root)
+  await runCommand({
+    command: 'bun',
+    args: ['tools/checks/package-quality/src/cli.ts', 'verify'],
+    cwd: root,
+    env: {
+      ...process.env,
+      OPENPENCIL_PACKAGE_ROOT: paths.prepared,
+      OPENPENCIL_PACKAGE_TARBALL_ROOT: paths.artifacts,
+      OPENPENCIL_PACKAGE_SMOKE_SKIP_BUILD: '1'
+    },
+    output: 'inherit',
+    timeoutMs: 600_000
+  })
 }
 
 async function artifactsByPackage(directory: string): Promise<Map<string, string>> {
@@ -302,7 +343,8 @@ export async function publishReleasePackages(
         NPM_RELEASE_POLICY.access,
         '--provenance',
         '--registry',
-        NPM_RELEASE_POLICY.registry
+        NPM_RELEASE_POLICY.registry,
+        ...(isPrerelease(manifest.version) ? ['--tag', PRERELEASE_DIST_TAG] : [])
       ],
       cwd: root,
       output: 'inherit',

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import type { FileUIPart, UIMessageChunk } from 'ai'
+import { compact } from 'es-toolkit'
 
 import { encodeBase64 } from '@open-pencil/core/bytes'
 import { ACP_AGENTS } from '@open-pencil/core/constants'
@@ -18,6 +19,7 @@ import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
 import { createACPTransport } from '@/app/ai/chat/transports'
 import * as automationMCP from '@/app/automation/mcp/spawn'
 
+import { parseACPTestMessage, parseACPTestRequest } from '#tests/helpers/tauri/acp-request'
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 const TEST_AUTOMATION_AUTH_TOKEN = 'test-automation-token'
@@ -37,11 +39,7 @@ afterEach(async () => {
   Reflect.deleteProperty(globalThis, 'window')
 })
 
-type JSONRPCRequest = {
-  id: number
-  method: string
-  params: Record<string, unknown>
-}
+type JSONRPCRequest = ReturnType<typeof parseACPTestMessage>
 
 type JSONRPCReply = {
   respond(result: unknown): void
@@ -76,8 +74,8 @@ async function installFakeACPAgent() {
     if (cmd === 'plugin:shell|stdin_write') {
       const target = onEvent
       const raw = decoder.decode(new Uint8Array((args as { buffer: number[] }).buffer))
-      for (const line of raw.trim().split('\n').filter(Boolean)) {
-        const request = JSON.parse(line) as JSONRPCRequest
+      for (const line of compact(raw.trim().split('\n'))) {
+        const request = parseACPTestMessage(line)
         requests.push(request)
         requestHandler(request, {
           respond: (result) => emit({ id: request.id, result }, target),
@@ -218,14 +216,16 @@ const TEST_CONFIG_OPTIONS: SessionConfigOption[] = [
     options: [{ value: 'high', name: 'High' }]
   }
 ]
-
 describe('Tauri ACP transport', () => {
   test('connects ACP agents to the authenticated desktop HTTP MCP server', () => {
     expect(buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN)).toEqual({
       type: 'http',
       name: 'open-pencil-editor',
       url: 'http://127.0.0.1:17600/mcp',
-      headers: [{ name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }]
+      headers: [
+        { name: 'x-openpencil-agent', value: 'acp' },
+        { name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }
+      ]
     })
   })
 
@@ -234,7 +234,7 @@ describe('Tauri ACP transport', () => {
       type: 'http',
       name: 'open-pencil-editor',
       url: 'http://127.0.0.1:17600/mcp',
-      headers: []
+      headers: [{ name: 'x-openpencil-agent', value: 'acp' }]
     })
   })
 
@@ -252,17 +252,19 @@ describe('Tauri ACP transport', () => {
   })
 
   test('uses Tauri home directory for transport cwd', async () => {
-    await mockTauriIPC((cmd, args) => {
-      expect(cmd).toBe('plugin:path|resolve_directory')
-      expect(args).toEqual({ directory: 21 })
-      return '/Users/tester'
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') reply.respond({ sessionId: 'home-session' })
     })
-
-    const transport = (await createACPTransport('acp:claude-code')) as ACPChatTransport & {
-      cwd: string
+    const transport = await createACPTransport('acp:claude-code')
+    try {
+      await transport.connect()
+      const setup = agent.requests.find((request) => request.method === 'session/new')
+      expect(setup?.params.cwd).toBe('/Users/tester')
+    } finally {
+      await transport.destroy()
     }
-
-    expect(transport.cwd).toBe('/Users/tester')
   })
 
   test.each(['new', 'resume'] as const)(
@@ -294,7 +296,10 @@ describe('Tauri ACP transport', () => {
             type: 'http',
             name: 'open-pencil-editor',
             url: 'http://127.0.0.1:17600/mcp',
-            headers: [{ name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }]
+            headers: [
+              { name: 'x-openpencil-agent', value: 'acp' },
+              { name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }
+            ]
           }
         ])
         const prompt = JSON.stringify(
@@ -962,7 +967,7 @@ describe('Tauri ACP transport', () => {
       if (cmd === 'plugin:shell|stdin_write') {
         const raw = decoder.decode(new Uint8Array((args as { buffer: number[] }).buffer))
         for (const line of raw.trim().split('\n')) {
-          const request = JSON.parse(line) as (typeof requests)[number]
+          const request = parseACPTestRequest(line)
           requests.push(request)
           if (request.method === 'initialize') respond(request.id, { protocolVersion: 1 })
           else if (request.method === 'session/new') {
@@ -1295,7 +1300,7 @@ describe('Tauri ACP transport', () => {
 
   test('drains the cancelled prompt before closing its stream or starting the next turn', async () => {
     const agent = await installFakeACPAgent()
-    let firstPromptReply: JSONRPCReply | null = null
+    const firstPromptReply: { value: JSONRPCReply | null } = { value: null }
     let promptCount = 0
     agent.handleRequests((request, reply) => {
       if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
@@ -1303,7 +1308,7 @@ describe('Tauri ACP transport', () => {
         reply.respond({ sessionId: 'session-1', configOptions: TEST_CONFIG_OPTIONS })
       } else if (request.method === 'session/prompt') {
         promptCount += 1
-        if (promptCount === 1) firstPromptReply = reply
+        if (promptCount === 1) firstPromptReply.value = reply
         else reply.respond({ stopReason: 'end_turn' })
       }
     })
@@ -1328,8 +1333,8 @@ describe('Tauri ACP transport', () => {
     expect(beforeCancelledReply).toBe('draining')
     expect(agent.requests.filter((request) => request.method === 'session/prompt')).toHaveLength(1)
 
-    if (!firstPromptReply) throw new Error('Missing first prompt reply handle')
-    firstPromptReply.respond({ stopReason: 'cancelled' })
+    if (!firstPromptReply.value) throw new Error('Missing first prompt reply handle')
+    firstPromptReply.value.respond({ stopReason: 'cancelled' })
     const chunks = await chunksPromise
     expect(chunks.at(-1)).toEqual({ type: 'finish', finishReason: 'stop' })
     expect(chunks.some((chunk) => chunk.type === 'error')).toBe(false)

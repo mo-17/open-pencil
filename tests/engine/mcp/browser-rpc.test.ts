@@ -2,9 +2,20 @@ import { describe, expect, test, afterEach } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 
+import * as v from 'valibot'
 import { WebSocket, WebSocketServer } from 'ws'
 
 import { createBrowserRPCBridge } from '#mcp/browser-rpc'
+
+const BridgeMessage = v.pipe(
+  v.string(),
+  v.parseJson(),
+  v.looseObject({
+    type: v.optional(v.string()),
+    id: v.optional(v.string()),
+    command: v.optional(v.string())
+  })
+)
 
 const AUTH_TOKEN = 'test-bridge-token'
 const RPC_BODY = { command: 'get_current_page' }
@@ -186,16 +197,16 @@ describe('BrowserRpcBridge reconnection', () => {
     const pairB = await within(setupWsPair(), 'replacement WebSocket pair')
     track(pairB)
 
-    let finishPreflight = () => undefined
+    let finishPreflight: () => void = () => undefined
     const preflightGate = new Promise<void>((resolve) => {
       finishPreflight = resolve
     })
-    let markLookupComplete = () => undefined
+    let markLookupComplete: () => void = () => undefined
     const lookupComplete = new Promise<void>((resolve) => {
       markLookupComplete = resolve
     })
     let connectedCount = 0
-    let markReplacementRegistered = () => undefined
+    let markReplacementRegistered: () => void = () => undefined
     const replacementRegistered = new Promise<void>((resolve) => {
       markReplacementRegistered = resolve
     })
@@ -206,7 +217,10 @@ describe('BrowserRpcBridge reconnection', () => {
       },
       requestPreflight: async (body, sendRPC) => {
         if (body.command !== 'save_file') return body
-        const listed = (await sendRPC({ command: 'list_documents', args: {} })) as {
+        const listed = (await sendRPC({
+          command: 'list_documents',
+          args: {}
+        })) as {
           result?: { documents?: Array<{ id?: string; path?: string }> }
         }
         const selected = listed.result?.documents?.[0]
@@ -224,18 +238,16 @@ describe('BrowserRpcBridge reconnection', () => {
       'first browser registration'
     )
     pairA.clientWs.on('message', (raw: Buffer) => {
-      const message = JSON.parse(raw.toString()) as {
-        type?: string
-        id?: string
-        command?: string
-      }
+      const message = v.parse(BridgeMessage, raw.toString())
       if (message.type === 'request' && message.command === 'list_documents') {
         pairA.clientWs.send(
           JSON.stringify({
             type: 'response',
             id: message.id,
             ok: true,
-            result: { documents: [{ id: 'tab-1', path: '/safe/old.fig', active: true }] }
+            result: {
+              documents: [{ id: 'tab-1', path: '/safe/old.fig', active: true }]
+            }
           })
         )
       }
@@ -243,7 +255,7 @@ describe('BrowserRpcBridge reconnection', () => {
 
     const replacementRequests: string[] = []
     pairB.clientWs.on('message', (raw: Buffer) => {
-      const message = JSON.parse(raw.toString()) as { type?: string; command?: string }
+      const message = v.parse(BridgeMessage, raw.toString())
       if (message.type === 'request' && message.command) {
         replacementRequests.push(message.command)
       }
@@ -372,7 +384,14 @@ describe('BrowserRpcBridge reconnection', () => {
     clientWsB.on('message', (raw: Buffer) => {
       const msg = JSON.parse(raw.toString())
       if (msg.type === 'request') {
-        clientWsB.send(JSON.stringify({ type: 'response', id: msg.id, ok: true, connected: true }))
+        clientWsB.send(
+          JSON.stringify({
+            type: 'response',
+            id: msg.id,
+            ok: true,
+            connected: true
+          })
+        )
       }
     })
 
@@ -458,7 +477,12 @@ describe('BrowserRpcBridge reconnection', () => {
     // reached. The matching-UUID case is tested in the next test.
     const fakeId = randomUUID()
     clientPair.clientWs.send(
-      JSON.stringify({ type: 'response', id: fakeId, ok: true, result: 'fake' })
+      JSON.stringify({
+        type: 'response',
+        id: fakeId,
+        ok: true,
+        result: 'fake'
+      })
     )
 
     // Give the fake message time to be processed
@@ -468,7 +492,12 @@ describe('BrowserRpcBridge reconnection', () => {
 
     // Now send the legitimate browser response
     browserPair.clientWs.send(
-      JSON.stringify({ type: 'response', id: capturedId, ok: true, real: true })
+      JSON.stringify({
+        type: 'response',
+        id: capturedId,
+        ok: true,
+        real: true
+      })
     )
 
     // The RPC should resolve with the real browser's response, not the
@@ -530,7 +559,12 @@ describe('BrowserRpcBridge reconnection', () => {
     // from a different WebSocket. The browserWs !== ws guard must
     // prevent this from resolving the pending request.
     attackerPair.clientWs.send(
-      JSON.stringify({ type: 'response', id: requestId, ok: true, injected: true })
+      JSON.stringify({
+        type: 'response',
+        id: requestId,
+        ok: true,
+        injected: true
+      })
     )
 
     // Give the fake message time to be processed
@@ -540,12 +574,20 @@ describe('BrowserRpcBridge reconnection', () => {
 
     // Now the real browser responds
     browserPair.clientWs.send(
-      JSON.stringify({ type: 'response', id: requestId, ok: true, legitimate: true })
+      JSON.stringify({
+        type: 'response',
+        id: requestId,
+        ok: true,
+        legitimate: true
+      })
     )
 
     // The RPC must resolve with the real browser's response, proving
     // the attacker's injection was ignored by the ws guard.
-    const result = (await rpcPromise) as { legitimate?: boolean; injected?: boolean }
+    const result = (await rpcPromise) as {
+      legitimate?: boolean
+      injected?: boolean
+    }
     expect(result.legitimate).toBe(true)
     expect(result.injected).toBeUndefined()
   })
@@ -563,10 +605,7 @@ describe('BrowserRpcBridge reconnection', () => {
     let requestId = ''
     const cancelled = new Promise<string>((resolve) => {
       pair.clientWs.on('message', (raw: Buffer) => {
-        const message = JSON.parse(raw.toString()) as {
-          type?: string
-          id?: string
-        }
+        const message = v.parse(BridgeMessage, raw.toString())
         if (message.type === 'request' && message.id) {
           requestId = message.id
           pair.clientWs.send(
@@ -615,7 +654,7 @@ describe('BrowserRpcBridge reconnection', () => {
     let requestId = ''
     const cancelled = new Promise<string>((resolve) => {
       pair.clientWs.on('message', (raw: Buffer) => {
-        const message = JSON.parse(raw.toString()) as { type?: string; id?: string }
+        const message = v.parse(BridgeMessage, raw.toString())
         if (message.type === 'request' && message.id) requestId = message.id
         if (message.type === 'cancel' && message.id) resolve(message.id)
       })
@@ -652,11 +691,17 @@ describe('BrowserRpcBridge reconnection', () => {
     })
     otherPair.clientWs.send(JSON.stringify({ type: 'auth', token: AUTH_TOKEN }))
     otherPair.clientWs.send(
-      JSON.stringify({ type: 'plugin_tools_changed', revision: 'untrusted-revision' })
+      JSON.stringify({
+        type: 'plugin_tools_changed',
+        revision: 'untrusted-revision'
+      })
     )
 
     browserPair.clientWs.send(
-      JSON.stringify({ type: 'plugin_tools_changed', revision: 'trusted-revision' })
+      JSON.stringify({
+        type: 'plugin_tools_changed',
+        revision: 'trusted-revision'
+      })
     )
     for (let index = 0; index < 100 && revisions.length === 0; index++) {
       await new Promise<void>((resolve) => {
@@ -664,5 +709,41 @@ describe('BrowserRpcBridge reconnection', () => {
       })
     }
     expect(revisions).toEqual(['trusted-revision'])
+  })
+  test('ignores malformed JSON but closes sockets that send malformed messages', async () => {
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined
+    })
+    const closed = (ws: WebSocket) =>
+      new Promise<void>((resolve) => {
+        ws.once('close', () => resolve())
+      })
+
+    const pair = await setupWsPair()
+    track(pair)
+    pair.serverWs.on('message', (raw: Buffer) => {
+      bridge.handleMessage(raw.toString(), pair.serverWs)
+    })
+    pair.clientWs.send('{not json')
+    pair.clientWs.send(JSON.stringify({ type: 'register', token: AUTH_TOKEN }))
+    for (let i = 0; i < 200 && !bridge.isConnected(); i++) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 5)
+      })
+    }
+    expect(bridge.isConnected()).toBe(true)
+    const arrayClosed = closed(pair.clientWs)
+    pair.clientWs.send('[]')
+    await arrayClosed
+
+    const mistyped = await setupWsPair()
+    track(mistyped)
+    mistyped.serverWs.on('message', (raw: Buffer) => {
+      bridge.handleMessage(raw.toString(), mistyped.serverWs)
+    })
+    const tokenClosed = closed(mistyped.clientWs)
+    mistyped.clientWs.send(JSON.stringify({ type: 'auth', token: 42 }))
+    await tokenClosed
   })
 })

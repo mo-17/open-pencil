@@ -46,7 +46,7 @@ describe('Design JSX lowcode tags', () => {
       'switch'
     ])
     for (const type of trees.map((tree) => tree.type)) {
-      expect(INTRINSIC_ELEMENTS).toContain(type)
+      expect<unknown>(INTRINSIC_ELEMENTS).toContain(type)
     }
     expect(INTRINSIC_ELEMENTS).toContain('date-picker')
   })

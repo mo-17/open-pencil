@@ -7,6 +7,8 @@ test('automatic line height survives focus and can be restored with undo', async
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const e = window.openPencil?.getStore?.()
     if (!e) throw new Error('No editor')
     const id = e.createShape('TEXT', 100, 100, 240, 80)
@@ -14,17 +16,25 @@ test('automatic line height survives focus and can be restored with undo', async
     e.select([id])
     return id
   })
-  const field = page.locator('[data-property="lineHeight"]')
+  const field = page
+    .getByTestId('typography')
+    .locator('[data-slot="root"][data-property="lineHeight"]')
   await expect(field).toContainText('Auto')
 
-  await page.evaluate((id) => window.openPencil?.getStore?.().updateNode(id, { fontSize: 30 }), id)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().updateNode(id, { fontSize: 30 })
+  }, id)
   const input = page.getByRole('spinbutton', { name: 'Line height', exact: true })
   await input.focus()
   await expect(input).toHaveValue('36')
   await input.press('Escape')
   await expect
     .poll(() =>
-      page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight, id)
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight
+      }, id)
     )
     .toBeNull()
   await input.focus()
@@ -32,7 +42,10 @@ test('automatic line height survives focus and can be restored with undo', async
   await input.press('Enter')
   await expect
     .poll(() =>
-      page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight, id)
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight
+      }, id)
     )
     .toBe(32)
   await page.getByRole('combobox', { name: 'Line height mode' }).click()
@@ -42,7 +55,10 @@ test('automatic line height survives focus and can be restored with undo', async
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
   await expect
     .poll(() =>
-      page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight, id)
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(id)?.lineHeight
+      }, id)
     )
     .toBe(32)
   await field.getByRole('button', { name: 'Apply variable' }).click()

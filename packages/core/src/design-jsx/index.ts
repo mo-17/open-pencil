@@ -1,6 +1,6 @@
 export * from '@open-pencil/design-jsx'
 export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from '#core/io/formats/jsx'
-export { renderJSX, renderTree, renderTree as renderTreeNode } from './renderer'
+export { designJSXRenderer, renderJSX, renderTree, renderTree as renderTreeNode } from './renderer'
 export {
   finishRenderPlacement,
   resolveRenderPlacement as resolveJSXPlacement,

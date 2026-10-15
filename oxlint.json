@@ -12,6 +12,15 @@
     "./lint/plugin.js",
     "eslint-plugin-compat"
   ],
+  "settings": {
+    "browsers": [
+      "chrome 111",
+      "edge 111",
+      "firefox 128",
+      "safari 16.4",
+      "ios_saf 16.4"
+    ]
+  },
   "env": {
     "browser": true,
     "es2024": true
@@ -167,6 +176,7 @@
     "open-pencil/no-direct-selection-tool-state-mutation": "error",
     "open-pencil/no-math-random": "error",
     "open-pencil/no-hardcoded-color-constants": "error",
+    "open-pencil/no-unknown-tailwind-classes": "error",
     "open-pencil/no-hand-rolled-color": "error",
     "open-pencil/no-raw-console-format": "off",
     "open-pencil/no-silent-catch": "error",
@@ -177,6 +187,7 @@
     "open-pencil/no-core-framework-imports": "error",
     "open-pencil/no-direct-storage-access": "error",
     "open-pencil/no-deep-parent-relative-imports": "error",
+    "open-pencil/no-deep-parent-relative-paths": "error",
     "open-pencil/no-broad-double-cast": "error",
     "open-pencil/no-unknown-record-double-cast": "error",
     "open-pencil/no-broad-unknown-type-assertions": "error",
@@ -185,6 +196,7 @@
     "open-pencil/no-ts-suppression-comments": "error",
     "open-pencil/no-reflect-delete-global-this-outside-tests": "error",
     "open-pencil/no-core-browser-globals": "error",
+    "open-pencil/no-zoom-in-scene-drawing": "error",
     "open-pencil/no-direct-open-pencil-window-internals": "error",
     "open-pencil/no-direct-open-pencil-browser-store": "error",
     "open-pencil/no-function-alias-imports": "error",
@@ -416,12 +428,29 @@
     "unicorn/prefer-includes": "error",
     "no-loop-func": "error",
     "typescript/no-dynamic-delete": "error",
+    "open-pencil/no-hand-rolled-base64": "error",
+    "open-pencil/prefer-es-toolkit": "error",
     "open-pencil/no-module-mocking": "error",
     "open-pencil/no-reduce-accumulator-copy": "error",
-    "open-pencil/no-widen-then-assert": "error",
-    "open-pencil/no-hand-rolled-base64": "error"
+    "open-pencil/no-widen-then-assert": "error"
   },
   "overrides": [
+    {
+      "files": [
+        "packages/docs/.vitepress/theme/landing/**/*.{ts,vue}"
+      ],
+      "rules": {
+        "open-pencil/no-app-imports-in-packages": "off"
+      }
+    },
+    {
+      "files": [
+        "tools/ci/policy/src/**/*.ts"
+      ],
+      "rules": {
+        "open-pencil/prefer-es-toolkit": "off"
+      }
+    },
     {
       "files": [
         "tools/checks/lint/src/rules/quality/widen-then-assert.ts"
@@ -452,24 +481,19 @@
     },
     {
       "files": [
-        "packages/compiler/src/**",
-        "packages/lowcode/tests/**",
-        "tests/engine/compiler/**",
-        "tests/engine/lowcode-validation/**",
-        "src/components/properties/Lowcode/**"
+        "**/*.{ts,vue}"
       ],
       "rules": {
-        "no-template-curly-in-string": "off"
+        "open-pencil/no-unvalidated-json-parse": "error"
       }
     },
     {
       "files": [
-        "src/components/properties/Lowcode/ActionRow.vue",
-        "src/components/properties/Lowcode/AnalyticsConfigPanel.vue",
-        "src/components/properties/Lowcode/WorkflowsPanel.vue"
+        "src/**/*.{ts,vue}",
+        "packages/{scene-graph,pen,kiwi,fig,core,dom-css,vue}/src/**/*.{ts,vue}"
       ],
       "rules": {
-        "open-pencil/no-large-property-section-components": "off"
+        "compat/compat": "error"
       }
     },
     {
@@ -552,6 +576,28 @@
       "rules": {
         "unicorn/require-post-message-target-origin": "off"
       }
+    },
+    {
+      "files": [
+        "packages/compiler/src/**",
+        "packages/lowcode/tests/**",
+        "tests/engine/compiler/**",
+        "tests/engine/lowcode-validation/**",
+        "src/components/properties/Lowcode/**"
+      ],
+      "rules": {
+        "no-template-curly-in-string": "off"
+      }
+    },
+    {
+      "files": [
+        "src/components/properties/Lowcode/ActionRow.vue",
+        "src/components/properties/Lowcode/AnalyticsConfigPanel.vue",
+        "src/components/properties/Lowcode/WorkflowsPanel.vue"
+      ],
+      "rules": {
+        "open-pencil/no-large-property-section-components": "off"
+      }
     }
   ],
   "ignorePatterns": [
@@ -562,14 +608,5 @@
   ],
   "categories": {
     "correctness": "error"
-  },
-  "settings": {
-    "browsers": [
-      "chrome 111",
-      "edge 111",
-      "firefox 128",
-      "safari 16.4",
-      "ios_saf 16.4"
-    ]
   }
 }

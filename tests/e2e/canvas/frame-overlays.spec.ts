@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 
-import { CORNER_ROTATE_ZONE, HANDLE_HIT_RADIUS } from '@open-pencil/core/constants'
+import { TRANSFORM_ZONE } from '@open-pencil/core/geometry'
 
 import { expect, test, useEditorSetupWithClear } from '#tests/e2e/fixtures'
 import { expectDefined } from '#tests/helpers/assert'
@@ -15,6 +15,8 @@ async function expectCanvas(name: string) {
 
 async function createOverlayDemo(rotation: number) {
   await editor.page.evaluate((frameRotation) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -83,6 +85,8 @@ test('rotated frame selection labels render with hovered child', async () => {
   await createOverlayDemo(18)
   const settled = await editor.canvas.screenshotCanvasRegion()
   const release = await editor.page.evaluateHandle(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     return store.beginInteractiveEdit()
@@ -101,6 +105,8 @@ test('rotation preview updates frame labels before mouse up', async () => {
   await createOverlayDemo(0)
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const frameId = [...store.state.selectedIds][0]
@@ -118,6 +124,8 @@ test('hover highlight stays aligned for child inside rotated frame', async () =>
 
 test('nested frame labels use the parent transform during rotation preview', async () => {
   const id = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const sectionId = store.createShape('SECTION', 140, 140, 500, 350)
@@ -139,6 +147,8 @@ test('nested frame labels use the parent transform during rotation preview', asy
   await expectCanvas('nested-frame-rotation-preview')
   const during = await editor.canvas.screenshotCanvasRegion()
   await editor.page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     store.updateNode(nodeId, { rotation: -55 })
@@ -154,6 +164,8 @@ test('nested frame labels use the parent transform during rotation preview', asy
 for (const angle of [-32, 32]) {
   test(`labels follow a held ${angle}-degree corner rotation without jumping on release`, async () => {
     const id = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       const frame = store.graph.createNode('FRAME', store.state.currentPageId, {
@@ -174,11 +186,14 @@ for (const angle of [-32, 32]) {
       'canvas bounds'
     )
     const viewport = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       return { zoom: store.state.zoom, panX: store.state.panX, panY: store.state.panY }
     })
-    const cornerOffset = (HANDLE_HIT_RADIUS + CORNER_ROTATE_ZONE) / (2 * Math.SQRT2)
+    const cornerOffset =
+      (TRANSFORM_ZONE.resizeReach + TRANSFORM_ZONE.rotateReach) / (2 * Math.SQRT2)
     const centerX = bounds.x + viewport.panX + 390 * viewport.zoom
     const centerY = bounds.y + viewport.panY + 310 * viewport.zoom
     const dx = -150 * viewport.zoom - cornerOffset
@@ -194,6 +209,8 @@ for (const angle of [-32, 32]) {
       )
       await editor.canvas.waitForRender()
       const held = await editor.page.evaluate((nodeId) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return {
           rotation: store?.graph.getNode(nodeId)?.rotation,
@@ -214,23 +231,61 @@ for (const angle of [-32, 32]) {
       await editor.page.mouse.up()
       await editor.canvas.waitForRender()
       expect((await editor.canvas.screenshotCanvasRegion()).equals(during)).toBe(true)
-      await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+      await editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().undoAction()
+      })
       expect(
-        await editor.page.evaluate(
-          (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation,
-          id
-        )
+        await editor.page.evaluate((nodeId) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation
+        }, id)
       ).toBe(0)
-      await editor.page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+      await editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().redoAction()
+      })
       expect(
-        await editor.page.evaluate(
-          (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation,
-          id
-        )
+        await editor.page.evaluate((nodeId) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation
+        }, id)
       ).toBe(preview.angle)
       editor.canvas.assertNoErrors()
     } finally {
       await editor.page.mouse.up()
     }
+  })
+}
+
+// Figma desktop 126 draws neither handles nor a size label on a layer under 10 screen pixels both
+// ways, and both on a larger one.
+for (const [name, size] of [
+  ['tiny-layer-selected', 9],
+  ['small-layer-selected', 16]
+] as const) {
+  test(`a selected ${size} px layer ${size < 10 ? 'has no handles or size label' : 'has handles and its size'}`, async () => {
+    await editor.page.evaluate((side) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+      const store = window.openPencil?.getStore?.()
+      if (!store) throw new Error('OpenPencil store not initialized')
+      const dot = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
+        x: 200,
+        y: 200,
+        width: side,
+        height: side,
+        fills: [
+          { type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8, a: 1 }, visible: true, opacity: 1 }
+        ]
+      })
+      store.state.zoom = 1
+      store.state.panX = 0
+      store.state.panY = 0
+      store.select([dot.id])
+      store.requestRender()
+    }, size)
+    await editor.canvas.waitForRender()
+    await expectCanvas(name)
   })
 }

@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import { PLUGIN_MANIFEST_LIMITS, PLUGIN_RUNTIME_CAPABILITIES } from '@open-pencil/plugin-contracts'
 import {
   parseBoundedManifestArray,
@@ -334,7 +336,7 @@ function connectorNetworkDiffs(
 ): readonly MarketplaceConnectorNetworkDiffV1[] {
   const beforeById = new Map(before.map((connector) => [connector.connectorId, connector]))
   const afterById = new Map(after.map((connector) => [connector.connectorId, connector]))
-  const connectorIds = [...new Set([...beforeById.keys(), ...afterById.keys()])].sort()
+  const connectorIds = uniq([...beforeById.keys(), ...afterById.keys()]).sort()
   return Object.freeze(
     connectorIds.flatMap((connectorId) => {
       const previous = beforeById.get(connectorId)

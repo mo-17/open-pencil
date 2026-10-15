@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { parsePenFile, serializePenFile } from '@open-pencil/pen'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -24,11 +26,26 @@ function source(openPencil: Record<string, unknown>): string {
   )}\n`
 }
 
+function serializedNodes(serialized: string) {
+  return v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.object({
+        children: v.array(v.object({ metadata: v.optional(v.record(v.string(), v.unknown())) }))
+      })
+    ),
+    serialized
+  )
+}
+
 function serializedCarrier(serialized: string): Record<string, unknown> {
-  const document = JSON.parse(serialized) as {
-    children: Array<{ metadata?: { openPencil?: Record<string, unknown> } }>
-  }
-  return expectDefined(document.children[0]?.metadata?.openPencil, 'serialized OpenPencil metadata')
+  const document = serializedNodes(serialized)
+  const metadata = expectDefined(
+    document.children[0]?.metadata?.openPencil,
+    'serialized OpenPencil metadata'
+  )
+  return v.parse(v.record(v.string(), v.unknown()), metadata)
 }
 
 describe('.pen generated-effect schema v3', () => {
@@ -50,9 +67,7 @@ describe('.pen generated-effect schema v3', () => {
       transitionKey: 'cardHero',
       generatedEffect: spec
     })
-    const raw = JSON.parse(serialized) as {
-      children: Array<{ metadata?: Record<string, unknown> }>
-    }
+    const raw = serializedNodes(serialized)
     expect(raw.children[0]?.metadata?.foreign).toBe('preserved')
     expect(parsePenFile(serialized).getNode('card')?.generatedEffect).toEqual(spec)
   })

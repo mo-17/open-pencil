@@ -14,10 +14,12 @@ describe('generated account-bound command recovery', () => {
   test('commits only request data before dispatch and explicitly retries it after reload and login', async () => {
     const environment = recoveryEnvironment()
     const first = await recoveryFixture(environment)
-    let key: unknown
+    let key: string
     try {
       const running = first.runtime.backendCommand(commandInput)
-      key = first.values.get('attempt')
+      const attempt = first.values.get('attempt')
+      if (typeof attempt !== 'string') throw new Error('Expected recorded attempt key')
+      key = attempt
       const duplicate = first.runtime.backendCommand(commandInput)
       const request = await first.waitForRequest(0)
       const rows = await journalRows(environment.indexedDB)
@@ -107,11 +109,13 @@ describe('generated account-bound command recovery', () => {
   test('partitions accounts and auth/app/API origins, while definition changes remain visible and blocked', async () => {
     const environment = recoveryEnvironment()
     const original = await recoveryFixture(environment)
-    let key: unknown
+    let key: string
     try {
       const running = original.runtime.backendCommand(commandInput)
       const request = await original.waitForRequest(0)
-      key = original.values.get('attempt')
+      const attempt = original.values.get('attempt')
+      if (typeof attempt !== 'string') throw new Error('Expected recorded attempt key')
+      key = attempt
       request.respond({ id: 'saved', title: 'Saved' })
       await running
       original.auth.transition('user-b')

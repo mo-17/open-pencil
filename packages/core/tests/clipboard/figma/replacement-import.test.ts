@@ -1,13 +1,12 @@
 import { expect, test } from 'bun:test'
 
-import type { NestedBindingCapture } from '#core-tests/helpers/fig/captures'
-import { readFixtureJSON } from '#core-tests/helpers/fig/fixtures'
+import { CapturedFigRecords, readFixture } from '#core-tests/helpers/fig/fixtures'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { prepareClipboardImport } from '#core/clipboard/fig-import'
 
-const fixture = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const fixture = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 test('replacement clipboard preparation imports real nested component bindings', () => {
   const graph = new SceneGraph()

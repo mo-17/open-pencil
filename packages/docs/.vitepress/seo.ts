@@ -1,10 +1,50 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { DOCS_BUILD_LOCALES, isLocalizedDocsLocale, type DocsLocale } from './locale-constants'
+import * as v from 'valibot'
+import type { HeadConfig } from 'vitepress'
+
+const docsRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export const BASE = 'https://openpencil.dev'
+
+const RootManifestSchema = v.pipe(v.string(), v.parseJson(), v.object({ version: v.string() }))
+const { version } = v.parse(
+  RootManifestSchema,
+  readFileSync(resolve(docsRoot, '../../package.json'), 'utf8')
+)
+
+/**
+ * Search engines read the product from the English home page. It is written into the page's
+ * head at build time, so it never takes part in hydration.
+ */
+const SOFTWARE_APPLICATION = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'OpenPencil',
+  applicationCategory: 'DesignApplication',
+  operatingSystem: 'Windows, macOS, Linux, Web',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  url: 'https://app.openpencil.dev',
+  description:
+    'Open-source design editor that opens Figma .fig files, runs locally, and is programmable by you or your AI agent.',
+  softwareVersion: version,
+  license: 'https://opensource.org/licenses/MIT',
+  screenshot: `${BASE}/screenshot.png`,
+  downloadUrl: `${BASE}/download`,
+  featureList: [
+    'Opens and saves Figma .fig files',
+    'AI agents that design on the canvas with your own provider keys',
+    'MCP server for AI coding agents',
+    'Real-time collaboration with people and agents',
+    'Headless CLI for inspection, linting, and export',
+    'Desktop app for macOS, Windows, and Linux',
+    'Vue SDK for embedding the editor'
+  ]
+}
+
+import { DOCS_BUILD_LOCALES, isLocalizedDocsLocale, type DocsLocale } from './locale-constants'
 
 export const LOCALES = {
   en: { hreflang: 'en', ogLocale: 'en_US', prefix: '' },
@@ -17,7 +57,6 @@ export const LOCALES = {
   'zh-cn': { hreflang: 'zh-CN', ogLocale: 'zh_CN', prefix: '/zh-cn' }
 } as const satisfies Record<DocsLocale, { hreflang: string; ogLocale: string; prefix: string }>
 
-const docsRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export const siteHead: [string, Record<string, string>][] = [
   ['link', { rel: 'icon', href: '/favicon.ico', sizes: 'any' }],
@@ -50,7 +89,7 @@ type PageDataLike = {
   title?: string
   description?: string
   frontmatter: {
-    head?: [string, Record<string, string>][]
+    head?: HeadConfig[]
   }
 }
 
@@ -179,6 +218,9 @@ export function applyPageSeoUsing(
   head.push(['link', { rel: 'canonical', href: pageUrl }])
   head.push(['meta', { property: 'og:url', content: pageUrl }])
   head.push(['meta', { property: 'og:locale', content: locale.ogLocale }])
+  if (pageData.relativePath === 'index.md') {
+    head.push(['script', { type: 'application/ld+json' }, JSON.stringify(SOFTWARE_APPLICATION)])
+  }
 
   for (const key of availableLocaleKeys) {
     if (key !== localeKey) {
@@ -196,8 +238,8 @@ export function applyPageSeoUsing(
       {
         rel: 'alternate',
         hreflang: localeOption.hreflang,
-        href: localizedUrl(slug, localeOption.prefix),
-      },
+        href: localizedUrl(slug, localeOption.prefix)
+      }
     ])
   }
   if (availableLocaleKeys.includes('en')) {

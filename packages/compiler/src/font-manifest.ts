@@ -1,3 +1,6 @@
+import { parseCompilerPackageJSON } from '#compiler/package-json'
+import { uniq } from 'es-toolkit'
+
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/core/constants'
 import {
   collectGraphFontRequirements,
@@ -197,9 +200,9 @@ function fontResolutionWarnings(
       })
       continue
     }
-    const actualFaces = [
-      ...new Set(actual.map((face) => `${fontWeightValue(face.weight)} ${face.style}`))
-    ].join(', ')
+    const actualFaces = uniq(
+      actual.map((face) => `${fontWeightValue(face.weight)} ${face.style}`)
+    ).join(', ')
     warnings.push({
       code: 'font-face-synthesized',
       message: `${request.family} ${request.weight} ${request.style} resolves to ${actualFaces}; the browser will synthesize the requested face like the canvas`
@@ -439,7 +442,7 @@ ${entries}
 function addExpoFontDependency(files: Map<string, string | Uint8Array>): void {
   const source = files.get('package.json')
   if (typeof source !== 'string') return
-  const value = JSON.parse(source) as { dependencies?: Record<string, string> }
+  const value = parseCompilerPackageJSON(source)
   value.dependencies = { ...value.dependencies, 'expo-font': EXPO_FONT_VERSION }
   files.set('package.json', `${JSON.stringify(value, null, 2)}\n`)
 }

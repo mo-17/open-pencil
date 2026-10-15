@@ -31,12 +31,12 @@ function fixture() {
 describe('application data contracts', () => {
   test('canonical detached root/page policies and all roles', () => {
     for (const enabled of [true, false]) {
-      const value = { version: 1, enabled, startPageId: 'page-1' }
+      const value = { version: 1 as const, enabled, startPageId: 'page-1' }
       const parsed = validateLowcodeApplication(value)
       expect(parsed).toEqual({ ok: true, value })
       if (parsed.ok) expect(parsed.value).not.toBe(value)
     }
-    for (const role of ['application', 'reference', 'components'])
+    for (const role of ['application', 'reference', 'components'] as const)
       expect(validateLowcodeApplicationPage({ version: 1, role })).toEqual({
         ok: true,
         value: { version: 1, role }

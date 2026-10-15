@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { nativeBorderRadius } from '../native-shared'
 import { dartString } from './names'
 import type { FlutterEdges, FlutterStyle, FlutterWarningSink } from './types'
@@ -67,7 +69,7 @@ export function translateFlutterStyle(
   warn: FlutterWarningSink
 ): FlutterStyle {
   const style: FlutterStyle = {}
-  for (const utility of className.split(/\s+/).filter(Boolean)) {
+  for (const utility of compact(className.split(/\s+/))) {
     if (utility === 'items-baseline') {
       warn({
         code: 'flutter-style-baseline-unsupported',
@@ -123,7 +125,7 @@ export function edgeInsets(edges: FlutterEdges | undefined): string | undefined 
 }
 
 export function textStyle(style: FlutterStyle): string | undefined {
-  const entries = [
+  const entries = compact([
     style.color ? `color: ${flutterColor(style.color)}` : '',
     style.fontSize !== undefined ? `fontSize: ${dartNumber(style.fontSize)}` : '',
     style.fontWeight !== undefined ? `fontWeight: FontWeight.w${style.fontWeight}` : '',
@@ -133,7 +135,7 @@ export function textStyle(style: FlutterStyle): string | undefined {
     style.lineHeight !== undefined
       ? `height: ${dartNumber(style.lineHeight / (style.fontSize ?? 16))}`
       : ''
-  ].filter(Boolean)
+  ])
   return entries.length > 0 ? `TextStyle(${entries.join(', ')})` : undefined
 }
 
@@ -145,7 +147,7 @@ export function boxDecoration(style: FlutterStyle, assetPrefix: string): string 
   const image = style.backgroundAsset
     ? `image: DecorationImage(image: AssetImage(${dartString(`${assetPrefix}${style.backgroundAsset}`)}), fit: ${boxFit(style.imageFit)}),`
     : ''
-  const entries = [
+  const entries = compact([
     style.backgroundColor ? `color: ${flutterColor(style.backgroundColor)}` : '',
     style.borderRadius !== undefined
       ? `borderRadius: BorderRadius.circular(${dartNumber(style.borderRadius)})`
@@ -154,17 +156,17 @@ export function boxDecoration(style: FlutterStyle, assetPrefix: string): string 
       ? `border: Border.all(color: ${flutterColor(style.borderColor ?? '#000000')}, width: ${dartNumber(style.borderWidth ?? 1)})`
       : '',
     image
-  ].filter(Boolean)
+  ])
   return entries.length > 0 ? `BoxDecoration(${entries.join(', ')})` : undefined
 }
 
 export function boxConstraints(style: FlutterStyle): string | undefined {
-  const entries = [
+  const entries = compact([
     style.minWidth !== undefined ? `minWidth: ${dartNumber(style.minWidth)}` : '',
     style.minHeight !== undefined ? `minHeight: ${dartNumber(style.minHeight)}` : '',
     style.maxWidth !== undefined ? `maxWidth: ${dartNumber(style.maxWidth)}` : '',
     style.maxHeight !== undefined ? `maxHeight: ${dartNumber(style.maxHeight)}` : ''
-  ].filter(Boolean)
+  ])
   return entries.length > 0 ? `BoxConstraints(${entries.join(', ')})` : undefined
 }
 

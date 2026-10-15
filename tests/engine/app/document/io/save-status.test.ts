@@ -8,13 +8,15 @@ import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
 import { watchPreviewSaveSync } from '@/app/lowcode/preview-pane/save-sync'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 function harness(write: () => Promise<void>) {
   const source = createDocumentSourceState()
-  const handle = {
+  const handle = asDouble<FileSystemFileHandle>({
     kind: 'file',
     name: 'draft.fig',
     createWritable: async () => ({ write, close: async () => undefined })
-  } as FileSystemFileHandle
+  })
   source.setFileHandle(handle)
   const actions = createSaveActions({
     ...source,

@@ -1,14 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 import { waitForDemo } from '#tests/helpers/demo'
 
-async function dragSlider(
-  page: Parameters<typeof test>[0]['page'],
-  canvas: CanvasHelper,
-  testId: string,
-  ratio: number
-) {
+async function dragSlider(page: Page, canvas: CanvasHelper, testId: string, ratio: number) {
   const slider = page.getByTestId(testId).getByRole('slider')
   const box = await slider.boundingBox()
   if (!box) throw new Error(`Missing slider: ${testId}`)
@@ -22,19 +17,19 @@ async function dragSlider(
   await canvas.waitForRender()
 }
 
-async function selectDemoCard(page: Parameters<typeof test>[0]['page'], canvas: CanvasHelper) {
+async function selectDemoCard(page: Page, canvas: CanvasHelper) {
   await page.goto('/demo')
   await canvas.waitForInit()
   await waitForDemo(page)
 
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const nodes = Array.from(store.graph.nodes.values())
-    const card =
-      nodes.find((node) => node.name === 'Card' && node.type === 'COMPONENT') ??
-      nodes.find((node) => node.name === 'Card')
-    // The card lives on whichever page the demo keeps its component library on.
+    // The Lint chapter's button keeps a hard-coded fill on purpose, for the rules to find.
+    const card = nodes.find((node) => node.name === 'Frame 3' && node.type === 'FRAME')
     let owner = card
     while (owner && owner.type !== 'CANVAS') {
       owner = owner.parentId ? store.graph.getNode(owner.parentId) : undefined
@@ -53,11 +48,13 @@ async function selectDemoCard(page: Parameters<typeof test>[0]['page'], canvas: 
 
   const designPanel = page.getByTestId('design-panel-single')
   await expect(designPanel).toBeVisible()
-  await expect(designPanel.getByRole('heading', { name: 'Card' })).toBeVisible()
+  await expect(designPanel.getByRole('heading', { name: 'Frame 3' })).toBeVisible()
 }
 
-async function getSelectedFill(page: Parameters<typeof test>[0]['page']) {
+async function getSelectedFill(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -73,7 +70,7 @@ async function getSelectedFill(page: Parameters<typeof test>[0]['page']) {
   })
 }
 
-async function getSelectedFillOrThrow(page: Parameters<typeof test>[0]['page']) {
+async function getSelectedFillOrThrow(page: Page) {
   const selectedFill = await getSelectedFill(page)
   if (!selectedFill?.fill?.color) throw new Error('Selected node has no color fill')
   return selectedFill

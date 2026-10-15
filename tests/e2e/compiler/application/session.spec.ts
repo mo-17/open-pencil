@@ -2,11 +2,11 @@ import { execFileSync } from 'node:child_process'
 
 import { expect, test, type Page } from '@playwright/test'
 
-import type { ApplicationBrowserOutput } from '#tests/helpers/compiler/application-mode/browser'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
 
 function output(target: 'react' | 'vue', retention: 'preserve' | 'reset') {
-  return JSON.parse(
+  return parseCompilerBrowserOutput(
     execFileSync(
       'bun',
       [
@@ -15,7 +15,7 @@ function output(target: 'react' | 'vue', retention: 'preserve' | 'reset') {
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as ApplicationBrowserOutput
+  )
 }
 async function clickWithoutScrolling(page: Page, name: string) {
   await page

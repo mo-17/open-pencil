@@ -27,6 +27,8 @@ async function readyFrame(page: Page): Promise<Frame> {
 
 async function declarePrivateUpload(page: Page): Promise<string> {
   return page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('OpenPencil store is not initialized')
     const appURL = performance
@@ -125,6 +127,8 @@ async function declarePrivateUpload(page: Page): Promise<string> {
 
 async function replaceWithLocalBackend(page: Page, nodeId: string): Promise<void> {
   await page.evaluate(async (id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('OpenPencil store is not initialized')
     const backendURL = new URL('/src/app/plugins/host/backend-provider.ts', location.origin).href

@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear('/?test')
 
 async function createForm() {
   const ids = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     store.graph.updateNode(store.graph.rootId, {
@@ -74,11 +76,13 @@ test('overview reveals existing controls and nested failure actions without modi
   await panel.locator('summary').click()
   await editor.page.screenshot({ path: test.info().outputPath('form-overview-en.png') })
   const before = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     return JSON.stringify(store?.graph.getAllNodes())
   })
 
-  await editor.page.getByTestId('design-panel-workspace-focused').click()
+  await editor.page.locator('[data-slot="inspector-workspace"][data-workspace="focused"]').click()
   await editor.page.getByTestId('form-overview-bindings').click()
   await expect(editor.page.getByTestId('lowcode-value-binding-select')).toBeDisabled()
   await expect(editor.page.getByTestId('lowcode-value-binding-create')).toBeFocused()
@@ -101,11 +105,15 @@ test('overview reveals existing controls and nested failure actions without modi
     .click()
   await expect(editor.page.locator('[data-lowcode-action-path="onClick[0]"]')).toBeFocused()
 
-  await editor.page.evaluate((formId) => window.openPencil?.getStore?.().select([formId]), ids.form)
+  await editor.page.evaluate((formId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([formId])
+  }, ids.form)
   await expect(editor.page.getByTestId('inspector-section-lowcode-events')).not.toBeVisible()
-  const after = await editor.page.evaluate(() =>
-    JSON.stringify(window.openPencil?.getStore?.().graph.getAllNodes())
-  )
+  const after = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return JSON.stringify(window.openPencil?.getStore?.().graph.getAllNodes())
+  })
   expect(after).toBe(before)
   editor.canvas.assertNoErrors()
 })
@@ -124,7 +132,7 @@ test('document switching clears temporary reveals, and Chinese copy fits the ins
     '不受表单提交时校验保护'
   )
   await editor.page.screenshot({ path: test.info().outputPath('form-overview-zh.png') })
-  await editor.page.getByTestId('design-panel-workspace-focused').click()
+  await editor.page.locator('[data-slot="inspector-workspace"][data-workspace="focused"]').click()
   await editor.page.getByTestId('form-overview-submit').click()
   await expect(editor.page.getByTestId('lowcode-events-section')).toBeVisible()
   const previousId = await editor.page.evaluate(async () => {

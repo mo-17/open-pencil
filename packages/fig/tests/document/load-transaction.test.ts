@@ -14,6 +14,7 @@ test('failed page mutation restores changed existing instance indexes and object
   if (!instance) throw new Error('Missing instance')
   const state: AssemblyState = {
     graph,
+    nextImportedId: 10,
     sources: new Map([['instance', instance.id]]),
     components: new Map(),
     componentIds: new Map(),
@@ -38,6 +39,7 @@ test('failed page mutation restores changed existing instance indexes and object
         externalPreferredKeys: new Set()
       },
       () => {
+        state.nextImportedId++
         state.sources.set('partial', instance.id)
         state.componentIds.set('partial', b.id)
         state.savedSizeNodes.add(instance.id)
@@ -58,4 +60,5 @@ test('failed page mutation restores changed existing instance indexes and object
   expect(state.unexpandedInstanceSourceIds.has('partial')).toBe(false)
   expect(graph.getChildren(page.id)).toHaveLength(3)
   expect(events).toBe(0)
+  expect(state.nextImportedId).toBe(10)
 })

@@ -1,12 +1,12 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { radioDesignValue, renderRadioContent } from '#core/canvas/radio'
 import { RenderChunkIndex } from '#core/canvas/renderer/chunks'
 import { renderShapeUncached } from '#core/canvas/scene'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer, mockCalls } from './effects/helpers'
 
@@ -23,7 +23,7 @@ describe('RADIO canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
 
-    renderShapeUncached(renderer, canvas as Canvas, node, graph)
+    renderShapeUncached(renderer, asCanvas(canvas), node, graph)
 
     expect(
       mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
@@ -93,7 +93,7 @@ describe('RADIO canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderRadioContent(renderer, canvas as Canvas, node, graph)
+    renderRadioContent(renderer, asCanvas(canvas), node, graph)
 
     expect(radioDesignValue(graph, node)).toBe('')
     expect(canvas.drawCircle).toHaveBeenCalledTimes(1)
@@ -145,7 +145,7 @@ describe('RADIO canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderRadioContent(renderer, canvas as Canvas, node, graph)
+    renderRadioContent(renderer, asCanvas(canvas), node, graph)
 
     expect(canvas.drawCircle).toHaveBeenCalledTimes(1)
     expect(canvas.translate).toHaveBeenCalledWith(12, 8)
@@ -175,7 +175,7 @@ describe('RADIO canvas content', () => {
       measureTextNode: mock(() => ({ width: 28, height: 21 }))
     })
 
-    renderRadioContent(renderer, canvas as Canvas, node, graph)
+    renderRadioContent(renderer, asCanvas(canvas), node, graph)
 
     expect(canvas.drawCircle).toHaveBeenCalledTimes(2)
     expect(canvas.translate).toHaveBeenCalledWith(64, 0)

@@ -15,22 +15,27 @@ export function createDefaultEditorViewState(pageId: string): EditorViewState {
     dropTargetId: null,
     layoutInsertIndicator: null,
     hoveredNodeId: null,
+    transforming: false,
     measurementMode: 'off',
     editingTextId: null,
     penState: null,
     penCursorX: null,
     penCursorY: null,
+    pencilState: null,
     autoLayoutHover: null,
+    shapeHandleHover: null,
     panX: 0,
     pageColor: { ...CANVAS_BG_COLOR },
     panY: 0,
     zoom: 1,
     navigation: { phase: 'idle', generation: 0, lastInputAt: 0 },
     renderVersion: 0,
+    textSelectionVersion: 0,
     enteredContainerId: null,
     nodeEditState: null,
     cursorCanvasX: null,
-    cursorCanvasY: null
+    cursorCanvasY: null,
+    play: null
   }
 }
 
@@ -46,7 +51,9 @@ export function copyEditorViewState(source: EditorViewState): EditorViewState {
     rotationPreview: structuredClone(source.rotationPreview),
     layoutInsertIndicator: structuredClone(source.layoutInsertIndicator),
     penState: structuredClone(source.penState),
+    pencilState: structuredClone(source.pencilState),
     autoLayoutHover: structuredClone(source.autoLayoutHover),
+    shapeHandleHover: structuredClone(source.shapeHandleHover),
     pageColor: { ...source.pageColor },
     navigation: { ...source.navigation },
     nodeEditState: structuredClone(source.nodeEditState)

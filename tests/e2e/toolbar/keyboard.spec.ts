@@ -11,12 +11,18 @@ test('toolbar arrows move focus without selecting a tool', async ({ page }) => {
   const buttons = toolbar.getByRole('button')
   const first = buttons.first()
   await first.focus()
-  const previousTool = await page.evaluate(() => window.openPencil?.getStore?.().state.activeTool)
+  const previousTool = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().state.activeTool
+  })
   await first.press('ArrowRight')
   await expect(buttons.nth(1)).toBeFocused()
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().state.activeTool)).toBe(
-    previousTool
-  )
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.activeTool
+    })
+  ).toBe(previousTool)
   await buttons.nth(1).press('End')
   await expect(buttons.last()).toBeFocused()
   await buttons.last().press('Home')

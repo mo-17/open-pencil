@@ -173,7 +173,7 @@ describe('browser preview Host', () => {
       })
       const result = await build
       if (result.status !== 'ready') throw new Error('Expected captured browser result')
-      expect(result.frame.pageSessionSource?.signature).toBe(before)
+      expect<unknown>(result.frame.pageSessionSource?.signature).toBe(before)
       expect(result.frame.pageSessionSource?.signature).not.toBe(after)
       expect(result.frame.pageSessionSource?.graph).toBe(graph)
       expect(Object.isFrozen(result.frame.pageSessionSource)).toBe(true)

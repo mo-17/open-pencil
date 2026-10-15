@@ -11,6 +11,8 @@ test('discovers a component by description, favorites it and inserts with workin
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const componentId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const component = editor.graph.createNode('COMPONENT', editor.state.currentPageId, {
       name: 'Customer card',
@@ -35,18 +37,22 @@ test('discovers a component by description, favorites it and inserts with workin
   await page.getByTestId('asset-details-insert').click()
   await expect(page.getByTestId('asset-details-dialog')).toBeHidden()
   await expect(panel.getByRole('status')).toContainText('Inserted and selected')
-  const insertedId = await page.evaluate(
-    () => [...window.openPencil.getStore().state.selectedIds][0]
-  )
+  const insertedId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return [...window.openPencil.getStore().state.selectedIds][0]
+  })
   expect(
-    await page.evaluate(
-      (id) => window.openPencil.getStore().graph.getNode(id)?.componentId,
-      insertedId
-    )
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.componentId
+    }, insertedId)
   ).toBe(componentId)
   await canvas.undo()
   expect(
-    await page.evaluate((id) => window.openPencil.getStore().graph.getNode(id), insertedId)
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)
+    }, insertedId)
   ).toBeUndefined()
   await expect(item.getByRole('button', { name: 'Remove from favorites' })).toBeVisible()
   canvas.assertNoErrors()
@@ -88,21 +94,27 @@ test('plugin favorites survive reload and lead through insertion, configuration 
   await expect(module).toBeVisible()
   await module.getByRole('button', { name: 'Add to canvas', exact: true }).click()
   await expect(page.getByTestId('rich-text-content-editor')).toBeVisible()
-  const insertedId = await page.evaluate(
-    () => [...window.openPencil.getStore().state.selectedIds][0]
-  )
+  const insertedId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return [...window.openPencil.getStore().state.selectedIds][0]
+  })
   await canvas.undo()
   expect(
-    await page.evaluate((id) => window.openPencil.getStore().graph.getNode(id), insertedId)
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)
+    }, insertedId)
   ).toBeUndefined()
   await canvas.redo()
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) =>
-          window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module?.moduleType,
-        insertedId
-      )
+      page.evaluate(async (id) => {
+        const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return readModuleInstance(
+          window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module
+        )?.moduleType
+      }, insertedId)
     )
     .toBe('rich-text')
   await page.getByTestId('left-panel-layers-tab').click()
@@ -112,11 +124,15 @@ test('plugin favorites survive reload and lead through insertion, configuration 
   await text.blur()
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) =>
-          JSON.stringify(window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module),
-        insertedId
-      )
+      page.evaluate(async (id) => {
+        const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return JSON.stringify(
+          readModuleInstance(
+            window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module
+          )
+        )
+      }, insertedId)
     )
     .toContain('Configured from the workbench')
   await page.getByTestId('left-panel-assets-tab').click()
@@ -150,7 +166,9 @@ test('reports failed favorites persistence while keeping the session choice usab
   const panel = page.getByTestId('assets-panel')
   const module = panel.locator('[data-module-type="map"]')
   await module.getByRole('button', { name: 'Add to favorites' }).click()
-  await expect(panel.getByRole('alert')).toContainText('Favorites could not be saved')
+  await expect(
+    panel.getByRole('alert').filter({ hasText: 'Favorites could not be saved' })
+  ).toContainText('Favorites could not be saved')
   await panel.getByRole('button', { name: 'Favorites only' }).click()
   await expect(module).toBeVisible()
   await expect(module.getByRole('button', { name: 'Remove from favorites' })).toBeVisible()
@@ -162,6 +180,8 @@ test('keyboard actions stay independent of the component card', async ({ page })
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const componentId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const component = editor.graph.createNode('COMPONENT', editor.state.currentPageId, {
       name: 'Keyboard card',
@@ -178,6 +198,8 @@ test('keyboard actions stay independent of the component card', async ({ page })
   })
   const instanceCount = () =>
     page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       return editor.graph
         .getChildren(editor.state.currentPageId)

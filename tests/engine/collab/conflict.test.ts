@@ -4,7 +4,9 @@ import * as Y from 'yjs'
 
 import { docStateApplyLosesLocal } from '@/app/collab/conflict'
 import { createYjsGraphSync, registerYjsObservers } from '@/app/collab/yjs-sync'
+import type { EditorStore } from '@/app/editor/active-store'
 
+import { asDouble } from '#tests/helpers/doubles'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 /**
@@ -88,7 +90,7 @@ describe('conflict reporting through the apply path (Phase 3 §4.5)', () => {
       graph: graphA,
       state: stateA,
       requestRender: noop,
-      switchPage(pageId: string) {
+      async switchPage(pageId: string) {
         stateA.currentPageId = pageId
       }
     }
@@ -96,21 +98,21 @@ describe('conflict reporting through the apply path (Phase 3 §4.5)', () => {
       graph: graphB,
       state: stateB,
       requestRender: noop,
-      switchPage(pageId: string) {
+      async switchPage(pageId: string) {
         stateB.currentPageId = pageId
       }
     }
 
     const conflictsB: string[] = []
     const syncA = createYjsGraphSync({
-      getStore: () => storeA,
+      getStore: () => asDouble<EditorStore>(storeA),
       getYdoc: () => docA,
       getYnodes: () => ynodesA,
       getYimages: () => null,
       setSuppressYjsEvents: noop
     })
     const syncB = createYjsGraphSync({
-      getStore: () => storeB,
+      getStore: () => asDouble<EditorStore>(storeB),
       getYdoc: () => docB,
       getYnodes: () => ynodesB,
       getYimages: () => null,
@@ -118,13 +120,16 @@ describe('conflict reporting through the apply path (Phase 3 §4.5)', () => {
       getConflictHandler: () => (kind: string) => conflictsB.push(kind)
     })
     registerYjsObservers({
-      store: storeB,
+      store: asDouble<EditorStore>(storeB),
       ynodes: ynodesB,
       yimages: docB.getMap('images'),
       getSuppressYjsEvents: () => false,
       setSuppressGraphSync: noop,
       applyYjsToGraph: syncB.applyYjsToGraph
     })
+
+    syncA.syncAllNodesToYjs()
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
 
     // B has a local `name` entry (not yet synced to its doc).
     graphB.updateNode(nodeA.id, {

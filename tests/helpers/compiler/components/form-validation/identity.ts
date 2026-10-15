@@ -67,6 +67,7 @@ export function validationIdentityFixture(target: 'react' | 'vue', kit = false) 
   createSubmit(componentForm.id, 'Validate instance')
   for (const y of [20, 260]) {
     const instance = graph.createInstance(master.id, page.id)
+    if (!instance) throw new Error('Fixture component instance unavailable')
     graph.updateNode(instance.id, { x: 440, y })
   }
   return compile({

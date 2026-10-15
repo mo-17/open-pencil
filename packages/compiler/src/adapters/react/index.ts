@@ -24,6 +24,7 @@ import type {
   HTMLMetadata,
   LowcodeThemeSwitchPosition
 } from '#compiler/types'
+import { uniq, compact } from 'es-toolkit'
 
 import { compactLowcodeHeadMetadata } from '@open-pencil/lowcode'
 
@@ -997,7 +998,7 @@ function setSharedProjectFiles(
   ]
   const safelist =
     runtimeClasses.length > 0 || kit.classNames.length > 0
-      ? [...new Set([...classNames, ...runtimeClasses, ...kit.classNames])].sort()
+      ? uniq([...classNames, ...runtimeClasses, ...kit.classNames]).sort()
       : classNames
   const needsRuntimeThemeCSS =
     runtimeClasses.length > 0 ||
@@ -1029,13 +1030,11 @@ function setSharedProjectFiles(
       generatedEffectRuntime
     )
   )
-  const themeCSS = [
+  const themeCSS = compact([
     options.themeCss,
     needsRuntimeThemeCSS ? LOWCODE_RUNTIME_THEME_CSS : '',
     kit.themeCss
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ]).join('\n')
   const microfrontend = options.packaging?.kind === 'microfrontend'
   files.set(
     'src/index.css',
@@ -1183,12 +1182,11 @@ function buildReactMicrofrontendEntry(
       themeSwitchEnabled ? `\n      ${themeSwitch}` : ''
     }\n    </LowcodeThemeProvider>`
   }
-  const runtimeChildren = [
+  const runtimeChildren = compact([
     runtime.toast ? '<ToastHost />' : '',
     runtime.confirm ? '<ConfirmHost />' : '',
     runtime.analyticsConsentBanner ? '<LowcodeAnalyticsConsentBanner />' : ''
-  ]
-    .filter(Boolean)
+  ])
     .map((child) => `\n    ${child}`)
     .join('')
   return `import { StrictMode } from 'react'
@@ -1265,15 +1263,14 @@ ${runtimeCleanup}  if (container) container.replaceChildren()
 }
 
 function buildMicrofrontendRuntimeCleanup(runtime: ReactMicrofrontendRuntimeOptions): string {
-  return [
+  return compact([
     runtime.motionRuntime
       ? `  ;(globalThis as typeof globalThis & { __OPENPENCIL_MOTION_RUNTIME__?: { dispose(): void } })\n    .__OPENPENCIL_MOTION_RUNTIME__?.dispose()`
       : '',
     runtime.generatedEffectRuntime
       ? `  ;(window as Window & { __OPENPENCIL_GENERATED_EFFECT_RUNTIME__?: { dispose(): void } })\n    .__OPENPENCIL_GENERATED_EFFECT_RUNTIME__?.dispose()`
       : ''
-  ]
-    .filter(Boolean)
+  ])
     .map((line) => `${line}\n`)
     .join('')
 }

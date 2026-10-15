@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- Private control-plane DTOs, strict parsers, and cursor cryptography form one wire boundary. */
-import { Buffer } from 'node:buffer'
 
 import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 

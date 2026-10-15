@@ -194,10 +194,12 @@ function catalog(state: SupabaseBackfillDatabaseCASLedgerStateV1): MutableRecord
     policyCount: 0,
     tables: tableRows(),
     columns: structuredClone(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_COLUMNS_V1),
-    constraints: structuredClone(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_CONSTRAINTS_V1)
+    constraints: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_CONSTRAINTS_V1.map((entry) => ({
+      ...structuredClone(entry)
+    }))
   }
   if (state === 'mismatch') {
-    const constraints = installed.constraints as MutableRecord[]
+    const constraints = installed.constraints
     const status = constraints.find(
       (entry) => entry.constraintName === 'backfill_executions_v1_status_check'
     )

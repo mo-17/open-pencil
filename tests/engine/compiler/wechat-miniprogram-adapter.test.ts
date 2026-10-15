@@ -6,12 +6,9 @@ import {
 } from '#compiler/adapters/wechat-miniprogram'
 import type { IRElement, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
+import * as v from 'valibot'
 
 import { pngSignatureBytes, sizedPNGSignatureBytes } from '#tests/helpers/image'
-
-interface WechatProjectConfig {
-  appid?: string
-}
 
 function options(overrides: Partial<CompilerOptions> = {}): CompilerOptions {
   return {
@@ -146,8 +143,14 @@ describe('native WeChat Mini Program adapter', () => {
     })
 
     const output = wechatMiniProgramAdapter.emit([home, next], options())
-    const app = JSON.parse(textFile(output.files, 'app.json')) as { pages: string[] }
-    const project = JSON.parse(textFile(output.files, 'project.config.json')) as WechatProjectConfig
+    const app = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ pages: v.array(v.string()) })),
+      textFile(output.files, 'app.json')
+    )
+    const project = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ appid: v.optional(v.string()) })),
+      textFile(output.files, 'project.config.json')
+    )
     const wxml = textFile(output.files, 'pages/home/index.wxml')
     const wxss = textFile(output.files, 'pages/home/index.wxss')
     const script = textFile(output.files, 'pages/home/index.js')

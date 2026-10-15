@@ -235,14 +235,19 @@ function resetFill(row: FillPropRow): void {
         <input
           :value="row.value"
           :aria-label="row.label"
-          :data-test-id="`component-prop-text-${row.childId}`"
+          data-slot="component-property"
+          :data-node-id="row.childId"
+          data-property="text"
           class="h-7 min-w-0 flex-1 rounded border border-border bg-input px-1.5 text-xs text-surface outline-none focus:border-accent"
           @change="updateText(row, $event)"
         />
         <button
           type="button"
           class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-          :data-test-id="`component-prop-text-reset-${row.childId}`"
+          data-slot="component-property-reset"
+          data-command="reset-component-property"
+          :data-node-id="row.childId"
+          data-property="text"
           @click="resetText(row)"
         >
           {{ panels.reset }}
@@ -260,7 +265,9 @@ function resetFill(row: FillPropRow): void {
           :value="`#${row.value}`"
           type="color"
           :aria-label="row.label"
-          :data-test-id="`component-prop-fill-${row.childId}`"
+          data-slot="component-property"
+          :data-node-id="row.childId"
+          data-property="fill"
           class="h-7 w-10 rounded border border-border bg-input p-0.5 outline-none focus:border-accent"
           @change="updateFill(row, $event)"
         />
@@ -268,7 +275,10 @@ function resetFill(row: FillPropRow): void {
         <button
           type="button"
           class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-          :data-test-id="`component-prop-fill-reset-${row.childId}`"
+          data-slot="component-property-reset"
+          data-command="reset-component-property"
+          :data-node-id="row.childId"
+          data-property="fill"
           @click="resetFill(row)"
         >
           {{ panels.reset }}

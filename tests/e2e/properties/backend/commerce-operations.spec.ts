@@ -56,6 +56,8 @@ for (const title of ['Single-merchant commerce', 'Multi-merchant commerce'] as c
       await expect(note).toContainText(policy)
     }
     const persisted = await page.evaluate(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const documentURL = new URL('/src/app/lowcode/backend/document.ts', location.origin).href
       const { readBackendProviderDocumentRequest } = (await import(
         /* @vite-ignore */ documentURL

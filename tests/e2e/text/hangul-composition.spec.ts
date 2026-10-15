@@ -5,7 +5,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 async function stubGoogleFonts(page: Page) {
   await page.addInitScript(() => {
     const originalFetch = window.fetch.bind(window)
-    window.fetch = async (input, init) => {
+    // The page's `fetch` has no Bun namespace properties, so the stub is asserted, not widened.
+    window.fetch = (async (input, init) => {
       let url: string
       if (typeof input === 'string') url = input
       else if (input instanceof URL) url = input.href
@@ -17,12 +18,14 @@ async function stubGoogleFonts(page: Page) {
         })
       }
       return originalFetch(input, init)
-    }
+    }) as typeof window.fetch
   })
 }
 
 async function startEmptyTextEdit(page: Page) {
   return await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -55,6 +58,8 @@ test('Hangul text input commits without CanvasKit paragraph errors', async ({ pa
   await canvas.waitForRender()
 
   const result = await page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.getNode(nodeId)
@@ -83,6 +88,8 @@ test('Hangul composition updates are visible before IME commit', async ({ page }
   const id = await startEmptyTextEdit(page)
 
   const composing = await page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-hidden="true"]')
     if (!store || !textarea) throw new Error('Text edit session was not initialized')
@@ -131,6 +138,8 @@ test('Hangul composition updates are visible before IME commit', async ({ page }
 
   await canvas.click(20, 20)
   const committed = await page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return {

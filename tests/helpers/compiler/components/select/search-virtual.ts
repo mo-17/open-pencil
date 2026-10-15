@@ -71,8 +71,18 @@ export function selectSearchVirtualGraph() {
     },
     events: {
       onChange: [
-        { kind: 'setState', targetStateId: 'changes', valueExpr: '$prev + 1' },
-        { kind: 'setState', targetStateId: 'lastValue', valueExpr: '$value' }
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'changes',
+          valueExpr: '$prev + 1'
+        },
+        {
+          id: 'fixture-action-2',
+          kind: 'setState',
+          targetStateId: 'lastValue',
+          valueExpr: '$value'
+        }
       ]
     }
   })
@@ -127,7 +137,7 @@ export function selectSearchVirtualGraph() {
       width: 400,
       height: 36,
       interactiveProps: { text: name },
-      events: { onClick: [{ kind: 'setState', targetStateId, valueExpr }] }
+      events: { onClick: [{ id: 'fixture-action-3', kind: 'setState', targetStateId, valueExpr }] }
     })
   }
   graph.createNode('BUTTON', form.id, {

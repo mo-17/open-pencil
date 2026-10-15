@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const application = () =>
   createHospitalApplication('hospital-definition-test', {
     kind: 'oidc-pkce',
@@ -76,7 +78,7 @@ describe('hospital registration page definition', () => {
     expect(() => preflightBusinessPages(model, definition)).not.toThrow()
     const actions = definition.pages.flatMap((entry) => entry.actions)
     expect(actions).toHaveLength(15)
-    expect(actions.map((entry) => entry.commandId).sort()).toEqual(
+    expect<unknown>(actions.map((entry) => entry.commandId).sort()).toEqual(
       model.commands?.commands.map((entry) => entry.id).sort()
     )
     expect(action('reserve-hospital-appointment').parameters).toEqual({
@@ -176,7 +178,7 @@ describe('hospital registration page definition', () => {
       const nodes = [...editor.graph.getAllNodes()]
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource') {
           for (const expression of [
             source.afterExpr,

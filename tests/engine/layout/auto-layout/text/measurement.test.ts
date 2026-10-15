@@ -70,6 +70,8 @@ describe('text measurement', () => {
         orderKey: '!',
         editedFields: [],
         fig: {
+          rawNodeType: null,
+          rawStructuralFieldPresence: null,
           rawNodeFields: {},
           rawTransform: null,
           rawSize: null,
@@ -130,7 +132,6 @@ describe('text measurement', () => {
 
   test(
     'headless page switching keeps imported text bounds before CanvasKit measurement',
-    { timeout: HEAVY_TEST_TIMEOUT_MS },
     async () => {
       const graph = await loadFixtureGraph('gold-preview.fig')
       // The app store also waits for a canvas presentation ACK; this test has no canvas.
@@ -178,12 +179,12 @@ describe('text measurement', () => {
         editor.releaseGraphResources()
         editor.dispose()
       }
-    }
+    },
+    HEAVY_TEST_TIMEOUT_MS
   )
 
   test(
     'imported nested instance layout keeps hidden sibling offsets stable',
-    { timeout: HEAVY_TEST_TIMEOUT_MS },
     async () => {
       const graph = await loadFixtureGraph('gold-preview.fig')
       const previewRoot = graph.getChildren(graph.getPages()[0].id)[0]
@@ -222,7 +223,8 @@ describe('text measurement', () => {
 
       expect(graph.getNode(visibleToolbar.id)?.x).toBe(8)
       expect(graph.getNode(visibleToolbar.id)?.y).toBe(8)
-    }
+    },
+    { timeout: HEAVY_TEST_TIMEOUT_MS }
   )
 
   test('WIDTH_AND_HEIGHT text uses measured width in centered layout', () => {
@@ -241,7 +243,10 @@ describe('text measurement', () => {
       itemSpacing: 10
     })
 
-    const arrow1 = graph.createNode('FRAME', frame.id, { width: 20, height: 20 })
+    const arrow1 = graph.createNode('FRAME', frame.id, {
+      width: 20,
+      height: 20
+    })
     const text = graph.createNode('TEXT', frame.id, {
       width: 200,
       height: 20,
@@ -249,7 +254,10 @@ describe('text measurement', () => {
       fontSize: 14,
       textAutoResize: 'WIDTH_AND_HEIGHT' as const
     })
-    const arrow2 = graph.createNode('FRAME', frame.id, { width: 20, height: 20 })
+    const arrow2 = graph.createNode('FRAME', frame.id, {
+      width: 20,
+      height: 20
+    })
 
     setTextMeasurer((node) => {
       if (node.type === 'TEXT' && node.textAutoResize === 'WIDTH_AND_HEIGHT') {

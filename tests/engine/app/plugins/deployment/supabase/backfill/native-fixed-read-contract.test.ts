@@ -359,7 +359,7 @@ describe('Supabase backfill Native fixed-read TypeScript IPC contract', () => {
       'supabase-backfill-native-fixed-read-request-invalid'
     )
     const changedBinding = structuredClone(original)
-    changedBinding.bindings.scopeDigest = DIGEST_B
+    Reflect.set(changedBinding.bindings, 'scopeDigest', DIGEST_B)
     expect(await errorCode(parseSupabaseBackfillNativeFixedReadRequestV1(changedBinding))).toBe(
       'supabase-backfill-native-fixed-read-binding-mismatch'
     )
@@ -536,13 +536,16 @@ describe('Supabase backfill Native fixed-read TypeScript IPC contract', () => {
       'supabase-backfill-native-fixed-read-request-invalid'
     )
 
-    const sparse = structuredClone(original)
+    const sparse = { ...structuredClone(original), parameters: [...original.parameters] }
     sparse.parameters.pop()
     sparse.parameters.length = original.parameters.length
     expect(await errorCode(parseSupabaseBackfillNativeFixedReadRequestV1(sparse))).toBe(
       'supabase-backfill-native-fixed-read-request-invalid'
     )
-    const reordered = structuredClone(original)
+    const reordered = {
+      ...structuredClone(original),
+      query: { ...original.query, parameterOrder: [...original.query.parameterOrder] }
+    }
     ;[reordered.query.parameterOrder[0], reordered.query.parameterOrder[1]] = [
       reordered.query.parameterOrder[1],
       reordered.query.parameterOrder[0]
@@ -731,7 +734,7 @@ describe('Supabase backfill Native fixed-read TypeScript IPC contract', () => {
         })
       )
     ).toBe('supabase-backfill-native-fixed-read-result-invalid')
-    const changedBytes = structuredClone(result)
+    const changedBytes = { ...structuredClone(result), responseBytes: [...result.responseBytes] }
     changedBytes.responseBytes[0] = 91
     expect(
       await errorCode(

@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
+import { compact } from 'es-toolkit'
+
+import { parsePackageManifest } from '@open-pencil/package-artifacts-tools'
+import { validateTarballImportTargets } from '@open-pencil/package-artifacts-tools/tarball'
+
 import {
   PUBLISH_REPOSITORY_URL,
   type PreparedPublishPackage,
@@ -59,14 +64,14 @@ export function packageExportTargetPaths(packageJSON: Pick<PackageJSON, 'exports
 
 export async function tarballEntries(tarballPath: string): Promise<Set<string>> {
   const { stdout } = await execFileAsync('tar', ['-tf', tarballPath], { encoding: 'utf8' })
-  return new Set(stdout.trim().split('\n').filter(Boolean))
+  return new Set(compact(stdout.trim().split('\n')))
 }
 
 export async function tarballPackageJSON(tarballPath: string): Promise<PackageJSON> {
   const { stdout } = await execFileAsync('tar', ['-xOf', tarballPath, 'package/package.json'], {
     encoding: 'utf8'
   })
-  return JSON.parse(stdout) as PackageJSON
+  return parsePackageManifest(stdout, tarballPath)
 }
 
 export async function validateTarballBinTargets(tarballPath: string): Promise<void> {
@@ -132,13 +137,7 @@ export function validatePublishedPackageJSON(
   if (repositoryURL(packageJSON.repository) !== expectedRepository) {
     throw new Error(`${expected.name}: tarball repository does not point to ${expectedRepository}`)
   }
-  for (const field of [
-    'devDependencies',
-    'imports',
-    'private',
-    'publishConfig',
-    'scripts'
-  ] as const) {
+  for (const field of ['devDependencies', 'private', 'publishConfig', 'scripts'] as const) {
     if (packageJSON[field] !== undefined) {
       throw new Error(`${expected.name}: tarball must not contain ${field}`)
     }
@@ -274,6 +273,7 @@ export async function validatePackedTarballs(
     validatePublishedPackageJSON(packageJSON, expected, plan.repository)
     await validateTarballBinTargets(tarballPath)
     await validateTarballExportTargets(tarballPath)
+    await validateTarballImportTargets(tarballPath)
     await validateTarballLicense(tarballPath, expectedLicense)
     await validateTarballRequiredFiles(tarballPath, expected.requiredFiles ?? [])
     await auditTarballFiles(tarballPath, forbiddenWorkspaceNames)

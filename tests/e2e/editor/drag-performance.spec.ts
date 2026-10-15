@@ -11,6 +11,8 @@ test('dragging a nested card uses repaint-only position previews', async ({ page
   await canvas.clearCanvas()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1

@@ -17,6 +17,7 @@ import { collectModuleValueFields } from '#compiler/modules/value-controls'
 import { collectVideoModuleBindings } from '#compiler/modules/video'
 import { designTokenCSSVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
+import { compact } from 'es-toolkit'
 
 import { colorToHex8 } from '@open-pencil/core/color'
 import { gradientFillCSS } from '@open-pencil/core/io'
@@ -4380,11 +4381,12 @@ function listQueryDeps(references: Iterable<string>): string[] {
  *  the LIST node name (`Products` → `productsRows`), de-duplicated against the
  *  page's other list queries. */
 function uniqueListRowsName(node: SceneNode, existing: readonly IRListQuery[]): string {
-  const words = (node.name || 'list')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
+  const words = compact(
+    (node.name || 'list')
+      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+  )
   const camel = words
     .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
     .join('')

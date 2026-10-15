@@ -10,10 +10,13 @@ test('large layer trees stay virtualized and scrollable', async ({ page }) => {
   await canvas.waitForInit()
 
   const replaceStartedAt = await page.evaluate((count: number) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
-    const Graph = store.graph.constructor as new () => typeof store.graph
+    const activeGraph = store.graph
+    const Graph = activeGraph.constructor as new () => typeof activeGraph
     const graph = new Graph()
     const pageId = graph.getPages()[0]?.id
     if (!pageId) throw new Error('Page not initialized')
@@ -51,6 +54,8 @@ test('large layer trees stay virtualized and scrollable', async ({ page }) => {
     .toBeLessThan(5000)
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -64,6 +69,8 @@ test('large layer trees stay virtualized and scrollable', async ({ page }) => {
   const scrollBefore = await scroller.evaluate((el) => el.scrollTop)
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -83,6 +90,8 @@ test('large layer trees stay virtualized and scrollable', async ({ page }) => {
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(scrollBefore)
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -99,6 +108,8 @@ test('large layer trees stay virtualized and scrollable', async ({ page }) => {
   await expect(renameInput).toBeFocused()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const firstId = store.graph.getNode(store.state.currentPageId)?.childIds[0]
@@ -115,9 +126,12 @@ test('layer tree supports range and additive selection', async ({ page }) => {
   await canvas.waitForInit()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
-    const Graph = store.graph.constructor as new () => typeof store.graph
+    const activeGraph = store.graph
+    const Graph = activeGraph.constructor as new () => typeof activeGraph
     const graph = new Graph()
     const pageId = graph.getPages()[0]?.id
     if (!pageId) throw new Error('Page not initialized')

@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const authentication = {
   kind: 'oidc-pkce' as const,
   issuer: 'https://identity.example.com',
@@ -32,7 +34,7 @@ describe('survey page definitions', () => {
     expect(definition.description.en).toContain('three fixed question types')
     expect(definition.description.zh).toContain('不含任意表单设计')
     const actions = definition.pages.flatMap((page) => page.actions)
-    expect(actions.map((action) => action.commandId).sort()).toEqual(
+    expect<unknown>(actions.map((action) => action.commandId).sort()).toEqual(
       app.commands?.commands.map((command) => command.id).sort()
     )
     expect(definition.pages.filter((page) => page.public).map((page) => page.id)).toEqual([
@@ -110,7 +112,7 @@ describe('survey page definitions', () => {
         ).toBe(true)
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource') {
           for (const expression of [
             source.afterExpr,

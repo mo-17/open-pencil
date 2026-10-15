@@ -1,8 +1,10 @@
+import { isEqual } from 'es-toolkit'
+
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
 import type { GuidePreview } from '#core/canvas/guides/types'
-import type { EditorContext } from '#core/editor/types'
+import type { ShapeHandleHover, EditorContext } from '#core/editor/types'
 
 export function createSelectionOverlayActions(ctx: EditorContext) {
   function setMarquee(rect: Rect | null) {
@@ -51,6 +53,12 @@ export function createSelectionOverlayActions(ctx: EditorContext) {
     ctx.requestOverlayRepaint()
   }
 
+  function setTransforming(transforming: boolean) {
+    if (ctx.state.transforming === transforming) return
+    ctx.state.transforming = transforming
+    ctx.requestRepaint()
+  }
+
   /** Marks the layer of the code element around the cursor, separately from canvas hover. */
   function setCodeFocusNode(id: string | null) {
     if (ctx.state.codeFocusNodeId === id) return
@@ -90,6 +98,12 @@ export function createSelectionOverlayActions(ctx: EditorContext) {
     ctx.requestOverlayRepaint()
   }
 
+  function setShapeHandleHover(hover: ShapeHandleHover | null) {
+    if (isEqual(ctx.state.shapeHandleHover, hover)) return
+    ctx.state.shapeHandleHover = hover
+    ctx.requestRepaint()
+  }
+
   return {
     setMarquee,
     setSnapGuides,
@@ -99,10 +113,12 @@ export function createSelectionOverlayActions(ctx: EditorContext) {
     setSelectedGuide,
     setRotationPreview,
     setHoveredNode,
+    setTransforming,
     setCodeFocusNode,
     setMeasurementMode,
     setDropTarget,
     setLayoutInsertIndicator,
-    setAutoLayoutHover
+    setAutoLayoutHover,
+    setShapeHandleHover
   }
 }

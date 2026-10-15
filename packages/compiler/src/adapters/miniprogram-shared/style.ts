@@ -1,4 +1,5 @@
 import type { IRStyleAttr } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { nativeBorderRadius, nativeTextSize } from '../native-shared'
 import type { MiniProgramStyleResult } from './types'
@@ -62,7 +63,7 @@ export function translateMiniProgramStyle(
   const declarations: Record<string, string> = {}
   const unsupportedUtilities: string[] = []
   let backgroundAsset: string | undefined
-  for (const utility of className.split(/\s+/).filter(Boolean)) {
+  for (const utility of compact(className.split(/\s+/))) {
     const localAsset = /^bg-\[url\(\.\/assets\/([^/\\)]+)\)\]$/.exec(utility)?.[1]
     if (localAsset) {
       backgroundAsset = localAsset

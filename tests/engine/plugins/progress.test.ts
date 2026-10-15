@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 
 import * as progress from '#core/plugins/progress'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('Progress defaults are independent FRAME module data and preserve a genuine zero', () => {
   const first = progress.createProgressModuleInstance({ value: 0 })
   const second = progress.createProgressModuleInstance()
@@ -12,9 +14,10 @@ test('Progress defaults are independent FRAME module data and preserve a genuine
   expect(resolved?.ok).toBe(true)
   if (!resolved?.ok) throw new Error('Missing progress config')
   expect(progress.progressDisplayValue(resolved.config)).toBe('0%')
-  expect(progress.createProgressModuleFrameOverrides().interactiveProps?.module?.pluginId).toBe(
-    'open-pencil.progress'
-  )
+  expect(
+    expectModuleInstance(progress.createProgressModuleFrameOverrides().interactiveProps?.module)
+      .pluginId
+  ).toBe('open-pencil.progress')
 })
 
 test('indeterminate Progress keeps an authored value but never presents it as measured progress', () => {

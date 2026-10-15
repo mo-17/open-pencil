@@ -25,7 +25,8 @@ function joined(values: readonly string[] | undefined): string {
 <template>
   <section
     class="rounded border border-border/70 bg-panel px-2 py-1.5 text-[9px] text-muted"
-    :data-test-id="`plugin-v2-contract-${scope}`"
+    data-slot="plugin-contract"
+    :data-contract-scope="scope"
   >
     <p class="font-medium text-surface">{{ versionLabel }}</p>
     <p v-if="contracts.length === 0" class="mt-1 font-mono">contracts: []</p>

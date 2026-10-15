@@ -16,12 +16,16 @@ export type WebCodecsWebmCapabilityResult =
   | { readonly supported: true; readonly encoder: MotionAnimationEncoder }
   | { readonly supported: false; readonly reason: string }
 
-function webCodecsAvailable(): boolean {
-  return (
-    typeof VideoEncoder !== 'undefined' &&
-    typeof VideoFrame !== 'undefined' &&
-    typeof createImageBitmap === 'function'
+function webCodecs(): { Encoder: typeof VideoEncoder; Frame: typeof VideoFrame } | null {
+  const Encoder: typeof VideoEncoder | undefined = Reflect.get(globalThis, 'VideoEncoder')
+  const Frame: typeof VideoFrame | undefined = Reflect.get(globalThis, 'VideoFrame')
+  if (
+    typeof Encoder !== 'function' ||
+    typeof Frame !== 'function' ||
+    typeof createImageBitmap !== 'function'
   )
+    return null
+  return { Encoder, Frame }
 }
 
 function encoderConfig(width: number, height: number, fps: number): VideoEncoderConfig {
@@ -45,9 +49,10 @@ async function supportedConfig(
   height: number,
   fps: number
 ): Promise<VideoEncoderConfig | null> {
-  if (!webCodecsAvailable()) return null
+  const codecs = webCodecs()
+  if (!codecs) return null
   try {
-    const support = await VideoEncoder.isConfigSupported(encoderConfig(width, height, fps))
+    const support = await codecs.Encoder.isConfigSupported(encoderConfig(width, height, fps))
     return support.supported && support.config ? support.config : null
   } catch {
     return null
@@ -80,6 +85,8 @@ async function flushWithSignal(encoder: VideoEncoder, signal?: AbortSignal): Pro
 }
 
 async function encodeWebm(input: MotionAnimationEncoderInput): Promise<Uint8Array> {
+  const codecs = webCodecs()
+  if (!codecs) throw new Error('WebCodecs VP8 is unavailable in this runtime')
   const config = await supportedConfig(
     input.plan.pixelWidth,
     input.plan.pixelHeight,
@@ -90,7 +97,7 @@ async function encodeWebm(input: MotionAnimationEncoderInput): Promise<Uint8Arra
 
   const chunks: MotionWebmVideoFrame[] = []
   const encoderErrors: DOMException[] = []
-  const encoder = new VideoEncoder({
+  const encoder = new codecs.Encoder({
     output(chunk) {
       const bytes = new Uint8Array(chunk.byteLength)
       chunk.copyTo(bytes)
@@ -128,7 +135,7 @@ async function encodeWebm(input: MotionAnimationEncoderInput): Promise<Uint8Arra
             `WebM frame size ${bitmap.width}x${bitmap.height} does not match ${input.plan.pixelWidth}x${input.plan.pixelHeight}`
           )
         }
-        const frame = new VideoFrame(bitmap, {
+        const frame = new codecs.Frame(bitmap, {
           timestamp: planned.timestampUs,
           duration: planned.durationUs,
           alpha: 'discard'
@@ -182,7 +189,7 @@ export async function probeWebCodecsWebmMotionEncoder(
   signal?: AbortSignal
 ): Promise<WebCodecsWebmCapabilityResult> {
   if (signal?.aborted) throw new MotionExportCancelledError()
-  if (!webCodecsAvailable()) {
+  if (!webCodecs()) {
     return { supported: false, reason: 'WebCodecs VP8 is unavailable in this runtime' }
   }
   const config = await supportedConfig(input.pixelWidth, input.pixelHeight, input.fps)

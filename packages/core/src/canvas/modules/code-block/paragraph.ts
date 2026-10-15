@@ -1,10 +1,11 @@
-import type { Canvas, Paragraph } from 'canvaskit-wasm'
+import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { moduleLabelTextNode } from '#core/canvas/modules/label'
 import { withModulePreviewRectClip } from '#core/canvas/modules/preview'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 
 import { codeBlockLocale } from './text'
@@ -24,7 +25,7 @@ export function codeBlockParagraph(
   renderer: SkiaRenderer,
   node: SceneNode,
   options: CodeParagraphOptions
-): Paragraph | undefined {
+): TextLayout | undefined {
   if (!renderer.fontProvider || !renderer.fontsLoaded || options.width <= 0) return undefined
   const label: SceneNode = {
     ...moduleLabelTextNode(
@@ -63,7 +64,7 @@ export function paintCodeBlockLabel(
       renderer,
       canvas,
       { x, y, width: options.width, height: options.lineHeight },
-      () => canvas.drawParagraph(paragraph, x, y)
+      () => paragraph.draw(canvas, x, y)
     )
   } finally {
     paragraph.delete()

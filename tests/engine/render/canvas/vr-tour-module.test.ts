@@ -1,7 +1,5 @@
 import { expect, mock, spyOn, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -14,7 +12,12 @@ import {
   createVRTourSampleScenes
 } from '#core/plugins/vr-tour'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas, textLayoutDouble } from '#tests/engine/render/canvas/helpers'
 
 function frame(overrides: Partial<SceneNode> = {}) {
   return createDefaultNode(() => 'tour-1', 'FRAME', {
@@ -51,7 +54,7 @@ function rendererWithFont() {
           delete: mock(() => undefined)
         }
         paragraphs.push(paragraph)
-        return paragraph as never
+        return textLayoutDouble(paragraph)
       })
     }),
     font,
@@ -64,16 +67,21 @@ test('VR tour uses the registered offline diagram and does not fetch configured 
   expect(BUILTIN_MODULE_CANVAS_ADAPTERS.get('open-pencil.vr-tour', 'vr-tour')).toBeDefined()
   const source = structuredClone(VR_TOUR_MODULE_DEFAULT_CONFIG)
   source.scenes[0].panoramaUrl = 'https://media.example.com/panorama.jpg'
-  const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+  const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
   const { renderer, font, paragraphs } = rendererWithFont()
-  const fetch = spyOn(globalThis, 'fetch').mockImplementation(() => {
-    throw new Error('Canvas must stay offline')
-  })
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+    Object.assign(
+      () => {
+        throw new Error('Canvas must stay offline')
+      },
+      { preconnect: globalThis.fetch.preconnect }
+    )
+  )
   try {
     expect(
       renderVRTourModulePreview(
         renderer,
-        canvas as Canvas,
+        asCanvas(canvas),
         frame(createVRTourModuleFrameOverrides(source))
       )
     ).toBe(true)
@@ -98,16 +106,21 @@ test('Chinese canvas copy keeps authored labels and sample imagery offline', () 
   expect(vrTourPreviewLabel(config)).toBe('客厅 · 360° · 2 个场景')
   config.scenes = createVRTourSampleScenes('zh-CN')
   config.scenes[0].title = '用户命名的住宅'
-  const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+  const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
   const { renderer, font, paragraphs } = rendererWithFont()
-  const fetch = spyOn(globalThis, 'fetch').mockImplementation(() => {
-    throw new Error('Sample configuration must not request panorama images')
-  })
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+    Object.assign(
+      () => {
+        throw new Error('Sample configuration must not request panorama images')
+      },
+      { preconnect: globalThis.fetch.preconnect }
+    )
+  )
   try {
     expect(
       renderVRTourModulePreview(
         renderer,
-        canvas as Canvas,
+        asCanvas(canvas),
         frame(createVRTourModuleFrameOverrides(config))
       )
     ).toBe(true)
@@ -128,22 +141,22 @@ test('Chinese canvas copy keeps authored labels and sample imagery offline', () 
 })
 
 test('VR tour empty, invalid, fontless and failed draws preserve canvas/font lifetimes', () => {
-  const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+  const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
   const { renderer, font, paragraphs } = rendererWithFont()
-  expect(renderVRTourModulePreview(renderer, canvas as Canvas, frame({ width: 0 }))).toBe(true)
-  expect(renderVRTourModulePreview(renderer, canvas as Canvas, frame({ type: 'RECTANGLE' }))).toBe(
+  expect(renderVRTourModulePreview(renderer, asCanvas(canvas), frame({ width: 0 }))).toBe(true)
+  expect(renderVRTourModulePreview(renderer, asCanvas(canvas), frame({ type: 'RECTANGLE' }))).toBe(
     false
   )
   expect(
     renderVRTourModulePreview(
       renderer,
-      canvas as Canvas,
+      asCanvas(canvas),
       frame({ interactiveProps: { module: {} } })
     )
   ).toBe(false)
   expect(canvas.save).not.toHaveBeenCalled()
   expect(
-    renderVRTourModulePreview(createMockRenderer({ labelFont: null }), canvas as Canvas, frame())
+    renderVRTourModulePreview(createMockRenderer({ labelFont: null }), asCanvas(canvas), frame())
   ).toBe(true)
   expect(canvas.restore).toHaveBeenCalledTimes(1)
   const broken = {
@@ -152,7 +165,7 @@ test('VR tour empty, invalid, fontless and failed draws preserve canvas/font lif
       throw new Error('paint failed')
     })
   }
-  expect(() => renderVRTourModulePreview(renderer, broken as Canvas, frame())).toThrow(
+  expect(() => renderVRTourModulePreview(renderer, asCanvas(broken), frame())).toThrow(
     'paint failed'
   )
   expect(broken.restore).toHaveBeenCalledTimes(1)
@@ -163,12 +176,12 @@ test('VR tour empty, invalid, fontless and failed draws preserve canvas/font lif
 
 test('VR labels wait for the shared font demand and do not paint missing-glyph boxes', () => {
   const { renderer, paragraphs } = rendererWithFont()
-  renderer.nodeFontReadiness = mock(() => 'pending')
-  const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+  renderer.nodeFontReadiness = mock(() => 'pending' as const)
+  const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
   expect(
     renderVRTourModulePreview(
       renderer,
-      canvas as Canvas,
+      asCanvas(canvas),
       frame(createVRTourModuleFrameOverrides(createLocalizedVRTourConfig('zh-CN')))
     )
   ).toBe(true)

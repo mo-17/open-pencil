@@ -3,6 +3,7 @@ import { access, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 
+import { compact } from 'es-toolkit/array'
 import * as v from 'valibot'
 
 import type { FlutterPreviewDevice } from '@open-pencil/compiler/flutter-preview'
@@ -57,10 +58,9 @@ export async function resolveFlutterSDK(
       'flutter-preview-host-unsupported',
       'This owned process-group native preview currently requires a Unix host.'
     )
-  const candidates = (environment.PATH ?? '')
-    .split(delimiter)
-    .filter(Boolean)
-    .map((path) => join(path, 'flutter'))
+  const candidates = compact((environment.PATH ?? '').split(delimiter)).map((path) =>
+    join(path, 'flutter')
+  )
   candidates.push(join(homedir(), 'fvm/default/bin/flutter'))
   for (const candidate of new Set(candidates)) {
     try {

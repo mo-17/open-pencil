@@ -1,23 +1,26 @@
-import { fileURLToPath } from 'node:url'
-
 import type { Page } from '@playwright/test'
 
+import { repoPath } from '#tests/helpers/paths'
+
 export async function openPreviewSyncDocument(page: Page): Promise<void> {
-  const path = fileURLToPath(
-    new URL(
-      '../../engine/compiler/flutter-preview/fixtures/flutter-sync-acceptance.fig',
-      import.meta.url
-    )
+  const path = repoPath(
+    'tests/engine/compiler/flutter-preview/fixtures/flutter-sync-acceptance.fig'
   )
   await page.evaluate(async (url) => {
-    if (!window.openPencil?.openFile) throw new Error('Document opener not initialized.')
-    await window.openPencil.openFile(url)
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+
+    if (!api?.openFile) throw new Error('Document opener not initialized.')
+    await api.openFile(url)
   }, `/@fs${path}`)
 }
 
 export async function createPreviewSyncMarker(page: Page, text: string): Promise<string> {
   return page.evaluate((value) => {
-    const store = window.openPencil?.getStore?.()
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+
+    const store = api?.getStore?.()
     if (!store) throw new Error('Editor not initialized.')
     return store.graph.createNode('TEXT', store.state.currentPageId, {
       name: 'Preview sync acceptance marker',
@@ -34,7 +37,10 @@ export async function createPreviewSyncMarker(page: Page, text: string): Promise
 export async function updatePreviewSyncMarker(page: Page, id: string, text: string): Promise<void> {
   await page.evaluate(
     ({ nodeId, value }) => {
-      const store = window.openPencil?.getStore?.()
+      const api = window.openPencil
+      if (!api) throw new Error('OpenPencil test host unavailable')
+
+      const store = api?.getStore?.()
       if (!store) throw new Error('Editor not initialized.')
       store.graph.updateNode(nodeId, { text: value })
     },

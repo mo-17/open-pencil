@@ -91,7 +91,7 @@ export function presentationResources(
           let value: BusinessTestRow[string] = common[name] ?? '业务记录'
           if (field.type === 'uuid') value = id(resourceIndex * 100 + fieldIndex * 2 + index + 1)
           else if (field.type === 'datetime') value = '2026-09-16T09:00:00.000Z'
-          else if (field.type === 'integer' || field.type === 'decimal') value = common[name] ?? 1
+          else if (field.type === 'integer' || field.type === 'number') value = common[name] ?? 1
           else if (field.type === 'boolean') value = true
           else if (field.type === 'enum')
             value =

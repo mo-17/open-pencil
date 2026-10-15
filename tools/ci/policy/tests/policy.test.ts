@@ -14,6 +14,8 @@ const documentation = [
   'README.md',
   'AGENTS.md',
   'CHANGELOG.md',
+  'changes/README.md',
+  'changes/1095/added.md',
   'packages/vue/README.md',
   'packages/core/README.md',
   'packages/core/AGENTS.md',
@@ -37,6 +39,7 @@ const code = [
   'packages/docs/.vitepress/config.ts',
   'packages/docs/demo.vue',
   'skills/open-pencil/scripts/create.ts',
+  'changes/1095/notes.txt',
   'package.json',
   'bun.lock',
   '.github/workflows/ci.yml',
@@ -75,7 +78,7 @@ function results(scope: ChangeScope): Record<string, JobStatus> {
   }
 }
 
-test.each(['docs', 'code'] as const)(
+test.each(['docs', 'code', 'verified'] as const)(
   'accepts only appropriate successful checks for %s',
   (scope) => {
     expect(gateErrors(results(scope))).toEqual([])
@@ -132,7 +135,16 @@ test.each(['p2-motion-e2e', 'desktop-tests'])(
     )
     expect(gateErrors(incomplete)).toContain(`${job} did not succeed`)
     expect(gateErrors({ ...results('docs'), [job]: { result: 'success' } })).toContain(
-      `${job} was not skipped for docs-only routing`
+      `${job} was not skipped for docs routing`
     )
   }
 )
+
+test('a verified tree runs only the checks every change runs', () => {
+  for (const job of [...CODE_JOBS, DOCS_JOB]) {
+    expect(gateErrors({ ...results('verified'), [job]: { result: 'success' } })).not.toEqual([])
+  }
+  for (const job of ALWAYS_JOBS) {
+    expect(gateErrors({ ...results('verified'), [job]: { result: 'skipped' } })).not.toEqual([])
+  }
+})

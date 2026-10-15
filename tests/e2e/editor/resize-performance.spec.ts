@@ -11,6 +11,8 @@ test('resizing uses repaint-only previews until mouseup', async ({ page }) => {
   await canvas.clearCanvas()
 
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -42,6 +44,8 @@ test('resizing uses repaint-only previews until mouseup', async ({ page }) => {
 
   const counters = await measureInteraction(page, () => canvas.drag(340, 240, 420, 290, 12), id)
   const node = await page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(nodeId)

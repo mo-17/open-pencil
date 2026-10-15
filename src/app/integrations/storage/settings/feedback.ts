@@ -22,8 +22,14 @@ function preferenceSchema(field: StoragePreferenceField, messages: SettingsValid
   )
 }
 
+type StorageSettingsFeedbackState = {
+  [Key in 'provider' | 'preferenceDrafts' | 'credentialStatuses']: Readonly<
+    Ref<ReturnType<typeof useStorageSettings>[Key]['value']>
+  >
+}
+
 export function useStorageSettingsFeedback(
-  connection: ReturnType<typeof useStorageSettings>,
+  connection: StorageSettingsFeedbackState,
   credentials: Readonly<Ref<Record<string, string>>>,
   messages: Readonly<Ref<SettingsValidationMessages>>
 ) {

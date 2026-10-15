@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { Color, Fill, SceneNode, Stroke } from '@open-pencil/scene-graph'
 import { colorToHexRaw } from '@open-pencil/scene-graph/color'
@@ -7,8 +7,10 @@ import {
   applySolidStrokeColor,
   applyStrokePaint,
   BindableValueRoot,
+  MIXED,
   useColorBindingProvider,
   useI18n,
+  useNodeProps,
   useOkHCL,
   useStrokeControls,
   type BindableValueActions
@@ -16,6 +18,7 @@ import {
 
 import FillPicker from '@/components/fill-picker/FillPicker.vue'
 import NumberField from '@/components/inputs/NumberField.vue'
+import PaintField from '@/components/inputs/PaintField.vue'
 import PropertyItemRow from '@/components/properties/item-list/PropertyItemRow.vue'
 import {
   applyPaintMutation,
@@ -23,8 +26,8 @@ import {
   commitPaintMutation,
   paintBindingTargets
 } from '@/components/properties/paint/binding'
+import { useGradientEditing } from '@/components/properties/paint/gradient-edit'
 import { createStrokeOkhclAdapter } from '@/components/properties/paint/okhcl'
-import PaintField from '@/components/properties/paint/PaintField.vue'
 import PaintValue from '@/components/properties/paint/PaintValue.vue'
 import PropertyListRoot from '@/components/properties/PropertyListRoot.vue'
 import { useSharedStylePicker } from '@/components/properties/shared-style/useSharedStylePicker'
@@ -45,8 +48,26 @@ import StrokeSettingsPopover from './StrokeSettingsPopover.vue'
 
 const strokeCtx = useStrokeControls()
 const { advancedActive } = strokeCtx
+const { nodes: selectedNodes } = useNodeProps()
+/** Empty when the layers align their strokes differently, so the field reads Mixed. */
+const alignValue = computed(() => {
+  const align = strokeCtx.currentAlign()
+  return align === MIXED ? '' : align
+})
 const colorProvider = useColorBindingProvider()
 const okhcl = useOkHCL()
+const gradients = useGradientEditing()
+
+/** Opening a paint's picker shows its gradient handles on the canvas; closing commits the edit. */
+function onPickerOpenChange(
+  nodeIds: readonly string[],
+  index: number,
+  open: boolean,
+  binding: BindableValueActions<Color>
+) {
+  gradients.setOpen(gradients.target(nodeIds, 'strokes', index), open)
+  if (!open) commitPaintMutation(binding)
+}
 const { panels, common } = useI18n()
 const expandedSides = ref(false)
 
@@ -79,22 +100,12 @@ function updateStrokeColor(
   if (commit) commitPaintMutation(binding)
 }
 
-function onToggleSides(activeNode: SceneNode | null) {
-  if (!activeNode) return
+/** Opening the sides gives every layer its own weight per side; closing strokes all sides again. */
+function onToggleSides(nodes: readonly SceneNode[]) {
   const next = !expandedSides.value
   expandedSides.value = next
-  if (next && !activeNode.independentStrokeWeights) {
-    const weight = activeNode.strokes[0]?.weight ?? 1
-    strokeCtx.selectSide('CUSTOM', {
-      ...activeNode,
-      borderTopWeight: weight,
-      borderRightWeight: weight,
-      borderBottomWeight: weight,
-      borderLeftWeight: weight
-    })
-  } else if (!next && activeNode.independentStrokeWeights) {
-    strokeCtx.selectSide('ALL', activeNode)
-  }
+  if (next && nodes.some((node) => !node.independentStrokeWeights)) strokeCtx.selectSide('CUSTOM')
+  else if (!next && nodes.some((node) => node.independentStrokeWeights)) strokeCtx.selectSide('ALL')
 }
 </script>
 
@@ -104,7 +115,11 @@ function onToggleSides(activeNode: SceneNode | null) {
     prop-key="strokes"
     :label="panels.stroke"
   >
-    <PanelSection :label="panels.stroke" :empty="!isMixed && items.length === 0">
+    <PanelSection
+      :label="panels.stroke"
+      :empty="!isMixed && items.length === 0"
+      :ui="{ body: '@container/paint-list' }"
+    >
       <template #actions>
         <AppSelect
           v-if="stylesVisible && !hasStyle"
@@ -142,6 +157,10 @@ function onToggleSides(activeNode: SceneNode | null) {
         :index="index"
         :visibility-label="panels.toggleVisibility"
         :remove-label="panels.removeStroke"
+        :ui="{
+          content: 'col-span-2 @min-[13rem]/paint-list:col-span-1',
+          rail: 'col-start-2 justify-end'
+        }"
       >
         <BindableValueRoot
           v-slot="binding"
@@ -160,12 +179,17 @@ function onToggleSides(activeNode: SceneNode | null) {
                 :label="panels.stroke"
                 :fill="displayStroke(stroke, binding.resolvedValue)"
                 :okhcl="createStrokeOkhclAdapter(okhcl, activeNode, index)"
+                :keep-open="gradients.pressesHandle"
+                :active-stop="gradients.stop(gradients.target(selectedNodeIds, 'strokes', index))"
+                @update:active-stop="
+                  gradients.setStop(gradients.target(selectedNodeIds, 'strokes', index), $event)
+                "
                 @update="
                   updateStrokePaint(binding.actions, flush, stroke, $event, (next) =>
                     actions.update(index, next)
                   )
                 "
-                @open-change="!$event && commitPaintMutation(binding.actions)"
+                @open-change="onPickerOpenChange(selectedNodeIds, index, $event, binding.actions)"
                 @cancel="cancelPaintMutation(binding.actions)"
               />
             </template>
@@ -209,19 +233,20 @@ function onToggleSides(activeNode: SceneNode | null) {
         </BindableValueRoot>
       </PropertyItemRow>
 
-      <div v-if="!isMixed && items.length > 0" class="mt-1 flex items-center gap-1.5">
+      <div v-if="!isMixed && items.length > 0" class="mt-1 flex flex-wrap items-center gap-1.5">
         <AppSelect
           :label="panels.strokeType"
           :ui="{ trigger: 'w-[88px] flex-none' }"
-          :model-value="strokeCtx.currentAlign(activeNode)"
+          :model-value="alignValue"
+          :placeholder="panels.mixed"
           :options="strokeCtx.alignOptions"
           data-property="stroke-align"
-          @update:model-value="strokeCtx.updateAlign($event as Stroke['align'], activeNode)"
+          @update:model-value="strokeCtx.updateAlign($event as Stroke['align'])"
         />
         <Tip :label="panels.strokeWeight">
           <NumberField
             v-if="!expandedSides"
-            class="flex-1"
+            class="min-w-14 flex-1"
             icon="W"
             :model-value="items[0]?.weight ?? 1"
             :min="0"
@@ -229,21 +254,23 @@ function onToggleSides(activeNode: SceneNode | null) {
             @update:model-value="actions.patch(0, { weight: $event })"
           />
         </Tip>
-        <StrokeSettingsPopover
-          v-if="advancedActive"
-          :stroke="items[0]"
-          @patch="actions.patch(0, $event)"
-        />
-        <IconButton
-          :label="panels.strokeSides"
-          size="xs"
-          class="size-[26px] shrink-0"
-          :active="expandedSides"
-          data-property="stroke-sides"
-          @click="onToggleSides(activeNode)"
-        >
-          <icon-lucide-layout-grid class="size-3.5" />
-        </IconButton>
+        <div class="ml-auto flex shrink-0 items-center gap-1.5">
+          <StrokeSettingsPopover
+            v-if="advancedActive"
+            :stroke="items[0]"
+            @patch="actions.patch(0, $event)"
+          />
+          <IconButton
+            :label="panels.strokeSides"
+            size="xs"
+            class="size-[26px] shrink-0"
+            :active="expandedSides"
+            data-property="stroke-sides"
+            @click="onToggleSides(selectedNodes)"
+          >
+            <icon-lucide-layout-grid class="size-3.5" />
+          </IconButton>
+        </div>
       </div>
 
       <StrokeSettingsPopover v-if="isMixed && advancedActive" />
@@ -256,10 +283,10 @@ function onToggleSides(activeNode: SceneNode | null) {
           v-for="side in strokeCtx.borderSides"
           :key="side"
           :label="side[0].toUpperCase()"
-          :model-value="strokeCtx.borderWeight(activeNode, side)"
+          :model-value="strokeCtx.borderWeight(side)"
           :min="0"
           :data-property="`stroke-${side}-weight`"
-          @update:model-value="strokeCtx.updateBorderWeight(side, $event, activeNode)"
+          @update:model-value="strokeCtx.updateBorderWeight(side, $event)"
         />
       </div>
     </PanelSection>

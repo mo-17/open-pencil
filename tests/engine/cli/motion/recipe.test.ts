@@ -4,9 +4,12 @@ import { mkdir, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { MOTION_RECIPE_FORMAT, SceneGraph, type MotionRecipe } from '@open-pencil/scene-graph'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { runOpenPencilCLI } from '#tests/helpers/cli'
 
 const temporaryDirectories: string[] = []
@@ -80,7 +83,10 @@ async function createFixture(directory: string): Promise<{
   const findId = async (name: string) => {
     const result = await runOpenPencilCLI(['find', input, '--name', name, '--json'])
     expect(result).toMatchObject({ exitCode: 0, stderr: '' })
-    const match = (JSON.parse(result.stdout) as Array<{ id: string }>)[0]
+    const match = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+      result.stdout
+    )[0]
     if (!match) throw new Error(`Expected CLI find result for ${name}`)
     return match.id
   }
@@ -203,7 +209,7 @@ describe('motion recipe CLI', () => {
     const recipePath = join(directory, 'recipe.json')
     const output = join(directory, 'must-not-exist.fig')
     const incompatible = recipe()
-    incompatible.roles[0].bindings[0].target = {
+    expectDefined(incompatible.roles[0].bindings?.[0]).target = {
       kind: 'timing',
       trackId: 'reveal',
       field: 'durationMs'

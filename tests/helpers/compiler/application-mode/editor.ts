@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 /** Load a real exported design fixture; subsequent changes are ordinary user interactions. */
 export async function openApplicationModeDocument(page: Page): Promise<void> {
-  const bytes = JSON.parse(
+  const bytes = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.number())),
     execFileSync(
       'bun',
       [
@@ -13,9 +15,12 @@ export async function openApplicationModeDocument(page: Page): Promise<void> {
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as number[]
+  )
   await page.evaluate(async (data) => {
-    const editor = window.openPencil?.getStore?.()
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+
+    const editor = api?.getStore?.()
     if (!editor) throw new Error('Editor not initialized')
     await editor.openFigFile(new File([new Uint8Array(data)], 'application-mode-acceptance.fig'))
     editor.clearSelection()
@@ -25,7 +30,10 @@ export async function openApplicationModeDocument(page: Page): Promise<void> {
 
 export async function reopenApplicationModeDocument(page: Page, bytes: number[]): Promise<void> {
   await page.evaluate(async (data) => {
-    const editor = window.openPencil?.getStore?.()
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+
+    const editor = api?.getStore?.()
     if (!editor) throw new Error('Editor not initialized')
     await editor.openFigFile(new File([new Uint8Array(data)], 'application-mode-reopened.fig'))
     editor.clearSelection()

@@ -6,6 +6,8 @@ import {
 } from '@/app/ai/mcp/runtime'
 import type { RemoteMCPServer } from '@/app/ai/mcp/types'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 const SERVER: RemoteMCPServer = {
   id: 'mcp-0123456789abcdef',
   name: 'Transport bounds',
@@ -26,29 +28,35 @@ async function expectOversizedResponse(fetchImpl: typeof fetch): Promise<void> {
 
 describe('remote MCP transport bounds', () => {
   test('rejects oversized Content-Length before SDK parsing', async () => {
-    await expectOversizedResponse((() =>
-      Promise.resolve(
-        new Response('not valid MCP JSON', {
-          headers: {
-            'content-length': String(MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES + 1),
-            'content-type': 'application/json'
-          }
-        })
-      )) as typeof fetch)
+    await expectOversizedResponse(
+      fetchStub(() =>
+        Promise.resolve(
+          new Response('not valid MCP JSON', {
+            headers: {
+              'content-length': String(MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES + 1),
+              'content-type': 'application/json'
+            }
+          })
+        )
+      )
+    )
   })
 
   test('counts streamed bytes when Content-Length is absent', async () => {
-    await expectOversizedResponse((() =>
-      Promise.resolve(
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(new Uint8Array(MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES + 1))
-              controller.close()
-            }
-          }),
-          { headers: { 'content-type': 'application/json' } }
+    await expectOversizedResponse(
+      fetchStub(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array(MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES + 1))
+                controller.close()
+              }
+            }),
+            { headers: { 'content-type': 'application/json' } }
+          )
         )
-      )) as typeof fetch)
+      )
+    )
   })
 })

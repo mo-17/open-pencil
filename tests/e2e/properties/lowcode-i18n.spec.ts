@@ -14,6 +14,8 @@ async function switchToSimplifiedChinese(): Promise<void> {
 test('document control panels render fields and feedback in Simplified Chinese', async () => {
   await switchToSimplifiedChinese()
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.clearSelection()
@@ -100,6 +102,8 @@ test('document control panels render fields and feedback in Simplified Chinese',
 test('workflow, translation, and library controls render dynamic content in Simplified Chinese', async () => {
   await switchToSimplifiedChinese()
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)

@@ -1,12 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import {
-  preprocessForVectorize,
-  resolveVectorFramePlacement,
-  svgToVectorPaths
-} from '@open-pencil/core/vector'
-
-import { initCanvasKit } from '#cli/headless'
+import { initCanvasKit } from '#core/io/formats/raster/headless'
+import { preprocessForVectorize, resolveVectorFramePlacement, svgToVectorPaths } from '#core/vector'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { testPath } from '#tests/helpers/paths'
@@ -40,12 +35,13 @@ function countTransparentPixels(
 
 function createPNG(width: number, height: number, alpha = 255): Uint8Array {
   const pixels = ck.Malloc(Uint8Array, width * height * 4)
+  const view = pixels.toTypedArray()
   for (let i = 0; i < width * height; i++) {
     const offset = i * 4
-    pixels[offset] = 80
-    pixels[offset + 1] = 120
-    pixels[offset + 2] = 200
-    pixels[offset + 3] = alpha
+    view[offset] = 80
+    view[offset + 1] = 120
+    view[offset + 2] = 200
+    view[offset + 3] = alpha
   }
   const surface = ck.MakeRasterDirectSurface(
     {
@@ -358,10 +354,14 @@ describe('svgToVectorPaths', () => {
     )
     const transform = expectDefined(fill.gradientTransform, 'gradient transform')
     expect(fill.type).toBe('GRADIENT_RADIAL')
+    // A circle filling the box, turned a quarter: Figma's default transform, which maps the layer
+    // onto gradient space.
     expect(transform.m00).toBeCloseTo(0, 3)
-    expect(transform.m10).toBeCloseTo(0.5, 3)
-    expect(transform.m01).toBeCloseTo(-0.5, 3)
+    expect(transform.m01).toBeCloseTo(1, 3)
+    expect(transform.m02).toBeCloseTo(0, 3)
+    expect(transform.m10).toBeCloseTo(-1, 3)
     expect(transform.m11).toBeCloseTo(0, 3)
+    expect(transform.m12).toBeCloseTo(1, 3)
   })
 
   test('still resolves a solid color fill alongside gradients', () => {

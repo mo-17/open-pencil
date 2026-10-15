@@ -33,3 +33,36 @@ test('outer sync preserves a nested edit without blocking sibling or other-field
   graph.syncInstances(outer.id)
   expect(firstText.text).toBe('Component edit')
 })
+
+test('nested component reorders keep copies under their actual parent and publish the move', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const component = graph.createNode('COMPONENT', page.id)
+  const frame = graph.createNode('FRAME', component.id)
+  graph.createNode('RECTANGLE', frame.id, { name: 'First' })
+  const second = graph.createNode('RECTANGLE', frame.id, { name: 'Second' })
+  const instance = graph.createInstance(component.id, page.id)
+  if (!instance) throw new Error('Missing instance')
+  const copyFrame = graph.getChildren(instance.id)[0]
+  const [copyFirst, copySecond] = graph.getChildren(copyFrame.id)
+  graph.insertChildAt(second.id, frame.id, 0)
+  const moves: Array<{
+    id: string
+    parentId: string
+    index: number
+    previousParentId: string | null
+  }> = []
+  const stop = graph.onNodeEvents({
+    reordered: (id, parentId, index, previousParentId) =>
+      moves.push({ id, parentId, index, previousParentId })
+  })
+  graph.syncInstance(instance.id)
+  stop()
+  expect(instance.childIds).toEqual([copyFrame.id])
+  expect(copyFrame.childIds).toEqual([copySecond.id, copyFirst.id])
+  expect(copyFirst.parentId).toBe(copyFrame.id)
+  expect(copySecond.parentId).toBe(copyFrame.id)
+  expect(moves).toEqual([
+    { id: copySecond.id, parentId: copyFrame.id, index: 0, previousParentId: copyFrame.id }
+  ])
+})

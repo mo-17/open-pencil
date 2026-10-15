@@ -1,19 +1,27 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
+import * as v from 'valibot'
+
+import { parseWorkspacePackageJSON } from '@open-pencil/package-artifacts-tools'
 import {
   discoverPublishPackages,
   publishPackageJSON
 } from '@open-pencil/release-packages-tools/publish-dirs'
 
-interface CorePackageJSON extends Record<string, unknown> {
-  name: string
-  version: string
-  files: string[]
-  exports: Record<string, string | Record<string, string>>
-}
+import { repoPath } from '#tests/helpers/paths'
+
+const corePackageSchema = v.looseObject({
+  name: v.string(),
+  version: v.string(),
+  files: v.array(v.string()),
+  exports: v.record(v.string(), v.union([v.string(), v.record(v.string(), v.string())])),
+  imports: v.optional(v.record(v.string(), v.union([v.string(), v.record(v.string(), v.string())])))
+})
+
+type CorePackageJSON = v.InferOutput<typeof corePackageSchema>
 
 interface PublishedWorkerURL {
   ownerEntry: string
@@ -29,7 +37,7 @@ interface CoreBuildConfigModule {
   rewritePublishedWorkerURL(code: string, id: string): string | undefined
 }
 
-const CORE_ROOT = fileURLToPath(new URL('../../../../packages/core/', import.meta.url))
+const CORE_ROOT = repoPath('packages/core')
 const {
   CORE_PUBLISHED_WORKER_URLS,
   PUBLISHED_WORKER_URL_PLUGIN_NAME,
@@ -73,9 +81,10 @@ describe('published core Worker URLs', () => {
       : []
     expect(entries).toContain('src/**/*.ts')
 
-    const packageJSON = JSON.parse(
+    const packageJSON = v.parse(
+      v.pipe(v.string(), v.parseJson(), corePackageSchema),
       await readFile(join(CORE_ROOT, 'package.json'), 'utf8')
-    ) as CorePackageJSON
+    )
     expect(packageJSON.files).toContain('dist')
     expect(packageJSON.files).toContain('src')
     const sourceExports = Object.values(packageJSON.exports).filter(
@@ -92,13 +101,21 @@ describe('published core Worker URLs', () => {
     }
   })
 
-  test('prepares fork packages with built exports and retains source for Bun conditions and built exports for production', async () => {
-    const packageJSON = JSON.parse(
+  test('retains runtime source imports and built exports while excluding test-only aliases', async () => {
+    const packageJSON = v.parse(
+      v.pipe(v.string(), v.parseJson(), corePackageSchema),
       await readFile(join(CORE_ROOT, 'package.json'), 'utf8')
-    ) as CorePackageJSON
-    const prepared = publishPackageJSON(packageJSON, packageJSON.version)
+    )
+    const prepared = publishPackageJSON(
+      parseWorkspacePackageJSON(JSON.stringify(packageJSON), 'core package fixture'),
+      packageJSON.version
+    )
     expect(prepared.name).toBe('@open-pencil-lowcode/core')
-    expect(prepared.imports).toEqual(packageJSON.imports)
+    const runtimeImports = { ...packageJSON.imports }
+    expect(runtimeImports['#core/*']).toBe('./src/*.ts')
+    delete runtimeImports['#core-tests/*']
+    expect(prepared.imports).toEqual(runtimeImports)
+    expect(prepared.imports).not.toHaveProperty('#core-tests/*')
     const preparedExports = prepared.exports as CorePackageJSON['exports']
     expect(Object.keys(preparedExports)).toEqual(Object.keys(packageJSON.exports))
     for (const [subpath, entry] of Object.entries(preparedExports)) {

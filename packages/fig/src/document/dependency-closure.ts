@@ -5,6 +5,12 @@ import { componentDependencies, slotContentDependencies } from './component/depe
 import { createResourceResolver } from './resource-reference'
 import { styleDependencies } from './style-dependencies'
 
+/** Host metadata may name scene records the format itself does not interpret. */
+export type SourceDependencySelector = (
+  record: NodeChange,
+  hasSource: (id: string) => boolean
+) => readonly string[]
+
 export interface SceneDependencyClosure {
   /** Live page trees plus explicitly referenced component and slot content trees. */
   contentIds: ReadonlySet<string>
@@ -58,7 +64,10 @@ function collectAncestors(
 export function collectSceneDependencies(
   changes: readonly NodeChange[],
   pageIds: ReadonlySet<string> | undefined,
-  index: SourceIndex
+  index: SourceIndex,
+  /** The whole record for one of `changes`, when they are headers that leave fields out. */
+  whole: (record: NodeChange) => NodeChange = (record) => record,
+  sourceDependencies?: SourceDependencySelector
 ): SceneDependencyClosure {
   const resolveReference = createResourceResolver(changes)
   const { sources, children } = index
@@ -79,6 +88,14 @@ export function collectSceneDependencies(
         (pageIds ? pageIds.has(idOf(node) ?? '') : node.internalOnly !== true)
     )
     .flatMap((node) => idOf(node) ?? [])
+  // Page shells and document metadata exist even when no page tree was selected.
+  // Their host references enter the same reachability walk and missing-source checks.
+  const hostDependencies = (node: NodeChange): readonly string[] =>
+    sourceDependencies?.(whole(node), (id) => sources.has(id)) ?? []
+  if (sourceDependencies)
+    for (const node of changes)
+      if (node.type === 'DOCUMENT' || node.type === 'CANVAS')
+        pending.push(...hostDependencies(node))
   while (pending.length) {
     const id = pending.pop()
     if (!id || contentIds.has(id)) continue
@@ -90,17 +107,19 @@ export function collectSceneDependencies(
       continue
     }
     contentIds.add(id)
-    const components = componentDependencies(node, resolveReference, (key) =>
+    const record = whole(node)
+    const components = componentDependencies(record, resolveReference, (key) =>
       externalPreferredKeys.add(key)
     )
     for (const component of components) componentReferences.add(component)
-    const slotContent = slotContentDependencies(node)
+    const slotContent = slotContentDependencies(record)
     for (const content of slotContent) slotContentReferences.add(content)
     pending.push(
       ...(children.get(id) ?? []).flatMap((child) => idOf(child) ?? []),
-      ...styleDependencies(node, resolveReference, availableIds),
+      ...styleDependencies(record, resolveReference, availableIds),
       ...components,
-      ...slotContent
+      ...slotContent,
+      ...hostDependencies(node)
     )
   }
   collectAncestors(sources, contentIds, ancestorIds, missingIds)

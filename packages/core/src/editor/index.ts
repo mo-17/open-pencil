@@ -7,6 +7,15 @@ export type { NodeEditCapability } from './capabilities'
 export { DEFAULT_SNAPPING_PREFERENCES } from './preferences'
 export type { SnappingPreferences } from './preferences'
 export { createDefaultEditorSharedState } from './state/shared'
+export { editedGradient, editedGradientLayout } from './gradient-edit'
+export type { SelectionSpacing } from './alignment'
+export type { MovePlace } from './undo'
+export {
+  replaceSelectionColor,
+  selectionColors,
+  selectionColorsShown,
+  type SelectionColor
+} from './selection/colors'
 export {
   copyEditorViewState,
   createDefaultEditorViewState,
@@ -15,18 +24,32 @@ export {
 export { createDefaultEditorState, createEditor } from './create'
 export { executeAtomicTool } from './history/atomic-tool'
 export { pageSnapshotPageId, type PageSnapshot } from './history/snapshot'
-export { graphFromPageSnapshot } from './history/snapshot-graph'
+export { isEmptyDocumentChange, type DocumentChange } from './history/document-change'
+export { graphFromDocumentChange, graphFromPageSnapshot } from './history/snapshot-graph'
 export type { ClipboardPayload, ClipboardSnapshot } from './clipboard/copy'
+export { resolvePasteTarget } from './clipboard/paste/target'
+export { playIslandRoots } from './play/islands'
+export { resolvePlayState, type InstanceState } from './play/states'
+export type { PlayState } from './play/actions'
+export type { ShaderRasterizer } from './shaders/types'
+export type { ShaderPaintList } from './shaders/actions'
 export type { Editor } from './create'
+export type { VariableTokenFields } from './variables'
+export type { TokenImportResult } from '#core/io/formats/design-tokens'
 export { reapplyInstanceComponentProperties } from './components/properties'
 export { createGuideActions } from './guides'
 export { createTextActions } from './text'
 export { opacityFromBuffer } from './nodes'
+export { layerTypeOptions, type LayerType } from './structure/layer-type'
 export type { NodePreview } from './node-preview'
 export { EDITOR_TOOLS, TOOL_SHORTCUTS } from './tool-registry'
 export type { RenameSelectionOptions, RenameSelectionPreview } from './structure/rename'
 export type { EditorToolDef } from './tool-registry'
-export type { VariantConflict, VariantValidationIssue } from './components/variants'
+export type {
+  VariantConflict,
+  VariantMutationResult,
+  VariantValidationIssue
+} from './components/variants'
 export type {
   ClipboardImageResolution,
   EditorContext,
@@ -43,5 +66,9 @@ export type {
   MotionPreviewSpecsOptions,
   MotionPreviewState,
   MotionPreviewTarget,
+  ShapeHandleHover,
+  GradientEdit,
   Tool
 } from './types'
+
+export type { ExposableComponentField } from './components/authoring/context'

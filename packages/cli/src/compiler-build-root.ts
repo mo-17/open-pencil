@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import * as v from 'valibot'
+
 interface CLIPackageJSON {
   dependencies?: Record<string, string>
   name?: string
@@ -32,7 +34,17 @@ async function readPackageJSON(path: string): Promise<CLIPackageJSON | null> {
     if (hasErrorCode(error, 'ENOENT')) return null
     throw error
   }
-  return JSON.parse(source) as CLIPackageJSON
+  return v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        name: v.optional(v.string()),
+        dependencies: v.optional(v.record(v.string(), v.string()))
+      })
+    ),
+    source
+  )
 }
 
 async function modulePaths(moduleURL: string): Promise<string[]> {

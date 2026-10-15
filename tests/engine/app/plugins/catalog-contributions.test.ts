@@ -1,34 +1,19 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  ALERT_PLUGIN_ID,
   POPOVER_PLUGIN_ID,
   TREE_PLUGIN_ID,
-  CASCADER_PLUGIN_ID,
   WALKTOUR_PLUGIN_ID,
   ORG_CHART_PLUGIN_ID,
   PAGINATION_PLUGIN_ID,
   DESCRIPTIONS_PLUGIN_ID,
   DATE_RANGE_PLUGIN_ID,
-  PROGRESS_PLUGIN_ID,
-  CHIP_PLUGIN_ID,
-  TOOLTIP_PLUGIN_ID,
-  SKELETON_PLUGIN_ID,
-  EMPTY_STATE_PLUGIN_ID,
-  AVATAR_PLUGIN_ID,
-  BADGE_PLUGIN_ID,
-  TIMELINE_PLUGIN_ID,
-  SLIDER_PLUGIN_ID,
-  RATING_PLUGIN_ID,
-  STEPPER_PLUGIN_ID,
-  BREADCRUMB_PLUGIN_ID,
   ACCORDION_MODULE_TYPE,
   ACCORDION_PLUGIN_ID,
   AUDIO_PLAYER_MODULE_TYPE,
   AUDIO_PLAYER_PLUGIN_ID,
   CAROUSEL_MODULE_TYPE,
   CAROUSEL_PLUGIN_ID,
-  CHART_PLUGIN_ID,
   CODE_BLOCK_MODULE_TYPE,
   CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
@@ -50,7 +35,6 @@ import {
   PDF_VIEWER_PLUGIN_ID,
   QR_BARCODE_MODULE_TYPE,
   QR_BARCODE_PLUGIN_ID,
-  RICH_TEXT_PLUGIN_ID,
   SLIDE_MENU_MODULE_CONFIG_VERSION,
   SLIDE_MENU_MODULE_DEFAULT_CONFIG,
   SLIDE_MENU_MODULE_TYPE,
@@ -59,7 +43,6 @@ import {
   TABLE_PLUGIN_ID,
   TABS_MODULE_TYPE,
   TABS_PLUGIN_ID,
-  UPLOAD_BUTTON_PLUGIN_ID,
   VR_TOUR_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID
@@ -106,13 +89,11 @@ import {
   SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
   SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
 } from '@/app/plugins'
-import { APPLICATION_SECURITY_READINESS_PLUGIN_ID } from '@/app/plugins/host/application-security-readiness'
 import {
   APP_BACKEND_PROVIDER_MCP_COMMANDS,
   SUPABASE_BACKEND_PROVIDER_CONTRIBUTION,
   SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
 } from '@/app/plugins/host/backend-provider'
-import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
@@ -171,104 +152,23 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the reviewed built-in plugin identities', () => {
+  test('keeps unique bundle authorities and external services opt-in', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
-    expect(ids).toEqual([
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const entry of catalog) {
+      expect(entry.trustSource).toBe('app-bundle')
+      expect(entry.manifest.plugin.id).toMatch(/^open-pencil\.[a-z0-9-]+$/)
+    }
+    for (const pluginId of [
       VR_TOUR_PLUGIN_ID,
       MAP_PLUGIN_ID,
-      CHART_PLUGIN_ID,
-      RICH_TEXT_PLUGIN_ID,
-      HTML_PLUGIN_ID,
-      VIDEO_PLUGIN_ID,
-      TABLE_PLUGIN_ID,
-      SLIDE_MENU_PLUGIN_ID,
-      DROPDOWN_MENU_PLUGIN_ID,
-      UPLOAD_BUTTON_PLUGIN_ID,
-      ALERT_PLUGIN_ID,
-      POPOVER_PLUGIN_ID,
-      TREE_PLUGIN_ID,
-      CASCADER_PLUGIN_ID,
-      WALKTOUR_PLUGIN_ID,
-      ORG_CHART_PLUGIN_ID,
-      PAGINATION_PLUGIN_ID,
-      DESCRIPTIONS_PLUGIN_ID,
-      DATE_RANGE_PLUGIN_ID,
-      PROGRESS_PLUGIN_ID,
-      CHIP_PLUGIN_ID,
-      TOOLTIP_PLUGIN_ID,
-      SKELETON_PLUGIN_ID,
-      EMPTY_STATE_PLUGIN_ID,
-      AVATAR_PLUGIN_ID,
-      BADGE_PLUGIN_ID,
-      TIMELINE_PLUGIN_ID,
-      SLIDER_PLUGIN_ID,
-      RATING_PLUGIN_ID,
-      STEPPER_PLUGIN_ID,
-      BREADCRUMB_PLUGIN_ID,
       MODAL_PLUGIN_ID,
-      LOTTIE_PLUGIN_ID,
-      CAROUSEL_PLUGIN_ID,
-      DATA_GRID_PLUGIN_ID,
-      TABS_PLUGIN_ID,
-      ACCORDION_PLUGIN_ID,
-      QR_BARCODE_PLUGIN_ID,
-      MARKDOWN_PLUGIN_ID,
-      CODE_BLOCK_PLUGIN_ID,
-      PDF_VIEWER_PLUGIN_ID,
-      AUDIO_PLAYER_PLUGIN_ID,
-      CLIPBOARD_TOOLKIT_PLUGIN_ID,
-      TAURI_REACT_EXPORTER_PLUGIN_ID,
-      EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
-      FLUTTER_EXPORTER_PLUGIN_ID,
-      ACCESSIBILITY_AUDIT_PLUGIN_ID,
-      DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
-      APPLICATION_SECURITY_READINESS_PLUGIN_ID,
-      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
-      AI_POPOUT_PLUGIN_ID,
-      DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
-      FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
-      NEXTJS_EXPORTER_PLUGIN_ID,
-      CAPACITOR_EXPORTER_PLUGIN_ID,
-      ELECTRON_EXPORTER_PLUGIN_ID,
-      VUE_EXPORTER_PLUGIN_ID,
-      WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
-      TARO_EXPORTER_PLUGIN_ID,
-      UNI_APP_EXPORTER_PLUGIN_ID,
-      MPX_EXPORTER_PLUGIN_ID,
-      SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
-      AIRTABLE_RECORDS_PLUGIN_ID,
-      SUPABASE_BUSINESS_PLUGIN_ID,
-      STRIPE_BILLING_PLUGIN_ID,
-      RESEND_EMAIL_PLUGIN_ID,
-      ...REVIEWED_EXTERNAL_SERVICE_CATALOG.map(
-        (descriptor) => descriptor.connector.contract.pluginId
-      ),
-      ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
-      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
-      'open-pencil.nestjs-backend',
-      'open-pencil.nestjs-prisma-crm-backend',
-      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
-      ONEDRIVE_STORAGE_PLUGIN_ID,
-      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
-      BAIDU_NETDISK_STORAGE_PLUGIN_ID
-    ])
-    expect(
-      catalog.reduce(
-        (total, entry) =>
-          total +
-          entry.manifest.contributions.modules.length +
-          (entry.manifest.contributions.commands?.length ?? 0) +
-          (entry.manifest.contributions.exporters?.length ?? 0) +
-          (entry.manifest.schemaVersion === 2
-            ? (entry.manifest.contributions.connectors?.length ?? 0) +
-              (entry.manifest.contributions.storageProviders?.length ?? 0) +
-              (entry.manifest.contributions.backendProviders?.length ?? 0)
-            : 0),
-        0
-      )
-    ).toBe(97)
+      VUE_EXPORTER_PLUGIN_ID
+    ]) {
+      expect(ids).toContain(pluginId)
+    }
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId

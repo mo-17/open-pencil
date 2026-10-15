@@ -42,7 +42,7 @@ export function renderPopoverModulePreview(
         { halfLeading: true }
       )
       try {
-        canvas.drawParagraph(paragraph, 12, (height - paragraph.getHeight()) / 2)
+        paragraph.draw(canvas, 12, (height - paragraph.getHeight()) / 2)
       } finally {
         paragraph.delete()
       }

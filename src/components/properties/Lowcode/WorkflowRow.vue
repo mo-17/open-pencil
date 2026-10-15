@@ -225,7 +225,7 @@ function setParamOptional(index: number, optional: boolean): void {
             spellcheck="false"
             :class="[
               'w-24 min-w-0 rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
-              paramErrors.has(i) ? 'border-red-500' : 'border-border'
+              paramErrors.has(i) ? 'border-error' : 'border-border'
             ]"
             @change="setParamName(i, ($event.target as HTMLInputElement).value)"
           />
@@ -262,7 +262,7 @@ function setParamOptional(index: number, optional: boolean): void {
         <p
           v-if="paramErrors.has(i)"
           data-test-id="lowcode-workflow-param-error"
-          class="pl-1 text-[10px] text-red-500"
+          class="pl-1 text-[10px] text-error"
         >
           {{ paramErrors.get(i) }}
         </p>

@@ -6,14 +6,18 @@
     "strict": true,
     "skipLibCheck": true,
     "paths": {
-      "#mcp/*": ["./src/*"],
-      "#core/*": ["../core/src/*"],
-      "@open-pencil/core": ["../core/src/index.ts"],
-      "@open-pencil/core/*": ["../core/src/*"]
+      "#mcp/*": [
+        "./src/*"
+      ]
     },
     "noCheck": true,
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/index.ts", "src/server.ts", "src/stdio.ts", "src/transport/**/*.ts"]
+  "include": [
+    "src/index.ts",
+    "src/server.ts",
+    "src/stdio.ts",
+    "src/transport/**/*.ts"
+  ]
 }

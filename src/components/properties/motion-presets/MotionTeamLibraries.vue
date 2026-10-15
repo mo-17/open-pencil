@@ -104,7 +104,8 @@ onBeforeUnmount(stopPreview)
         v-for="library in libraries"
         :key="library.registry.accepted.manifest.library.id"
         class="rounded border border-border bg-input p-2"
-        :data-test-id="`motion-team-library-${library.registry.accepted.manifest.library.id}`"
+        data-slot="motion-team-library"
+        :data-library-id="library.registry.accepted.manifest.library.id"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
@@ -184,9 +185,10 @@ onBeforeUnmount(stopPreview)
                 type="button"
                 class="rounded bg-accent px-1 text-[9px] text-white"
                 :disabled="disabled || Boolean(busyId)"
-                :data-test-id="`motion-team-apply-${
-                  entry.kind === 'preset' ? entry.preset.id : entry.recipe.id
-                }`"
+                data-slot="motion-team-apply"
+                data-command="apply-library-entry"
+                :data-entry-id="entry.kind === 'preset' ? entry.preset.id : entry.recipe.id"
+                :data-entry-kind="entry.kind"
                 @click="
                   apply(
                     {
@@ -207,22 +209,33 @@ onBeforeUnmount(stopPreview)
         <div
           v-if="library.registry.pending"
           class="mt-1 space-y-0.5 rounded border border-warning/30 bg-warning/10 p-1.5 text-[9px] text-warning"
-          :data-test-id="`motion-team-review-${library.registry.accepted.manifest.library.id}`"
+          data-slot="library-review"
+          :data-library-id="library.registry.accepted.manifest.library.id"
         >
           <p
             class="font-medium"
-            :data-test-id="`motion-team-candidate-version-${library.registry.accepted.manifest.library.id}`"
+            data-slot="library-candidate-version"
+            :data-library-id="library.registry.accepted.manifest.library.id"
           >
             {{ library.registry.accepted.manifest.version }} →
             {{ library.registry.pending.candidate.manifest.version }}
           </p>
-          <p :data-test-id="`motion-team-added-${library.registry.accepted.manifest.library.id}`">
+          <p
+            data-slot="library-added"
+            :data-library-id="library.registry.accepted.manifest.library.id"
+          >
             + {{ library.registry.pending.diff.added.join(', ') || '—' }}
           </p>
-          <p :data-test-id="`motion-team-updated-${library.registry.accepted.manifest.library.id}`">
+          <p
+            data-slot="library-updated"
+            :data-library-id="library.registry.accepted.manifest.library.id"
+          >
             ~ {{ library.registry.pending.diff.updated.join(', ') || '—' }}
           </p>
-          <p :data-test-id="`motion-team-removed-${library.registry.accepted.manifest.library.id}`">
+          <p
+            data-slot="library-removed"
+            :data-library-id="library.registry.accepted.manifest.library.id"
+          >
             − {{ library.registry.pending.diff.removed.join(', ') || '—' }}
           </p>
         </div>
@@ -246,7 +259,7 @@ onBeforeUnmount(stopPreview)
             </button>
             <button
               type="button"
-              class="rounded px-1 text-[9px] text-muted hover:text-danger"
+              class="rounded px-1 text-[9px] text-muted hover:text-error"
               :disabled="disabled || Boolean(busyId)"
               @click="reject(library.registry.accepted.manifest.library.id)"
             >
@@ -264,9 +277,11 @@ onBeforeUnmount(stopPreview)
           </button>
           <button
             type="button"
-            class="rounded px-1 text-[9px] text-muted hover:text-danger"
+            class="rounded px-1 text-[9px] text-muted hover:text-error"
             :disabled="disabled || Boolean(busyId)"
-            :data-test-id="`motion-team-remove-${library.registry.accepted.manifest.library.id}`"
+            data-slot="library-action"
+            data-command="remove-library"
+            :data-library-id="library.registry.accepted.manifest.library.id"
             @click="remove(library.registry.accepted.manifest.library.id)"
           >
             {{ panels.motionTeamRemove }}
@@ -277,7 +292,7 @@ onBeforeUnmount(stopPreview)
       <p v-if="libraries.length === 0" class="text-[10px] text-muted">
         {{ panels.motionTeamEmpty }}
       </p>
-      <p v-if="errorMessage" role="alert" class="text-[10px] leading-4 text-danger">
+      <p v-if="errorMessage" role="alert" class="text-[10px] leading-4 text-error">
         {{ errorMessage }}
       </p>
     </div>

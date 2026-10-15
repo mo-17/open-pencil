@@ -17,16 +17,12 @@ import {
   BACKFILL_INSTALL_FIXTURE_WRITE_GRANT,
   createBackfillWriteBarrierInstallFixture
 } from '#tests/engine/app/plugins/deployment/supabase/backfill/write-barrier/helpers'
+import { parseMigrationBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 import type { RecordedRequest } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 const PAT = 'sbp_backfill_write_barrier_install_secret_canary_1234567890'
 const PROJECT_URL = `https://api.supabase.com/v1/projects/${BACKFILL_INSTALL_FIXTURE_PROJECT_REF}`
 const MIGRATION_URL = `${PROJECT_URL}/database/migrations`
-
-interface MigrationBody {
-  readonly query: string
-  readonly name: string
-}
 
 function withURL(response: Response, url: string): Response {
   Object.defineProperty(response, 'url', { value: url })
@@ -177,7 +173,7 @@ describe('Supabase Management backfill write-barrier install transport', () => {
     ])
     const bodyText = requests[2]?.init.body
     if (typeof bodyText !== 'string') throw new TypeError('Expected exact migration JSON body')
-    const body = JSON.parse(bodyText) as MigrationBody
+    const body = parseMigrationBody(bodyText)
     expect(Object.keys(body)).toEqual(['query', 'name'])
     expect(body).toEqual({
       query: fixture.installReview.installSql,

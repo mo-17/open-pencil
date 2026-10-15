@@ -9,6 +9,7 @@ import { finalizePendingToolApprovals } from '@/app/ai/chat/approval'
 import { archiveVisualChatMessages } from '@/app/ai/chat/attachments'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
 import { visibleMessageText, setVisibleMessageText } from '@/app/ai/chat/presentation'
+import { settleMessage } from '@/app/ai/chat/settle'
 import { archiveAssistantFileMessages } from '@/app/ai/chat/sources'
 import { readToolChange, setToolChange } from '@/app/ai/tools/changes/store'
 
@@ -72,7 +73,9 @@ export function restoreMessages(messages: ConversationMessage[]): UIMessage[] {
     for (const change of row.toolChanges ?? []) setToolChange(change)
   }
   return finalizePendingToolApprovals(
-    finalizeInterruptedToolParts(messages.map((row) => snapshotValue(row.message)))
+    finalizeInterruptedToolParts(
+      messages.map((row) => settleMessage(snapshotValue(row.message), { stopped: false }))
+    )
   )
 }
 

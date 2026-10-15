@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- The offline publication envelope, exact parsers, review diff, and emergency monotonicity checks form one trust boundary. */
 import { createHash } from 'node:crypto'
 
+import { uniq } from 'es-toolkit'
+
 import {
   parseMarketplaceSnapshotPayload,
   parsePluginCatalogPayload,
@@ -732,7 +734,7 @@ function buildReviewChanges(
     (baseline ? reviewItems(baseline) : []).map((item) => [item.subject, item])
   )
   const after = new Map(reviewItems(plan).map((item) => [item.subject, item]))
-  const subjects = [...new Set([...before.keys(), ...after.keys()])].sort()
+  const subjects = uniq([...before.keys(), ...after.keys()]).sort()
   const changes: MarketplacePublicationReviewChangeV1[] = []
   for (const subject of subjects) {
     const previous = before.get(subject)

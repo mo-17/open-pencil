@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
+import { getNodeEditCapability } from '@open-pencil/core/editor'
 import { moduleValueFields } from '@open-pencil/core/plugins'
+import { readIcon } from '@open-pencil/scene-graph'
 import {
   useComponentProperties,
   useEditorCommands,
   useI18n,
+  useSceneComputed,
   useSelectionState
 } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { COMPONENT_TYPES, nodeIcon } from '@/app/editor/icons'
+import { openVariablesDialog } from '@/app/editor/tokens/dialog'
 import { openLibraryReview, useLibraryService } from '@/app/libraries'
 import { editableNodeEvents } from '@/app/lowcode/events/selection'
 import { useFormOverviewReveal } from '@/app/lowcode/form-overview/use-reveal'
@@ -25,22 +29,28 @@ import {
   type DesignPanelStudioMoveDirection,
   type DesignPanelWorkspace
 } from '@/app/settings/design-panel-workspace'
+import IconButton from '@/components/ui/button/IconButton.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 import PanelHeader from '@/components/ui/panel/PanelHeader.vue'
 
 import AppearanceSection from './properties/AppearanceSection.vue'
+import BehaviourPanel from './properties/component-properties/behaviour/BehaviourPanel.vue'
 import ComponentPropertiesSection from './properties/component-properties/ComponentPropertiesSection.vue'
+import ComponentPropertyListSection from './properties/component-properties/ComponentPropertyListSection.vue'
 import InstanceUpdateAction from './properties/component-properties/instance-update/InstanceUpdateAction.vue'
-import VariantAuthoringSection from './properties/component-properties/VariantAuthoringSection.vue'
+import SlotAuthoringSection from './properties/component-properties/slot/SlotAuthoringSection.vue'
+import VariantAuthoringSection from './properties/component-properties/variant/VariantAuthoringSection.vue'
 import ConstraintsSection from './properties/constraints/ConstraintsSection.vue'
 import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import FramePresetSelect from './properties/frame-presets/FramePresetSelect.vue'
 import FramePresetsSection from './properties/frame-presets/FramePresetsSection.vue'
+import IconSection from './properties/IconSection.vue'
 import InspectorFilter from './properties/InspectorFilter.vue'
 import InspectorSection from './properties/InspectorSection.vue'
 import InspectorWorkspaceBar from './properties/InspectorWorkspaceBar.vue'
+import LayerTypeMenu from './properties/LayerTypeMenu.vue'
 import LayoutGridSection from './properties/layout/guides/LayoutGridSection.vue'
 import LayoutSection from './properties/layout/LayoutSection.vue'
 import AnalyticsConfigPanel from './properties/Lowcode/AnalyticsConfigPanel.vue'
@@ -71,17 +81,17 @@ import MotionSection from './properties/MotionSectionRoot.vue'
 import PageSection from './properties/PageSection.vue'
 import RetainedPanel from './properties/panel/RetainedPanel.vue'
 import PositionSection from './properties/PositionSection.vue'
+import SelectionColorsSection from './properties/selection/SelectionColorsSection.vue'
+import SelectionLayoutSection from './properties/selection/SelectionLayoutSection.vue'
 import SelectionActionsControl from './properties/SelectionActionsControl.vue'
 import StrokeSection from './properties/stroke/StrokeSection.vue'
 import TypographySection from './properties/TypographySection.vue'
 import VariablesSection from './properties/VariablesSection.vue'
-import VariablesDialog from './variables/VariablesDialog.vue'
 
 interface InspectorWorkspaceBarHandle {
   focusStudioConfig: () => void
 }
 
-const variablesOpen = ref(false)
 const inspectorFilter = ref('')
 const store = useEditorStore()
 const libraryService = useLibraryService()
@@ -101,6 +111,10 @@ const isComponentType = computed(() => {
   const type = node.value?.type
   return type ? COMPONENT_TYPES.has(type) : false
 })
+// A library's components are edited in the library, so Add variant has nothing to change here.
+const canAddVariant = computed(
+  () => !!node.value && getNodeEditCapability(store.graph, node.value.id).editable
+)
 const selectedIcon = computed(() => (node.value ? nodeIcon(node.value) : undefined))
 const hasPrimaryControl = computed(
   () => node.value?.type === 'RADIO' || node.value?.type === 'SELECT'
@@ -181,9 +195,10 @@ const isVariantAuthoringNode = computed(() => {
         store.graph.getNode(selected.parentId)?.type === 'COMPONENT_SET'))
   )
 })
-const supportsLayoutGuides = computed(() => {
-  const type = node.value?.type
-  return type === 'FRAME' || type === 'COMPONENT' || type === 'COMPONENT_SET' || type === 'INSTANCE'
+const LAYOUT_GUIDE_TYPES = new Set(['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'])
+const supportsLayoutGuides = useSceneComputed(() => {
+  const nodes = store.getSelectedNodes()
+  return nodes.length > 0 && nodes.every((selected) => LAYOUT_GUIDE_TYPES.has(selected.type))
 })
 const { dialogs, panels, tools } = useI18n()
 const focusedShowAll = ref(false)
@@ -467,7 +482,11 @@ function sectionHighlighted(id: string, label: string) {
 const showMultiComponent = computed(
   () => componentPropertiesActive.value && sectionMatches('component', 'Component')
 )
-const showMultiPosition = computed(() => sectionMatches('position', panels.value.position))
+const showMultiPosition = computed(
+  () =>
+    sectionMatches('position', panels.value.position) ||
+    sectionMatches('layout', panels.value.layout)
+)
 const showMultiAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
 const showMultiMotion = computed(() => sectionMatches('motion', panels.value.motion))
 const showMultiExport = computed(() => sectionMatches('export', panels.value.export))
@@ -497,9 +516,7 @@ const showSingleLowcodeControl = computed(
 const showSinglePosition = computed(() => sectionMatches('position', panels.value.position))
 const showSingleLayout = computed(() => sectionMatches('layout', panels.value.layout))
 const showSingleComponent = computed(
-  () =>
-    (node.value?.type === 'INSTANCE' || isVariantAuthoringNode.value) &&
-    sectionMatches('component', 'Component')
+  () => isComponentType.value && sectionMatches('component', 'Component')
 )
 const showSingleAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
 const showSingleInteractionStates = computed(
@@ -589,7 +606,7 @@ const emptyHasMatches = computed(
         <icon-lucide-layers-3 class="size-3.5" aria-hidden="true" />
       </template>
       <span role="heading" aria-level="2">
-        {{ panels.layersCount({ count: String(multiCount) }) }}
+        {{ panels.selectedCount({ count: String(multiCount) }) }}
       </span>
       <template #actions>
         <SelectionActionsControl :show-boolean-operations="showBooleanOperations" />
@@ -625,10 +642,15 @@ const emptyHasMatches = computed(
         id="position"
         :label="panels.position"
         v-bind="inspectorSectionState('position')"
-        :highlighted="sectionHighlighted('position', panels.position)"
+        :highlighted="
+          sectionHighlighted('position', panels.position) ||
+          sectionHighlighted('layout', panels.layout)
+        "
       >
         <PositionSection />
         <ConstraintsSection />
+        <SelectionLayoutSection />
+        <LayoutGridSection v-if="supportsLayoutGuides" />
       </InspectorSection>
       <InspectorSection
         v-else-if="sectionId === 'appearance'"
@@ -639,9 +661,11 @@ const emptyHasMatches = computed(
         :highlighted="sectionHighlighted('appearance', panels.appearance)"
       >
         <AppearanceSection />
+        <TypographySection />
         <FillSection />
         <StrokeSection />
         <EffectsSection />
+        <SelectionColorsSection />
       </InspectorSection>
       <InspectorSection
         v-else-if="sectionId === 'motion'"
@@ -683,7 +707,12 @@ const emptyHasMatches = computed(
     >
       <PanelHeader :component="isComponentType">
         <template #icon>
-          <Tip :label="node.type">
+          <LayerTypeMenu
+            v-if="node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'SECTION'"
+            :node="node"
+            :icon="selectedIcon"
+          />
+          <Tip v-else :label="node.type">
             <span role="img" :aria-label="node.type" class="contents">
               <component :is="selectedIcon" class="size-3.5" />
             </span>
@@ -691,6 +720,15 @@ const emptyHasMatches = computed(
         </template>
         <span role="heading" aria-level="2">{{ node.name }}</span>
         <template #actions>
+          <IconButton
+            v-if="node.type === 'COMPONENT' || node.type === 'COMPONENT_SET'"
+            :label="panels.addVariant"
+            data-test-id="add-variant"
+            :disabled="!canAddVariant"
+            @click="store.addVariant(node.id)"
+          >
+            <icon-lucide-diamond-plus class="size-3.5" />
+          </IconButton>
           <InstanceUpdateAction
             v-if="node.type === 'INSTANCE'"
             :node="node"
@@ -720,7 +758,7 @@ const emptyHasMatches = computed(
 
       <template v-for="sectionId in panelSectionOrder" :key="sectionRenderKey(sectionId)">
         <InspectorSection
-          v-if="sectionId === 'component' && (node.type === 'INSTANCE' || isVariantAuthoringNode)"
+          v-if="sectionId === 'component' && isComponentType"
           v-show="sectionVisible('component', showSingleComponent)"
           id="component"
           label="Component"
@@ -745,12 +783,15 @@ const emptyHasMatches = computed(
               class="rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover"
               @click="detachInstance.run()"
             >
-              {{ panels.detachInstance }}
+              {{ detachInstance.label }}
             </button>
           </div>
           <ComponentPropertiesSection v-if="node.type === 'INSTANCE'" />
           <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
           <VariantAuthoringSection v-if="isVariantAuthoringNode" />
+          <ComponentPropertyListSection />
+          <SlotAuthoringSection />
+          <BehaviourPanel v-if="node.type === 'COMPONENT' || node.type === 'COMPONENT_SET'" />
         </InspectorSection>
 
         <InspectorSection
@@ -795,6 +836,7 @@ const emptyHasMatches = computed(
           v-bind="inspectorSectionState('position')"
           :highlighted="sectionHighlighted('position', panels.position)"
         >
+          <IconSection />
           <PositionSection />
           <ConstraintsSection />
         </InspectorSection>
@@ -807,7 +849,7 @@ const emptyHasMatches = computed(
           v-bind="inspectorSectionState('layout')"
           :highlighted="sectionHighlighted('layout', panels.layout)"
         >
-          <FramePresetSelect v-if="node.type === 'FRAME'" />
+          <FramePresetSelect v-if="node.type === 'FRAME' && !readIcon(node)" />
           <LayoutSection />
           <LayoutGridSection v-if="supportsLayoutGuides" />
         </InspectorSection>
@@ -993,7 +1035,7 @@ const emptyHasMatches = computed(
         :highlighted="sectionHighlighted('assets-variables', panels.inspectorSectionAssets)"
       >
         <LibrariesPanel />
-        <VariablesSection @open-dialog="variablesOpen = true" />
+        <VariablesSection @open-dialog="openVariablesDialog(store)" />
       </InspectorSection>
       <InspectorSection
         v-else-if="sectionId === 'export'"
@@ -1014,6 +1056,4 @@ const emptyHasMatches = computed(
       {{ panels.inspectorNoMatches }}
     </div>
   </div>
-
-  <VariablesDialog v-model:open="variablesOpen" />
 </template>

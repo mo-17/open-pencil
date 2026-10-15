@@ -18,7 +18,7 @@ const event = { data, source, origin: 'http://127.0.0.1:5181', ports: [] }
 describe('embedded local backend sign-in boundary', () => {
   test('opens only the fixed one-use loopback ticket', () => {
     const request = parseLocalBackendSignInRequest(event, source, channel)
-    expect(request).toEqual(data)
+    expect<unknown>(request).toEqual(data)
     if (!request) throw new Error('Expected sign-in request')
     expect(localBackendSignInURL(request)).toBe(
       `http://127.0.0.1:5181/_openpencil/preview-auth/start/${data.requestId}`

@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import { canonicalManifestBytes } from '@open-pencil/scene-graph'
 
 import { digestDataModel } from './canonical'
@@ -53,7 +55,7 @@ export class BackendMigrationPlanningError extends TypeError {
   readonly diagnostics: readonly BackendDiagnostic[]
 
   constructor(diagnostics: readonly BackendDiagnostic[]) {
-    const codes = [...new Set(diagnostics.map((entry) => entry.code))]
+    const codes = uniq(diagnostics.map((entry) => entry.code))
     super(`Cannot plan backend migration: ${codes.join(', ')}`)
     this.name = 'BackendMigrationPlanningError'
     this.diagnostics = Object.freeze(diagnostics.map((entry) => Object.freeze({ ...entry })))

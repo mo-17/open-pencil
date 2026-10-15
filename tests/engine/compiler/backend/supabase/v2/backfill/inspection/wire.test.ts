@@ -2,6 +2,8 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 
+import * as v from 'valibot'
+
 import {
   createBackendProviderPlanV2,
   createBackendProviderRegistryV2,
@@ -50,14 +52,14 @@ function canonicalFrame(value: unknown): string {
   return JSON.stringify(canonical(value as JSONData))
 }
 
-function reversed(value: JSONData): JSONData {
-  if (Array.isArray(value)) return value.map(reversed)
+function reversed<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(reversed) as T
   if (value === null || typeof value !== 'object') return value
   return Object.fromEntries(
     Object.entries(value)
       .reverse()
       .map(([key, entry]) => [key, reversed(entry)])
-  )
+  ) as T
 }
 
 function request(
@@ -122,7 +124,13 @@ describe('Supabase backfill Compiler inspection wire', () => {
     ).toThrow('byte limit')
 
     for (const extra of ['plan', 'selection', 'mode', 'packageDigest', 'envelope']) {
-      const malicious = { ...(JSON.parse(serialized) as Record<string, unknown>), [extra]: {} }
+      const malicious = {
+        ...v.parse(
+          v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+          serialized
+        ),
+        [extra]: {}
+      }
       expect(() => parseSupabaseBackfillInspectionWireRequestV1(canonicalFrame(malicious))).toThrow(
         'exact protocol fields'
       )
@@ -135,9 +143,7 @@ describe('Supabase backfill Compiler inspection wire', () => {
   test('pins a nonce-independent domain digest and canonicalizes recursive insertion order', () => {
     const first = request()
     const second = request(digest('openpencil:test:backfill-inspection:nonce:two'))
-    const reversedRequest = reversed(
-      first as unknown as JSONData
-    ) as SupabaseBackfillInspectionWireRequestV1
+    const reversedRequest = reversed(first)
 
     expect(first.requestNonce).not.toBe(second.requestNonce)
     expect(supabaseBackfillInspectionWireRequestDigestV1(first)).toBe(
@@ -229,7 +235,10 @@ describe('Supabase backfill Compiler inspection wire', () => {
         ;(subject.plan as Record<string, unknown>).target = 'vue'
       }
     ]) {
-      const response = JSON.parse(serializedResponse) as Record<string, unknown>
+      const response = v.parse(
+        v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+        serializedResponse
+      )
       const envelope = response.subjectEnvelope as Record<string, unknown>
       const subject = envelope.subject as Record<string, unknown>
       mutation(subject)
@@ -269,7 +278,10 @@ describe('Supabase backfill Compiler inspection wire', () => {
     ]
 
     for (const mutate of mutations) {
-      const response = JSON.parse(serializedResponse) as Record<string, unknown>
+      const response = v.parse(
+        v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+        serializedResponse
+      )
       const envelope = response.subjectEnvelope as Record<string, unknown>
       const subject = envelope.subject as Record<string, unknown>
       mutate(subject)
@@ -309,7 +321,10 @@ describe('Supabase backfill Compiler inspection wire', () => {
 
   test('rejects forged Compiler authority and foreign compiler-selection package binding', () => {
     const { parsedRequest, serializedResponse } = completeExchange()
-    const responseFieldTamper = JSON.parse(serializedResponse) as Record<string, unknown>
+    const responseFieldTamper = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      serializedResponse
+    )
     responseFieldTamper.mode = 'production'
     expect(() =>
       parseSupabaseBackfillInspectionWireResponseV1(
@@ -318,14 +333,20 @@ describe('Supabase backfill Compiler inspection wire', () => {
       )
     ).toThrow('exact protocol fields')
 
-    const authorityTamper = JSON.parse(serializedResponse) as Record<string, unknown>
+    const authorityTamper = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      serializedResponse
+    )
     ;(authorityTamper.compilerBuildAuthority as Record<string, unknown>).installAuthorityCreated =
       true
     expect(() =>
       parseSupabaseBackfillInspectionWireResponseV1(canonicalFrame(authorityTamper), parsedRequest)
     ).toThrow('not trusted')
 
-    const descriptorTamper = JSON.parse(serializedResponse) as Record<string, unknown>
+    const descriptorTamper = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      serializedResponse
+    )
     const compilerBuildAuthority = descriptorTamper.compilerBuildAuthority as Record<
       string,
       unknown
@@ -342,7 +363,10 @@ describe('Supabase backfill Compiler inspection wire', () => {
       parseSupabaseBackfillInspectionWireResponseV1(canonicalFrame(descriptorTamper), parsedRequest)
     ).toThrow('not trusted')
 
-    const packageTamper = JSON.parse(serializedResponse) as Record<string, unknown>
+    const packageTamper = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      serializedResponse
+    )
     const envelope = packageTamper.subjectEnvelope as Record<string, unknown>
     const subject = envelope.subject as Record<string, unknown>
     ;(subject.providerAuthority as Record<string, unknown>).packageDigest =

@@ -193,10 +193,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       if (!staleElement) throw new Error('Numeric draft unavailable')
       await stale.fill(module === 'slider' ? '35' : '4')
       const updatedValue = module === 'slider' ? 60 : 2
-      await page.evaluate((value) => {
+      await page.evaluate(async (value) => {
+        const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         const node = editor.graph.getNode([...editor.state.selectedIds][0])
-        const stored = node?.interactiveProps?.module
+        const stored = readModuleInstance(node?.interactiveProps?.module)
         if (!node || !stored) throw new Error('Module unavailable')
         editor.graph.updateNode(node.id, {
           interactiveProps: {
@@ -214,9 +218,12 @@ for (const renderer of ['retained', 'tiled'] as const) {
         'aria-valuenow',
         String(updatedValue)
       )
-      expect(await page.evaluate(() => window.openPencil.getStore().state.numberFieldFocused)).toBe(
-        false
-      )
+      expect(
+        await page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil.getStore().state.numberFieldFocused
+        })
+      ).toBe(false)
     }
     canvas.assertNoErrors()
   })

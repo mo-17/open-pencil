@@ -1,7 +1,5 @@
 export { CODEGEN_PROMPT } from './tools/prompts'
 
-export { randomHex, randomInt, randomIndex } from './random'
-
 export * from './constants'
 export * from './lowcode-deployment'
 export * from './motion'
@@ -84,6 +82,7 @@ export {
 
 export { FigmaAPI, FigmaNodeProxy, computeImageHash, type FigmaFontName } from './figma-api'
 export type { PortableSceneGraphData } from './kiwi/fig/parse/portable-data'
+export { BehaviourHandle, OpenPencilAPI, type NodeRef } from './openpencil-api'
 export {
   ALL_TOOLS,
   CORE_TOOLS,
@@ -174,6 +173,7 @@ export {
   FontManager,
   chooseLocalFontMatch,
   fontManager,
+  fontWeightMatchOrder,
   styleToWeight,
   weightToFigmaStyle,
   weightToStyle,
@@ -299,14 +299,19 @@ export {
 export { svg, renderSVGNode, type SVGNode } from './io/formats/svg/node'
 export { parseSVGPath } from '@open-pencil/scene-graph/parse-path'
 export {
-  fetchIcon,
-  fetchIcons,
-  searchIcons,
-  searchIconsBatch,
-  clearIconCache,
+  createIconifyProvider,
+  iconColor,
+  iconify,
+  parseIconName,
+  placeIcon,
+  recolorIcon,
+  swapIcon,
   type IconData,
   type IconPath,
-  type IconSearchResult
+  type IconProvider,
+  type IconSearchOptions,
+  type IconSearchResult,
+  type PlaceIconOptions
 } from './icons'
 export { exportFigFile, compressFigData, compressFigDataSync } from './io/formats/fig/export'
 export {
@@ -316,10 +321,10 @@ export {
   decompressFigKiwiDataAsync,
   buildFontDigestMap,
   sceneNodeToKiwi,
-  fractionalPosition,
   mapToFigmaType
 } from './kiwi/fig/node-change/serialize'
-export { buildDerivedTextDataV4 } from './text/derived-text/clipboard'
+export { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
+export { withFigExportRuntime } from './canvas/text/shape'
 
 export {
   createElement,
@@ -468,3 +473,5 @@ export {
   getStockPhotoProviders
 } from './tools/stock-photo'
 export type { StockPhotoProvider, StockPhotoResult } from './tools/stock-photo'
+
+export { buildDerivedTextDataV4 } from './text/derived-text/clipboard'

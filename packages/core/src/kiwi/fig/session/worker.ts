@@ -1,4 +1,5 @@
 import { serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
+import { createFigArchiveOperations } from '#core/kiwi/fig/session/archive'
 import type {
   FigSessionOpenRequest,
   FigSessionRequest,
@@ -7,7 +8,7 @@ import type {
 import { openReaderSession } from '#core/kiwi/fig/session/reader'
 
 let session: ReturnType<typeof openReaderSession> | undefined
-let originalArchive: Uint8Array | undefined
+let archive: ReturnType<typeof createFigArchiveOperations> | undefined
 let port: MessagePort | undefined
 
 function respond(message: FigSessionResponse): void {
@@ -25,19 +26,52 @@ function populate(request: Extract<FigSessionRequest, { type: 'populate' }>): vo
   })
 }
 
+type ArchiveRequest = Extract<
+  FigSessionRequest,
+  {
+    type: 'original-archive' | 'archive-info' | 'component-pages' | 'patch-archive'
+  }
+>
+
+function answerArchiveRequest(request: ArchiveRequest): void {
+  const { requestId } = request
+  try {
+    if (!archive) throw new Error('FIG session has no original archive')
+    if (request.type === 'original-archive') {
+      const bytes = archive.original()
+      port?.postMessage({ type: 'original-archive-result', requestId, bytes }, [bytes.buffer])
+    } else if (request.type === 'archive-info') {
+      respond({ type: 'archive-info-result', requestId, info: archive.info() })
+    } else if (request.type === 'component-pages') {
+      const pageIds = archive.componentPages(request.componentIds)
+      respond({ type: 'component-pages-result', requestId, pageIds })
+    } else {
+      const bytes = archive.patch(request.patch, request.input)
+      port?.postMessage({ type: 'patch-archive-result', requestId, bytes }, [bytes.buffer])
+    }
+  } catch (error) {
+    respond({
+      type: 'archive-error',
+      requestId,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
 function handleRequest(request: FigSessionRequest): void {
   try {
-    if (request.type === 'original-archive') {
-      if (!originalArchive) throw new Error('FIG session has no original archive')
-      const bytes = originalArchive.slice()
-      port?.postMessage({ type: 'original-archive-result', requestId: request.requestId, bytes }, [
-        bytes.buffer
-      ])
+    if (
+      request.type === 'original-archive' ||
+      request.type === 'archive-info' ||
+      request.type === 'component-pages' ||
+      request.type === 'patch-archive'
+    ) {
+      answerArchiveRequest(request)
       return
     }
     if (request.type === 'dispose') {
       session = undefined
-      originalArchive = undefined
+      archive = undefined
       try {
         respond({ type: 'disposed' })
       } finally {
@@ -48,6 +82,10 @@ function handleRequest(request: FigSessionRequest): void {
       return
     }
     if (request.type === 'cancel') return
+    if (request.type === 'retire') {
+      session = undefined
+      return
+    }
     populate(request)
   } catch (error) {
     respond({
@@ -65,10 +103,11 @@ self.onmessage = (event: MessageEvent<FigSessionOpenRequest>) => {
     port = request.port
     port.onmessage = (message: MessageEvent<FigSessionRequest>) => handleRequest(message.data)
     port.start()
-    originalArchive = new Uint8Array(request.originalBuffer)
+    const bytes = request.originalBuffer ?? request.buffer
+    if (!bytes) throw new Error('Missing FIG session source archive')
     phase = 'parse'
     const opened = openReaderSession(
-      request.originalBuffer,
+      bytes,
       request.options?.populate,
       request.options?.archiveLimits,
       () => {
@@ -76,6 +115,10 @@ self.onmessage = (event: MessageEvent<FigSessionOpenRequest>) => {
       }
     )
     phase = 'transport'
+    const archiveInfo = opened.session.archiveRecordInfo()
+    // Recovery clients take the sole compressed buffer; patching then uses the host archive.
+    if (!request.returnOriginalBuffer)
+      archive = createFigArchiveOperations(bytes, () => archiveInfo)
     respond({ type: 'page-manifest', pages: opened.pages })
     session =
       request.options?.populate === 'first-page' || request.options?.populate === 'none'
@@ -85,18 +128,23 @@ self.onmessage = (event: MessageEvent<FigSessionOpenRequest>) => {
       type: 'graph',
       graph: serializeSceneGraph(opened.graph),
       checkpoint: opened.checkpoint(),
-      ...(request.returnOriginalBuffer ? { originalBuffer: request.originalBuffer } : {})
+      archiveInfo,
+      ...(request.returnOriginalBuffer ? { originalBuffer: bytes } : {})
     }
     // The reader retains decoded records, so transferring the compressed source back
     // leaves one archive owner on the host and avoids import-sized backup copies.
     if (request.returnOriginalBuffer) {
-      port.postMessage(result, [request.originalBuffer])
-      originalArchive = undefined
+      port.postMessage(result, [bytes])
+      archive = undefined
     } else {
       respond(result)
     }
   } catch (error) {
     session = undefined
-    respond({ type: 'graph', error: error instanceof Error ? error.message : String(error), phase })
+    respond({
+      type: 'graph',
+      error: error instanceof Error ? error.message : String(error),
+      phase
+    })
   }
 }

@@ -1,31 +1,37 @@
-import { fetchIconifyCollection, searchIconify } from './api'
-import { buildIconData } from './svg'
+import { throwIfAborted } from '#core/async-work'
+
+import { createIconifyProvider, type IconProvider } from './provider'
 import type { IconData, IconSearchResult } from './types'
 
-export type { IconData, IconPath, IconSearchResult } from './types'
+export {
+  createIconifyProvider,
+  parseIconName,
+  type IconProvider,
+  type IconSearchOptions
+} from './provider'
+export {
+  detachIcon,
+  iconColor,
+  placeIcon,
+  recolorIcon,
+  swapIcon,
+  type PlaceIconOptions
+} from './render'
+export type { IconCollection, IconData, IconPath, IconSearchResult } from './types'
 
-const iconCache = new Map<string, IconData>()
+/** The Iconify icons hosts use unless they pass a provider of their own. */
+let defaultProvider = createIconifyProvider()
+export const iconify: IconProvider = {
+  icons: (...args) => defaultProvider.icons(...args),
+  search: (...args) => defaultProvider.search(...args),
+  previews: (...args) => defaultProvider.previews(...args),
+  collections: () => defaultProvider.collections(),
+  browse: (...args) => defaultProvider.browse(...args)
+}
 
+/** Clear the default provider for hosts switching credentials or tests. */
 export function clearIconCache(): void {
-  iconCache.clear()
-}
-
-function parseIconName(name: string): { prefix: string; iconName: string } {
-  const colonIdx = name.indexOf(':')
-  if (colonIdx === -1) {
-    throw new Error(
-      `Invalid icon name "${name}". Use prefix:name format (e.g. lucide:heart, mdi:home)`
-    )
-  }
-  return { prefix: name.slice(0, colonIdx), iconName: name.slice(colonIdx + 1) }
-}
-
-export async function fetchIcon(name: string, size = 24, signal?: AbortSignal): Promise<IconData> {
-  const results = await fetchIcons([name], size, signal)
-  const result = results.get(name)
-  if (!result)
-    throw new Error(`Icon "${name}" not found. Check the name at https://icon-sets.iconify.design/`)
-  return result
+  defaultProvider = createIconifyProvider()
 }
 
 export async function fetchIcons(
@@ -33,81 +39,27 @@ export async function fetchIcons(
   size = 24,
   signal?: AbortSignal
 ): Promise<Map<string, IconData>> {
-  throwIfIconFetchAborted(signal)
-  const results = new Map<string, IconData>()
-  const toFetch = new Map<string, string[]>()
-
-  for (const name of names) {
-    const cacheKey = `${name}@${size}`
-    const cached = iconCache.get(cacheKey)
-    if (cached) {
-      results.set(name, cached)
-      continue
-    }
-    const { prefix, iconName } = parseIconName(name)
-    const group = toFetch.get(prefix) ?? []
-    group.push(iconName)
-    toFetch.set(prefix, group)
-  }
-
-  const fetches = [...toFetch.entries()].map(async ([prefix, iconNames]) => {
-    throwIfIconFetchAborted(signal)
-    const data = await fetchIconifyCollection(prefix, iconNames, signal)
-    throwIfIconFetchAborted(signal)
-    const defaultW = data.width ?? 24
-    const defaultH = data.height ?? 24
-
-    for (const iconName of iconNames) {
-      throwIfIconFetchAborted(signal)
-      const fullName = `${prefix}:${iconName}`
-      let entry = data.icons[iconName]
-      if (!entry) {
-        const alias = data.aliases?.[iconName]
-        if (alias) entry = data.icons[alias.parent]
-      }
-      if (!entry) continue
-      const iconData = buildIconData(entry, prefix, iconName, defaultW, defaultH, size)
-      iconCache.set(`${fullName}@${size}`, iconData)
-      results.set(fullName, iconData)
-    }
-  })
-
-  try {
-    await Promise.all(fetches)
-  } catch (error) {
-    if (signal?.aborted) throwIconFetchAborted()
-    throw error
-  }
-  throwIfIconFetchAborted(signal)
-  return results
+  return iconify.icons(names, size, signal)
 }
 
-function throwIfIconFetchAborted(signal?: AbortSignal): void {
-  if (!signal?.aborted) return
-  throwIconFetchAborted()
+export async function fetchIcon(name: string, size = 24, signal?: AbortSignal): Promise<IconData> {
+  throwIfAborted(signal, 'Icon fetch cancelled')
+  const icon = (await fetchIcons([name], size, signal)).get(name)
+  if (!icon)
+    throw new Error(`Icon "${name}" not found. Check the name at https://icon-sets.iconify.design/`)
+  return icon
 }
 
-function throwIconFetchAborted(): never {
-  const error = new Error('Icon fetch cancelled')
-  error.name = 'AbortError'
-  throw error
-}
-
-export { searchIconify as searchIcons }
+export const searchIcons = (query: string, options?: { limit?: number; prefix?: string }) =>
+  iconify.search(query, options)
 
 export async function searchIconsBatch(
   queries: string[],
-  options?: {
-    limit?: number
-    prefix?: string
-  }
+  options?: { limit?: number; prefix?: string }
 ): Promise<Map<string, IconSearchResult>> {
-  const results = new Map<string, IconSearchResult>()
-  await Promise.all(
-    queries.map(async (query) => {
-      const result = await searchIconify(query, options)
-      results.set(query, result)
-    })
+  return new Map(
+    await Promise.all(
+      queries.map(async (query) => [query, await iconify.search(query, options)] as const)
+    )
   )
-  return results
 }

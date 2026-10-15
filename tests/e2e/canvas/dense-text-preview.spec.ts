@@ -5,12 +5,16 @@ const editor = useEditorSetupWithClear('/?test&no-rulers&navigation-benchmark')
 
 test('dense text keeps exact pixels without reshaping unchanged labels during previews', async () => {
   const interaction = await editor.page.evaluateHandle(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     return store.beginInteractiveEdit()
   })
   try {
     const previewId = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       const page = store.state.currentPageId
@@ -46,8 +50,13 @@ test('dense text keeps exact pixels without reshaping unchanged labels during pr
       store.requestRender()
       return marker.id
     })
-    await editor.page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await editor.page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store?.renderer) throw new Error('Renderer unavailable')
       store.renderer.textPreparationCache.clear()
@@ -61,6 +70,8 @@ test('dense text keeps exact pixels without reshaping unchanged labels during pr
     // One additional pass lets drawing paragraphs occupy the cache after coverage
     // observations have been memoized. Subsequent preview frames must not shape text.
     await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       store?.graph.updateNodePreview(id, { x: -10003 })
       store?.requestRepaint()
@@ -71,6 +82,8 @@ test('dense text keeps exact pixels without reshaping unchanged labels during pr
       for (const x of [-10002, -10001, -10000]) {
         await editor.page.evaluate(
           ({ id, x }) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
             const store = window.openPencil?.getStore?.()
             store?.graph.updateNodePreview(id, { x })
             store?.requestRepaint()

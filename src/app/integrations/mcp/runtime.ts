@@ -1,5 +1,7 @@
 import type { McpServer } from '@agentclientprotocol/sdk'
 
+import { MCP_AGENT_HEADER } from '@open-pencil/core/constants'
+
 import { getMCPServerURL } from '@/app/automation/mcp/spawn'
 import { describeDiagnosticError, recordMCPConnectionFailure } from '@/app/diagnostics'
 import { appCredentialServices } from '@/app/settings/credentials/app'
@@ -16,9 +18,12 @@ export function builtInMCPServer(options: BuiltInMCPServerOptions): McpServer {
     type: 'http',
     name: BUILT_IN_EDITOR_MCP_SERVER_NAME,
     url: getMCPServerURL(),
-    headers: options.authorizationToken
-      ? [{ name: 'Authorization', value: `Bearer ${options.authorizationToken}` }]
-      : []
+    headers: [
+      { name: MCP_AGENT_HEADER, value: 'acp' },
+      ...(options.authorizationToken
+        ? [{ name: 'Authorization', value: `Bearer ${options.authorizationToken}` }]
+        : [])
+    ]
   }
 }
 

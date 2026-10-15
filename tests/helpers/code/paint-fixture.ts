@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs'
 import { exportFigFile } from '@open-pencil/core'
 import { SceneGraph, type Stroke } from '@open-pencil/scene-graph'
 
+import { repoPath } from '#tests/helpers/paths'
+
 /** A real FIG document for Code UI edits, with foreign tokens and three stroke paints. */
 export async function codePaintFixture(withChild = false): Promise<Uint8Array> {
   const graph = new SceneGraph()
-  const image = readFileSync(new URL('../../fixtures/vectorize/python_logo.png', import.meta.url))
+  const image = readFileSync(repoPath('tests/fixtures/vectorize/python_logo.png'))
   const imageHash = createHash('sha1').update(image).digest('hex')
   graph.images.set(imageHash, image)
   const base: Stroke = {

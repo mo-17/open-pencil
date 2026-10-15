@@ -191,7 +191,7 @@ function importFile(file: File | undefined, policy: MotionPresetMergePolicy): vo
       @export-file="emit('export-file')"
     />
 
-    <p v-if="error" role="alert" class="mt-1.5 text-[10px] leading-4 text-danger">
+    <p v-if="error" role="alert" class="mt-1.5 text-[10px] leading-4 text-error">
       {{ error }}
     </p>
 

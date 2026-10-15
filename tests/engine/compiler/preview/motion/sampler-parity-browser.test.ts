@@ -6,9 +6,8 @@ import { fromUint8Array } from 'js-base64'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
-import type { Vector } from '@open-pencil/core'
 import { sampleMotionSpec, type MotionVisualState } from '@open-pencil/motion'
-import type { MotionSpec, MotionTrack } from '@open-pencil/scene-graph'
+import { type Vector, type MotionSpec, type MotionTrack } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -1023,9 +1022,17 @@ describe('preview browser — Motion sampler parity', () => {
             __OPENPENCIL_MOTION_RUNTIME__?: { play: (nodeId: string) => void }
           }
         ).__OPENPENCIL_MOTION_RUNTIME__
-        runtime?.play(composedId)
-        runtime?.play(fractionalId)
-        runtime?.play(inactiveId)
+        if (!runtime) throw new Error('Motion runtime is unavailable')
+        // These timelines are scrubbed below. Freeze them in the same task as play so a
+        // finite click track cannot finish while another node's checkpoints are sampled.
+        for (const nodeId of [composedId, fractionalId, inactiveId]) {
+          runtime.play(nodeId)
+          const element = document.querySelector(`[data-node-id="${nodeId}"]`)
+          if (!element) throw new Error(`missing Motion node ${nodeId}`)
+          const animations = element.getAnimations()
+          if (animations.length === 0) throw new Error(`missing Motion animation for ${nodeId}`)
+          for (const animation of animations) animation.pause()
+        }
       },
       {
         composedId: fixture.composedV3.nodeId,

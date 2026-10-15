@@ -3,7 +3,11 @@ import { guidToString } from '@open-pencil/kiwi/fig/guid'
 
 import { isUnsupportedFigFragmentType } from '../node-classification'
 import { retireUnusedFragmentAssignments } from './fragment-assignments'
-import { materializeDocument, type DocumentAssemblyOptions } from './materialize'
+import {
+  materializeDocument,
+  type AssemblyState,
+  type DocumentAssemblyOptions
+} from './materialize'
 
 export interface FragmentOptions {
   /** Only empty instances with no saved claims may lose an unavailable component. */
@@ -11,10 +15,17 @@ export interface FragmentOptions {
 }
 
 export interface FragmentMaterializationOptions extends FragmentOptions {
+  sourceDependencies?: DocumentAssemblyOptions['sourceDependencies']
   images?: DocumentAssemblyOptions['images']
   mapNodeProps?: DocumentAssemblyOptions['mapNodeProps']
   afterMaterialize?: DocumentAssemblyOptions['afterMaterialize']
   afterMaterializeInstance?: DocumentAssemblyOptions['afterMaterializeInstance']
+}
+
+export interface MaterializedFigFragment extends AssemblyState {
+  retiredPropertyAssignments: ReturnType<typeof retireUnusedFragmentAssignments>
+  rootIds: string[]
+  dependencyPageIds: string[]
 }
 
 /** Interpret a partial document in isolation; retain internal resources separately from pasted roots. */
@@ -22,11 +33,12 @@ export function materializeFigFragment(
   source: readonly NodeChange[],
   blobs: Uint8Array[] = [],
   options: FragmentMaterializationOptions = {}
-) {
+): MaterializedFigFragment {
   const changes = normalizeFigFragment(source, options)
   const result = materializeDocument(changes, blobs, {
     derivedBounds: true,
     images: options.images,
+    sourceDependencies: options.sourceDependencies,
     mapNodeProps: options.mapNodeProps,
     afterMaterialize: options.afterMaterialize,
     afterMaterializeInstance: options.afterMaterializeInstance
@@ -117,14 +129,20 @@ export function normalizeFigFragment(
     if (node.type === 'DOCUMENT') continue
     const parent = node.parentIndex?.guid
     if (node.type === 'CANVAS') {
-      node.parentIndex = { guid: documentGuid, position: node.parentIndex?.position ?? '!' }
+      node.parentIndex = {
+        guid: documentGuid,
+        position: node.parentIndex?.position ?? '!'
+      }
     } else if (
       !parent ||
       !ids.has(guidToString(parent)) ||
       guidToString(parent) === guidToString(documentGuid)
     ) {
       fragmentPage ??= allocate()
-      node.parentIndex = { guid: fragmentPage, position: node.parentIndex?.position ?? '!' }
+      node.parentIndex = {
+        guid: fragmentPage,
+        position: node.parentIndex?.position ?? '!'
+      }
     }
     normalizeMissingComponent(node, ids, children, options)
   }

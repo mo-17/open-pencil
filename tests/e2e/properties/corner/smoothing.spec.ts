@@ -27,6 +27,8 @@ async function drawFrame(x: number, y: number) {
 
 async function selectedSmoothing() {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds].map(
@@ -66,6 +68,8 @@ test('shows smoothing for corner-capable nodes and keeps it with independent rad
 test('updates normalized smoothing and undoes the committed edit', async () => {
   await drawFrame(100, 240)
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -86,6 +90,8 @@ test('restores mixed per-node values in one undo step', async () => {
   await canvas.pressKey('Meta+a')
   await canvas.waitForRender()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const ids = [...store.state.selectedIds]

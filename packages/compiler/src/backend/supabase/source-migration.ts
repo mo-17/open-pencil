@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 /* eslint-disable complexity, max-lines -- Source-ledger validation and emission reproduction keep one public trust boundary auditable. */
 /* oxlint-disable typescript-eslint(no-unnecessary-condition), typescript-eslint(no-unnecessary-boolean-literal-compare), typescript-eslint(no-redundant-type-constituents) -- Public compiler values and artifact maps remain runtime-untrusted despite their static contract types. */
 import {
@@ -578,7 +580,7 @@ async function checkedExecutionPlan(
       'reviewed migration plan'
     )
     const referencedSourceOperationIds = sortedUniqueStrings(
-      [...new Set(plan.operations.flatMap((entry) => [...entry.operation.sourceOperationIds]))],
+      uniq(plan.operations.flatMap((entry) => [...entry.operation.sourceOperationIds])),
       'staged source operation coverage'
     )
     if (

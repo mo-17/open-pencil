@@ -4,15 +4,22 @@ import { graphHasAnimatedGeneratedEffects } from '@open-pencil/motion'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
 
+import { needsImagePreviews } from '#core/canvas/images/previews'
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
+import { playIslandRoots } from '#core/editor/play/islands'
 import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
 import { emitNavigationTrace } from '#core/profiler'
 
 import { prepareContentEditCache, renderContentEditRoot } from './content-edit'
-import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
+import {
+  beginDecodedImageCacheFrame,
+  endDecodedImageCacheFrame,
+  clearDecodedImageCache
+} from './image-cache'
 import { drawChromePass, drawLabelPass, drawOverlayPass } from './overlay-pass'
 import {
+  cancelSceneBackingBuild,
   drawLastGoodSceneBacking,
   renderSceneBacking,
   updateSceneBackingPreviewState
@@ -64,6 +71,10 @@ function renderSceneToCanvasInCurrentScope(
 ): void {
   beginDecodedImageCacheFrame(r)
   const prevViewport = r.worldViewport
+  const previewMode = r.viewportImageRendering
+  const staticExport = r.renderingStaticExport
+  r.renderingStaticExport = true
+  r.viewportImageRendering = false
   r.worldViewport = { x: -1e9, y: -1e9, w: 2e9, h: 2e9 }
   let completed = false
   try {
@@ -74,8 +85,28 @@ function renderSceneToCanvasInCurrentScope(
     completed = true
   } finally {
     r.worldViewport = prevViewport
+    r.viewportImageRendering = previewMode
+    r.renderingStaticExport = staticExport
     endDecodedImageCacheFrame(r, completed)
   }
+}
+
+function prepareViewportImages(r: SkiaRenderer, graph: SceneGraph, pageId: string): void {
+  const previewMode = r.imagePreviews.enabled && needsImagePreviews(graph)
+  if (
+    r.imageMemoryGraph !== graph ||
+    r.viewportImageRendering !== previewMode ||
+    (previewMode && r.imageMemoryPage !== pageId)
+  ) {
+    r.invalidateAllPictures()
+    clearDecodedImageCache(r)
+    // Previews of another document hold its encoded images, which a document without
+    // previews would otherwise keep alive.
+    if (r.imageMemoryGraph !== graph) r.imagePreviews.release()
+    r.imageMemoryGraph = graph
+    r.imageMemoryPage = pageId
+  }
+  r.viewportImageRendering = previewMode
 }
 
 export type RenderLayer = 'full' | 'scene' | 'overlays'
@@ -98,6 +129,7 @@ export function renderFromEditorState(
     pageId: state.currentPageId,
     prefersReducedMotion: reducedMotion
   })
+  prepareViewportImages(r, graph, state.currentPageId)
   r.dpr = dpr
   r.panX = state.panX
   r.panY = state.panY
@@ -107,20 +139,28 @@ export function renderFromEditorState(
   r.showRulers = showRulers
   r.pageColor = state.pageColor
   r.rulerTheme = state.rulerTheme ?? null
+  r.setSelectionTheme(state.selectionTheme)
   r.pageId = state.currentPageId
   r.navigationPhase = state.navigation.phase
   r.navigationGeneration = state.navigation.generation
+  // A previewing canvas shows the design as it runs: no selection, hover, or edit chrome.
+  const previewing = state.play !== null
   render(
     r,
     graph,
-    state.selectedIds,
+    previewing ? new Set<string>() : state.selectedIds,
     {
       contentRootId: state.contentEdit?.rootId,
       tabsPreview: state.tabsPreview,
       motionVisualStates: state.motionPreview?.visuals,
       ...(generatedEffectsAnimate ? { generatedEffectTimeMs: now() } : {}),
       generatedEffectMode: reducedMotion ? 'reduce' : 'allow',
-      hoveredNodeId: state.hoveredNodeId,
+      playing: previewing,
+      playIslands: previewing ? new Set(playIslandRoots(graph, state.currentPageId)) : undefined,
+      hoveredNodeId: previewing ? null : state.hoveredNodeId,
+      showPixelGrid: !previewing && state.showPixelGrid !== false,
+      gradientEdit: state.gradientEdit,
+      transforming: state.transforming,
       measurementMode: state.measurementMode,
       enteredContainerId: state.enteredContainerId,
       editingTextId: state.editingTextId,
@@ -138,13 +178,16 @@ export function renderFromEditorState(
             cursorY: state.penCursorY ?? undefined
           } as RenderOverlays['penState'])
         : null,
+      pencilState: state.pencilState,
       nodeEditState: state.nodeEditState ?? null,
       presenceCursors: state.presenceCursors,
       designIssues: state.designIssues,
       codeFocusNodeId: state.codeFocusNodeId,
-      autoLayoutHover: state.autoLayoutHover
+      autoLayoutHover: state.autoLayoutHover,
+      shapeHandleHover: state.shapeHandleHover
     },
-    state.sceneVersion,
+    // Recorded pictures follow what the canvas draws, not every document change.
+    state.canvasVersion,
     layer,
     interactive
   )
@@ -156,10 +199,9 @@ export function hasVolatileOverlay(overlays: RenderOverlays): boolean {
     overlays.tabsPreview != null ||
     (overlays.motionVisualStates?.size ?? 0) > 0 ||
     overlays.generatedEffectTimeMs !== undefined ||
-    overlays.dropTargetId != null ||
     overlays.rotationPreview != null ||
-    overlays.editingTextId != null ||
-    overlays.nodeEditState != null
+    overlays.nodeEditState != null ||
+    overlays.playing === true
   )
 }
 
@@ -209,6 +251,7 @@ function getSceneRenderPolicy(
     graph.positionPreviewVersion !== r.scenePicturePositionPreviewVersion &&
     sceneVersion === r.scenePictureVersion
   const requiresUncachedSceneRender =
+    r.viewportImageRendering ||
     interactive ||
     hasPositionPreview ||
     hasVolatileOverlay(overlays) ||
@@ -254,12 +297,12 @@ function renderSceneLayer(
   hasVolatileOverlays: boolean,
   canUsePicture: boolean,
   cacheMissReason: string
-): void {
+): boolean {
   const drewSceneBacking =
     layer === 'scene' && !hasVolatileOverlays && renderSceneBacking(r, canvas, graph, sceneVersion)
   if (drewSceneBacking) {
     r.profiler.setScenePictureMode('hit', drewSceneBacking)
-    return
+    return false
   }
 
   canvas.translate(r.panX, r.panY)
@@ -272,10 +315,10 @@ function renderSceneLayer(
       overlays,
       hasVolatileOverlays ? cacheMissReason : 'backing-unavailable'
     )
-    return
+    return true
   }
 
-  renderSceneContent(
+  return renderSceneContent(
     r,
     canvas,
     graph,
@@ -286,6 +329,46 @@ function renderSceneLayer(
     hasVolatileOverlays
   )
 }
+/** Labels, editing overlays, and rulers; a previewing canvas keeps only the rulers' chrome pass. */
+function drawAboveScene(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  selectedIds: Set<string>,
+  overlays: RenderOverlays,
+  sceneVersion: number
+): void {
+  canvas.save()
+  canvas.scale(r.dpr, r.dpr)
+  r.labelCache.update(graph, r.pageId, sceneVersion, graph.positionPreviewVersion)
+  if (!overlays.playing && !overlays.contentRootId)
+    drawLabelPass(r, canvas, graph, selectedIds, overlays)
+  canvas.restore()
+
+  canvas.save()
+  canvas.scale(r.dpr, r.dpr)
+  if (!overlays.playing) drawOverlayPass(r, canvas, graph, selectedIds, overlays)
+  drawChromePass(r, canvas, graph, selectedIds, overlays)
+  canvas.restore()
+}
+
+function rememberFlushedLiveScene(
+  r: SkiaRenderer,
+  graph: SceneGraph,
+  sceneVersion: number,
+  liveScenePresented: boolean
+): void {
+  if (liveScenePresented) {
+    // Advance only after a real live frame reaches the surface, never on a failed draw.
+    r.lastLiveSceneContent = {
+      pageId: r.pageId,
+      sceneVersion,
+      positionPreviewVersion: graph.positionPreviewVersion,
+      fontGeneration: r.fontGeneration
+    }
+  }
+}
+
 export function render(
   r: SkiaRenderer,
   graph: SceneGraph,
@@ -315,6 +398,7 @@ export function render(
   let initialSaveCount = 0
   let frameEnded = false
   let surfaceFlushed = false
+  let liveScenePresented = false
   beginDecodedImageCacheFrame(r)
   try {
     graph.clearAbsPosCache()
@@ -343,6 +427,8 @@ export function render(
     } = getSceneRenderPolicy(r, graph, overlays, sceneVersion, interactive)
     if (layer !== 'overlays') {
       if (hasVolatileOverlays) {
+        // A live frame replaces the paused build; only its completed backing remains reusable.
+        if (r.sceneBackingBuild) cancelSceneBackingBuild(r)
         r.sceneBackingNeedsCrispRender = false
         r.tiledScenePending = false
       }
@@ -358,7 +444,7 @@ export function render(
           try {
             canvas.translate(r.panX, r.panY)
             canvas.scale(r.zoom, r.zoom)
-            renderSceneContent(
+            liveScenePresented = renderSceneContent(
               r,
               canvas,
               graph,
@@ -385,7 +471,7 @@ export function render(
         p.setScenePictureMode('hit', tiled.covered ? 'tiled' : 'tiled-fallback')
       }
       if (!renderedScene) {
-        renderSceneLayer(
+        liveScenePresented = renderSceneLayer(
           r,
           canvas,
           graph,
@@ -402,19 +488,7 @@ export function render(
       canvas.restore()
     }
 
-    if (layer !== 'scene') {
-      canvas.save()
-      canvas.scale(r.dpr, r.dpr)
-      r.labelCache.update(graph, r.pageId, sceneVersion, graph.positionPreviewVersion)
-      if (!overlays.contentRootId) drawLabelPass(r, canvas, graph, overlays)
-      canvas.restore()
-
-      canvas.save()
-      canvas.scale(r.dpr, r.dpr)
-      drawOverlayPass(r, canvas, graph, selectedIds, overlays)
-      drawChromePass(r, canvas, graph, selectedIds, overlays)
-      canvas.restore()
-    }
+    if (layer !== 'scene') drawAboveScene(r, canvas, graph, selectedIds, overlays, sceneVersion)
 
     p.beginPhase('render:flush')
     const { duration: flushDuration } = measure(() => {
@@ -423,6 +497,7 @@ export function render(
     })
     p.setFlushTime(flushDuration)
     p.endPhase('render:flush')
+    rememberFlushedLiveScene(r, graph, sceneVersion, liveScenePresented)
 
     p.setNodeCounts(r._nodeCount, r._culledCount)
     p.endFrame()
@@ -504,7 +579,7 @@ function renderSceneContent(
   canUsePicture: boolean,
   cacheMissReason: string,
   hasVolatileOverlays: boolean
-): void {
+): boolean {
   const p = r.profiler
   if (canUsePicture) {
     p.setScenePictureMode('hit')
@@ -526,6 +601,7 @@ function renderSceneContent(
     p.setScenePictureRecordTime(duration)
     p.endPhase('render:recordPicture')
   }
+  return !canUsePicture && hasVolatileOverlays
 }
 
 function renderLiveSceneContent(

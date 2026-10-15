@@ -24,7 +24,16 @@ export function colorInputGraph() {
     itemSpacing: 12,
     paddingLeft: 12,
     paddingTop: 12,
-    events: { onSubmit: [{ kind: 'setState', targetStateId: 'submits', valueExpr: 'submits + 1' }] }
+    events: {
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submits',
+          valueExpr: 'submits + 1'
+        }
+      ]
+    }
   })
   const field = (label: string, props: JSONObject) =>
     graph.createNode('INPUT', form.id, {
@@ -55,7 +64,9 @@ export function colorInputGraph() {
       interactiveProps: { text },
       ...(valueExpr
         ? {
-            events: { onClick: [{ kind: 'setState' as const, targetStateId: 'color', valueExpr }] }
+            events: {
+              onClick: [{ id: text, kind: 'setState' as const, targetStateId: 'color', valueExpr }]
+            }
           }
         : {})
     })

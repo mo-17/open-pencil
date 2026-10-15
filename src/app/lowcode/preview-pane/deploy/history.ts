@@ -1,5 +1,5 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
 
 import type { DeployEnvironment } from '@open-pencil/core/lowcode-deployment'
 import { detectSupabaseSecretKey } from '@open-pencil/lowcode'

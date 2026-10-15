@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { MANAGED_DATABASE_SOURCE } from '#compiler/backend/nestjs/local-run/managed/database'
+import * as v from 'valibot'
 
 const HARNESS = String.raw`
 import { initializeManagedReceipt, applyManagedMigration, inspectManagedDatabase } from './managed/database.mjs'
@@ -65,12 +66,19 @@ function run(scenario: string) {
     writeFileSync(join(root, 'harness.mjs'), HARNESS)
     const result = spawnSync('node', ['harness.mjs', scenario], { cwd: root, encoding: 'utf8' })
     expect(result.status).toBe(0)
-    return JSON.parse(result.stdout) as {
-      error: string
-      statements: string[]
-      executions: number
-      receipt: { application_digest: string }
-    }
+    return v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          error: v.string(),
+          statements: v.array(v.string()),
+          executions: v.number(),
+          receipt: v.looseObject({ application_digest: v.string() })
+        })
+      ),
+      result.stdout
+    )
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

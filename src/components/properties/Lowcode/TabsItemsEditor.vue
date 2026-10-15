@@ -319,7 +319,7 @@ function removeItem(index: number): void {
       >{{ panels.lowcodeTabsReturnInitial }}</AppButton
     >
 
-    <p v-if="error" data-test-id="tabs-items-error" class="text-[10px] text-red-400">
+    <p v-if="error" data-test-id="tabs-items-error" class="text-[10px] text-error">
       {{ error }}
     </p>
   </div>

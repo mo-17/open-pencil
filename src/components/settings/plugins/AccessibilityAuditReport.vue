@@ -11,7 +11,7 @@ const { dialogs } = useI18n()
 const report = computed(() => parseStaticAccessibilityReport(data))
 
 function severityClass(severity: 'error' | 'warning' | 'info'): string {
-  if (severity === 'error') return 'text-danger'
+  if (severity === 'error') return 'text-error'
   if (severity === 'warning') return 'text-warning'
   return 'text-muted'
 }
@@ -20,7 +20,7 @@ function severityClass(severity: 'error' | 'warning' | 'info'): string {
 <template>
   <section
     v-if="report"
-    class="rounded border border-border bg-secondary p-2"
+    class="rounded border border-border bg-panel-secondary p-2"
     data-test-id="plugin-accessibility-report"
   >
     <h4 class="text-[11px] font-medium text-surface">

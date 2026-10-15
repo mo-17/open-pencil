@@ -2,15 +2,21 @@ import type { CanvasKit } from 'canvaskit-wasm'
 import { createNanoEvents } from 'nanoevents'
 import type { Emitter } from 'nanoevents'
 
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { prefetchFigmaSchema } from '#core/clipboard'
 import { IS_BROWSER } from '#core/constants'
+import {
+  getPageColor,
+  hasStoredBackground,
+  setDefaultPageBackground
+} from '#core/figma-api/page-backgrounds'
+import { iconify } from '#core/icons'
 import { releaseFigPopulationWorker } from '#core/kiwi/fig/population/client'
 import { releaseOriginalFigArchive } from '#core/kiwi/fig/session/original-archive'
-import { setTextMeasurer } from '#core/layout'
+import { installTextMeasurer } from '#core/layout'
 import { createLayoutRunner } from '#core/layout/mutations'
 import { emitNavigationTrace } from '#core/profiler'
 import { TextEditor } from '#core/text/editor'
@@ -20,6 +26,7 @@ import { fontResolver } from '#core/text/resolver'
 import { createAlignmentActions } from './alignment'
 import { createClipboardBridge } from './bridges/clipboard'
 import { createComponentBridge } from './bridges/components'
+import { createFrameNavigationBridge } from './bridges/frames'
 import { createLintFixBridge } from './bridges/lint'
 import { createStructureBridge } from './bridges/structure'
 import { createUndoBridge } from './bridges/undo'
@@ -28,19 +35,26 @@ import { createColorSpaceActions } from './color-space'
 import { createComponentSyncScheduler } from './component-sync'
 import { createComponentActions } from './components'
 import { createContentEditActions } from './content-edit'
+import { createDesignTokenActions } from './design-tokens'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
 import { createGuideActions } from './guides'
+import { createIconActions } from './icons'
 import { createDesignIssueActions } from './issues'
 import { createMotionPreviewActions } from './motion-preview'
 import { createNodeActions } from './nodes'
 import { createPageActions } from './pages'
+import { createPlayActions } from './play/actions'
 import { createSelectionActions } from './selection'
+import { createShaderActions } from './shaders/actions'
+import { createShaderFrames } from './shaders/frames'
 import { createShapeActions } from './shapes'
 import { createDefaultEditorState } from './state'
 import { createStructureActions } from './structure'
 import { createTabsPreviewActions } from './tabs-preview'
 import { createTextActions } from './text'
+import { createPendingTextLayout } from './text/pending-layout'
+import { createTextSelectionStyle } from './text/selection-style'
 import type {
   EditorContext,
   EditorEventName,
@@ -55,38 +69,46 @@ import { createViewportActions } from './viewport'
 
 export { createDefaultEditorState } from './state'
 
-export function createEditor(options?: EditorOptions) {
-  let _graph = options?.graph ?? new SceneGraph()
-  const skipInitialGraphSetup = options?.skipInitialGraphSetup ?? false
-  const undo = new UndoManager({ onChange: () => emitEditorEvent('history:changed') })
-  const _loadFont = options?.loadFont ?? fontManager.loadFont.bind(fontManager)
-  const _getViewportSize =
-    options?.getViewportSize ??
-    (() => {
-      if (IS_BROWSER) return { width: window.innerWidth, height: window.innerHeight }
-      return { width: 800, height: 600 }
-    })
-  const _prefersReducedMotion =
-    options?.prefersReducedMotion ??
-    (() =>
-      IS_BROWSER &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+function defaultViewportSize(): { width: number; height: number } {
+  return IS_BROWSER
+    ? { width: window.innerWidth, height: window.innerHeight }
+    : { width: 800, height: 600 }
+}
+
+function systemPrefersReducedMotion(): boolean {
+  return (
+    IS_BROWSER &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+export function createEditor(options: EditorOptions = {}) {
+  let _graph = options.graph ?? new SceneGraph()
+  const skipInitialGraphSetup = options.skipInitialGraphSetup ?? false
+  const undo = new UndoManager({
+    onChange: () => emitEditorEvent('history:changed')
+  })
+  const _loadFont = options.loadFont ?? fontManager.loadFont.bind(fontManager)
+  const _getViewportSize = options.getViewportSize ?? defaultViewportSize
+  const _prefersReducedMotion = options.prefersReducedMotion ?? systemPrefersReducedMotion
   let _ck: CanvasKit | null = null
   let _renderer: SkiaRenderer | null = null
   const _renderers = new Set<SkiaRenderer>()
+  let uninstallTextMeasurer: (() => void) | null = null
   const interactiveEdits = new Set<symbol>()
   let _textEditor: TextEditor | null = null
   let loadingLeaseCount = 0
   let cacheReleasingLeaseCount = 0
   const events: Emitter<EditorEvents> = createNanoEvents()
   const stopFontResolutionEvents = fontResolver.subscribe((event, snapshot) => {
+    if (event === 'settled') pendingTextLayout.relayoutReady(_renderer)
     events.emit('font:resolution-changed', event, snapshot)
   })
 
   void prefetchFigmaSchema()
 
-  const state: EditorState = options?.state ?? createDefaultEditorState(_graph.getPages()[0].id)
+  const state: EditorState = options.state ?? createDefaultEditorState(_graph.getPages()[0].id)
   let manualLoading = state.loading
 
   function emitEditorEvent<K extends EditorEventName>(
@@ -103,6 +125,7 @@ export function createEditor(options?: EditorOptions) {
   function requestRender(reason?: 'page-navigation') {
     state.renderVersion++
     state.sceneVersion++
+    state.canvasVersion++
     emitNavigationTrace('render:requested', {
       kind: 'render',
       renderVersion: state.renderVersion,
@@ -113,6 +136,19 @@ export function createEditor(options?: EditorOptions) {
       sceneVersion: state.sceneVersion,
       ...(reason ? { reason } : {})
     })
+  }
+
+  /**
+   * The caret or selection of the edited text moved: the canvas repaints its overlay and the
+   * views that follow the selection update, without the document counting as changed.
+   */
+  function textSelectionChanged() {
+    state.textSelectionVersion++
+    requestRepaint()
+  }
+
+  function requestRefresh() {
+    state.sceneVersion++
   }
 
   function requestRepaint() {
@@ -233,6 +269,11 @@ export function createEditor(options?: EditorOptions) {
 
   const graphReads = createGraphReadActions(() => _graph)
   const { runLayoutForNode, runMutationWithLayout } = createLayoutRunner(() => _graph)
+  const pendingTextLayout = createPendingTextLayout({
+    getGraph: () => _graph,
+    runLayoutForNode,
+    requestRender
+  })
   const { scheduleComponentSync } = createComponentSyncScheduler(() => _graph, requestRender)
 
   const { subscribeToGraph, unsubscribeFromGraph } = createGraphEventSubscription({
@@ -245,6 +286,13 @@ export function createEditor(options?: EditorOptions) {
 
   if (!skipInitialGraphSetup) {
     subscribeToGraph()
+    // A new document's first page takes Figma's background for the interface theme the app gives;
+    // a page that already has one keeps it.
+    const firstPage = _graph.getPages()[0]
+    if (options.state?.theme && !hasStoredBackground(firstPage)) {
+      setDefaultPageBackground(_graph, firstPage, options.state.theme)
+      options.state.pageColor = getPageColor(firstPage)
+    }
   }
 
   // Build the shared context
@@ -258,14 +306,16 @@ export function createEditor(options?: EditorOptions) {
     undo,
     state,
     loadFont: _loadFont,
-    resolveFigmaClipboardImages: options?.resolveFigmaClipboardImages ?? null,
+    resolveFigmaClipboardImages: options.resolveFigmaClipboardImages ?? null,
     getViewportSize: _getViewportSize,
     prefersReducedMotion: _prefersReducedMotion,
+    icons: options.icons ?? iconify,
     getCk: () => _ck,
     getRenderer: () => _renderer,
     getRenderers: () => _renderers,
     getTextEditor: () => _textEditor,
     requestRender,
+    requestRefresh,
     requestRepaint,
     requestOverlayRepaint,
     beginLoading,
@@ -296,7 +346,8 @@ export function createEditor(options?: EditorOptions) {
     text.commitTextEdit()
   })
   const selection = createSelectionActions(ctx)
-  const { cancelPendingSwitch, ...pages } = createPageActions(ctx)
+  const shaderFrames = createShaderFrames(ctx, options)
+  const { cancelPendingSwitch, ...pages } = createPageActions(ctx, shaderFrames)
   const guides = createGuideActions(ctx)
   const structure = createStructureActions(ctx)
   const components = createComponentActions(ctx)
@@ -319,24 +370,47 @@ export function createEditor(options?: EditorOptions) {
   // native geometry and image caches cannot be read under the new graph identity.
   onEditorEvent('graph:replaced', clearRendererDocumentCaches)
   const variables = createVariableActions(ctx)
+  const designTokens = createDesignTokenActions(ctx, variables, nodes)
   const vectorize = createVectorizeActions(ctx)
+  const icons = createIconActions(ctx)
+  const shaders = createShaderActions(ctx, nodes)
   const alignment = createAlignmentActions(ctx)
+  const preview = createPlayActions(ctx)
   const clipboardBridge = createClipboardBridge(clipboard, selection)
   const componentBridge = createComponentBridge(components, selection, structure, pages)
   const structureBridge = createStructureBridge(structure, selection)
-  const undoBridge = createUndoBridge(undoActions, selection)
+  const frameNavigation = createFrameNavigationBridge(ctx, selection, viewport)
+  const undoBridge = createUndoBridge(undoActions, selection, nodes.flushNudge)
   const lintFixBridge = createLintFixBridge(ctx, nodes, structure, clipboard)
+  const textSelectionStyle = createTextSelectionStyle(ctx, text.runTextEditStep)
+
+  // The edited text follows changes made outside the editor, such as a panel field being
+  // dragged, so its caret and selection move with the text instead of after the change.
+  const invalidateEditedText = (id: string) => {
+    if (id !== state.editingTextId) return
+    const node = _graph.getNode(id)
+    if (node) _textEditor?.invalidateParagraph(node)
+  }
+  onEditorEvent('node:updated', invalidateEditedText)
+  onEditorEvent('node:previewUpdated', invalidateEditedText)
 
   function setCanvasKit(ck: CanvasKit, renderer: SkiaRenderer) {
     _ck = ck
     _renderer = renderer
     _renderers.add(renderer)
     _textEditor ??= new TextEditor(ck)
-    setTextMeasurer(
+    uninstallTextMeasurer?.()
+    uninstallTextMeasurer =
       typeof renderer.measureTextNode === 'function'
-        ? (node, maxWidth) => renderer.measureTextNode(node, maxWidth)
+        ? installTextMeasurer((node, maxWidth) =>
+            pendingTextLayout.measure(renderer, node, maxWidth)
+          )
         : null
-    )
+  }
+
+  function releaseTextMeasurer() {
+    uninstallTextMeasurer?.()
+    uninstallTextMeasurer = null
   }
 
   function removeCanvasRenderer(renderer: SkiaRenderer) {
@@ -344,6 +418,7 @@ export function createEditor(options?: EditorOptions) {
     if (_renderer === renderer) {
       _renderer = _renderers.values().next().value ?? null
     }
+    if (_renderers.size === 0) releaseTextMeasurer()
   }
 
   function replaceGraph(newGraph: SceneGraph, options: { currentPageId?: string } = {}) {
@@ -351,6 +426,7 @@ export function createEditor(options?: EditorOptions) {
     nodes.cancelNodePreviews()
     undo.discardBatches()
     _graph = newGraph
+    pendingTextLayout.clear()
     subscribeToGraph()
     const previousPageId = state.currentPageId
     const requestedPage = options.currentPageId ? _graph.getNode(options.currentPageId) : null
@@ -361,9 +437,15 @@ export function createEditor(options?: EditorOptions) {
     setSelectedIds(new Set())
     state.hoveredNodeId = null
     state.motionPreview = null
+    state.transforming = false
     state.measurementMode = 'off'
     state.snapGuides = []
-    state.guides = { preview: null, hovered: null, selected: null, redline: null }
+    state.guides = {
+      preview: null,
+      hovered: null,
+      selected: null,
+      redline: null
+    }
     state.layoutInsertIndicator = null
     state.dropTargetId = null
     pages.clearPageViewports()
@@ -376,6 +458,7 @@ export function createEditor(options?: EditorOptions) {
   }
 
   function dispose() {
+    releaseTextMeasurer()
     nodes.cancelNodePreviews()
     interactiveEdits.clear()
     stopFontResolutionEvents()
@@ -412,6 +495,8 @@ export function createEditor(options?: EditorOptions) {
     beginInteractiveEdit,
     isInteractiveEditing: () => interactiveEdits.size > 0,
     requestRender,
+    requestRefresh,
+    textSelectionChanged,
     requestRepaint,
     requestOverlayRepaint,
     setLoading,
@@ -443,8 +528,15 @@ export function createEditor(options?: EditorOptions) {
     // Structure (group, reorder, reparent, z-order)
     ...structure,
 
-    // Nodes (update, layout)
+    // Nodes (update, layout); while text is edited, character styles go to its selection
     ...nodes,
+    updateNode: (id: string, changes: Partial<SceneNode>) =>
+      textSelectionStyle.updateNode(id, changes, nodes.updateNode),
+    updateNodeWithUndo: (id: string, changes: Partial<SceneNode>, label = 'Update') =>
+      textSelectionStyle.updateNodeWithUndo(id, changes, (target, next) =>
+        nodes.updateNodeWithUndo(target, next, label)
+      ),
+    getTextSelectionStyle: textSelectionStyle.selectionStyle,
 
     // Ephemeral motion preview (never mutates the SceneGraph)
     ...motionPreview,
@@ -452,20 +544,38 @@ export function createEditor(options?: EditorOptions) {
     // Alignment (align, flip, rotate)
     ...alignment,
 
+    // Preview: instances with a behaviour respond to the pointer on this canvas
+    ...preview,
+
     // Bitmap-to-vector replacement
     ...vectorize,
+    ...icons,
+    ...shaders,
+    ...shaderFrames,
 
     // Variables
     ...variables,
+    ...designTokens,
 
     // Text editing
     ...text,
 
     // Viewport
     ...viewport,
+    ...frameNavigation,
 
     // Undo — bridge functions that need cross-module refs
     ...undoBridge,
+    commitNodeUpdate: (id: string, previous: Partial<SceneNode>, label = 'Update') =>
+      textSelectionStyle.commitNodeUpdate(
+        id,
+        previous,
+        (target, values) => undoBridge.commitNodeUpdate(target, values, label),
+        (target, next) => nodes.updateNodeWithUndo(target, next, label)
+      ),
+    // While text is edited, what was typed undoes first and the editor keeps the result.
+    undoAction: () => text.runTextEditStep(undoBridge.undoAction),
+    redoAction: () => text.runTextEditStep(undoBridge.redoAction),
 
     setDocumentColorSpace: colorSpace.setDocumentColorSpace,
 
@@ -483,4 +593,7 @@ export function createEditor(options?: EditorOptions) {
   }
 }
 
-export type Editor = ReturnType<typeof createEditor>
+/** Stable public name for the composed editor surface used by SDK declarations. */
+export interface Editor extends ReturnType<typeof createEditor> {
+  state: EditorState
+}

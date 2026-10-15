@@ -202,7 +202,7 @@ async function testConnection(): Promise<void> {
     <p
       v-if="conflictBanner"
       data-test-id="lowcode-supabase-config-conflict"
-      class="mb-1.5 text-[10px] text-amber-500"
+      class="mb-1.5 text-[10px] text-warning"
     >
       {{ conflictBanner }}
     </p>
@@ -214,8 +214,8 @@ async function testConnection(): Promise<void> {
         :class="[
           'size-2 rounded-full',
           testStatus === 'pending' && 'bg-muted',
-          testStatus === 'ok' && 'bg-green-500',
-          testStatus === 'error' && 'bg-red-500'
+          testStatus === 'ok' && 'bg-success-fill',
+          testStatus === 'error' && 'bg-error-fill'
         ]"
       />
     </div>
@@ -239,7 +239,7 @@ async function testConnection(): Promise<void> {
         :placeholder="panels.lowcodeSupabaseAnonKeyPlaceholder"
         :class="[
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-          secretKeyDetected ? 'border-red-500' : 'border-border'
+          secretKeyDetected ? 'border-error' : 'border-border'
         ]"
         @input="anonKeyTyped = ($event.target as HTMLInputElement).value"
         @change="updateAnonKey(($event.target as HTMLInputElement).value)"
@@ -267,21 +267,21 @@ async function testConnection(): Promise<void> {
     <p
       v-if="secretKeyDetected"
       data-test-id="lowcode-supabase-service-role-error"
-      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ panels.lowcodeSupabaseServiceRoleReject }}
     </p>
     <p
       v-else-if="testStatus === 'error'"
       data-test-id="lowcode-supabase-test-error"
-      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ testError }}
     </p>
     <p
       v-else-if="testStatus === 'ok'"
       data-test-id="lowcode-supabase-test-ok"
-      class="mt-1 text-[10px] text-green-500"
+      class="mt-1 text-[10px] text-success"
     >
       {{ panels.lowcodeSupabaseTestOk }}
     </p>
@@ -318,7 +318,7 @@ async function testConnection(): Promise<void> {
         </div>
         <p
           v-if="req.needsWriteWarning"
-          class="rounded border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-[10px] text-orange-500"
+          class="rounded border border-warning/40 bg-warning/10 px-2 py-1 text-[10px] text-warning"
         >
           {{ panels.lowcodeSupabaseRlsWriteWarning }}
         </p>

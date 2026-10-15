@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 /* eslint-disable max-lines -- Descriptor parsing, request shaping, and response safety form one review boundary. */
 import {
   parsePluginConnectorContract,
@@ -798,7 +800,7 @@ export function createReviewedRestConnector(
     kind: spec.kind ?? 'data-source',
     network: {
       origins: [spec.origin],
-      methods: [...new Set(spec.operations.map((operation) => operation.method))],
+      methods: uniq(spec.operations.map((operation) => operation.method)),
       credentials: 'omit',
       redirects: 'error'
     },

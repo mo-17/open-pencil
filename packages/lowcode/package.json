@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/lowcode",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "Framework-agnostic low-code validation, expression, routing, and runtime audit contracts for OpenPencil.",
   "license": "MIT",
   "repository": {
@@ -53,6 +53,7 @@
     "typecheck": "bunx tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
+    "es-toolkit": "^1.52.0",
     "js-base64": "^3.9.3",
     "valibot": "^1.5.0"
   },

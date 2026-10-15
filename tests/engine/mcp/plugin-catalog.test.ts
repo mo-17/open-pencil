@@ -79,13 +79,13 @@ function descriptor(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function response(tools: unknown[], revision = 'revision-1') {
+function response(tools: readonly unknown[], revision = 'revision-1') {
   return { ok: true, result: { revision, tools } }
 }
 
-function expectedDescriptor(
-  value: ReturnType<typeof descriptor>
-): Omit<ReturnType<typeof descriptor>, 'description' | 'inputSchema' | 'outputSchema'> {
+function expectedDescriptor<T extends ReturnType<typeof descriptor> & { outputSchema?: unknown }>(
+  value: T
+): Omit<T, 'description' | 'inputSchema' | 'outputSchema'> {
   const {
     description: _description,
     inputSchema: _inputSchema,
@@ -308,7 +308,7 @@ describe('plugin MCP catalog validation', () => {
     expect(parsed.tools[0]?.inputSchema).toMatchObject({
       properties: { config: { additionalProperties: true } }
     })
-    expect(parsed.tools[0]?.authority).toEqual(authority())
+    expect<unknown>(parsed.tools[0]?.authority).toEqual(authority())
   })
 
   test('requires exact bounded package authority and rejects forged records', () => {
@@ -318,7 +318,7 @@ describe('plugin MCP catalog validation', () => {
       publisherId: 'acme',
       publisherKeyId: 'acme-release-v1'
     })
-    expect(
+    expect<unknown>(
       parsePluginMCPCatalogResponse(response([descriptor({ authority: signedAuthority })])).tools[0]
         ?.authority
     ).toEqual(signedAuthority)
@@ -1000,7 +1000,7 @@ describe('dynamic plugin MCP registration', () => {
   })
 
   test('queues an invalidation received while an older catalog request is in flight', async () => {
-    let resolveFirst = (_value: unknown) => undefined
+    let resolveFirst: (value: unknown) => void = () => undefined
     const firstResponse = new Promise<unknown>((resolve) => {
       resolveFirst = resolve
     })

@@ -4,6 +4,8 @@ const editor = useEditorSetup()
 
 function getNodeChildren(nodeId: string) {
   return editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(id).map((n) => ({
@@ -17,6 +19,8 @@ function getNodeChildren(nodeId: string) {
 
 function getSelectedParent() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -28,6 +32,8 @@ function getSelectedParent() {
 
 function createFrameWithChild() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -42,6 +48,8 @@ function createFrameWithChild() {
 
 function selectNode(nodeId: string) {
   return editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -51,6 +59,8 @@ function selectNode(nodeId: string) {
 
 function copyAndPaste() {
   return editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const { html } = await store.prepareCopy()
@@ -73,10 +83,12 @@ test('paste into selected frame places node as child', async () => {
   await editor.canvas.waitForRender()
 
   await editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const rect = [...store.graph.nodes.values()].find(
-      (n) => n.name === 'Rectangle' && n.type === 'RECTANGLE'
+      (n) => n.name === 'Rectangle 1' && n.type === 'RECTANGLE'
     )
     if (!rect) throw new Error('Rectangle not found')
     store.select([rect.id])
@@ -92,7 +104,7 @@ test('paste into selected frame places node as child', async () => {
   await editor.canvas.waitForRender()
 
   const children = await getNodeChildren(frameId)
-  const pastedChild = children.find((c) => c.name === 'Rectangle')
+  const pastedChild = children.find((c) => c.name === 'Rectangle 1')
   expect(pastedChild).toBeDefined()
   expect(pastedChild?.parentId).toBe(frameId)
 })
@@ -107,10 +119,12 @@ test('paste with child selected places node as sibling in parent frame', async (
 
   await editor.page.evaluate(
     async ({ childId: cid }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const rect = [...store.graph.nodes.values()].find(
-        (n) => n.name === 'Rectangle' && n.type === 'RECTANGLE'
+        (n) => n.name === 'Rectangle 1' && n.type === 'RECTANGLE'
       )
       if (!rect) throw new Error('Rectangle not found')
       store.select([rect.id])
@@ -137,6 +151,8 @@ test('paste with no selection places on page', async () => {
   await editor.canvas.waitForRender()
 
   await editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const { html } = await store.prepareCopy()
@@ -147,6 +163,8 @@ test('paste with no selection places on page', async () => {
 
   const parent = await getSelectedParent()
   const pageId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.currentPageId

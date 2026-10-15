@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -14,16 +18,24 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "#vue/*": ["./src/*", "./src/*.vue"],
-      "#core/*": ["../core/src/*"],
-      "@open-pencil/vue": ["./src/index.ts"],
-      "@open-pencil/core": ["../core/src/index.ts"],
-      "@open-pencil/core/*": ["../core/src/*"],
-      "@open-pencil/core/editor": ["../core/src/editor/index.ts"],
-      "@open-pencil/core/render": ["../core/src/render/index.ts"],
-      "@open-pencil/core/color": ["../core/src/color.ts"]
+      "#vue/*": [
+        "./src/*",
+        "./src/*.vue"
+      ],
+      "@open-pencil/vue": [
+        "./src/index.ts"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts", "../core/src/global.d.ts"],
-  "exclude": ["node_modules", "dist", "example"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "src/**/*.d.ts",
+    "../core/src/global.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "example"
+  ]
 }

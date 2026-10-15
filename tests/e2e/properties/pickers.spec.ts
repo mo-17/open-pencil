@@ -58,6 +58,7 @@ test('color fields preserve invalid hex drafts, string binding and late picker o
     await selectContentLayer(page, ids.color)
     await picker.focus()
     await old.evaluate((element) => {
+      if (!(element instanceof HTMLInputElement)) throw new Error('Expected input element')
       element.value = '#abcdef'
       element.dispatchEvent(new Event('change', { bubbles: true }))
     })
@@ -90,6 +91,7 @@ test('new color picker focus cannot authorize events from a discarded control', 
     await value.blur()
     await picker.focus()
     await previous.evaluate((element) => {
+      if (!(element instanceof HTMLInputElement)) throw new Error('Expected input element')
       element.value = '#abcdef'
       element.dispatchEvent(new Event('change', { bubbles: true }))
     })
@@ -124,12 +126,14 @@ test('new description focus rejects old label and value input after cancel and r
       }
       await label.focus()
       await oldLabel.evaluate((element) => {
+        if (!(element instanceof HTMLInputElement)) throw new Error('Expected input element')
         element.value = 'Late label'
         element.dispatchEvent(new Event('input', { bubbles: true }))
       })
       await expect(label).toHaveValue('Name')
       await value.focus()
       await oldValue.evaluate((element) => {
+        if (!(element instanceof HTMLTextAreaElement)) throw new Error('Expected textarea element')
         element.value = 'Late value'
         element.dispatchEvent(new Event('input', { bubbles: true }))
       })
@@ -190,11 +194,15 @@ test('description pairs apply as one undo and keep invalid or cancelled drafts o
   try {
     await selectContentLayer(page, first)
     await old.evaluate((element) => {
+      if (!(element instanceof HTMLTextAreaElement)) throw new Error('Expected textarea element')
       element.dispatchEvent(new FocusEvent('focus'))
       element.value = 'Late'
       element.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await apply.evaluate((element) => element.click())
+    await apply.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) throw new Error('Expected clickable element')
+      element.click()
+    })
     await expect(value).toHaveValue('Sample project')
   } finally {
     await old.dispose()
@@ -208,7 +216,10 @@ test('description pairs apply as one undo and keep invalid or cancelled drafts o
   try {
     await canvas.click(12, 12)
     await expect(page.getByTestId('design-panel-empty')).toBeVisible()
-    await retained.evaluate((element) => element.click())
+    await retained.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) throw new Error('Expected clickable element')
+      element.click()
+    })
     await selectContentLayer(page, first)
     await expect(value).toHaveValue('Sample project')
   } finally {

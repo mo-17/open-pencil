@@ -1,4 +1,5 @@
 import { BackendProviderCompilationError } from '#compiler/compile/backend'
+import { uniq } from 'es-toolkit'
 
 import { hasPrevReference, parseExpression, type ExprAst } from '@open-pencil/lowcode'
 import {
@@ -167,16 +168,14 @@ export function collectBackendResourceQuery(
   // LIST inputs are evaluated in a render/session snapshot. Even fixed public
   // queries must rebind after identity changes before reusing those inputs.
   ctx.docStateReads?.add('$currentUser')
-  const deps = [
-    ...new Set([
-      '$currentUser',
-      ...[source.afterExpr, source.searchExpr].flatMap((value) => {
-        const parsed = value === undefined ? undefined : parseExpression(value)
-        return parsed?.ok ? [...parsed.references] : []
-      }),
-      ...(query.filterEntries?.flatMap((entry) => entry.references) ?? [])
-    ])
-  ]
+  const deps = uniq([
+    '$currentUser',
+    ...[source.afterExpr, source.searchExpr].flatMap((value) => {
+      const parsed = value === undefined ? undefined : parseExpression(value)
+      return parsed?.ok ? [...parsed.references] : []
+    }),
+    ...(query.filterEntries?.flatMap((entry) => entry.references) ?? [])
+  ])
   const rowsName = `__opBackendRows${queries.length}`
   const reserved = [
     rowsName,

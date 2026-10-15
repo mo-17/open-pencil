@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import { shadcnAdapter } from '#compiler/adapters/react/ui-kit/shadcn'
+import * as v from 'valibot'
 
 import { previewOptimizeDeps } from '@open-pencil/compiler/dev-server'
 
@@ -10,7 +11,14 @@ test('initial preview prebundles the dependencies declared by generated shadcn c
   const output = shadcnControlsFixture()
   const manifestSource = output.files.get('package.json')
   if (typeof manifestSource !== 'string') throw new Error('Missing generated package manifest')
-  const manifest = JSON.parse(manifestSource) as { dependencies: Record<string, string> }
+  const manifest = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+    ),
+    manifestSource
+  )
   const included = previewOptimizeDeps(output.files)
   expect(included).toContain('@radix-ui/react-switch')
   for (const dependency of Object.keys(manifest.dependencies)) {

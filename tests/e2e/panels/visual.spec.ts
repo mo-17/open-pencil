@@ -26,6 +26,8 @@ async function reset() {
 test('single rectangle panel', async () => {
   await reset()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -45,6 +47,8 @@ test('single rectangle panel', async () => {
 test('text selection panel', async () => {
   await reset()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.createNode('TEXT', store.state.currentPageId, {
@@ -65,6 +69,8 @@ test('text selection panel', async () => {
 test('mixed selection panel', async () => {
   await reset()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const first = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -88,6 +94,8 @@ test('mixed selection panel', async () => {
 test('instance panel', async () => {
   await reset()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const component = store.graph.createNode('COMPONENT', store.state.currentPageId, {
@@ -122,6 +130,8 @@ test('empty canvas panel', async () => {
 test('nested groups layer tree', async () => {
   await reset()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const outer = store.graph.createNode('GROUP', store.state.currentPageId, {

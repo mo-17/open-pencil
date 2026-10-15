@@ -170,10 +170,13 @@ test('Vue remote Lottie waits for consent, aborts obsolete fetches and ignores t
     }[] = [],
     loads: string[] = []
   const fetcher = spyOn(globalThis, 'fetch').mockImplementation(
-    (input, init) =>
-      new Promise<Response>((resolve) => {
-        pending.push({ resolve, signal: init?.signal, url: String(input) })
-      })
+    Object.assign(
+      (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+        new Promise<Response>((resolve) => {
+          pending.push({ resolve, signal: init?.signal, url: String(input) })
+        }),
+      { preconnect: globalThis.fetch.preconnect }
+    )
   )
   const config = mediaConfigs().remote,
     mounted = mountMediaSfc(buildOpenPencilVueLottie(), config, {

@@ -1,17 +1,30 @@
 import { embedClipboardImages, encodeFigmaClipboard } from '@open-pencil/fig/clipboard'
+import { randomInt } from '@open-pencil/scene-graph/random'
 export { parseFigmaClipboard, figmaNodesBounds } from '@open-pencil/fig/clipboard'
-import { placeSlotContent } from '@open-pencil/fig/node-change'
+import { placeSlotContent, type FigNodeChangeExportRuntime } from '@open-pencil/fig/node-change'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import type { GUID, NodeChange as KiwiNodeChange } from '@open-pencil/kiwi/fig/codec'
-import { ownsSlotContent, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  derivedAssetKey,
+  derivedAssetVersion,
+  ownsSlotContent,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
+import { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
 
+import {
+  collectComponentPropertyIds,
+  firstUnclaimedLocalId,
+  layerSourceGuids
+} from '#core/io/formats/fig/export/setup'
 import {
   appendVariableNodeChanges,
   assignSharedStyleGuids,
   assignVariableGuids
 } from '#core/io/formats/fig/variable-export'
 
-import { shapeTextForClipboard } from './canvas/text/clipboard'
+import { withFigExportRuntime } from './canvas/text/shape'
 import { prepareClipboardImport } from './clipboard/fig-import'
 import {
   remapSerializedLowcodeMotionActionReferences,
@@ -21,11 +34,9 @@ import {
   sceneNodeToKiwi,
   makeDocumentNodeChange,
   makeCanvasNodeChange,
-  buildFontDigestMap,
-  fractionalPosition
+  buildFontDigestMap
 } from './kiwi/fig/node-change/serialize'
-import { randomInt } from './random'
-import { buildDerivedTextDataV4 } from './text/derived-text/clipboard'
+import { cloneSceneGraphForFigExport } from './kiwi/fig/parse/transfer'
 
 export async function prefetchFigmaSchema(): Promise<void> {
   await initCodec()
@@ -51,15 +62,69 @@ export function importClipboardNodes(
   return operation.plan.rootIds
 }
 
-export async function buildFigmaClipboardHTML(
+/**
+ * The document as the clipboard writes it. Figma names the variables and collections a paste
+ * uses by key, and keeps a binding to one it knows only by key as a remote variable, as it does
+ * for its own clipboard; variables made in OpenPencil have no key, so they take one derived from
+ * their ID here, for this copy only. Figma keeps the first value it pasted for a key and version,
+ * so the version follows their content and an edited variable pastes with its new value.
+ */
+function clipboardGraph(graph: SceneGraph): SceneGraph {
+  const unkeyed =
+    [...graph.variables.values()].some((variable) => !variable.key) ||
+    [...graph.variableCollections.values()].some((collection) => !collection.key)
+  if (!unkeyed) return graph
+  const copy = cloneSceneGraphForFigExport(graph)
+  copy.variableCollections = new Map(
+    [...graph.variableCollections].map(([id, collection]) => [
+      id,
+      collection.key
+        ? collection
+        : {
+            ...collection,
+            key: derivedAssetKey(`collection:${id}`),
+            version: derivedAssetVersion(JSON.stringify(collection))
+          }
+    ])
+  )
+  copy.variables = new Map(
+    [...graph.variables].map(([id, variable]) => [
+      id,
+      variable.key
+        ? variable
+        : {
+            ...variable,
+            key: derivedAssetKey(`variable:${id}`),
+            version: derivedAssetVersion(JSON.stringify(variable))
+          }
+    ])
+  )
+  return copy
+}
+
+export function buildFigmaClipboardHTML(
   nodes: SceneNode[],
   graph: SceneGraph
+): Promise<string | null> {
+  const written = clipboardGraph(graph)
+  return withFigExportRuntime(written, undefined, (runtime) =>
+    writeFigmaClipboardHTML(nodes, written, runtime)
+  )
+}
+
+async function writeFigmaClipboardHTML(
+  nodes: SceneNode[],
+  graph: SceneGraph,
+  runtime: FigNodeChangeExportRuntime
 ): Promise<string | null> {
   const fontDigestMap = await buildFontDigestMap(graph)
 
   const docGuid = { sessionID: 0, localID: 0 }
   const canvasGuid = { sessionID: 0, localID: 1 }
-  const localIdCounter = { value: 100 }
+  // Above every GUID the graph claims, as the document exporter starts, so no record collides.
+  const localIdCounter = {
+    value: Math.max(100, firstUnclaimedLocalId(graph, collectComponentPropertyIds(graph)))
+  }
 
   const nodeChanges: KiwiNodeChange[] = [
     makeDocumentNodeChange(docGuid, graph.documentColorSpace),
@@ -80,7 +145,14 @@ export async function buildFigmaClipboardHTML(
   const blobs: Uint8Array[] = []
   const variableIds = new Map<string, GUID>()
   const modeIds = new Map<string, GUID>()
-  assignVariableGuids(graph, localIdCounter, variableIds, modeIds, assignedGuidValues, new Set())
+  assignVariableGuids(
+    graph,
+    localIdCounter,
+    variableIds,
+    modeIds,
+    assignedGuidValues,
+    layerSourceGuids(graph)
+  )
   assignSharedStyleGuids(
     [...graph.nodes.values()].filter((node) => node.sharedStyleType !== null),
     localIdCounter,
@@ -97,7 +169,8 @@ export async function buildFigmaClipboardHTML(
         varIdToGuid: variableIds,
         assignedGuidValues,
         modeIdToGuid: modeIds,
-        slotContentRecords
+        slotContentRecords,
+        runtime
       })
     )
   }
@@ -145,7 +218,8 @@ export async function buildFigmaClipboardHTML(
         varIdToGuid: variableIds,
         assignedGuidValues,
         modeIdToGuid: modeIds,
-        slotContentRecords
+        slotContentRecords,
+        runtime
       })
     )
   }
@@ -169,22 +243,16 @@ export async function buildFigmaClipboardHTML(
   remapSerializedLowcodeMotionActionReferences(nodeChanges, (nodeId) =>
     resolveSerializedGraphNodeReference(graph, nodeIdToGuid, nodeId)
   )
-  await Promise.all(
-    nodeChanges.map(async (change) => {
-      if (change.type !== 'TEXT' || !change.guid) return
-      const source = sourceByGuid.get(`${change.guid.sessionID}:${change.guid.localID}`)
-      if (!source) return
-      change.textAutoResize = 'NONE'
-      change.textUserLayoutVersion = 5
-      change.lineHeight = {
-        value: source.lineHeight ?? 100,
-        units: source.lineHeight ? 'PIXELS' : 'PERCENT'
-      }
-      const shaped = await shapeTextForClipboard(source).catch(() => null)
-      change.derivedTextData = await buildDerivedTextDataV4(source, fontDigestMap, shaped, blobs)
-    })
-  )
-  await embedClipboardImages(nodeChanges, blobs, graph.images)
+  for (const change of nodeChanges) {
+    if (change.type !== 'TEXT' || !change.guid) continue
+    const source = sourceByGuid.get(`${change.guid.sessionID}:${change.guid.localID}`)
+    if (!source) continue
+    change.lineHeight = {
+      value: source.lineHeight ?? 100,
+      units: source.lineHeight ? 'PIXELS' : 'PERCENT'
+    }
+  }
+  embedClipboardImages(nodeChanges, blobs, graph.images)
   return encodeFigmaClipboard(nodeChanges, blobs, randomInt())
 }
 

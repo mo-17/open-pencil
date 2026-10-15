@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas, Paragraph, TypefaceFontProvider } from 'canvaskit-wasm'
+import type { Paragraph, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -15,7 +15,12 @@ import {
   type ModalModuleConfig
 } from '#core/plugins/modal'
 
-import { createMockCanvas, createMockRenderer } from '#tests/engine/render/canvas/effects/helpers'
+import {
+  rectValues,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asDouble, asCanvas, textLayoutDouble } from '#tests/engine/render/canvas/helpers'
 
 const CONFIG: ModalModuleConfig = {
   triggerLabel: 'Open modal',
@@ -51,18 +56,18 @@ function modalFrame(
 function rendererWithFont() {
   return createMockRenderer({
     zoom: 1,
-    fontProvider: {} as TypefaceFontProvider,
+    fontProvider: asDouble<TypefaceFontProvider>({}),
     fontsLoaded: true,
     nodeFontReadiness: () => 'ready',
     buildParagraph: (node) => {
       const maximum = Math.max(0, Math.floor(node.width / 6))
       const text = node.text.length <= maximum ? node.text : `${node.text.slice(0, maximum - 1)}…`
-      return {
+      return textLayoutDouble({
         text,
         getLongestLine: () => text.length * 6,
         getHeight: () => 16,
         delete: mock(() => undefined)
-      } as Paragraph
+      })
     }
   })
 }
@@ -83,8 +88,8 @@ function moduleCanvas() {
   }
 }
 
-function iconRects(canvas: ReturnType<typeof createMockCanvas>) {
-  return canvas.drawRect.mock.calls.map((call) => Array.from(call[0]))
+function iconRects(canvas: ReturnType<typeof moduleCanvas>) {
+  return canvas.drawRect.mock.calls.map((call) => rectValues(call[0]))
 }
 
 describe('modal module canvas preview', () => {
@@ -93,9 +98,9 @@ describe('modal module canvas preview', () => {
     const renderer = rendererWithFont()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas preview must stay offline')))
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = asDouble<typeof fetch>(fetchMock)
     try {
-      expect(renderModalModulePreview(renderer, canvas as Canvas, modalFrame())).toBe(true)
+      expect(renderModalModulePreview(renderer, asCanvas(canvas), modalFrame())).toBe(true)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -162,7 +167,7 @@ describe('modal module canvas preview', () => {
       expect(
         renderModalModulePreview(
           renderer,
-          canvas as Canvas,
+          asCanvas(canvas),
           modalFrame(
             {},
             {
@@ -186,7 +191,7 @@ describe('modal module canvas preview', () => {
         ).toBe(true)
         expect(rects[0]?.[0], visibility.name).toBe(expectedIconLeft)
       }
-      expect(
+      expect<unknown>(
         canvas.drawText.mock.calls.map((call) => call.slice(0, 3)),
         visibility.name
       ).toEqual(visibility.expectedText)
@@ -199,7 +204,7 @@ describe('modal module canvas preview', () => {
     expect(
       renderModalModulePreview(
         rendererWithFont(),
-        canvas as Canvas,
+        asCanvas(canvas),
         modalFrame({
           childIds: ['authored-trigger'],
           interactiveProps: { module: { ...createModalModuleInstance(), config: CONFIG } }
@@ -218,7 +223,7 @@ describe('modal module canvas preview', () => {
       expect(
         renderModalModulePreview(
           rendererWithFont(),
-          canvas as Canvas,
+          asCanvas(canvas),
           modalFrame(
             { childIds: ['dialog-body', 'unmapped-child'] },
             { ...CONFIG, contentChildName, triggerLabel: '编辑资料' }
@@ -236,7 +241,7 @@ describe('modal module canvas preview', () => {
     expect(
       renderModalModulePreview(
         createMockRenderer({ zoom: 1, labelFont: null }),
-        fontlessCanvas as Canvas,
+        asCanvas(fontlessCanvas),
         modalFrame()
       )
     ).toBe(true)
@@ -248,7 +253,7 @@ describe('modal module canvas preview', () => {
     expect(
       renderModalModulePreview(
         renderer,
-        tinyCanvas as Canvas,
+        asCanvas(tinyCanvas),
         modalFrame({ width: 20, height: 10 })
       )
     ).toBe(true)
@@ -258,7 +263,7 @@ describe('modal module canvas preview', () => {
 
     const emptyCanvas = moduleCanvas()
     expect(
-      renderModalModulePreview(renderer, emptyCanvas as Canvas, modalFrame({ width: 0 }))
+      renderModalModulePreview(renderer, asCanvas(emptyCanvas), modalFrame({ width: 0 }))
     ).toBe(true)
     expect(emptyCanvas.save).not.toHaveBeenCalled()
     expect(emptyCanvas.drawRect).not.toHaveBeenCalled()
@@ -271,7 +276,7 @@ describe('modal module canvas preview', () => {
     expect(
       renderModalModulePreview(
         renderer,
-        canvas as Canvas,
+        asCanvas(canvas),
         modalFrame({}, { ...CONFIG, triggerLabel })
       )
     ).toBe(true)
@@ -292,7 +297,7 @@ describe('modal module canvas preview', () => {
       })
     }
     expect(() =>
-      renderModalModulePreview(rendererWithFont(), canvas as Canvas, modalFrame())
+      renderModalModulePreview(rendererWithFont(), asCanvas(canvas), modalFrame())
     ).toThrow('draw failed')
     expect(canvas.restore).toHaveBeenCalledTimes(1)
   })
@@ -301,7 +306,7 @@ describe('modal module canvas preview', () => {
     expect(BUILTIN_MODULE_CANVAS_ADAPTERS.get(MODAL_PLUGIN_ID, MODAL_MODULE_TYPE)).toBeDefined()
     const canvas = moduleCanvas()
     const renderer = rendererWithFont()
-    renderShapeUncached(renderer, canvas as Canvas, modalFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), modalFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawText.mock.calls.map((call) => call[0])).toEqual(['Open modal'])
 
@@ -311,7 +316,7 @@ describe('modal module canvas preview', () => {
       }
     })
     const invalidCanvas = moduleCanvas()
-    expect(renderModalModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderModalModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawRect).not.toHaveBeenCalled()
     expect(invalidCanvas.drawText).not.toHaveBeenCalled()
 
@@ -320,6 +325,6 @@ describe('modal module canvas preview', () => {
         module: { ...createModalModuleInstance(), configVersion: 2 }
       }
     })
-    expect(renderModalModulePreview(renderer, invalidCanvas as Canvas, invalidVersion)).toBe(false)
+    expect(renderModalModulePreview(renderer, asCanvas(invalidCanvas), invalidVersion)).toBe(false)
   })
 })

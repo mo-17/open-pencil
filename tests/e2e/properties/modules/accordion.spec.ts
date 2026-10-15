@@ -8,6 +8,8 @@ const PLUGIN_ID = 'open-pencil.accordion'
 async function expectAccordionPaint(canvas: CanvasHelper, stage: 'inserted' | 'edited') {
   await canvas.page.waitForFunction(
     () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const renderers = editor.canvasRenderers.filter(
         (renderer) =>
@@ -62,6 +64,8 @@ async function expectAccordionPaint(canvas: CanvasHelper, stage: 'inserted' | 'e
     contentType: 'application/json',
     body: JSON.stringify(
       await canvas.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         return {
           version: editor.state.sceneVersion,
@@ -106,11 +110,16 @@ async function insertAccordion(page: Page, renderer: 'retained' | 'tiled') {
 }
 
 async function savedModule(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const node = editor.graph.getNode([...editor.state.selectedIds][0])
-    if (!node?.interactiveProps?.module) throw new Error('Selected accordion unavailable')
-    return node.interactiveProps.module
+    const module = readModuleInstance(node?.interactiveProps?.module)
+    if (!module) throw new Error('Selected accordion unavailable')
+    return module
   })
 }
 
@@ -183,7 +192,11 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const handle = await title.elementHandle()
     if (!handle) throw new Error('Accordion title unavailable')
     await title.fill('Uncommitted for previous node')
-    const before = await page.evaluate(() => {
+    const before = await page.evaluate(async () => {
+      const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const current = [...editor.state.selectedIds][0]
       const other = editor.graph
@@ -191,7 +204,7 @@ for (const renderer of ['retained', 'tiled'] as const) {
         .find(
           (node) =>
             node.id !== current &&
-            node.interactiveProps?.module?.pluginId === 'open-pencil.accordion'
+            readModuleInstance(node.interactiveProps?.module)?.pluginId === 'open-pencil.accordion'
         )
       if (!other) throw new Error('Second accordion unavailable')
       const saved = JSON.stringify(other.interactiveProps)
@@ -205,6 +218,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     })
     await expect(rows.nth(0).getByTestId('accordion-item-title')).toHaveValue('First section')
     const after = await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       return JSON.stringify(
         editor.graph.getNode([...editor.state.selectedIds][0])?.interactiveProps

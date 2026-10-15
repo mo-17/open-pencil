@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { parsePenFile, serializePenFile } from '@open-pencil/pen'
 import type { MotionSpec, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
@@ -229,9 +231,16 @@ describe('.pen component Motion metadata inheritance', () => {
     graph.clearNodeFields(instance.id, ['motion'])
 
     const serialized = serializePenFile(graph)
-    const document = JSON.parse(serialized) as {
-      children: Array<{ id: string; metadata?: unknown }>
-    }
+    const document = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.object({
+          children: v.array(v.object({ id: v.string(), metadata: v.optional(v.unknown()) }))
+        })
+      ),
+      serialized
+    )
     const rawInstance = document.children.find((node) => node.id === instance.id)
     expect(rawInstance?.metadata).toEqual({
       ...foreignMetadata,

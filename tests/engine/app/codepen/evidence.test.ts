@@ -15,8 +15,7 @@ import {
   verifyCodePenStaticEvidenceIntegrity,
   type CodePenFetchedSources,
   type CodePenTauriInvoker,
-  type CodePenSourceKind,
-  type CodePenStaticEvidence
+  type CodePenSourceKind
 } from '@/app/codepen'
 
 import { codePenSecretFixtures } from '#tests/helpers/codepen-secrets'
@@ -167,14 +166,20 @@ describe('CodePen static evidence', () => {
 
   test('detects persisted evidence tampering and rejects extra envelope fields', async () => {
     const evidence = await createCodePenStaticEvidence({ penURL: PEN_URL, sources: FIXTURE })
-    const tampered = JSON.parse(serializeCodePenStaticEvidence(evidence)) as CodePenStaticEvidence
-    ;(tampered.payload.sources.html as { text: string }).text = '<main>changed</main>'
+    expect(JSON.parse(serializeCodePenStaticEvidence(evidence)) as unknown).toEqual(evidence)
+    const tampered = {
+      ...evidence,
+      payload: {
+        ...evidence.payload,
+        sources: {
+          ...evidence.payload.sources,
+          html: { ...evidence.payload.sources.html, text: '<main>changed</main>' }
+        }
+      }
+    }
     await expect(verifyCodePenStaticEvidenceIntegrity(tampered)).rejects.toThrow('digest mismatch')
 
-    const extra = Object.assign(
-      JSON.parse(serializeCodePenStaticEvidence(evidence)) as CodePenStaticEvidence,
-      { extra: true }
-    )
+    const extra = Object.assign(structuredClone(evidence), { extra: true })
     await expect(verifyCodePenStaticEvidenceIntegrity(extra)).rejects.toThrow('exactly')
   })
 

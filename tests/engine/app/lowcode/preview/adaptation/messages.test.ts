@@ -28,7 +28,7 @@ describe('preview adaptation protocol boundary', () => {
     for (const textScale of [1, 1.3, 1.6, 2]) {
       for (const diagnostics of [true, false]) {
         const payload = { ...editor, textScale, diagnostics }
-        expect(createPreviewEditorMessage(CHANNEL, payload)).toEqual({
+        expect<unknown>(createPreviewEditorMessage(CHANNEL, payload)).toEqual({
           source: 'op-lowcode-editor',
           channel: CHANNEL,
           ...payload
@@ -71,7 +71,7 @@ describe('preview adaptation protocol boundary', () => {
       nodeId: 'node-1',
       kind
     }))
-    expect(inboundItems(items)).toEqual({ ...inbound, items })
+    expect<unknown>(inboundItems(items)).toEqual({ ...inbound, items })
     expect(inboundItems([{ ...item, kind: 'script' }])).toBeNull()
     for (const extra of ['text', 'message', 'value', 'rect', 'url', 'html']) {
       expect(inboundItems([{ ...item, [extra]: 'business content' }])).toBeNull()
@@ -79,10 +79,10 @@ describe('preview adaptation protocol boundary', () => {
   })
 
   test('permits empty and truncated reports without inventing a successful full scan', () => {
-    expect(inboundItems([])).toEqual({ ...inbound, items: [] })
-    expect(parsePreviewInboundMessage({ ...inbound, items: [], truncated: true }, CHANNEL)).toEqual(
-      { ...inbound, items: [], truncated: true }
-    )
+    expect<unknown>(inboundItems([])).toEqual({ ...inbound, items: [] })
+    expect<unknown>(
+      parsePreviewInboundMessage({ ...inbound, items: [], truncated: true }, CHANNEL)
+    ).toEqual({ ...inbound, items: [], truncated: true })
     for (const truncated of [0, 1, 'false', null, undefined]) {
       expect(parsePreviewInboundMessage({ ...inbound, truncated }, CHANNEL)).toBeNull()
     }
@@ -200,12 +200,12 @@ describe('preview adaptation protocol boundary', () => {
     if (parsed?.type !== 'adaptation') throw new Error('Expected adaptation message')
     raw.items[0].nodeId = 'changed'
     raw.items.push({ ...item, nodeId: 'second' })
-    expect(parsed.items).toEqual([item])
+    expect<unknown>(parsed.items).toEqual([item])
   })
 
   test('continues requiring exact iframe source, origin and channel correlation', () => {
     const source = {} as MessageEventSource
-    expect(
+    expect<unknown>(
       parsePreviewMessageEvent({ source, origin: 'null', data: inbound }, source, 'null', CHANNEL)
     ).toEqual(inbound)
     expect(

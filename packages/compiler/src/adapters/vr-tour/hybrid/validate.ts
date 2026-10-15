@@ -3,8 +3,8 @@ import {
   MINIPROGRAM_PROJECT_LIMITS
 } from '#compiler/adapters/miniprogram-shared'
 import type { IRAsset, IRElement, IRTree } from '#compiler/ir/types'
-import { sha256 } from '@noble/hashes/sha2'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import * as v from 'valibot'
 
 import {

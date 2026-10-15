@@ -266,7 +266,7 @@ watch(
           </button>
           <button
             type="button"
-            class="rounded px-1.5 py-1 text-[10px] text-danger hover:bg-danger/10"
+            class="rounded px-1.5 py-1 text-[10px] text-error hover:bg-error/10"
             @click="pendingDeleteId = server.id"
           >
             {{ dialogs.remoteMcpDelete }}
@@ -275,7 +275,7 @@ watch(
         <p
           v-if="testResults[server.id]?.message"
           class="mt-1 text-[9px]"
-          :class="testResults[server.id]?.state === 'error' ? 'text-danger' : 'text-success'"
+          :class="testResults[server.id]?.state === 'error' ? 'text-error' : 'text-success'"
           role="status"
         >
           {{ testResults[server.id]?.message }}
@@ -326,7 +326,7 @@ watch(
           {{ dialogs.clear }}
         </button>
       </div>
-      <p v-if="formError" class="text-[10px] text-danger" role="alert">{{ formError }}</p>
+      <p v-if="formError" class="text-[10px] text-error" role="alert">{{ formError }}</p>
       <div class="flex justify-end gap-2">
         <button
           type="button"
@@ -345,7 +345,7 @@ watch(
       </div>
     </form>
 
-    <p v-if="formError && !formOpen" class="mt-2 text-[10px] text-danger" role="alert">
+    <p v-if="formError && !formOpen" class="mt-2 text-[10px] text-error" role="alert">
       {{ formError }}
     </p>
   </section>
@@ -372,7 +372,7 @@ watch(
         </button>
       </AlertDialogCancel>
       <AlertDialogAction as-child>
-        <button class="rounded bg-danger px-3 py-1.5 text-xs text-white" @click="confirmDelete">
+        <button class="rounded bg-error-fill px-3 py-1.5 text-xs text-white" @click="confirmDelete">
           {{ dialogs.remoteMcpDelete }}
         </button>
       </AlertDialogAction>

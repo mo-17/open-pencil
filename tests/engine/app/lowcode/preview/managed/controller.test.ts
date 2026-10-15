@@ -158,6 +158,7 @@ function fixture() {
   }
   const controller = createManagedBackendPreviewController({
     createHost: (options) => {
+      if (!options) throw new Error('Expected managed host options')
       terminal = options.onTerminal
       event = options.onEvent
       return host
@@ -249,7 +250,7 @@ describe('managed Backend lifecycle controls', () => {
     expect(controller.message.value).toContain('Could not stop')
     expect(controller.message.value).not.toContain('Private runtime')
     expect(controller.error.value).toBe(controller.message.value)
-    expect(controller.logs.value.at(-1)).toBe(controller.error.value)
+    expect<unknown>(controller.logs.value.at(-1)).toBe(controller.error.value)
     await controller.invalidate()
     expect(controller.enabled.value).toBe(false)
     expect(controller.message.value).toContain('Could not stop')
@@ -260,7 +261,7 @@ describe('managed Backend lifecycle controls', () => {
     const { controller, terminate } = await running()
     terminate()
     expect(controller.error.value).toContain('stopped unexpectedly')
-    expect(controller.logs.value.at(-1)).toBe(controller.error.value)
+    expect<unknown>(controller.logs.value.at(-1)).toBe(controller.error.value)
     expect(controller.canStart.value).toBe(false)
     expect(controller.state.value?.connection).toBeNull()
     await controller.prepare(config)

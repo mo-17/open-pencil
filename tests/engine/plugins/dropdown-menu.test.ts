@@ -74,7 +74,7 @@ describe('built-in dropdown menu plugin', () => {
       [['accentColor'], 'color'],
       [['dangerColor'], 'color']
     ])
-    expect(Object.keys(instance.config)).toEqual(CONFIG_KEYS)
+    expect(Object.keys(instance.config)).toEqual([...CONFIG_KEYS])
     expect(resolved?.ok).toBe(true)
     if (!resolved?.ok) throw new Error('expected dropdown menu module to resolve')
     expect(resolved.config).toEqual(DROPDOWN_MENU_MODULE_DEFAULT_CONFIG)

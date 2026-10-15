@@ -1,15 +1,58 @@
 import { DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
-import { createSceneGeometry } from '@open-pencil/core/geometry'
 import {
   createMapModuleFrameOverrides,
   MAP_MODULE_DEFAULT_SIZE,
   resolveMapModule
 } from '@open-pencil/core/plugins'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { NodeType, SceneNode } from '@open-pencil/scene-graph'
+import { getWorldMatrix } from '@open-pencil/scene-graph/coordinate'
+import Matrix from '@open-pencil/scene-graph/matrix'
 
+import { findDrawParent } from '#vue/shared/input/drop-target'
 import { TOOL_TO_NODE } from '#vue/shared/input/types'
 import type { DragDraw, DragState } from '#vue/shared/input/types'
+
+/** Maps canvas points into the axes of the parent a layer is drawn in. */
+function parentSpace(editor: Editor, parentId: string): DragDraw['toLocal'] {
+  const parent = editor.graph.getNode(parentId)
+  if (!parent || parent.type === 'CANVAS') return (x, y) => ({ x, y })
+  const toLocal = Matrix.invert(getWorldMatrix(parent, editor.graph)) ?? Matrix.identity()
+  return (x, y) => {
+    const [lx, ly] = Matrix.mapPoints(toLocal, [x, y])
+    return { x: lx, y: ly }
+  }
+}
+
+function startDraw(
+  type: NodeType,
+  label: string,
+  cx: number,
+  cy: number,
+  editor: Editor,
+  setDrag: (d: DragState) => void
+) {
+  editor.undo.beginBatch(label)
+  const parentId = findDrawParent(cx, cy, type, editor)
+  const toLocal = parentSpace(editor, parentId)
+  // Figma rounds both corners of a drawn layer to whole pixels.
+  const snap = editor.state.snappingPreferences.pixelGrid ? Math.round : (value: number) => value
+  const local = toLocal(cx, cy)
+  const start = { x: snap(local.x), y: snap(local.y) }
+  const initial = editor.state.activeTool === 'MAP' ? createMapModuleFrameOverrides() : undefined
+  const name = initial?.name
+  if (initial) {
+    delete initial.x
+    delete initial.y
+    delete initial.width
+    delete initial.height
+    delete initial.name
+  }
+  const nodeId = editor.createShape(type, start.x, start.y, 0, 0, parentId, name, initial)
+  if (type === 'TEXT') editor.graph.updateNode(nodeId, { text: '' })
+  editor.select([nodeId])
+  setDrag(createDraw(editor, nodeId, start.x, start.y, toLocal, type === 'LINE', snap))
+}
 
 export function startTextDraw(
   cx: number,
@@ -17,12 +60,7 @@ export function startTextDraw(
   editor: Editor,
   setDrag: (d: DragState) => void
 ) {
-  if (!editor.getContentEditInsertionParent()) return
-  editor.undo.beginBatch('Create text')
-  const nodeId = editor.createShape('TEXT', cx, cy, 0, 0)
-  editor.graph.updateNode(nodeId, { text: '' })
-  editor.select([nodeId])
-  setDrag(createDraw(editor, nodeId, cx, cy))
+  startDraw('TEXT', 'Create text', cx, cy, editor, setDrag)
 }
 
 export function startShapeDraw(
@@ -35,27 +73,27 @@ export function startShapeDraw(
   const nodeType = TOOL_TO_NODE[editor.state.activeTool]
   if (!nodeType) return
 
-  editor.undo.beginBatch('Create shape')
-  let initialOverrides: Partial<SceneNode> | undefined
-  let name: string | undefined
-  if (editor.state.activeTool === 'MAP') {
-    initialOverrides = { ...createMapModuleFrameOverrides() }
-    name = initialOverrides.name
-    delete initialOverrides.x
-    delete initialOverrides.y
-    delete initialOverrides.width
-    delete initialOverrides.height
-    delete initialOverrides.name
-  }
-  const nodeId = editor.createShape(nodeType, cx, cy, 0, 0, undefined, name, initialOverrides)
-  editor.select([nodeId])
-  setDrag(createDraw(editor, nodeId, cx, cy))
+  startDraw(nodeType, 'Create shape', cx, cy, editor, setDrag)
+}
+
+const LINE_ANGLE_STEP = 45
+
+/** A line from the start point to the cursor: its length, no height, and the angle as rotation. */
+function lineGeometry(d: DragDraw, dx: number, dy: number, shiftKey: boolean): Partial<SceneNode> {
+  let angle = (Math.atan2(dy, dx) * 180) / Math.PI
+  // Shift snaps the angle to steps of 45°.
+  if (shiftKey) angle = Math.round(angle / LINE_ANGLE_STEP) * LINE_ANGLE_STEP
+  return { x: d.startX, y: d.startY, width: Math.hypot(dx, dy), height: 0, rotation: angle }
 }
 
 export function handleDrawMove(d: DragDraw, cx: number, cy: number, shiftKey: boolean) {
-  if (d.toLocal) ({ x: cx, y: cy } = d.toLocal(cx, cy))
-  let w = cx - d.startX
-  let h = cy - d.startY
+  const point = d.toLocal(cx, cy)
+  let w = d.snap(point.x) - d.startX
+  let h = d.snap(point.y) - d.startY
+  if (d.line) {
+    d.update(lineGeometry(d, w, h, shiftKey))
+    return
+  }
 
   if (shiftKey) {
     const size = Math.max(Math.abs(w), Math.abs(h))
@@ -71,31 +109,40 @@ export function handleDrawMove(d: DragDraw, cx: number, cy: number, shiftKey: bo
   })
 }
 
-function finalDrawDimensions(node: SceneNode | undefined): Partial<SceneNode> | null {
-  if (node?.type === 'TEXT') {
-    const isPointText = node.width < 2 && node.height < 2
-    return {
-      width: isPointText ? DEFAULT_TEXT_WIDTH : node.width,
-      height: isPointText ? DEFAULT_TEXT_HEIGHT : node.height,
-      textAutoResize: isPointText ? 'WIDTH_AND_HEIGHT' : 'NONE'
-    }
+/** Gives a layer made by a click its default size; returns whether it was only clicked. */
+function settleDrawnSize(preview: ReturnType<Editor['beginNodePreview']>, node: SceneNode) {
+  const clicked = node.width < 2 && node.height < 2
+  if (node.type === 'TEXT') {
+    preview.update(node.id, {
+      width: clicked ? DEFAULT_TEXT_WIDTH : node.width,
+      height: clicked ? DEFAULT_TEXT_HEIGHT : node.height,
+      textAutoResize: clicked ? 'WIDTH_AND_HEIGHT' : 'NONE'
+    })
+  } else if (node.type === 'LINE' && node.width < 2) {
+    preview.update(node.id, { width: 100, height: 0, rotation: 0 })
+    return true
+  } else if (clicked) {
+    const map = resolveMapModule(node.interactiveProps?.module)
+    preview.update(
+      node.id,
+      map?.ok
+        ? { width: MAP_MODULE_DEFAULT_SIZE.width, height: MAP_MODULE_DEFAULT_SIZE.height }
+        : { width: 100, height: 100 }
+    )
   }
-  if (!node || node.width >= 2 || node.height >= 2) return null
-  const map = resolveMapModule(node.interactiveProps?.module)
-  return map?.ok
-    ? { width: MAP_MODULE_DEFAULT_SIZE.width, height: MAP_MODULE_DEFAULT_SIZE.height }
-    : { width: 100, height: 100 }
+  return clicked
 }
 
-function createDraw(editor: Editor, nodeId: string, startX: number, startY: number): DragDraw {
+function createDraw(
+  editor: Editor,
+  nodeId: string,
+  startX: number,
+  startY: number,
+  toLocal: DragDraw['toLocal'],
+  line: boolean,
+  snap: DragDraw['snap']
+): DragDraw {
   const graph = editor.graph
-  const parentId = editor.state.contentEdit ? graph.getNode(nodeId)?.parentId : undefined
-  const parent = parentId ? graph.getNode(parentId) : undefined
-  const geometry = createSceneGeometry(graph)
-  const toLocal = parent
-    ? (x: number, y: number) => geometry.toLocal(parent, { x, y }) ?? { x, y }
-    : undefined
-  if (toLocal) ({ x: startX, y: startY } = toLocal(startX, startY))
   const preview = editor.beginNodePreview('Draw dimensions')
   let finished = false
 
@@ -116,10 +163,15 @@ function createDraw(editor: Editor, nodeId: string, startX: number, startY: numb
     finished = true
     const node = graph.getNode(nodeId)
     try {
-      const dimensions = finalDrawDimensions(node)
-      if (dimensions) preview.update(nodeId, dimensions)
+      const clicked = node ? settleDrawnSize(preview, node) : false
       preview.commit()
-      if (node?.type === 'SECTION') editor.adoptNodesIntoSection(node.id)
+      // Drawn into auto layout, the layer joins the flow at the end.
+      const parent = graph.getNode(node?.parentId ?? '')
+      if (parent && parent.layoutMode !== 'NONE') editor.runLayoutForNode(parent.id)
+      // A frame made by a click, not drawn over anything, takes nothing in.
+      if (node?.type === 'SECTION' || (node?.type === 'FRAME' && !clicked)) {
+        editor.adoptCoveredLayers(node.id)
+      }
       editor.undo.commitBatch()
     } catch (error) {
       preview.cancel()
@@ -140,9 +192,11 @@ function createDraw(editor: Editor, nodeId: string, startX: number, startY: numb
 
   return {
     type: 'draw',
-    toLocal,
     startX,
     startY,
+    toLocal,
+    line,
+    snap,
     nodeId,
     update: (changes) => {
       if (!finished) preview.update(nodeId, changes)

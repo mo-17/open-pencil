@@ -2,10 +2,13 @@ import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
+import * as v from 'valibot'
+
 import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
 
 import {
   isHeavyUnitTest,
+  LARGE_FIXTURES,
   listHeavyUnitTests,
   listUnitTests,
   pathsForUnitTestGroup,
@@ -13,6 +16,83 @@ import {
 } from '../src/shards'
 
 const REPO_ROOT = await resolveWorkspaceRoot(import.meta.dir)
+// Packages whose tests run in their own CI job instead of the unit shards.
+const OWN_SUITES = ['packages/harness/', 'packages/feedback/']
+
+async function readPackageManifest() {
+  const result = v.safeParse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.object({
+        scripts: v.optional(v.record(v.string(), v.string())),
+        workspaces: v.optional(v.array(v.string()))
+      })
+    ),
+    await readFile(resolve(REPO_ROOT, 'package.json'), 'utf8')
+  )
+  if (!result.success) throw new Error('Invalid root package manifest')
+  return result.output
+}
+
+async function discover(pattern: string): Promise<string[]> {
+  return Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: REPO_ROOT }))
+}
+
+test('every app, engine and package-local test belongs to exactly one shard', async () => {
+  const discovered = [
+    ...(await discover('tests/app/**/*.test.ts')),
+    ...(await discover('tests/integration/**/*.test.ts')),
+    ...(await discover('tests/engine/**/*.test.ts')),
+    ...(await discover('packages/*/tests/**/*.test.ts'))
+  ].filter((file) => !OWN_SUITES.some((suite) => file.startsWith(suite)))
+  const groups = unitTestGroupNames().filter((group) => group !== 'all')
+  const plans = await Promise.all(
+    groups.map(async (group) => ({
+      group,
+      files: await listUnitTests(group, { includeHeavy: true })
+    }))
+  )
+  const invalidAssignments = discovered.flatMap((file) => {
+    const owners = plans.filter((plan) => plan.files.includes(file)).map((plan) => plan.group)
+    return owners.length === 1 ? [] : [{ file, owners }]
+  })
+
+  expect(discovered.length).toBeGreaterThan(0)
+  expect(invalidAssignments).toEqual([])
+  expect((await listUnitTests('all', { includeHeavy: true })).sort()).toEqual(discovered.sort())
+})
+
+test('canonical destinations are registered before they hold files', async () => {
+  const paths = pathsForUnitTestGroup('all')
+  expect(paths).toContain('tests/app')
+  expect(paths).toContain('tests/integration')
+  for (const owner of [
+    'core',
+    'scene-graph',
+    'vue',
+    'fig',
+    'kiwi',
+    'dom-css',
+    'design-jsx',
+    'emit',
+    'pen',
+    'cli',
+    'mcp'
+  ]) {
+    expect(paths).toContain(`packages/${owner}/tests`)
+  }
+  await expect(listUnitTests('all')).resolves.toBeArray()
+})
+
+test('quick and explicit heavy tests partition the full engine suite', async () => {
+  const quick = await listUnitTests('all')
+  const heavy = await listHeavyUnitTests()
+  const all = await listUnitTests('all', { includeHeavy: true })
+
+  expect(quick.filter((file) => heavy.includes(file))).toEqual([])
+  expect([...quick, ...heavy].sort()).toEqual(all)
+})
 
 test('unit test groups cover all declared shards', () => {
   expect(unitTestGroupNames()).toContain('all')
@@ -64,7 +144,7 @@ test('unit test groups own every repository unit test exactly once', async () =>
       new Bun.Glob('packages/*/tests/**/*.test.ts').scan({ cwd: REPO_ROOT })
     ))
   ]
-    .filter((file) => !file.startsWith('packages/harness/'))
+    .filter((file) => !OWN_SUITES.some((suite) => file.startsWith(suite)))
     .sort()
   const actual = [...owners.keys()].sort()
   const duplicates = [...owners]
@@ -150,9 +230,7 @@ test('every heavy-tagged suite enters the heavy test gate', async () => {
 })
 
 test('root unit test scripts select heavy suites explicitly', async () => {
-  const packageJSON = JSON.parse(await readFile(resolve(REPO_ROOT, 'package.json'), 'utf8')) as {
-    scripts?: Record<string, string>
-  }
+  const packageJSON = await readPackageManifest()
 
   expect(packageJSON.scripts?.['test:unit']).toBe(
     'bun tools/dev/unit-tests/src/run.ts all --include-heavy'
@@ -163,10 +241,7 @@ test('root unit test scripts select heavy suites explicitly', async () => {
 })
 
 test('root quality gates own the private Backend Compiler sidecar without building a binary', async () => {
-  const packageJSON = JSON.parse(await readFile(resolve(REPO_ROOT, 'package.json'), 'utf8')) as {
-    scripts?: Record<string, string>
-    workspaces?: string[]
-  }
+  const packageJSON = await readPackageManifest()
   const scripts = packageJSON.scripts ?? {}
 
   expect(packageJSON.workspaces).toContain('packages/backend-compiler-sidecar')
@@ -227,22 +302,14 @@ test('business template browser suites run only in the Chromium-equipped isolate
   expect(app).not.toContain(commerce)
 })
 
-test('canonical destinations are registered before they hold files', async () => {
-  const paths = pathsForUnitTestGroup('all')
-  expect(paths).toContain('tests/app')
-  expect(paths).toContain('tests/integration')
-  for (const owner of [
-    'core',
-    'scene-graph',
-    'vue',
-    'fig',
-    'kiwi',
-    'dom-css',
-    'pen',
-    'cli',
-    'mcp'
-  ]) {
-    expect(paths).toContain(`packages/${owner}/tests`)
-  }
-  await expect(listUnitTests('all')).resolves.toBeArray()
+test('every test that reads a large fixture is heavy', async () => {
+  const quick = await listUnitTests('all')
+  const readers = await Promise.all(
+    quick.map(async (file) => {
+      const source = await Bun.file(`${REPO_ROOT}/${file}`).text()
+      return LARGE_FIXTURES.some((fixture) => source.includes(fixture)) ? [file] : []
+    })
+  )
+  // One of these can take several gigabytes; add it to HEAVY_UNIT_TEST_PATTERNS.
+  expect(readers.flat()).toEqual([])
 })

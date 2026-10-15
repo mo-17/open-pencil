@@ -1,7 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { uint8ArrayToArrayBuffer } from '#core-tests/helpers/fig/fixtures'
-
 import {
   exportFigFile,
   initCodec,
@@ -13,7 +11,7 @@ import { effectiveFigmaRawNodeFields, parseFigBuffer, materializeDocument } from
 import { MAX_EXPORT_SCALE } from '@open-pencil/scene-graph'
 
 function decodeExport(bytes: Uint8Array) {
-  return parseFigBuffer(uint8ArrayToArrayBuffer(bytes))
+  return parseFigBuffer(new Uint8Array(bytes).buffer)
 }
 
 function doc(): NodeChange {
@@ -106,7 +104,9 @@ describe('fig roundtrip export settings', () => {
   test('does not serialize export settings plugin data for a default node', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const rect = graph.createNode('RECTANGLE', page.id, { name: 'Default export settings rect' })
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Default export settings rect'
+    })
 
     const decoded = decodeExport(await exportFigFile(graph))
     const exportedRect = decoded.nodeChanges.find((nodeChange) => nodeChange.name === rect.name)
@@ -147,7 +147,12 @@ describe('fig roundtrip export settings', () => {
       doc(),
       canvas(),
       frame({
-        exportSettings: [{ imageType: 'PNG', constraint: { type: 'CONTENT_SCALE', value: 999999 } }]
+        exportSettings: [
+          {
+            imageType: 'PNG',
+            constraint: { type: 'CONTENT_SCALE', value: 999999 }
+          }
+        ]
       })
     ]).graph
     const node = [...graph.getAllNodes()].find((n) => n.name === 'Export settings frame')

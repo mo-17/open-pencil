@@ -74,6 +74,8 @@ for (const example of cases)
       example.count + 1
     )
     const request = await page.evaluate(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const url = new URL('/src/app/lowcode/backend/document.ts', location.origin).href
       const { readBackendProviderDocumentRequest } = (await import(
         /* @vite-ignore */ url

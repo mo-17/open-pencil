@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { openAppMenu } from '#tests/helpers/menu'
 
 const fixture = readFileSync('tests/fixtures/gold-preview.fig')
 
@@ -129,9 +130,12 @@ async function configureS3Workspace(page: Page, fromEditor = false): Promise<voi
     await page.getByRole('button', { name: 'Settings' }).last().click()
   }
   await page.getByTestId('settings-section-storage').click()
-  await page.getByTestId('settings-storage-provider-s3-compatible').click()
+  await page
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
   await page.getByLabel('Endpoint', { exact: true }).fill('https://s3.example.com')
   await page.getByLabel('Bucket', { exact: true }).fill('designs')
+  await page.locator('[data-command="save-storage-settings"]').click()
 
   for (const [field, value] of [
     ['access-key-id', 'access-key'],
@@ -167,9 +171,17 @@ test('configured storage lists a range-loaded preview before opening the documen
   await canvas.waitForInit()
   await expect(page.getByText('Remote design').first()).toBeVisible()
   expect(
-    await page.evaluate(() => window.openPencil?.getStore?.().getStorageBinding()?.documentId)
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().getStorageBinding()?.documentId
+    })
   ).toBe('remote-1')
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().state.preparation)).toBeNull()
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.preparation
+    })
+  ).toBeNull()
   expect(stats.rangeGets).toBeGreaterThan(3)
   expect(stats.fullDocumentGets).toBe(0)
 })
@@ -178,6 +190,8 @@ async function preparePreviousDesign(page: Page): Promise<string> {
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   const nodeId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor not initialized')
     store.state.documentName = 'Previous design'
@@ -200,7 +214,10 @@ async function expectPreviousDesign(page: Page, nodeId: string): Promise<void> {
   await expect(page.getByTestId('tabbar-tab').filter({ hasText: 'Remote design' })).toHaveCount(0)
   await expect
     .poll(() =>
-      page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.name, nodeId)
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(id)?.name
+      }, nodeId)
     )
     .toBe('Preserved rectangle')
   await expect(page.getByTestId('canvas-loading')).not.toBeVisible()
@@ -224,7 +241,7 @@ test('failed cloud download restores the previous document after editor handoff'
 
   await page.locator('[data-document-id="remote-1"]').click()
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByTestId('toast-item')).toContainText(
+  await expect(page.locator('[data-slot="toast"]')).toContainText(
     'Could not open “Remote design”: Unavailable storage fixture'
   )
   await expectPreviousDesign(page, previousNodeId)
@@ -265,7 +282,7 @@ test('closing a loading cloud tab cancels its request and restores the previous 
     await finished.promise
     await expectPreviousDesign(page, previousNodeId)
     await expect(
-      page.getByTestId('toast-item').filter({ hasText: /Could not open “Remote design”:/ })
+      page.locator('[data-slot="toast"]').filter({ hasText: /Could not open “Remote design”:/ })
     ).toHaveCount(0)
   } finally {
     release.resolve(undefined)
@@ -361,7 +378,10 @@ test('blocks deletion while the same remote document is open', async ({ page }) 
   await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
   await new CanvasHelper(page).waitForInit()
   expect(
-    await page.evaluate(() => window.openPencil?.getStore?.().getStorageBinding()?.documentId)
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().getStorageBinding()?.documentId
+    })
   ).toBe('remote-1')
   await page.evaluate(() => {
     window.history.pushState({}, '', '/storage?test')
@@ -391,4 +411,86 @@ test('storage workspace directs unconfigured users to Settings', async ({ page }
   await page.getByRole('button', { name: 'Settings' }).last().click()
   await page.getByTestId('settings-section-storage').click()
   await expect(page.getByTestId('settings-storage-panel')).toBeVisible()
+})
+
+test('Save to storage uploads the open document and lists it in the workspace', async ({
+  page
+}) => {
+  const objects = new Map<string, Buffer>()
+  await page.route('https://s3.example.com/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const key = decodeURIComponent(url.pathname.replace(/^\/designs\/?/, ''))
+    const prefix = url.searchParams.get('prefix')
+    if (url.searchParams.get('list-type') === '2' && prefix !== null) {
+      const contents = [...objects]
+        .filter(([name]) => name.startsWith(prefix))
+        .map(
+          ([name, body]) =>
+            `<Contents><Key>${name}</Key><LastModified>2026-01-02T03:04:05.000Z</LastModified><Size>${body.byteLength}</Size></Contents>`
+        )
+      await route.fulfill({
+        contentType: 'application/xml',
+        body: `<ListBucketResult><IsTruncated>false</IsTruncated>${contents.join('')}</ListBucketResult>`
+      })
+      return
+    }
+    if (request.method() === 'PUT') {
+      objects.set(key, request.postDataBuffer() ?? Buffer.alloc(0))
+      await route.fulfill({ status: 200, headers: { ETag: '"etag"' } })
+      return
+    }
+    const body = objects.get(key)
+    if (!body) {
+      await route.fulfill({ status: 404 })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'Content-Length': String(body.byteLength) },
+      body: request.method() === 'HEAD' ? undefined : body
+    })
+  })
+
+  await page.goto('/?test')
+  const canvas = new CanvasHelper(page)
+  await canvas.waitForInit()
+
+  // Before storage is configured, the command opens storage settings.
+  let file = await openAppMenu(page, 'File')
+  await file.getByRole('menuitem', { name: 'Save to storage…' }).click()
+  const panel = page.getByTestId('settings-storage-panel')
+  await expect(panel).toBeVisible()
+  await panel
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
+  await panel.getByLabel('Endpoint').fill('https://s3.example.com')
+  await panel.getByLabel('Bucket').fill('designs')
+  await panel.getByLabel('Access key ID').fill('access-key')
+  await panel.getByLabel('Secret access key').fill('secret-key')
+  const saveStorage = panel.locator('[data-command="save-storage-settings"]')
+  await saveStorage.click()
+  await expect(panel.getByLabel('Secret access key')).toHaveValue('')
+  await expect(saveStorage).toBeEnabled()
+  await page
+    .getByTestId('app-settings-dialog')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click()
+
+  file = await openAppMenu(page, 'File')
+  await file.getByRole('menuitem', { name: 'Save to storage…' }).click()
+  await expect
+    .poll(() => [...objects.keys()].filter((key) => key.includes('/canvases/')).sort())
+    .toEqual([
+      expect.stringMatching(/^open_pencil_storage\/canvases\/[^/]+\.fig$/),
+      expect.stringMatching(/^open_pencil_storage\/canvases\/[^/]+\.meta\.json$/)
+    ])
+  const uploaded = [...objects].find(([key]) => key.endsWith('.fig'))?.[1]
+  // An exported .fig is a zip archive holding the document and its thumbnail.
+  expect(uploaded?.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+
+  file = await openAppMenu(page, 'File')
+  await file.getByRole('menuitem', { name: 'Open storage workspace…' }).click()
+  await expect(page.getByTestId('recent-files-home')).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Untitled/ }).first()).toBeVisible()
 })

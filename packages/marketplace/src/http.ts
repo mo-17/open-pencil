@@ -926,7 +926,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   const now = options.now ?? Date.now
 
   async function paginatedValue<Item>(
-    context: Context,
+    _context: Context,
     resource: MarketplaceControlResource,
     scope: string,
     query: MarketplaceControlListQuery,
@@ -986,7 +986,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   }
 
   async function publisherAuditPage(
-    context: Context,
+    _context: Context,
     publisherId: string,
     query: MarketplaceControlListQuery
   ): Promise<Response> {

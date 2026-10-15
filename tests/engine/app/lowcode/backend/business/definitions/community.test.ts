@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const authentication = {
   kind: 'oidc-pkce' as const,
   issuer: 'https://identity.example.com',
@@ -29,7 +31,7 @@ describe('community page definitions', () => {
     expect(definition.pages).toHaveLength(10)
     expect(new Set(definition.pages.map((page) => page.path)).size).toBe(10)
     expect(definition.roles).toEqual(['community-moderator'])
-    expect(
+    expect<unknown>(
       definition.pages
         .flatMap((page) => page.actions)
         .map((action) => action.commandId)
@@ -124,7 +126,7 @@ describe('community page definitions', () => {
         ).toBe(true)
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource')
           for (const expression of [
             source.afterExpr,

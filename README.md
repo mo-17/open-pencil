@@ -30,10 +30,11 @@ Requires macOS 13 or later with current Safari updates, Windows 10 or later, or 
 - **Opens `.fig` and `.pen` files** — read and write native Figma files, open supported Pencil documents from the app or OS file browser, copy & paste nodes between apps
 - **Visible local status** — distinguish original-file saves, local recovery snapshots and cloud synchronization, with timestamps and retry actions. Inspect managed-preview environment checks on each computer, and see agent-reported ACP context usage in chat. See the [repeatable acceptance checklist](packages/docs/development/stability-acceptance.md) for browser, desktop and second-computer verification.
 - **AI builds designs** — describe what you want in chat with a curated set of common design operations, including real buttons, inputs, forms, lists, and other lowcode controls. Connect OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints; optionally enable cited web search, hosted code execution, or Remote MCP tools per model (per-call approval for Direct chat; agent-owned policy for ACP)
-- **Fully programmable** — headless CLI, XPath queries, Figma Plugin API via `eval`, MCP server for AI agents, and desktop agent integrations for Claude Code, Codex, and Gemini CLI
+- **Fully programmable** — headless CLI, XPath queries, Figma Plugin API plus the `openpencil` API via `eval`, MCP server for AI agents, and desktop agent integrations for Claude Code, Codex, and Gemini CLI
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design workbench** — find components and enabled plugin modules by source, category or description, keep favorites, and insert them into the canvas. Import optional variable presets without changing existing designs; review a generated design brief and add it to AI input when ready. See [components](packages/docs/user-guide/components.md), [variables](packages/docs/user-guide/variables.md) and [AI handoff](packages/docs/programmable/ai-chat.md#review-a-design-brief).
+- **Working controls** — give a component a Reka UI behaviour (switch, slider, tabs, text field, …) and preview it live over the canvas, with real inputs, focus, and keyboard
 - **Image vectorization** — convert image layers into editable vector layers with Recraft or fal.ai
 - **Canvas origin navigation** — move origin `(0, 0)` to the active canvas view's top-left beside the zoom control, keeping the current zoom and selection.
 - **Adaptive canvas performance** — use Automatic mode or choose resource saving, balanced, or
@@ -81,7 +82,7 @@ Requires macOS 13 or later with current Safari updates, Windows 10 or later, or 
   risking a silent overwrite. Self-managed S3-compatible storage remains an advanced alternative
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
-  follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
+  follow mode, voice calls, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
 - **Auto layout & CSS Grid** — flex and grid layout via Yoga WASM, with gap, padding, alignment, track sizing
 - **~15 MB desktop app** — Tauri v2 for macOS, Windows, Linux. Also runs in the browser as a PWA
 
@@ -114,26 +115,23 @@ openpencil info design.fig
 
 ### Query with XPath
 
-Use XPath selectors to find nodes by type, attributes, and structure:
+Find nodes by type, attributes, and structure:
 
 ```sh
-openpencil query design.fig "//FRAME"                              # All frames
-openpencil query design.fig "//FRAME[@width < 300]"                # Frames under 300px
-openpencil query design.fig "//TEXT[contains(@name, 'Button')]"     # Text with 'Button' in name
-openpencil query design.fig "//*[@cornerRadius > 0]"               # Rounded corners
-openpencil query design.fig "//SECTION//TEXT"                       # Text inside sections
+openpencil query design.fig "//FRAME[@width < 300]"  # Frames under 300px
+openpencil query design.fig "//SECTION//TEXT"        # Text inside sections
 ```
 
-### Export
+### Export, convert, and import
 
-Render to PNG, JPG, WEBP, SVG, PDF, PPTX, HTML, JSX, Storybook stories, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
+Render to PNG, JPG, WEBP, SVG, PDF, PPTX, HTML, JSX, Storybook stories, or `.fig`, convert between document formats, and turn HTML/CSS into editable layers:
 
 ```sh
 openpencil export design.fig                           # PNG
 openpencil export design.fig -f jpg -s 2 -q 90        # JPG at 2x, quality 90
 openpencil export design.fig -f fig --page "Page 1"   # Export a page as .fig
 openpencil export design.fig -f pdf                     # PDF
-openpencil export design.fig -f jsx --style tailwind   # Tailwind JSX
+openpencil export design.fig -f tailwind-jsx   # Tailwind JSX
 openpencil export design.fig -f html --css tailwind    # Tailwind HTML fragment
 openpencil export design.fig -f html --html standalone --assets external # HTML + assets
 openpencil convert design.pen -f fig -o output.fig     # Convert between document formats
@@ -153,39 +151,9 @@ editing and conversion.
 DOM/CSS input flows through `@open-pencil/dom-css`, so HTML, authored CSS, and Tailwind utility CSS can become editable OpenPencil layers:
 
 ```sh
-openpencil import card.html --css card.css -o card.fig
-openpencil import card.html --tailwind "flex flex-col gap-3 w-80 p-6 rounded-xl bg-white" -o card.fig
-```
-
-```html
-<div className="flex flex-col gap-4 p-6 bg-white rounded-xl">
-  <p className="text-2xl font-bold text-[#1D1B20]">Card Title</p>
-  <p className="text-sm text-[#49454F]">Description text</p>
-</div>
-```
-
-### Lint design files
-
-Catch naming, layout, structure, and accessibility issues from the terminal:
-
-```sh
-openpencil lint design.fig
-openpencil lint design.pen --preset strict
-openpencil lint design.fig --rule color-contrast
-openpencil lint design.fig --list-rules
-```
-
-### Analyze and extract design tokens
-
-Audit an entire design system from the terminal — find inconsistencies, extract the real palette, and spot components waiting to be extracted:
-
-```sh
-openpencil analyze colors design.fig
-openpencil analyze typography design.fig
-openpencil analyze spacing design.fig
-openpencil analyze clusters design.fig
-openpencil analyze overlaps design.fig
-openpencil variables design.fig
+openpencil lint design.fig --preset strict  # Naming, layout, accessibility
+openpencil analyze colors design.fig        # Also typography, spacing, clusters
+openpencil variables design.fig             # Variables and collections
 ```
 
 ```
@@ -193,20 +161,13 @@ openpencil variables design.fig
 #49454f  ██████████████████████████████ 9814×
 #ffffff  ██████████████████████████████ 8620×
 #6750a4  ██████████████████████████████ 3967×
-
-3771× frame "container" (100% match)
-     size: 40×40, structure: Frame > [Frame]
-
-2982× instance "Checkboxes" (100% match)
-     size: 48×48, structure: Instance > [Frame]
 ```
 
-### Script with Figma Plugin API
+### Script with the Figma Plugin API
 
-`eval` exposes OpenPencil's Figma-compatible Plugin API surface. Modify the file, write it back:
+`eval` exposes Figma's Plugin API and OpenPencil's `openpencil` API. Modify the file, write it back:
 
 ```sh
-openpencil eval design.fig -c "figma.currentPage.children.length"
 openpencil eval design.fig -c "figma.currentPage.selection.forEach(n => n.opacity = 0.5)" -w
 ```
 
@@ -245,12 +206,14 @@ Only `accept` replaces them. Add `--json` to any command for machine-readable ou
 
 ### Control the running app
 
-When the desktop app is running, omit the file argument — the CLI connects via RPC and operates on the live canvas. Useful for automation scripts, CI pipelines, or AI agents that need to interact with the editor:
+Omit the file argument and the CLI works on the document open in the editor:
 
 ```sh
-openpencil tree                               # Inspect the live document
-openpencil export -f png                      # Screenshot the current canvas
-openpencil eval -c "figma.currentPage.name"   # Query the editor
+openpencil tree                                 # Inspect the live document
+openpencil documents list                       # Also open, new, save, close, activate
+openpencil tool call get_selection              # Run any MCP tool
+openpencil undo                                 # Undo the newest automation change
+openpencil settings set appearance.theme light  # Change editor settings
 ```
 
 Applicable inspect and report commands support `--json` for machine-readable output.
@@ -848,7 +811,7 @@ When an agent advertises the unstable ACP `session/list` capability, the session
 
 **Force stop** preserves an existing resumable binding. **Clear chat** waits for deletion of the current local session binding and reports a failure visibly, but it cannot delete history retained by the agent because ACP has no stable cross-agent delete API. Session records expire after 90 days and are capped at 8 per document and 200 globally; unreferenced document-routing metadata is pruned after 90 days. Direct API providers never read ACP records and continue to use bounded in-memory messages. The visible transcript is not restored after an application restart. Actual restoration still depends on the installed agent retaining the thread and supporting ACP resume. Requires the desktop app and the agent CLI installed locally.
 
-Pi is also available as an optional AI SDK Harness provider. Install its companion CLI with `npm install -g @open-pencil/harness`, then add a **Pi** model profile in **Settings → AI & agents**. The companion is installed separately so OpenPencil does not bundle a JavaScript runtime for users who do not enable Harness providers.
+Pi works too: choose it in guided setup (**Settings → AI & agents → Run guided setup**), which installs the `@open-pencil/harness` companion with one click and uses the providers you signed in to in Pi. The companion needs Node.js 22.15 or later; see [Coding agents](packages/docs/programmable/coding-agents.md#pi).
 
 **Setup (Claude Code):**
 
@@ -916,12 +879,15 @@ Share a generated invite link to co-edit in real time. Document updates travel p
 2. Share the complete generated invite link (including its access key)
 3. Collaborators see your cursor, selection, and edits in real time
 4. Click a peer's avatar to follow their viewport
+5. Click the headphones beside the avatars to start or join the room's voice call
 
 ## Why
 
 OpenPencil is built for teams and developers who want an inspectable, programmable design stack instead of a workflow tied to one hosted editor. It is MIT-licensed, reads and writes `.fig` files natively, and exposes the same document model through the app, CLI, Vue SDK, and automation tools.
 
 Core editing is local-first and requires no OpenPencil account or hosted backend. Optional AI APIs, collaboration connection services and peers, web-font and stock-photo providers, and deployment providers receive the requests or data needed for the features you choose.
+
+Official builds send one anonymous ping a day and, only if you agree, usage stats; the [privacy page](https://openpencil.dev/overview/privacy) lists every field and how to turn it off.
 
 See the [roadmap](https://openpencil.dev/development/roadmap) for product direction and current Figma compatibility gaps.
 

@@ -441,11 +441,7 @@ describe('preview browser — compiled Upload Button module', () => {
         if (original) {
           Object.defineProperty(DataTransferItem.prototype, 'webkitGetAsEntry', original)
         } else {
-          delete (
-            DataTransferItem.prototype as DataTransferItem & {
-              webkitGetAsEntry?: unknown
-            }
-          ).webkitGetAsEntry
+          Reflect.deleteProperty(DataTransferItem.prototype, 'webkitGetAsEntry')
         }
       })
       await playwrightExpect(secondDetails.getByRole('status')).toHaveCount(0)

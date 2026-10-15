@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import {
   importedFontFormat,
   styleToWeight,
@@ -15,26 +17,12 @@ import {
   writeCacheBytes,
   writeCacheJSON
 } from '@/app/cache'
+import {
+  CachedFontManifest,
+  type FontCacheEntry,
+  type FontCacheManifest
+} from '@/app/editor/fonts/cache-schema'
 import { preferredFontStyle } from '@/app/editor/fonts/style-selection'
-
-type FontCacheEntry = {
-  family: string
-  style: string
-  file: string
-  byteLength: number
-  sha256: string
-  updatedAt: number
-  source?: 'remote' | 'imported'
-  format?: ImportedFontFormat
-  characters?: string
-  fullFace?: boolean
-  licenseDisplay?: FontFamilyLicenseDisplay
-}
-
-type FontCacheManifest = {
-  version: 1
-  entries: Partial<Record<string, FontCacheEntry>>
-}
 
 export interface DownloadedFontCacheSummary {
   count: number
@@ -214,9 +202,7 @@ function hexDigest(data: ArrayBuffer) {
 }
 
 async function readManifest(): Promise<FontCacheManifest> {
-  const manifest = await readCacheJSON<Partial<FontCacheManifest>>(MANIFEST_PATH)
-  if (manifest?.version !== 1 || !manifest.entries) return emptyManifest()
-  return { version: 1, entries: manifest.entries }
+  return (await readCacheJSON(MANIFEST_PATH, CachedFontManifest)) ?? emptyManifest()
 }
 
 async function writeManifest(manifest: FontCacheManifest) {
@@ -276,13 +262,11 @@ function importedFamilyLicenseDisplay(
     return { status: 'unknown', scope: 'loaded_faces', evidence: 'insufficient' }
   }
 
-  const licenseIds = [
-    ...new Set(
-      displays.flatMap((display) =>
-        display.status === 'free' || display.status === 'declared_open' ? display.licenseIds : []
-      )
+  const licenseIds = uniq(
+    displays.flatMap((display) =>
+      display.status === 'free' || display.status === 'declared_open' ? display.licenseIds : []
     )
-  ].sort((first, second) => first.localeCompare(second))
+  ).sort((first, second) => first.localeCompare(second))
   if (displays.some((display) => display.status === 'declared_open')) {
     return {
       status: 'declared_open',

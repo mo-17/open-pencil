@@ -3,6 +3,7 @@ import { emitVRTourHybridProject } from '#compiler/adapters/vr-tour/hybrid'
 import { stableNameSuffix } from '#compiler/ir/stable-name'
 import type { ComponentDef, IRAsset, IRTree } from '#compiler/ir/types'
 import type { CompileWarning, CompilerOptions } from '#compiler/types'
+import { compact } from 'es-toolkit'
 
 import {
   createCompileWarningSink,
@@ -316,10 +317,9 @@ function emitComponents(
 
 function expoRouteFile(info: ExpoPagePathInfo, warn: ExpoWarningSink): string {
   if (info.route === '/') return 'app/index.tsx'
-  const segments = info.route
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => routeSegment(segment, info, warn))
+  const segments = compact(info.route.split('/')).map((segment) =>
+    routeSegment(segment, info, warn)
+  )
   if (segments.length === 0) {
     warn({
       code: 'expo-route-pattern-unsupported',

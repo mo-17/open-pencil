@@ -182,7 +182,7 @@ async function removeToken(index: number): Promise<void> {
           :id="`upload-accept-error-${index}`"
           data-test-id="upload-accept-local-error"
           role="alert"
-          class="mt-1 text-[10px] text-red-400"
+          class="mt-1 text-[10px] text-error"
         >
           {{ localErrors[index] }}
         </p>

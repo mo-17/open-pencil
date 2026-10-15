@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
-import { SceneGraph, type SceneNode } from '@open-pencil/core'
-import { importNodeChanges } from '@open-pencil/core/kiwi/fig/import'
 import { parseFigBuffer } from '@open-pencil/fig'
+import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+
+import { importNodeChanges } from '#core/kiwi/fig/import'
 
 import { readFixtureArrayBuffer, VALID_NODE_TYPES } from '#tests/helpers/fig/fixtures'
 import { collectAllNodes } from '#tests/helpers/fig/traversal'
@@ -39,22 +40,22 @@ heavy.serial('parse heavy .fig files', () => {
       { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
     )
 
-    test('parses with pages and nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('parses with pages and nodes', () => {
       expect(graph).toBeInstanceOf(SceneGraph)
       expect(graph?.getPages().length ?? 0).toBeGreaterThan(0)
       expect(nodes.length).toBeGreaterThan(0)
     })
 
-    test('contains COMPONENT nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('contains COMPONENT nodes', () => {
       expect(nodes.some((node) => node.type === 'COMPONENT')).toBe(true)
     })
 
-    test('has no unmapped node types', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('has no unmapped node types', () => {
       const invalid = nodes.filter((node) => !VALID_NODE_TYPES.has(node.type))
       expect(invalid.map((node) => `${node.name}: ${node.type}`)).toEqual([])
     })
 
-    test('has valid fill colors', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('has valid fill colors', () => {
       for (const node of nodes) {
         for (const fill of node.fills) {
           if (fill.type === 'SOLID') {
@@ -94,18 +95,18 @@ heavy.serial('parse heavy .fig files', () => {
       { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
     )
 
-    test('parses with pages and nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('parses with pages and nodes', () => {
       expect(graph).toBeInstanceOf(SceneGraph)
       expect(graph?.getPages().length ?? 0).toBeGreaterThan(0)
       expect(nodes.length).toBeGreaterThan(0)
     })
 
-    test('has no unmapped node types', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('has no unmapped node types', () => {
       const invalid = nodes.filter((node) => !VALID_NODE_TYPES.has(node.type))
       expect(invalid.map((node) => `${node.name}: ${node.type}`)).toEqual([])
     })
 
-    test('has valid fill colors', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+    test('has valid fill colors', () => {
       for (const node of nodes) {
         for (const fill of node.fills) {
           if (fill.type === 'SOLID') {

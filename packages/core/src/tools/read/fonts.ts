@@ -190,12 +190,17 @@ export function inspectNodeFontRendering(
   const projection = lowcodeTextProjection(rawNode)
   const node = projection?.node ?? rawNode
   if (node.type !== 'TEXT') {
-    return { error: `Node "${id}" is not a text node or text-capable lowcode control` }
+    return {
+      error: `Node "${id}" is not a text node or text-capable lowcode control`
+    }
   }
 
   const readiness = figma.getNodeFontReadiness(rawNode.id)
   const requiredFaceUsages = requiredNodeFontFaceUsages(node)
-  const requiredFaces = requiredFaceUsages.map(({ family, style }) => ({ family, style }))
+  const requiredFaces = requiredFaceUsages.map(({ family, style }) => ({
+    family,
+    style
+  }))
   const faces: FontFaceCheck[] = requiredFaceUsages.map((face) => {
     const exactLoaded = fontManager.isStyleLoaded(face.family, face.style)
     const familyLoaded = fontManager.isLoaded(face.family)
@@ -292,7 +297,7 @@ export const getFontStatus = defineTool({
     'loaded, and affected nodes.',
   execution: { kind: 'sync', mutation: 'none' },
   exposure: { webmcp: false },
-  input: v.object({}),
+  input: v.strictObject({}),
   execute: (figma) => figma.getFontStatus()
 })
 
@@ -302,9 +307,9 @@ export const listFonts = defineTool({
     'List fonts used by TEXT and visible lowcode BUTTON/INPUT/TEXTAREA content in the current page.',
   execution: { kind: 'sync', mutation: 'none' },
   exposure: { webmcp: false },
-  params: {
-    family: { type: 'string', description: 'Filter by family name (substring)' }
-  },
+  input: v.strictObject({
+    family: v.optional(v.pipe(v.string(), v.description('Filter by family name (substring)')))
+  }),
   execute: (figma, args) => {
     const fonts = new Map<string, Set<number>>()
     const page = figma.currentPage
@@ -340,9 +345,11 @@ export const listAvailableFonts = defineTool({
     'verify actual CanvasKit loading and glyph readiness.',
   execution: { kind: 'async', mutation: 'none' },
   exposure: { webmcp: false },
-  params: {
-    family: { type: 'string', description: 'Filter by family name (substring, case-insensitive)' }
-  },
+  input: v.strictObject({
+    family: v.optional(
+      v.pipe(v.string(), v.description('Filter by family name (substring, case-insensitive)'))
+    )
+  }),
   execute: async (figma, args) => {
     const fonts = await figma.listAvailableFontsAsync()
     let families = uniq(fonts.map((font) => font.fontName.family))

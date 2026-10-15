@@ -1,73 +1,61 @@
 import * as Y from 'yjs'
 
-import { ensureMotionTimelineIds, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { siblingOrderKeys } from '@open-pencil/scene-graph/order-keys'
 
-import { docStateApplyLosesLocal, type DocStateConflictKind } from '@/app/collab/conflict'
+import type { DocStateConflictKind } from '@/app/collab/conflict'
+import { createMotionGraphSync, syncNodePropsToYMap, yNodeToProps } from '@/app/collab/motion-sync'
 import {
-  clearMotionSpecYMap,
-  compactMotionTimelineYMap,
-  MOTION_TIMELINES_DOC_KEY,
-  MOTION_TIMELINE_CRDT_LIMITS,
-  MOTION_TIMELINE_CHECKPOINT_ORIGIN,
   MOTION_TIMELINE_LOCAL_ORIGIN,
-  readMotionSpecFromYMap,
-  syncMotionSpecToYMap,
+  MOTION_TIMELINES_DOC_KEY,
   type MotionTimelineConflict
 } from '@/app/collab/motion-timeline-yjs'
+
+export { syncNodePropsToYMap, yNodeToProps }
+
+import { decodeNodeFromYjs } from '@/app/collab/node-codec'
 import {
-  decodeNodeFromYjs,
-  syncEncodedNodeToYMap,
-  type DecodedYjsNodeProps
-} from '@/app/collab/node-codec'
+  claimRoot,
+  markTreeFormat,
+  writeOrderKey,
+  writePage,
+  writeParentEntry,
+  writeRootEntries,
+  type YNodes
+} from '@/app/collab/shared-tree/fields'
+import { migrateLegacyLayers, TREE_MIGRATION_ORIGIN } from '@/app/collab/shared-tree/migration'
+import {
+  applySharedTree,
+  createLocalEdit,
+  createSharedTree,
+  isLocalEditEmpty,
+  keepSharedLayers,
+  pageOf,
+  recordLocalLayers,
+  writeLocalPlacement,
+  type LocalEdit,
+  type SharedTree
+} from '@/app/collab/shared-tree/sync'
 import type { EditorStore } from '@/app/editor/active-store'
 
-type ConflictHandler = (kind: DocStateConflictKind) => void
-
-type YNodes = Y.Map<Y.Map<unknown>>
 type YImages = Y.Map<Uint8Array>
-type YMotionTimelines = Y.Map<Y.Map<unknown>>
-
-interface MotionTimelineDocumentCheckpoint {
-  invalidTimelinesRemoved: number
-  orphanTimelinesRemoved: number
-  derivedTimelinesRemoved: number
-  overLimitTimelinesRemoved: number
-}
-
-interface MotionTimelineCandidate {
-  nodeId: string
-  graphNode: boolean
-}
-
-const MOTION_TIMELINE_DOCUMENT_CONFLICT_ID = '$document'
-const INSTANCE_DERIVED_COLLAB_FIELDS = [
-  'motion',
-  'motionScene',
-  'motionDrivers',
-  'prototype',
-  'transitionKey',
-  'generatedEffect'
-] as const satisfies readonly (keyof SceneNode)[]
-type InstanceDerivedCollabField = (typeof INSTANCE_DERIVED_COLLAB_FIELDS)[number]
 
 type GraphBindingOptions = {
   store: EditorStore
   getYdoc: () => Y.Doc | null
   getYnodes: () => YNodes | null
-  getYmotions?: () => YMotionTimelines | null
   getSuppressGraphSync: () => boolean
-  setSuppressYjsEvents: (value: boolean) => void
-  syncNodeToYjs: (nodeId: string) => void
+  syncLocalEdit: (edit: LocalEdit) => void
 }
 
 type YjsObserverOptions = {
   store: EditorStore
-  ynodes: Y.Map<Y.Map<unknown>>
-  yimages: Y.Map<Uint8Array>
-  ymotions?: YMotionTimelines
+  ynodes: YNodes
+  yimages: YImages
   getSuppressYjsEvents: () => boolean
   setSuppressGraphSync: (value: boolean) => void
   applyYjsToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
+  ymotions?: Y.Map<Y.Map<unknown>>
   applyYjsMotionToGraph?: (events: Y.YEvent<Y.Map<unknown>>[]) => void
 }
 
@@ -76,12 +64,10 @@ type YjsGraphSyncOptions = {
   getYdoc: () => Y.Doc | null
   getYnodes: () => YNodes | null
   getYimages: () => YImages | null
-  getYmotions?: () => YMotionTimelines | null
-  getSuppressYjsEvents?: () => boolean
   setSuppressYjsEvents: (value: boolean) => void
-  // Phase 3 §4.5 — reported when applying a remote docState/page-state update
-  // would overwrite a concurrent local edit (whole-field LWW, no auto-merge).
-  getConflictHandler?: () => ConflictHandler | undefined
+  getYmotions?: () => Y.Map<Y.Map<unknown>> | null
+  getSuppressYjsEvents?: () => boolean
+  getConflictHandler?: () => ((kind: DocStateConflictKind) => void) | undefined
   getMotionConflictHandler?: () => ((conflict: MotionTimelineConflict) => void) | undefined
 }
 
@@ -89,61 +75,66 @@ function logCollabSyncError(context: string, error: unknown) {
   console.error(`[Collab] ${context}:`, error)
 }
 
-// Clone across the graph/Yjs boundary to avoid shared mutable nested data.
-export function syncNodePropsToYMap(node: SceneNode, ynode: Y.Map<unknown>) {
-  const currentKeys = new Set(Object.keys(node))
-  for (const key of ynode.keys()) {
-    if (!currentKeys.has(key)) ynode.delete(key)
-  }
-  syncEncodedNodeToYMap(node, ynode)
-}
-
-// Compatibility export retained for the fork's focused collaboration tests and downstream callers.
-// oxlint-disable-next-line open-pencil/no-useless-pass-through-wrappers
-export function yNodeToProps(ynode: Y.Map<unknown>): DecodedYjsNodeProps {
-  return decodeNodeFromYjs(ynode)
-}
-
+/**
+ * Collects the graph events of one edit and syncs them once, after the edit, in one Yjs
+ * transaction, so a move writes its parent entry and order key against the final layer order.
+ */
 export function bindCollabGraphEvents({
   store,
   getYdoc,
   getYnodes,
-  getYmotions,
   getSuppressGraphSync,
-  setSuppressYjsEvents,
-  syncNodeToYjs
+  syncLocalEdit
 }: GraphBindingOptions) {
-  function onGraphMutation(nodeId: string) {
-    if (!getSuppressGraphSync() && getYdoc() && getYnodes()) {
-      syncNodeToYjs(nodeId)
-    }
+  let edit = createLocalEdit()
+  let bound = true
+
+  function record(update: (pending: LocalEdit) => void) {
+    if (getSuppressGraphSync() || !getYdoc() || !getYnodes()) return
+    if (isLocalEditEmpty(edit)) queueMicrotask(flush)
+    update(edit)
+  }
+
+  function flush() {
+    const pending = edit
+    edit = createLocalEdit()
+    if (bound && getYdoc() && getYnodes()) syncLocalEdit(pending)
   }
 
   const unbinds = [
-    store.onEditorEvent('node:updated', (id) => onGraphMutation(id)),
-    store.onEditorEvent('node:created', (node) => onGraphMutation(node.id)),
-    store.onEditorEvent('node:reparented', (nodeId) => onGraphMutation(nodeId)),
-    store.onEditorEvent('node:reordered', (nodeId) => onGraphMutation(nodeId)),
-    store.onEditorEvent('node:deleted', (id) => {
-      const ydoc = getYdoc()
-      const ynodes = getYnodes()
-      const ymotions = getYmotions?.()
-      if (!getSuppressGraphSync() && ydoc && ynodes) {
-        setSuppressYjsEvents(true)
-        try {
-          ydoc.transact(() => {
-            ynodes.delete(id)
-            ymotions?.delete(id)
-          })
-        } catch (error) {
-          logCollabSyncError('Failed to delete synced node', error)
-        } finally {
-          setSuppressYjsEvents(false)
-        }
-      }
-    })
+    store.onEditorEvent('node:updated', (id, changes) =>
+      record((pending) => {
+        // A direct parentId write, as a checkpoint restore makes, syncs as a move when it
+        // differs from the shared tree; a childIds write re-keys the children out of order.
+        pending.changed.add(id)
+        if ('childIds' in changes) pending.reordered.add(id)
+      })
+    ),
+    store.onEditorEvent('node:created', (node) =>
+      record((pending) => {
+        pending.changed.add(node.id)
+        pending.placed.add(node.id)
+      })
+    ),
+    store.onEditorEvent('node:reparented', (nodeId, oldParentId) =>
+      record((pending) => {
+        pending.changed.add(nodeId)
+        pending.placed.add(nodeId)
+        if (oldParentId) pending.previousParents.add(oldParentId)
+      })
+    ),
+    store.onEditorEvent('node:reordered', (nodeId, _parentId, _index, previousParentId) =>
+      record((pending) => {
+        pending.placed.add(nodeId)
+        if (previousParentId) pending.previousParents.add(previousParentId)
+      })
+    ),
+    store.onEditorEvent('node:deleted', (id) => record((pending) => pending.deleted.add(id)))
   ]
   return () => {
+    // An edit made just before leaving still reaches the room.
+    if (!isLocalEditEmpty(edit)) flush()
+    bound = false
     for (const unbind of unbinds) unbind()
   }
 }
@@ -152,14 +143,15 @@ export function registerYjsObservers({
   store,
   ynodes,
   yimages,
-  ymotions,
   getSuppressYjsEvents,
   setSuppressGraphSync,
   applyYjsToGraph,
+  ymotions,
   applyYjsMotionToGraph
-}: YjsObserverOptions) {
-  ynodes.observeDeep((events) => {
-    if (getSuppressYjsEvents()) return
+}: YjsObserverOptions): () => void {
+  function onNodes(events: Y.YEvent<Y.Map<unknown>>[], transaction: Y.Transaction) {
+    // A migration this peer wrote was applied by the change that triggered it.
+    if (getSuppressYjsEvents() || transaction.origin === TREE_MIGRATION_ORIGIN) return
     setSuppressGraphSync(true)
     try {
       applyYjsToGraph(events)
@@ -169,34 +161,9 @@ export function registerYjsObservers({
     } finally {
       setSuppressGraphSync(false)
     }
-  })
-
-  const motionTimelines =
-    ymotions ??
-    (ynodes.doc ? ynodes.doc.getMap<Y.Map<unknown>>(MOTION_TIMELINES_DOC_KEY) : undefined)
-  if (motionTimelines && applyYjsMotionToGraph) {
-    let applyingMotionEvents = false
-    const applyMotionEvents = (events: Y.YEvent<Y.Map<unknown>>[]) => {
-      if (getSuppressYjsEvents() || applyingMotionEvents) return
-      applyingMotionEvents = true
-      setSuppressGraphSync(true)
-      try {
-        applyYjsMotionToGraph(events)
-        store.requestRender()
-      } catch (error) {
-        logCollabSyncError('Failed to apply remote Motion timeline changes', error)
-      } finally {
-        setSuppressGraphSync(false)
-        applyingMotionEvents = false
-      }
-    }
-    motionTimelines.observeDeep(applyMotionEvents)
-    // Existing IndexedDB/room state can predate observer registration in tests and reconnect paths.
-    // An empty event batch is the explicit hydrate signal and still runs the safety checkpoint.
-    if (motionTimelines.size > 0) applyMotionEvents([])
   }
 
-  yimages.observe((event) => {
+  function onImages(event: Y.YMapEvent<Uint8Array>) {
     if (getSuppressYjsEvents()) return
     try {
       for (const [key, change] of event.changes.keys) {
@@ -211,7 +178,28 @@ export function registerYjsObservers({
     } catch (error) {
       logCollabSyncError('Failed to apply remote image changes', error)
     }
-  })
+  }
+
+  const timelines = ymotions ?? ynodes.doc?.getMap<Y.Map<unknown>>(MOTION_TIMELINES_DOC_KEY)
+  function onMotion(events: Y.YEvent<Y.Map<unknown>>[]) {
+    if (getSuppressYjsEvents() || !applyYjsMotionToGraph) return
+    setSuppressGraphSync(true)
+    try {
+      applyYjsMotionToGraph(events)
+      store.requestRender()
+    } finally {
+      setSuppressGraphSync(false)
+    }
+  }
+  timelines?.observeDeep(onMotion)
+  if (timelines?.size) onMotion([])
+  ynodes.observeDeep(onNodes)
+  yimages.observe(onImages)
+  return () => {
+    timelines?.unobserveDeep(onMotion)
+    ynodes.unobserveDeep(onNodes)
+    yimages.unobserve(onImages)
+  }
 }
 
 export function createYjsGraphSync({
@@ -219,542 +207,208 @@ export function createYjsGraphSync({
   getYdoc,
   getYnodes,
   getYimages,
+  setSuppressYjsEvents,
   getYmotions,
   getSuppressYjsEvents,
-  setSuppressYjsEvents,
   getConflictHandler,
   getMotionConflictHandler
 }: YjsGraphSyncOptions) {
-  const normalizingMotionNodes = new Set<string>()
-
-  function motionTimelines(): YMotionTimelines | null {
-    return getYmotions?.() ?? getYdoc()?.getMap<Y.Map<unknown>>(MOTION_TIMELINES_DOC_KEY) ?? null
-  }
-
-  function compareAsciiIds(left: string, right: string): number {
-    if (left < right) return -1
-    if (left > right) return 1
-    return 0
-  }
-
-  function hasInstanceOverride(value: unknown, field: InstanceDerivedCollabField): boolean {
-    if (value instanceof Y.Map) return value.has(field)
-    return value !== null && typeof value === 'object' && Object.hasOwn(value, field)
-  }
-
-  function yNodeType(ynode: Y.Map<unknown> | undefined): SceneNode['type'] | undefined {
-    const type = ynode?.get('type')
-    return typeof type === 'string' ? (type as SceneNode['type']) : undefined
-  }
-
-  function ownsIndependentMotionTimeline(
-    node: SceneNode | undefined,
-    ynode: Y.Map<unknown> | undefined
-  ): boolean {
-    const type = yNodeType(ynode) ?? node?.type
-    if (type !== 'INSTANCE') return true
-    if (ynode?.has('overrides')) return hasInstanceOverride(ynode.get('overrides'), 'motion')
-    return Boolean(node && Object.hasOwn(node.overrides, 'motion'))
-  }
-
-  function compareTimelineCandidates(
-    left: MotionTimelineCandidate,
-    right: MotionTimelineCandidate
-  ): number {
-    if (left.graphNode !== right.graphNode) return left.graphNode ? -1 : 1
-    return compareAsciiIds(left.nodeId, right.nodeId)
-  }
-
-  function insertTimelineCandidate(
-    retained: MotionTimelineCandidate[],
-    candidate: MotionTimelineCandidate
-  ): MotionTimelineCandidate | undefined {
-    let index = 0
-    while (index < retained.length && compareTimelineCandidates(retained[index], candidate) <= 0) {
-      index++
-    }
-    retained.splice(index, 0, candidate)
-    if (retained.length <= MOTION_TIMELINE_CRDT_LIMITS.maxStoredTimelineNodes) return undefined
-    return retained.pop()
-  }
-
-  function compactMotionTimelineDocument(
-    timelines: YMotionTimelines
-  ): MotionTimelineDocumentCheckpoint {
-    const store = getStore()
-    const ynodes = getYnodes()
-    const retained: MotionTimelineCandidate[] = []
-    const result: MotionTimelineDocumentCheckpoint = {
-      invalidTimelinesRemoved: 0,
-      orphanTimelinesRemoved: 0,
-      derivedTimelinesRemoved: 0,
-      overLimitTimelinesRemoved: 0
-    }
-
-    for (const [nodeId, timeline] of timelines.entries()) {
-      if (!(timeline instanceof Y.Map)) {
-        timelines.delete(nodeId)
-        result.invalidTimelinesRemoved++
-        continue
-      }
-      const node = store.graph.getNode(nodeId)
-      const ynode = ynodes?.get(nodeId)
-      const pendingNode = ynode instanceof Y.Map && yNodeType(ynode) !== undefined
-      if (!node && !pendingNode) {
-        timelines.delete(nodeId)
-        result.orphanTimelinesRemoved++
-        continue
-      }
-      if (!ownsIndependentMotionTimeline(node, ynode)) {
-        timelines.delete(nodeId)
-        result.derivedTimelinesRemoved++
-        continue
-      }
-      const evicted = insertTimelineCandidate(retained, {
-        nodeId,
-        graphNode: node !== undefined
-      })
-      if (!evicted) continue
-      timelines.delete(evicted.nodeId)
-      result.overLimitTimelinesRemoved++
-    }
-    return result
-  }
-
-  function reportMotionDocumentCheckpoint(result: MotionTimelineDocumentCheckpoint): void {
-    const removed =
-      result.invalidTimelinesRemoved +
-      result.orphanTimelinesRemoved +
-      result.derivedTimelinesRemoved +
-      result.overLimitTimelinesRemoved
-    if (removed === 0) return
-    getMotionConflictHandler?.()?.({
-      nodeId: MOTION_TIMELINE_DOCUMENT_CONFLICT_ID,
-      code: 'resource-limit',
-      message:
-        `Quarantined ${removed} document Motion timelines ` +
-        `(${result.overLimitTimelinesRemoved} over limit, ` +
-        `${result.orphanTimelinesRemoved} orphan, ` +
-        `${result.derivedTimelinesRemoved} derived instance, ` +
-        `${result.invalidTimelinesRemoved} invalid)`
-    })
-  }
-
-  function checkpointMotionTimelineDocument(): MotionTimelineDocumentCheckpoint | undefined {
-    const timelines = motionTimelines()
-    if (!timelines) return undefined
-    const ydoc = getYdoc()
-    const wasSuppressed = getSuppressYjsEvents?.() ?? false
-    if (!wasSuppressed) setSuppressYjsEvents(true)
-    let result: MotionTimelineDocumentCheckpoint | undefined
-    try {
-      if (ydoc) {
-        ydoc.transact(() => {
-          result = compactMotionTimelineDocument(timelines)
-        }, MOTION_TIMELINE_CHECKPOINT_ORIGIN)
-      } else {
-        result = compactMotionTimelineDocument(timelines)
-      }
-    } finally {
-      if (!wasSuppressed) setSuppressYjsEvents(false)
-    }
-    if (result) reportMotionDocumentCheckpoint(result)
-    return result
-  }
-
-  function reportMotionCheckpoint(
-    nodeId: string,
-    compacted: ReturnType<typeof compactMotionTimelineYMap>
-  ): void {
-    const handler = getMotionConflictHandler?.()
-    if (!handler) return
-    const resourceQuarantined =
-      compacted.liveTracksRemoved + compacted.liveKeyframesRemoved + compacted.resourceFieldsRemoved
-    if (resourceQuarantined > 0) {
-      handler({
-        nodeId,
-        code: 'resource-limit',
-        message: `Quarantined ${resourceQuarantined} over-limit Motion timeline records or fields`
-      })
-    }
-    const invalidQuarantined = compacted.invalidRecordsRemoved + compacted.schemaFieldsRemoved
-    if (invalidQuarantined > 0) {
-      handler({
-        nodeId,
-        code: 'invalid-timeline',
-        message: `Quarantined ${invalidQuarantined} invalid Motion timeline records or fields`
-      })
-    }
-    const tombstonesRemoved = Math.max(
-      0,
-      compacted.tracksRemoved +
-        compacted.keyframesRemoved -
-        compacted.liveTracksRemoved -
-        compacted.liveKeyframesRemoved -
-        compacted.invalidRecordsRemoved
-    )
-    if (tombstonesRemoved > 0) {
-      handler({
-        nodeId,
-        code: 'tombstones-compacted',
-        message: `Compacted ${tombstonesRemoved} Motion timeline tombstones`
-      })
-    }
-  }
-
-  function checkpointMotionTimeline(nodeId: string, timeline: Y.Map<unknown>): void {
-    const ydoc = getYdoc()
-    const wasSuppressed = getSuppressYjsEvents?.() ?? false
-    if (!wasSuppressed) setSuppressYjsEvents(true)
-    let compacted: ReturnType<typeof compactMotionTimelineYMap> | undefined
-    try {
-      if (ydoc) {
-        ydoc.transact(() => {
-          compacted = compactMotionTimelineYMap(timeline)
-        }, MOTION_TIMELINE_CHECKPOINT_ORIGIN)
-      } else {
-        compacted = compactMotionTimelineYMap(timeline)
-      }
-    } finally {
-      if (!wasSuppressed) setSuppressYjsEvents(false)
-    }
-    if (compacted) reportMotionCheckpoint(nodeId, compacted)
-  }
-
-  function normalizedV3Motion(node: SceneNode): MotionSpec | undefined {
-    if (node.motion?.version !== 3) return node.motion
-    const normalized = ensureMotionTimelineIds(node.motion)
-    if (JSON.stringify(normalized) === JSON.stringify(node.motion)) return normalized
-    if (!normalizingMotionNodes.has(node.id)) {
-      normalizingMotionNodes.add(node.id)
-      try {
-        const changes: Partial<SceneNode> = { motion: normalized }
-        if (node.type === 'INSTANCE' && Object.hasOwn(node.overrides, 'motion')) {
-          changes.overrides = { ...node.overrides, motion: structuredClone(normalized) }
-        }
-        getStore().graph.updateNode(node.id, changes)
-      } finally {
-        normalizingMotionNodes.delete(node.id)
-      }
-    }
-    return normalized
-  }
-
-  function syncNodeProperties(
-    node: SceneNode,
-    ynode: Y.Map<unknown>,
-    motion: MotionSpec | undefined
-  ) {
-    const omitted = new Set<keyof SceneNode>()
-    if (node.type === 'INSTANCE') {
-      for (const field of INSTANCE_DERIVED_COLLAB_FIELDS) {
-        if (!Object.hasOwn(node.overrides, field)) omitted.add(field)
-      }
-    }
-    if (motion?.version === 3) omitted.add('motion')
-    const collaborativeProps = Object.fromEntries(
-      Object.entries(node).filter(([key]) => !omitted.has(key as keyof SceneNode))
-    )
-    syncNodePropsToYMap(collaborativeProps as SceneNode, ynode)
-  }
-
-  function syncMotionTimeline(node: SceneNode, motion: MotionSpec | undefined): void {
-    const timelines = motionTimelines()
-    if (!timelines) return
-    const current = timelines.get(node.id)
-    if (node.type === 'INSTANCE' && !Object.hasOwn(node.overrides, 'motion')) {
-      if (current !== undefined) timelines.delete(node.id)
-      return
-    }
-    if (motion?.version === 3) {
-      const target = current instanceof Y.Map ? current : new Y.Map<unknown>()
-      if (target !== current) timelines.set(node.id, target)
-      syncMotionSpecToYMap(motion, target)
-      const compacted = compactMotionTimelineYMap(target)
-      reportMotionCheckpoint(node.id, compacted)
-    } else if (current instanceof Y.Map) {
-      clearMotionSpecYMap(current)
-    }
-  }
   let pendingPageSwitch: { store: EditorStore; pageId: string } | undefined
+  let shared: SharedTree | null = null
+  const motion = createMotionGraphSync({
+    getStore,
+    getYdoc,
+    getYnodes,
+    getYmotions,
+    getSuppressYjsEvents,
+    setSuppressYjsEvents,
+    getConflictHandler,
+    getMotionConflictHandler
+  })
 
-  function syncNodeToYjs(nodeId: string) {
-    if (normalizingMotionNodes.has(nodeId)) return
-    const store = getStore()
+  function sharedTreeOf(ydoc: Y.Doc): SharedTree {
+    if (shared?.ydoc !== ydoc) {
+      shared = createSharedTree(ydoc, () => getStore().graph, getYnodes)
+    }
+    return shared
+  }
+
+  function writeNode(graph: SceneGraph, ynodes: YNodes, nodeId: string): void {
+    const node = graph.getNode(nodeId)
+    if (!node) return
+    let ynode = ynodes.get(nodeId)
+    if (!ynode) {
+      ynode = new Y.Map()
+      ynodes.set(nodeId, ynode)
+    }
+    const spec = motion.normalizedV3Motion(node)
+    motion.syncNodeProperties(node, ynode, spec)
+    motion.syncMotionTimeline(node, spec)
+
+    const localYimages = getYimages()
+    if (!localYimages) return
+    for (const fill of node.fills) {
+      if (fill.imageHash && !localYimages.has(fill.imageHash)) {
+        const data = graph.images.get(fill.imageHash)
+        if (data) localYimages.set(fill.imageHash, data)
+      }
+    }
+  }
+
+  /** Writes one local edit: changed layers' fields, deletions, and where layers now sit. */
+  function syncLocalEdit(edit: LocalEdit) {
+    const graph = getStore().graph
     const ydoc = getYdoc()
     const ynodes = getYnodes()
     if (!ydoc || !ynodes) return
-    const node = store.graph.getNode(nodeId)
-    if (!node) return
-    const motion = normalizedV3Motion(node)
-
-    const localYimages = getYimages()
+    const tree = sharedTreeOf(ydoc)
     setSuppressYjsEvents(true)
     try {
       ydoc.transact(() => {
-        let ynode = ynodes.get(nodeId)
-        if (!ynode) {
-          ynode = new Y.Map()
-          ynodes.set(nodeId, ynode)
-        }
-        syncNodeProperties(node, ynode, motion)
-        syncMotionTimeline(node, motion)
-
-        if (localYimages) {
-          for (const fill of node.fills) {
-            if (fill.imageHash && !localYimages.has(fill.imageHash)) {
-              const data = store.graph.images.get(fill.imageHash)
-              if (data) localYimages.set(fill.imageHash, data)
-            }
+        for (const id of edit.deleted) {
+          if (graph.getNode(id)) {
+            // Deleted and restored within the edit, as an undo can.
+            edit.changed.add(id)
+            edit.placed.add(id)
+            continue
           }
+          ynodes.delete(id)
+          getYdoc()?.getMap(MOTION_TIMELINES_DOC_KEY).delete(id)
+          tree.tree.deleteLayer(id)
         }
+        keepSharedLayers(tree, graph, edit)
+        for (const id of edit.changed) writeNode(graph, ynodes, id)
+        for (const id of edit.placed) if (!ynodes.has(id)) writeNode(graph, ynodes, id)
+        writeLocalPlacement(tree, graph, ynodes, ydoc.getMap('meta'), edit)
       }, MOTION_TIMELINE_LOCAL_ORIGIN)
     } catch (error) {
-      logCollabSyncError(`Failed to sync node ${nodeId}`, error)
+      logCollabSyncError('Failed to sync local edit', error)
     } finally {
       setSuppressYjsEvents(false)
     }
-    checkpointMotionTimelineDocument()
   }
 
+  function syncNodeToYjs(nodeId: string) {
+    const edit = createLocalEdit()
+    edit.changed.add(nodeId)
+    syncLocalEdit(edit)
+  }
+
+  /**
+   * Shares this peer's whole document, as Share does: every layer, its parent with counter 0, its
+   * order, and its page, with its root as the room's.
+   */
   function syncAllNodesToYjs() {
-    const store = getStore()
+    const graph = getStore().graph
     const ydoc = getYdoc()
     const ynodes = getYnodes()
     if (!ydoc || !ynodes) return
-    const localYimages = getYimages()
     setSuppressYjsEvents(true)
     try {
       ydoc.transact(() => {
-        for (const node of store.graph.getAllNodes()) {
-          const motion = normalizedV3Motion(node)
-          let ynode = ynodes.get(node.id)
-          if (!ynode) {
-            ynode = new Y.Map()
-            ynodes.set(node.id, ynode)
-          }
-          syncNodeProperties(node, ynode, motion)
-          syncMotionTimeline(node, motion)
+        for (const node of graph.getAllNodes()) writeNode(graph, ynodes, node.id)
+        for (const node of graph.getAllNodes()) {
+          const ynode = ynodes.get(node.id)
+          if (!ynode) continue
+          if (node.parentId === null) writeRootEntries(ynode)
+          const pageId = pageOf(graph, node.id)
+          if (pageId !== undefined) writePage(ynode, pageId)
+          const children = node.childIds.filter((id) => graph.getNode(id)?.parentId === node.id)
+          const keys = siblingOrderKeys(children.map(() => undefined))
+          children.forEach((childId, index) => {
+            const child = ynodes.get(childId)
+            if (!child) return
+            writeParentEntry(child, node.id, 0)
+            writeOrderKey(child, keys[index])
+          })
         }
+        claimRoot(ydoc.getMap('meta'), graph.rootId)
+        markTreeFormat(ydoc.getMap('meta'))
       }, MOTION_TIMELINE_LOCAL_ORIGIN)
-      if (localYimages) {
-        ydoc.transact(() => {
-          for (const [hash, data] of store.graph.images) {
-            if (!localYimages.has(hash)) {
-              localYimages.set(hash, data)
-            }
-          }
-        })
-      }
+      recordLocalLayers(sharedTreeOf(ydoc), ynodes, ydoc.getMap('meta'), ynodes.keys())
     } catch (error) {
       logCollabSyncError('Failed to sync document', error)
     } finally {
       setSuppressYjsEvents(false)
     }
-    checkpointMotionTimelineDocument()
   }
 
   function applyYjsToGraph(events: Y.YEvent<Y.Map<unknown>>[]) {
     const store = getStore()
+    const ydoc = getYdoc()
     const ynodes = getYnodes()
-    if (!ynodes) return
-    const affectedMotionNodes = new Set<string>()
+    if (!ydoc || !ynodes) return
+    const changed = new Set<string>()
+    const deleted = new Set<string>()
+    const deletedFields = new Map<string, Set<keyof SceneNode>>()
     for (const event of events) {
       if (event.target === ynodes) {
         for (const [key, change] of event.changes.keys) {
-          if (change.action === 'add') {
-            const ynode = ynodes.get(key)
-            if (ynode) {
-              applyYnodeToGraph(key, ynode)
-              affectedMotionNodes.add(key)
-            }
-          } else if (change.action === 'delete') {
-            store.graph.deleteNode(key)
+          if (change.action === 'delete') deleted.add(key)
+          else changed.add(key)
+        }
+        continue
+      }
+      // The path from the nodes map starts with the layer's id, whether its own field changed
+      // or an entry of its nested parents map did.
+      const [nodeId] = event.path
+      if (typeof nodeId === 'string') {
+        changed.add(nodeId)
+        if (event.target === ynodes.get(nodeId)) {
+          const fields = deletedFields.get(nodeId) ?? new Set<keyof SceneNode>()
+          for (const [field, change] of event.changes.keys) {
+            if (change.action === 'delete') fields.add(field as keyof SceneNode)
           }
-        }
-      } else if (event.target.parent === ynodes) {
-        const nodeId = findNodeIdForYMap(event.target)
-        if (nodeId) {
-          const ynode = ynodes.get(nodeId)
-          const deletedFields = [...event.changes.keys]
-            .filter(([, change]) => change.action === 'delete')
-            .map(([key]) => key as keyof SceneNode)
-          if (ynode) {
-            applyYnodeToGraph(nodeId, ynode, deletedFields)
-            affectedMotionNodes.add(nodeId)
-          }
+          deletedFields.set(nodeId, fields)
         }
       }
     }
-    const timelines = motionTimelines()
-    if (!timelines || timelines.size === 0) return
-    checkpointMotionTimelineDocument()
-    for (const nodeId of [...affectedMotionNodes].sort()) {
-      if (timelines.has(nodeId) && store.graph.getNode(nodeId)) {
-        applyMotionSnapshot(nodeId)
-      }
+
+    migrateLegacyLayers(ydoc, ynodes, ydoc.getMap('meta'), changed)
+    for (const nodeId of changed) {
+      const ynode = ynodes.get(nodeId)
+      if (ynode) applyYnodeToGraph(store.graph, nodeId, ynode, deletedFields.get(nodeId))
     }
+    const gone = [...deleted].filter((nodeId) => !ynodes.has(nodeId))
+    // Moves go first, so a layer moved out of a deleted parent survives the deletion.
+    applySharedTree(sharedTreeOf(ydoc), store.graph, ynodes, ydoc.getMap('meta'), changed, gone)
+    for (const nodeId of gone) store.graph.deleteNode(nodeId)
+    motion.checkpointMotionTimelineDocument()
+    for (const nodeId of changed)
+      if (store.graph.getNode(nodeId)) motion.applyMotionSnapshot(nodeId)
+    ensureCurrentPageExists(store)
   }
 
-  function parentOf(value: unknown): unknown {
-    return value && typeof value === 'object' && 'parent' in value
-      ? (value as { parent: unknown }).parent
-      : null
-  }
-
-  function findMotionOwnerId(target: unknown): string | null {
-    const timelines = motionTimelines()
-    if (!timelines) return null
-    let current: unknown = target
-    while (parentOf(current) && parentOf(current) !== timelines) current = parentOf(current)
-    if (!current || parentOf(current) !== timelines) return null
-    for (const [nodeId, value] of timelines.entries()) {
-      if (value === current) return nodeId
-    }
-    return null
-  }
-
-  function hasOpaqueLegacyMotion(nodeId: string): boolean {
-    const opaqueMotion = getYnodes()?.get(nodeId)?.get('motion')
-    return Boolean(
-      opaqueMotion &&
-      typeof opaqueMotion === 'object' &&
-      'version' in opaqueMotion &&
-      (opaqueMotion as { version?: unknown }).version !== 3
-    )
-  }
-
-  function applyDecodedMotion(node: SceneNode, motion: MotionSpec | undefined): void {
-    const store = getStore()
-    if (!motion) {
-      if (Object.hasOwn(node, 'motion')) store.graph.clearNodeFields(node.id, ['motion'])
-      if (node.type === 'INSTANCE' && Object.hasOwn(node.overrides, 'motion')) {
-        store.graph.updateNode(node.id, { overrides: { ...node.overrides, motion: null } })
-      }
-      return
-    }
-    const changes: Partial<SceneNode> = { motion }
-    if (node.type === 'INSTANCE' && Object.hasOwn(node.overrides, 'motion')) {
-      changes.overrides = { ...node.overrides, motion: structuredClone(motion) }
-    }
-    store.graph.updateNode(node.id, changes)
-  }
-
-  function applyMotionSnapshot(nodeId: string): void {
-    const timeline = motionTimelines()?.get(nodeId)
-    if (!(timeline instanceof Y.Map)) return
-    const store = getStore()
-    const node = store.graph.getNode(nodeId)
-    if (!node) return
-    if (node.type === 'INSTANCE' && !Object.hasOwn(node.overrides, 'motion')) return
-    checkpointMotionTimeline(nodeId, timeline)
-    if (hasOpaqueLegacyMotion(nodeId)) return
-    const result = readMotionSpecFromYMap(nodeId, timeline)
-    for (const issue of result.conflicts) getMotionConflictHandler?.()?.(issue)
-    applyDecodedMotion(node, result.motion)
-  }
-
-  function applyYjsMotionToGraph(events: Y.YEvent<Y.Map<unknown>>[]): void {
-    const timelines = motionTimelines()
-    if (!timelines) return
-    checkpointMotionTimelineDocument()
-    const affected = new Set<string>()
-    if (events.length === 0) {
-      for (const nodeId of timelines.keys()) {
-        if (getStore().graph.getNode(nodeId)) affected.add(nodeId)
-      }
-    }
-    for (const event of events) {
-      if (event.target === timelines) {
-        for (const [nodeId] of event.changes.keys) {
-          if (timelines.has(nodeId) && getStore().graph.getNode(nodeId)) affected.add(nodeId)
-        }
-      } else {
-        const nodeId = findMotionOwnerId(event.target)
-        if (nodeId) affected.add(nodeId)
-      }
-    }
-    for (const nodeId of [...affected].sort()) {
-      if (timelines.has(nodeId) && getStore().graph.getNode(nodeId)) {
-        applyMotionSnapshot(nodeId)
-      }
-    }
-  }
-
-  function findNodeIdForYMap(ymap: Y.Map<unknown>): string | null {
-    const ynodes = getYnodes()
-    if (!ynodes) return null
-    for (const [key, value] of ynodes.entries()) {
-      if (value === ymap) return key
-    }
-    return null
-  }
-
-  function reportDocStateConflicts(existing: SceneNode, props: Record<string, unknown>) {
-    const handler = getConflictHandler?.()
-    if (!handler) return
-    // §4.5 — these two array collections are whole-field LWW; if applying the
-    // remote value would drop a concurrent local entry, surface it (no auto-merge).
-    if ('state' in props && docStateApplyLosesLocal(existing.state, props.state)) {
-      handler('state')
-    }
-    if (
-      'lowcodeDocumentState' in props &&
-      docStateApplyLosesLocal(existing.lowcodeDocumentState, props.lowcodeDocumentState)
-    ) {
-      handler('docState')
-    }
-  }
-
-  function derivedInstanceFields(
-    existing: SceneNode | undefined,
-    props: Record<string, unknown>
-  ): Set<InstanceDerivedCollabField> {
-    const type = typeof props.type === 'string' ? props.type : existing?.type
-    if (type !== 'INSTANCE') return new Set()
-    const overrides = Object.hasOwn(props, 'overrides') ? props.overrides : existing?.overrides
-    return new Set(
-      INSTANCE_DERIVED_COLLAB_FIELDS.filter((field) => !hasInstanceOverride(overrides, field))
-    )
-  }
-
+  /** Applies a layer's own fields; `applySharedTree` places it in the tree afterwards. */
   function applyYnodeToGraph(
+    graph: SceneGraph,
     nodeId: string,
     ynode: Y.Map<unknown>,
-    deletedFields: readonly (keyof SceneNode)[] = []
+    deletedFields: ReadonlySet<keyof SceneNode> = new Set()
   ) {
-    const store = getStore()
-    const existing = store.graph.getNode(nodeId)
-    const incomingProps = yNodeToProps(ynode)
-    const derivedFields = derivedInstanceFields(existing, incomingProps)
+    const existing = graph.getNode(nodeId)
+    const incoming = decodeNodeFromYjs(ynode)
+    const derived = motion.derivedInstanceFields(existing, incoming)
     const props = Object.fromEntries(
-      Object.entries(incomingProps).filter(
-        ([key]) => !derivedFields.has(key as InstanceDerivedCollabField)
+      Object.entries(incoming).filter(
+        ([key]) => !derived.has(key as Parameters<typeof derived.has>[0])
       )
-    )
-    const parentId = typeof props.parentId === 'string' ? props.parentId : null
-
+    ) as typeof incoming
     if (existing) {
-      reportDocStateConflicts(existing, props)
-      const fieldsToClear = deletedFields.filter(
+      motion.reportDocStateConflicts(existing, props)
+      const deleted = [...deletedFields].filter(
         (key) =>
-          !derivedFields.has(key as InstanceDerivedCollabField) &&
+          !['parentId', 'childIds', 'textPicture', 'id', 'type'].includes(key) &&
+          !derived.has(key as Parameters<typeof derived.has>[0]) &&
           Object.hasOwn(existing, key) &&
           !Object.hasOwn(props, key)
       )
-      if (fieldsToClear.length > 0) store.graph.clearNodeFields(nodeId, fieldsToClear)
-      store.graph.updateNode(nodeId, props as Partial<SceneNode>)
-      if (parentId === null) store.graph.rootId = nodeId
-      ensureCurrentPageExists(store)
+      if (deleted.length) graph.clearNodeFields(nodeId, deleted)
+      graph.updateNode(nodeId, props)
       return
     }
-
-    const type = props.type as SceneNode['type'] | undefined
-    if (!type) return
-    // Parent childIds may arrive before or after the child node.
-    store.graph.createNodeWithId(nodeId, type, parentId, props as Partial<SceneNode>)
-    if (parentId === null) store.graph.rootId = nodeId
-    ensureCurrentPageExists(store)
+    const type = props.type
+    if (type) graph.createNodeWithId(nodeId, type, null, { ...props, childIds: [] })
   }
 
   function ensureCurrentPageExists(store: EditorStore) {
@@ -776,5 +430,11 @@ export function createYjsGraphSync({
       })
   }
 
-  return { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph, applyYjsMotionToGraph }
+  return {
+    syncNodeToYjs,
+    syncLocalEdit,
+    syncAllNodesToYjs,
+    applyYjsToGraph,
+    applyYjsMotionToGraph: motion.applyYjsMotionToGraph
+  }
 }

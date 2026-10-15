@@ -56,27 +56,27 @@ async function changeScope(context: Awaited<ReturnType<typeof fixture>>, change:
 }
 
 describe('system clipboard content editing boundary', () => {
-  test.each(changes)('late browser clipboard read is cancelled after %s', async (change) => {
+  test.each([...changes])('late browser clipboard read is cancelled after %s', async (change) => {
     const context = await fixture()
     const { store, html } = context
     setInMemoryClipboardHTML(html)
     const read = Promise.withResolvers<BrowserClipboardReadResult>()
     const clipboard = createBrowserSystemClipboard({
       write: async () => true,
-      readHTML: () => read.promise
+      read: () => read.promise
     })
     const pending = clipboard.paste(store)
     await changeScope(context, change)
     const before = store.snapshotDocument()
     const selection = new Set(store.state.selectedIds)
-    read.resolve({ available: true, html })
+    read.resolve({ available: true, html, text: null })
     expect(await pending).toBe(false)
     expect(store.documentSnapshotChanged(before)).toBe(false)
     expect(store.state.selectedIds).toEqual(selection)
     expect(getInMemoryClipboardHTML()).toBe(html)
   })
 
-  test.each(changes)(
+  test.each([...changes])(
     'late paste-to-replace read cannot delete content after %s',
     async (change) => {
       const context = await fixture()
@@ -100,10 +100,10 @@ describe('system clipboard content editing boundary', () => {
     const read = Promise.withResolvers<BrowserClipboardReadResult>()
     const clipboard = createBrowserSystemClipboard({
       write: async () => true,
-      readHTML: () => read.promise
+      read: () => read.promise
     })
     const pending = clipboard.paste(store)
-    read.resolve({ available: true, html })
+    read.resolve({ available: true, html, text: null })
     expect(await pending).toBe(true)
     const created = store.graph.getNode([...store.state.selectedIds][0])
     expect(created?.name).toBe('Clipboard source')
@@ -133,7 +133,7 @@ describe('system clipboard content editing boundary', () => {
     const read = Promise.withResolvers<BrowserClipboardReadResult>()
     const clipboard = createBrowserSystemClipboard({
       write: async () => true,
-      readHTML: () => read.promise
+      read: () => read.promise
     })
     const pending = clipboard.paste(store)
     await changeScope(context, 'exit')

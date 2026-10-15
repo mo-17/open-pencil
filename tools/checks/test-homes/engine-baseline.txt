@@ -1,7 +1,7 @@
 # Unit tests still under tests/engine, the migration debt from
-# `bun tools/checks/test-homes/src/index.ts --write`.
-# home; remove a line here when its file moves. Regenerate with
 # packages/docs/development/testing.md. New tests go to the owner's canonical
+# home; remove a line here when its file moves. Regenerate with
+# `bun tools/checks/test-homes/src/index.ts --write`.
 tests/engine/acp/config-options.test.ts
 tests/engine/acp/context-usage.test.ts
 tests/engine/acp/diagnostics.test.ts
@@ -24,7 +24,6 @@ tests/engine/app/ai/context.test.ts
 tests/engine/app/ai/debug.test.ts
 tests/engine/app/ai/drafts.test.ts
 tests/engine/app/ai/failure.test.ts
-tests/engine/app/ai/harness/transport.test.ts
 tests/engine/app/ai/markdown.test.ts
 tests/engine/app/ai/model-roles.test.ts
 tests/engine/app/ai/model-settings.test.ts
@@ -87,7 +86,6 @@ tests/engine/app/codepen/export-zip.test.ts
 tests/engine/app/codepen/sidecar-packaging.test.ts
 tests/engine/app/codepen/visual-compare.test.ts
 tests/engine/app/color-style-row.test.ts
-tests/engine/app/demo.test.ts
 tests/engine/app/demo/viewport.test.ts
 tests/engine/app/deploy-history.test.ts
 tests/engine/app/design-brief/files.test.ts
@@ -122,7 +120,6 @@ tests/engine/app/editor/browser/font-provider-settings.test.ts
 tests/engine/app/editor/browser/fontsource-affected-faces.test.ts
 tests/engine/app/editor/browser/web-font-fetch.test.ts
 tests/engine/app/editor/canvas-font-loading.test.ts
-tests/engine/app/editor/collaboration-awareness.test.ts
 tests/engine/app/editor/flash.test.ts
 tests/engine/app/editor/font-status.test.ts
 tests/engine/app/editor/fonts/browser-fetch.test.ts
@@ -166,7 +163,6 @@ tests/engine/app/integrations/storage/google-drive/oauth.test.ts
 tests/engine/app/integrations/storage/google-drive/settings-race.test.ts
 tests/engine/app/integrations/storage/google-drive/tauri-transport.test.ts
 tests/engine/app/integrations/storage/google-drive/workspace-race.test.ts
-tests/engine/app/integrations/storage/list-objects.test.ts
 tests/engine/app/integrations/storage/namespace.test.ts
 tests/engine/app/integrations/storage/oauth-shared-validation.test.ts
 tests/engine/app/integrations/storage/onedrive/adapter.test.ts
@@ -669,7 +665,6 @@ tests/engine/clipboard/fixtures/gold-preview-roundtrip.test.ts
 tests/engine/clipboard/openpencil/green-50.test.ts
 tests/engine/clipboard/openpencil/images.test.ts
 tests/engine/clipboard/openpencil/vr-tour.test.ts
-tests/engine/collab/awareness-repaint.test.ts
 tests/engine/collab/conflict.test.ts
 tests/engine/collab/cursor-broadcast.test.ts
 tests/engine/collab/diagnostics-sanitization.test.ts
@@ -893,12 +888,12 @@ tests/engine/compiler/expo-adapter.test.ts
 tests/engine/compiler/expo-typecheck.test.ts
 tests/engine/compiler/external-link.test.ts
 tests/engine/compiler/file-upload.test.ts
-tests/engine/compiler/flutter/adapter.test.ts
-tests/engine/compiler/flutter/layout.test.ts
 tests/engine/compiler/flutter-preview/application-mode.test.ts
 tests/engine/compiler/flutter-preview/application-shell.test.ts
 tests/engine/compiler/flutter-preview/fig-roundtrip.test.ts
 tests/engine/compiler/flutter-preview/snapshot.test.ts
+tests/engine/compiler/flutter/adapter.test.ts
+tests/engine/compiler/flutter/layout.test.ts
 tests/engine/compiler/flutter/viewport.test.ts
 tests/engine/compiler/flutter/wrap-runs.test.ts
 tests/engine/compiler/fonts.test.ts
@@ -1359,19 +1354,6 @@ tests/engine/layout/cooperative.test.ts
 tests/engine/layout/grid-layout.test.ts
 tests/engine/layout/modules/modal-content.test.ts
 tests/engine/layout/modules/tabs-content.test.ts
-tests/engine/library/discovery.test.ts
-tests/engine/library/hash-normalization.test.ts
-tests/engine/library/instance-updates.test.ts
-tests/engine/library/materialize.test.ts
-tests/engine/library/metadata.test.ts
-tests/engine/library/preview.test.ts
-tests/engine/library/routed-catalog.test.ts
-tests/engine/library/selective.test.ts
-tests/engine/library/snapshot.test.ts
-tests/engine/library/source-publication.test.ts
-tests/engine/library/storage-catalog.test.ts
-tests/engine/library/update-groups.test.ts
-tests/engine/library/update.test.ts
 tests/engine/lint/basic.test.ts
 tests/engine/lint/motion.test.ts
 tests/engine/lint/variable-binding-validation.test.ts
@@ -1489,7 +1471,6 @@ tests/engine/profiler/frame-stats.test.ts
 tests/engine/profiler/gpu-timer.test.ts
 tests/engine/profiler/phase-timer.test.ts
 tests/engine/profiler/speedscope.test.ts
-tests/engine/random/basic.test.ts
 tests/engine/render/canvas/accordion/content.test.ts
 tests/engine/render/canvas/accordion/pixels.test.ts
 tests/engine/render/canvas/alert/content.test.ts

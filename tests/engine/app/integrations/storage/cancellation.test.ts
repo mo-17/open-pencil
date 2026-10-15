@@ -3,6 +3,10 @@ import { expect, test } from 'bun:test'
 import { createS3StorageAdapter } from '@/app/integrations/storage/s3/adapter'
 import { readDownloadResponse } from '@/app/integrations/storage/s3/client'
 import { storageFetch } from '@/app/integrations/storage/s3/fetch'
+import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
+import { createCredentialServices } from '@/app/settings/credentials/services'
+
+import { fetchStub } from '#tests/helpers/fetch'
 
 test('mid-stream cancellation discards partial bytes and stops progress', async () => {
   const abort = new AbortController()
@@ -17,9 +21,8 @@ test('mid-stream cancellation discards partial bytes and stops progress', async 
       cancelled = true
     }
   })
-  const response = new Response(stream, { headers: { 'content-length': '4' } })
   const reading = readDownloadResponse(
-    response,
+    new Response(stream, { headers: { 'content-length': '4' } }),
     ({ receivedBytes }) => {
       progress.push(receivedBytes)
       abort.abort()
@@ -34,14 +37,16 @@ test('mid-stream cancellation discards partial bytes and stops progress', async 
 
 test('external storage cancellation remains an AbortError rather than a timeout', async () => {
   const originalFetch = globalThis.fetch
-  globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
-    new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener(
-        'abort',
-        () => reject(new DOMException('Aborted', 'AbortError')),
-        { once: true }
-      )
-    })) as typeof fetch
+  globalThis.fetch = fetchStub(
+    (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true }
+        )
+      })
+  )
   const abort = new AbortController()
   const pending = storageFetch('https://storage.example.com/document.fig', {
     signal: abort.signal
@@ -56,7 +61,11 @@ test('external storage cancellation remains an AbortError rather than a timeout'
 
 test('pre-aborted storage downloads do not resolve credentials or start network work', async () => {
   let credentialResolutions = 0
+  const credentialServices = createCredentialServices(new MemoryCredentialStore())
   const adapter = createS3StorageAdapter({
+    profileId: 'default',
+    credentialManager: credentialServices.manager,
+    credentialResolver: credentialServices.resolver,
     preferences: {
       endpoint: 'https://storage.example.com',
       bucket: 'designs',

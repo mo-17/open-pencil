@@ -34,6 +34,8 @@ test('DataGrid inspector switches English and Chinese labels without changing st
   await selection.selectOption('multiple')
   await density.selectOption('comfortable')
   const before = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const owner = editor.graph.getNode([...editor.state.selectedIds][0])
     if (!owner) throw new Error('DataGrid missing')
@@ -57,6 +59,8 @@ test('DataGrid inspector switches English and Chinese labels without changing st
   await expect(chineseDensity).toHaveValue('comfortable')
   await expect(page.getByRole('checkbox', { name: '固定表头', exact: true })).toBeVisible()
   const after = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     return JSON.stringify(
       editor.graph.getNode([...editor.state.selectedIds][0])?.interactiveProps?.module

@@ -185,6 +185,6 @@ function textValue(): string {
       @commit-boolean="submit({ kind: 'boolean', event: $event })"
       @commit-json="submit({ kind: 'json', source: $event })"
     />
-    <p v-if="error" class="text-[10px] text-red-400">{{ error }}</p>
+    <p v-if="error" class="text-[10px] text-error">{{ error }}</p>
   </div>
 </template>

@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import {
   defineReviewedService,
   EMPTY_SERVICE_PARAMETERS,
@@ -218,7 +220,7 @@ export const HUBSPOT_CONTACTS_SERVICE = defineReviewedService({
         (entry) => {
           const first = serviceText(serviceValue(entry, 'properties', 'firstname'), 256)
           const last = serviceText(serviceValue(entry, 'properties', 'lastname'), 256)
-          const name = serviceText([first, last].filter(Boolean).join(' '), 512)
+          const name = serviceText(compact([first, last]).join(' '), 512)
           return serviceItem(serviceValue(entry, 'id'), name, {
             type: 'contact',
             timestamp:

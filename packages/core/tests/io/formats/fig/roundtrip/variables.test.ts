@@ -22,7 +22,12 @@ describe('variable roundtrip', () => {
 
     const graph = new SceneGraph()
     const col = graph.createCollection('Design Tokens')
-    graph.createVariable('color/primary', 'COLOR', col.id, { r: 0.23, g: 0.51, b: 0.96, a: 1 })
+    graph.createVariable('color/primary', 'COLOR', col.id, {
+      r: 0.23,
+      g: 0.51,
+      b: 0.96,
+      a: 1
+    })
     graph.createVariable('spacing/base', 'FLOAT', col.id, 8)
     graph.createVariable('visible', 'BOOLEAN', col.id, true)
     graph.createVariable('label', 'STRING', col.id, 'Hello')
@@ -38,25 +43,29 @@ describe('variable roundtrip', () => {
     expect(reimportedCol.variableIds).toHaveLength(4)
 
     const vars = [...reimported.variables.values()]
-    const colorVar = expectDefined(vars.find((v) => v.name === 'color/primary'))
-    expect(colorVar).toBeDefined()
-    expect(expectDefined(colorVar, 'colorVar').type).toBe('COLOR')
+    const colorVarMatch = vars.find((v) => v.name === 'color/primary')
+    expect(colorVarMatch).toBeDefined()
+    const colorVar = expectDefined(colorVarMatch, 'colorVar')
+    expect(colorVar.type).toBe('COLOR')
     const colorVal = Object.values(colorVar.valuesByMode)[0] as Color
     expect(colorVal.r).toBeCloseTo(0.23, 1)
 
-    const floatVar = expectDefined(vars.find((v) => v.name === 'spacing/base'))
-    expect(floatVar).toBeDefined()
-    expect(expectDefined(floatVar, 'floatVar').type).toBe('FLOAT')
+    const floatVarMatch = vars.find((v) => v.name === 'spacing/base')
+    expect(floatVarMatch).toBeDefined()
+    const floatVar = expectDefined(floatVarMatch, 'floatVar')
+    expect(floatVar.type).toBe('FLOAT')
     expect(Object.values(floatVar.valuesByMode)[0]).toBe(8)
 
-    const boolVar = expectDefined(vars.find((v) => v.name === 'visible'))
-    expect(boolVar).toBeDefined()
-    expect(expectDefined(boolVar, 'boolVar').type).toBe('BOOLEAN')
+    const boolVarMatch = vars.find((v) => v.name === 'visible')
+    expect(boolVarMatch).toBeDefined()
+    const boolVar = expectDefined(boolVarMatch, 'boolVar')
+    expect(boolVar.type).toBe('BOOLEAN')
     expect(Object.values(boolVar.valuesByMode)[0]).toBe(true)
 
-    const strVar = expectDefined(vars.find((v) => v.name === 'label'))
-    expect(strVar).toBeDefined()
-    expect(expectDefined(strVar, 'strVar').type).toBe('STRING')
+    const strVarMatch = vars.find((v) => v.name === 'label')
+    expect(strVarMatch).toBeDefined()
+    const strVar = expectDefined(strVarMatch, 'strVar')
+    expect(strVar.type).toBe('STRING')
     expect(Object.values(strVar.valuesByMode)[0]).toBe('Hello')
   })
 
@@ -66,15 +75,21 @@ describe('variable roundtrip', () => {
     const col = graph.createCollection('Content')
     const label = graph.createVariable('Badge Count', 'STRING', col.id, '9+')
     const page = graph.getPages()[0]
-    const text = graph.createNode('TEXT', page.id, { name: 'Label', text: '9+' })
+    const text = graph.createNode('TEXT', page.id, {
+      name: 'Label',
+      text: '9+'
+    })
     graph.bindVariable(text.id, 'text', label.id)
 
     const exported = await exportFigFile(graph)
     const reimported = await parseFigFile(exported.buffer as ArrayBuffer)
-    const node = Array.from(reimported.getAllNodes()).find(
-      (candidate) => candidate.type === 'TEXT' && candidate.name === 'Label'
+    const node = expectDefined(
+      [...reimported.getAllNodes()].find(
+        (candidate) => candidate.type === 'TEXT' && candidate.name === 'Label'
+      ),
+      'node'
     )
-    const bound = reimported.variables.get(expectDefined(node, 'node').boundVariables.text ?? '')
+    const bound = reimported.variables.get(node.boundVariables.text ?? '')
     expect(expectDefined(bound, 'bound').name).toBe('Badge Count')
     expect(expectDefined(node, 'Label').text).toBe('9+')
   })
@@ -102,11 +117,16 @@ describe('variable roundtrip', () => {
       width: 24,
       height: 24,
       fills: [
-        { type: 'SOLID', color: { r: 0.11, g: 0.1, b: 0.12, a: 1 }, opacity: 1, visible: true }
+        {
+          type: 'SOLID',
+          color: { r: 0.11, g: 0.1, b: 0.12, a: 1 },
+          opacity: 1,
+          visible: true
+        }
       ]
     })
     graph.bindVariable(icon.id, 'fills/0/color', onSurface.id)
-    const instance = expectDefined(graph.createInstance(component.id, page.id))
+    const instance = expectDefined(graph.createInstance(component.id, page.id), 'instance')
     const instanceIcon = expectDefined(graph.getChildren(instance.id)[0], 'instance icon')
     graph.bindVariable(instanceIcon.id, 'fills/0/color', onSurfaceVariant.id)
 
@@ -129,7 +149,12 @@ describe('variable roundtrip', () => {
     const graph = new SceneGraph()
     const col = graph.createCollection('Tokens')
     const floatVar = graph.createVariable('radius', 'FLOAT', col.id, 12)
-    const fillVar = graph.createVariable('surface', 'COLOR', col.id, { r: 1, g: 1, b: 1, a: 1 })
+    const fillVar = graph.createVariable('surface', 'COLOR', col.id, {
+      r: 1,
+      g: 1,
+      b: 1,
+      a: 1
+    })
     const strokeVar = graph.createVariable('border', 'COLOR', col.id, {
       r: 0.1,
       g: 0.2,
@@ -173,13 +198,10 @@ describe('variable roundtrip', () => {
     const exported = await exportFigFile(graph)
     const reimported = await parseFigFile(exported.buffer as ArrayBuffer)
 
-    const reimportedRect = expectDefined(
-      [...reimported.getAllNodes()].find((n) => n.name === 'Bound Rect')
-    )
-    expect(reimportedRect).toBeDefined()
-    expect(Object.keys(expectDefined(reimportedRect, 'reimportedRect').boundVariables)).toContain(
-      'cornerRadius'
-    )
+    const reimportedRectMatch = [...reimported.getAllNodes()].find((n) => n.name === 'Bound Rect')
+    expect(reimportedRectMatch).toBeDefined()
+    const reimportedRect = expectDefined(reimportedRectMatch, 'reimportedRect')
+    expect(Object.keys(reimportedRect.boundVariables)).toContain('cornerRadius')
     expect(Object.keys(reimportedRect.boundVariables)).toContain('fills/0/color')
     expect(Object.keys(reimportedRect.boundVariables)).toContain('strokes/0/color')
   })
@@ -312,7 +334,8 @@ describe('variable roundtrip', () => {
         { modeId: '4:8', name: 'Dark', condition: '[data-theme="dark"]' }
       ],
       defaultModeId: '4:7',
-      variableIds: []
+      variableIds: [],
+      modeAttribute: 'data-scheme'
     })
     const add = (id: string, name: string, extra: Partial<Variable>) =>
       graph.addVariable({
@@ -339,10 +362,13 @@ describe('variable roundtrip', () => {
       codeSyntax: { WEB: 'var(--page-gutter)' },
       expressions: { '4:7': { css: 'clamp(1rem, 4vw, 2rem)', resolved: 16 } }
     })
-    expect(reimported.variableCollections.get('4:70')?.modes).toEqual([
+    // Modes also come back with the places the file saved for them.
+    expect(reimported.variableCollections.get('4:70')?.modes).toMatchObject([
       { modeId: '4:7', name: 'Light', condition: undefined },
       { modeId: '4:8', name: 'Dark', condition: '[data-theme="dark"]' }
     ])
+    expect(reimported.variableCollections.get('4:70')?.modeAttribute).toBe('data-scheme')
+    expect(reimported.variableCollections.get('4:70')?.pluginData).toBeUndefined()
     // Rebuilt on save, never duplicated into pass-through plugin data.
     expect(page.pluginData).toBeUndefined()
   })
@@ -353,7 +379,10 @@ describe('variable roundtrip', () => {
     const collection = graph.createCollection('Space')
     const gutter = graph.createVariable('Gutter', 'FLOAT', collection.id, 1234.567)
     gutter.expressions = {
-      [collection.defaultModeId]: { css: 'calc(100vw / 3)', resolved: 1234.567 }
+      [collection.defaultModeId]: {
+        css: 'calc(100vw / 3)',
+        resolved: 1234.567
+      }
     }
 
     const reimported = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)
@@ -368,7 +397,10 @@ describe('variable roundtrip', () => {
     const collection = graph.createCollection('Space')
     const gutter = graph.createVariable('Gutter', 'FLOAT', collection.id, 20)
     gutter.expressions = {
-      [collection.defaultModeId]: { css: 'clamp(1rem, 4vw, 2rem)', resolved: 16 }
+      [collection.defaultModeId]: {
+        css: 'clamp(1rem, 4vw, 2rem)',
+        resolved: 16
+      }
     }
 
     const reimported = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)

@@ -13,6 +13,8 @@ test('keeps recovery independent from cancelling an unsaved-document close', asy
   await canvas.waitForInit()
 
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('RECTANGLE', 120, 120, 240, 140)

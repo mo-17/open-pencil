@@ -1,20 +1,24 @@
+import * as v from 'valibot'
+
 import { IS_BROWSER } from '@open-pencil/core/constants'
 
 const EDITOR_LAYOUT_KEY = 'open-pencil:editor-layout'
 const DEFAULT_EDITOR_LAYOUT: [number, number, number] = [18, 64, 18]
 const PREVIEW_PANEL_DEFAULT = 20
+const EditorLayoutJSON = v.pipe(
+  v.string(),
+  v.parseJson(),
+  v.union([
+    v.strictTuple([v.number(), v.number(), v.number()]),
+    v.strictTuple([v.number(), v.number(), v.number(), v.number()])
+  ])
+)
 
 export function loadEditorLayout(): number[] {
   if (!IS_BROWSER) return DEFAULT_EDITOR_LAYOUT
   try {
-    const raw = window.localStorage.getItem(EDITOR_LAYOUT_KEY)
-    if (!raw) return DEFAULT_EDITOR_LAYOUT
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) &&
-      (parsed.length === 3 || parsed.length === 4) &&
-      parsed.every((v) => typeof v === 'number')
-      ? parsed
-      : DEFAULT_EDITOR_LAYOUT
+    const parsed = v.safeParse(EditorLayoutJSON, window.localStorage.getItem(EDITOR_LAYOUT_KEY))
+    return parsed.success ? parsed.output : DEFAULT_EDITOR_LAYOUT
   } catch {
     return DEFAULT_EDITOR_LAYOUT
   }

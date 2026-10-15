@@ -1,8 +1,10 @@
-import type { NodeMutationOrigin, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { NodeMutationOrigin, SceneGraph } from '@open-pencil/scene-graph'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
+import { releaseFigArchive } from '#core/kiwi/fig/session/archive'
+import { trackArchiveChanges } from '#core/kiwi/fig/session/archive-changes'
 import { updateReaderRecovery, releaseReaderRecovery } from '#core/kiwi/fig/session/document-state'
 import type { FigSessionResponse } from '#core/kiwi/fig/session/protocol'
-import { randomHex } from '#core/random'
 
 import { applyFigPopulationDelta } from './delta'
 import { persistentGraphLevelSignature } from './state-signature'
@@ -24,6 +26,7 @@ const LAYOUT_DERIVED_NODE_UPDATE_FIELDS = new Set([
 interface FigPopulationWorkerRegistration {
   client: FigPopulationWorker
   populationCapable: boolean
+  retired?: boolean
 }
 const populationWorkers = new WeakMap<SceneGraph, FigPopulationWorkerRegistration>()
 interface OriginalArchiveRequest {
@@ -70,6 +73,35 @@ function isTrustedDerivedComponentSync(origin: NodeMutationOrigin | undefined): 
   return origin === 'derived-component-sync'
 }
 
+function onArchiveEdits(
+  graph: SceneGraph,
+  invalidate: (origin?: NodeMutationOrigin) => void
+): () => void {
+  return graph.onNodeEvents({
+    created: (_node, origin) => invalidate(origin),
+    updated: (_id, changes, origin) => {
+      const layoutDerived =
+        origin === 'derived-layout' &&
+        Object.keys(changes).every((key) => LAYOUT_DERIVED_NODE_UPDATE_FIELDS.has(key))
+      if (!layoutDerived) invalidate(origin)
+    },
+    deleted: (_id, _parentId, origin) => invalidate(origin),
+    reparented: (_id, _oldParentId, _newParentId, origin) => invalidate(origin),
+    reordered: (_id, _parentId, _index, _previousParentId, origin) => invalidate(origin)
+  })
+}
+
+function originalArchiveMatches(graph: SceneGraph, entry: OriginalArchiveRequest): boolean {
+  if (
+    !entry.valid ||
+    !originalImageRefsMatch(graph.images, entry.imageRefs) ||
+    !immutableBytesRefMatches(graph.figSchemaDeflated, entry.schemaRef)
+  )
+    return false
+  const signature = persistentGraphLevelSignature(graph)
+  return signature !== null && signature === entry.signature
+}
+
 export interface FigPopulationWorkerTelemetry {
   event: 'registered' | 'populate' | 'fallback' | 'stale' | 'terminated'
   reason?: 'oversized' | 'graph-mutation' | 'worker-error'
@@ -92,7 +124,8 @@ function emitTelemetry(detail: FigPopulationWorkerTelemetry): void {
 export function registerFigPopulationWorker(
   graph: SceneGraph,
   worker: Worker,
-  port?: MessagePort
+  port?: MessagePort,
+  stopWorker?: () => void
 ): void {
   if (graph.nodes.size > MAX_FIG_POPULATION_WORKER_NODES) {
     emitTelemetry({ event: 'fallback', reason: 'oversized' })
@@ -106,7 +139,7 @@ export function registerFigPopulationWorker(
     })
     return
   }
-  const client = createPopulationWorkerClient(graph, worker, port)
+  const client = createPopulationWorkerClient(graph, worker, port, stopWorker)
   populationWorkers.set(graph, { client, populationCapable: true })
   emitTelemetry({ event: 'registered' })
 }
@@ -137,31 +170,14 @@ export function registerOriginalArchiveRequest(
     if (isTrustedHydration(origin) || isTrustedDerivedComponentSync(origin)) return
     entry.valid = false
   }
-  const invalidateUpdate = (
-    _id: string,
-    changes: Partial<SceneNode>,
-    origin?: NodeMutationOrigin
-  ) => {
-    if (isTrustedHydration(origin) || isTrustedDerivedComponentSync(origin)) return
-    const layoutDerived =
-      origin === 'derived-layout' &&
-      Object.keys(changes).every((key) => LAYOUT_DERIVED_NODE_UPDATE_FIELDS.has(key))
-    if (!layoutDerived) entry.valid = false
-  }
-  entry.unbind = graph.onNodeEvents({
-    created: (_node, origin) => invalidate(origin),
-    updated: invalidateUpdate,
-    deleted: (_id, _parentId, origin) => invalidate(origin),
-    reparented: (_id, _oldParentId, _newParentId, origin) => invalidate(origin),
-    reordered: (_id, _parentId, _index, _previousParentId, origin) => invalidate(origin)
-  })
+  entry.unbind = onArchiveEdits(graph, invalidate)
   originalArchiveRequests.set(graph, entry)
+  trackArchiveChanges(graph)
 }
 
 export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Array | null> {
   const entry = originalArchiveRequests.get(graph)
   if (!entry) return null
-  const isEntryValid = () => entry.valid
   const rejectEntry = () => {
     if (originalArchiveRequests.get(graph) === entry) {
       // Close a stale transport while retaining recovery for unloaded-page export.
@@ -171,17 +187,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
     }
     return null
   }
-  if (!isEntryValid()) return rejectEntry()
-  if (!originalImageRefsMatch(graph.images, entry.imageRefs)) {
-    return rejectEntry()
-  }
-  if (!immutableBytesRefMatches(graph.figSchemaDeflated, entry.schemaRef)) {
-    return rejectEntry()
-  }
-  const beforeSignature = persistentGraphLevelSignature(graph)
-  if (beforeSignature === null || beforeSignature !== entry.signature) {
-    return rejectEntry()
-  }
+  if (!originalArchiveMatches(graph, entry)) return rejectEntry()
   let archive: Uint8Array
   try {
     archive = await entry.request()
@@ -189,17 +195,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
     return rejectEntry()
   }
   if (originalArchiveRequests.get(graph) !== entry) return null
-  if (!isEntryValid()) return rejectEntry()
-  if (!originalImageRefsMatch(graph.images, entry.imageRefs)) {
-    return rejectEntry()
-  }
-  if (!immutableBytesRefMatches(graph.figSchemaDeflated, entry.schemaRef)) {
-    return rejectEntry()
-  }
-  const afterSignature = persistentGraphLevelSignature(graph)
-  if (afterSignature === null || afterSignature !== entry.signature) {
-    return rejectEntry()
-  }
+  if (!originalArchiveMatches(graph, entry)) return rejectEntry()
   return archive
 }
 
@@ -211,10 +207,15 @@ export function releaseFigPopulationWorker(graph: SceneGraph): void {
   originalArchive?.unbind()
   originalArchive?.release()
   originalArchiveRequests.delete(graph)
+  releaseFigArchive(graph)
 }
 
 export interface FigPopulationWorker {
   populate: (pageId: string, signal?: AbortSignal) => Promise<boolean | null>
+  /**
+   * Stop loading pages through the worker. The worker itself keeps serving the document's
+   * archive until the document closes, which releases it with the archive.
+   */
   terminate: () => void
 }
 
@@ -250,23 +251,7 @@ function createDisposalOnlyWorker(
     emitTelemetry({ event: 'stale', reason: 'graph-mutation' })
     dispose(true)
   }
-  const invalidateUpdate = (
-    _id: string,
-    changes: Partial<SceneNode>,
-    origin?: NodeMutationOrigin
-  ) => {
-    const layoutDerived =
-      origin === 'derived-layout' &&
-      Object.keys(changes).every((key) => LAYOUT_DERIVED_NODE_UPDATE_FIELDS.has(key))
-    if (!layoutDerived) invalidate(origin)
-  }
-  unbind = graph.onNodeEvents({
-    created: (_node, origin) => invalidate(origin),
-    updated: invalidateUpdate,
-    deleted: (_id, _parentId, origin) => invalidate(origin),
-    reparented: (_id, _oldParentId, _newParentId, origin) => invalidate(origin),
-    reordered: (_id, _parentId, _index, _previousParentId, origin) => invalidate(origin)
-  })
+  unbind = onArchiveEdits(graph, invalidate)
   port.onmessageerror = () => dispose(true)
   worker.onerror = () => dispose(true)
   worker.onmessageerror = () => dispose(true)
@@ -277,15 +262,23 @@ function createDisposalOnlyWorker(
 }
 
 export function createFigPopulationWorker(graph: SceneGraph): FigPopulationWorker | null {
-  if (!canUseFigPopulationWorker(graph)) return null
-  return populationWorkers.get(graph)?.client ?? null
+  const entry = populationWorkers.get(graph)
+  return entry?.populationCapable || entry?.retired ? entry.client : null
 }
 
+/**
+ * The client owns the worker unless `stopWorker` is given: a document whose archive the worker
+ * also holds passes the archive's, so that retiring page loading leaves the worker serving it
+ * and stopping the worker lets the archive carry on without it.
+ */
 export function createPopulationWorkerClient(
   graph: SceneGraph,
   worker: Pick<Worker, 'postMessage' | 'terminate' | 'onerror' | 'onmessage' | 'onmessageerror'>,
-  port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage' | 'onmessageerror'>
+  port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage' | 'onmessageerror'>,
+  stopWorker?: () => void
 ): FigPopulationWorker {
+  const sharedWorker = !!stopWorker
+  const stopWorkerNow = stopWorker ?? (() => worker.terminate())
   const pending = new Map<
     string,
     {
@@ -306,7 +299,7 @@ export function createPopulationWorkerClient(
     unbind?.()
     unbind = undefined
   }
-  const fail = (emit = true) => {
+  const fail = (emit = true, stop = true) => {
     if (failed) return
     failed = true
     stale = true
@@ -320,16 +313,31 @@ export function createPopulationWorkerClient(
     releaseSubscription()
     // A session port owns both population and the raw archive. Legacy workers
     // use an independent main-thread archive and must not invalidate it here.
-    if (port) invalidateOriginalArchiveRequest(graph)
+    if (port && !sharedWorker) invalidateOriginalArchiveRequest(graph)
     if (port) {
       port.onmessage = null
       port.onmessageerror = null
     } else worker.onmessage = null
     worker.onerror = null
     worker.onmessageerror = null
-    port?.close()
-    worker.terminate()
-    populationWorkers.delete(graph)
+    if (stop || !sharedWorker) {
+      port?.close()
+      stopWorkerNow()
+    } else port?.postMessage({ type: 'retire' })
+    const registered = populationWorkers.get(graph)
+    if (!stop && registered) {
+      // Retain only a tiny fallback handle. Legacy sessions have already released
+      // their worker; shared archive sessions keep serving bytes through their owner.
+      registered.client = {
+        populate: (_pageId, signal) => {
+          signal?.throwIfAborted()
+          return Promise.resolve(null)
+        },
+        terminate: () => undefined
+      }
+      registered.populationCapable = false
+      registered.retired = true
+    } else populationWorkers.delete(graph)
   }
   const invalidate = (origin?: NodeMutationOrigin) => {
     if (stale || isTrustedHydration(origin) || isTrustedDerivedComponentSync(origin)) return
@@ -339,27 +347,11 @@ export function createPopulationWorkerClient(
     // A stale retained graph and its raw archive can never be used again.
     // Release the shared session immediately instead of holding large import
     // structures until the document closes.
-    fail(false)
+    fail(false, false)
   }
-  const invalidateUpdate = (
-    _id: string,
-    changes: Partial<SceneNode>,
-    origin?: NodeMutationOrigin
-  ) => {
-    const layoutDerived =
-      origin === 'derived-layout' &&
-      Object.keys(changes).every((key) => LAYOUT_DERIVED_NODE_UPDATE_FIELDS.has(key))
-    if (!layoutDerived) invalidate(origin)
-  }
-  unbind = graph.onNodeEvents({
-    created: (_node, origin) => invalidate(origin),
-    updated: invalidateUpdate,
-    deleted: (_id, _parentId, origin) => invalidate(origin),
-    reparented: (_id, _oldParentId, _newParentId, origin) => invalidate(origin),
-    reordered: (_id, _parentId, _index, _previousParentId, origin) => invalidate(origin)
-  })
+  unbind = onArchiveEdits(graph, invalidate)
   const receive = (result: WorkerResult) => {
-    if (result.type === 'population-error') return fail()
+    if (result.type === 'population-error') return fail(true, false)
     const request = pending.get(result.requestId)
     if (!request) return
     clearTimeout(request.timeout)
@@ -421,7 +413,13 @@ export function createPopulationWorkerClient(
           startedAt: performance.now(),
           timeout
         })
-        if (port) port.postMessage({ type: 'populate', requestId, baseRevision, pageId })
+        if (port)
+          port.postMessage({
+            type: 'populate',
+            requestId,
+            baseRevision,
+            pageId
+          })
         else worker.postMessage({ type: 'populate', requestId, baseRevision, pageId }, [])
       })
     },

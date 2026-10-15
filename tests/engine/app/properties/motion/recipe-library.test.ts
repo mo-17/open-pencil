@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   MOTION_RECIPE_FORMAT,
+  parseMotionRecipeLibraryJSON,
   createMotionPreset,
   instantiateMotionRecipe,
   type MotionRecipe,
@@ -69,11 +70,7 @@ describe('app personal Motion recipe authoring', () => {
     const serialized = storage.getItem(MOTION_RECIPE_LIBRARY_STORAGE_KEY)
     expect(serialized).not.toBeNull()
     if (!serialized) throw new Error('Expected a persisted Motion recipe library')
-    const stored = JSON.parse(serialized) as {
-      format: string
-      schemaVersion: number
-      recipes: MotionRecipe[]
-    }
+    const stored = parseMotionRecipeLibraryJSON(serialized)
     expect(stored.format).toBe('openpencil-motion-recipe-library')
     expect(stored.schemaVersion).toBe(1)
     expect(stored.recipes.map(({ id }) => id)).toEqual(['cardEntrance'])

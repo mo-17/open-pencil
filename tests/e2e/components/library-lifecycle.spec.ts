@@ -1,13 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
+
+const PublicationJSON = v.pipe(v.string(), v.parseJson(), v.object({ revisionId: v.string() }))
 
 async function openAssets(page: Page) {
   await page.getByTestId('left-panel-assets-tab').click()
 }
 
 async function openLibraries(page: Page) {
-  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByTestId('assets-panel').getByLabel('Manage libraries', { exact: true }).click()
 }
 
 test('preserves source publication identity across FIG save and reopen', async ({ page }) => {
@@ -15,6 +18,8 @@ test('preserves source publication identity across FIG save and reopen', async (
   await page.goto('/?test')
   await canvas.waitForInit()
   const componentId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -37,23 +42,33 @@ test('preserves source publication identity across FIG save and reopen', async (
   await expect(publish.getByLabel('Library ID')).toBeHidden()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('asset-libraries-dialog')).toBeHidden()
-  const firstRevision = await page.evaluate(() => {
+  const firstPublication = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const value = store?.graph
       .getNode(store.graph.rootId)
       ?.pluginData.find((entry) => entry.key === 'sourceLibraryPublication')?.value
-    return value ? (JSON.parse(value) as { revisionId: string }).revisionId : null
+    return value ?? null
   })
+  const firstRevision = firstPublication && v.parse(PublicationJSON, firstPublication).revisionId
   expect(firstRevision).toBeTruthy()
 
   const saved = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const writes: Uint8Array[] = []
     window.showSaveFilePicker = async () =>
       ({
         name: 'source.fig',
         getFile: async () => new File([], 'source.fig'),
-        createWritable: async () => ({
-          write: async (data: Uint8Array) => writes.push(data),
+        createWritable: async (): Promise<
+          Pick<FileSystemWritableFileStream, 'write' | 'close'>
+        > => ({
+          write: async (data: FileSystemWriteChunkType) => {
+            if (!(data instanceof Uint8Array)) throw new Error('Unexpected write chunk')
+            writes.push(data)
+          },
           close: async () => undefined
         })
       }) as FileSystemFileHandle
@@ -72,6 +87,8 @@ test('preserves source publication identity across FIG save and reopen', async (
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         const root = store?.graph.getNode(store.graph.rootId)
         return root?.pluginData.find((entry) => entry.key === 'sourceLibraryPublication')?.value
@@ -89,6 +106,8 @@ test('preserves source publication identity across FIG save and reopen', async (
   await page.keyboard.press('Escape')
 
   await page.evaluate((sourceId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const component = [...store.graph.getAllNodes()].find(
@@ -105,13 +124,16 @@ test('preserves source publication identity across FIG save and reopen', async (
   await publish.getByRole('button', { name: 'Publish library' }).click()
   await expect(publish.getByLabel('Library ID')).toBeHidden()
 
-  const secondRevision = await page.evaluate(() => {
+  const secondPublication = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const value = store?.graph
       .getNode(store.graph.rootId)
       ?.pluginData.find((entry) => entry.key === 'sourceLibraryPublication')?.value
-    return value ? (JSON.parse(value) as { revisionId: string }).revisionId : null
+    return value ?? null
   })
+  const secondRevision = secondPublication && v.parse(PublicationJSON, secondPublication).revisionId
   expect(secondRevision).toBeTruthy()
   expect(secondRevision).not.toBe(firstRevision)
 })
@@ -124,6 +146,8 @@ test('publishes, consumes, saves, and reopens a multidimensional library instanc
   await canvas.waitForInit()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -187,6 +211,8 @@ test('publishes, consumes, saves, and reopens a multidimensional library instanc
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store ? [...store.graph.getAllNodes()].length : 0
       })
@@ -211,13 +237,20 @@ test('publishes, consumes, saves, and reopens a multidimensional library instanc
   await page.getByRole('option', { name: 'Brand' }).click()
 
   const saved = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const writes: Uint8Array[] = []
     window.showSaveFilePicker = async () =>
       ({
         name: 'consumer.fig',
         getFile: async () => new File([], 'consumer.fig'),
-        createWritable: async () => ({
-          write: async (data: Uint8Array) => writes.push(data),
+        createWritable: async (): Promise<
+          Pick<FileSystemWritableFileStream, 'write' | 'close'>
+        > => ({
+          write: async (data: FileSystemWriteChunkType) => {
+            if (!(data instanceof Uint8Array)) throw new Error('Unexpected write chunk')
+            writes.push(data)
+          },
           close: async () => undefined
         })
       }) as FileSystemFileHandle
@@ -231,11 +264,12 @@ test('publishes, consumes, saves, and reopens a multidimensional library instanc
   await page.evaluate(async (bytes) => {
     const file = new File([new Uint8Array(bytes)], 'consumer.fig')
     const originalFetch = window.fetch
-    window.fetch = async (...args) => {
+    // The page's `fetch` has no Bun namespace properties, so the stub is asserted, not widened.
+    window.fetch = (async (...args) => {
       const url = String(args[0])
       if (url.includes('library')) throw new Error('offline')
       return originalFetch(...args)
-    }
+    }) as typeof window.fetch
     window.showOpenFilePicker = async () => [{ getFile: async () => file } as FileSystemFileHandle]
   }, saved)
   await page.keyboard.press('ControlOrMeta+KeyO')
@@ -243,6 +277,8 @@ test('publishes, consumes, saves, and reopens a multidimensional library instanc
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) return null
         const instance = [...store.graph.getAllNodes()].find((node) => node.type === 'INSTANCE')

@@ -4,6 +4,8 @@ import { compile, withDefaults } from '@open-pencil/compiler'
 import { exportFigFile, initCodec, parseFigFile } from '@open-pencil/core'
 import { SceneGraph, type ResponsiveOverrides } from '@open-pencil/scene-graph'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 describe('compact responsive .fig contract', () => {
   beforeAll(async () => {
     await initCodec()
@@ -50,7 +52,7 @@ describe('compact responsive .fig contract', () => {
       responsiveOverrides: { compact: { visible: true, counterAxisSizing: 'FILL', minHeight: 44 } }
     })
     const archive = await exportFigFile(graph)
-    const restored = await parseFigFile(archive.buffer)
+    const restored = await parseFigFile(uint8ArrayToArrayBuffer(archive))
     const restoredRoot = [...restored.getAllNodes()].find((node) => node.name === root.name)
     const nav = [...restored.getAllNodes()].find((node) => node.name === 'Mobile navigation')
     expect(restoredRoot).toMatchObject({ width: 1200, height: 800, x: 24, y: 32 })

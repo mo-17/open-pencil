@@ -7,6 +7,7 @@ import {
   waitForApplicationDocument
 } from '#tests/helpers/compiler/application-mode/editor'
 import { chooseAppSelect } from '#tests/helpers/properties'
+import { parseJSONBytes } from '#tests/helpers/serialization'
 
 const editor = useEditorSetup()
 test.setTimeout(180_000)
@@ -14,7 +15,7 @@ test.setTimeout(180_000)
 // eslint-disable-next-line no-empty-pattern -- useEditorSetup owns the editor lifecycle.
 test('page recovery preference, undo, automatic recompilation, restart and real FIG save/reopen', async ({}, info) => {
   await editor.page.setViewportSize({ width: 2200, height: 1100 })
-  const bytes = JSON.parse(
+  const bytes = parseJSONBytes(
     execFileSync(
       'bun',
       [
@@ -23,7 +24,7 @@ test('page recovery preference, undo, automatic recompilation, restart and real 
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as number[]
+  )
   await reopenApplicationModeDocument(editor.page, bytes)
   const panel = editor.page.getByTestId('application-mode-panel')
   const preview = editor.page.locator('iframe[aria-label="lowcode preview"]')
@@ -43,6 +44,8 @@ test('page recovery preference, undo, automatic recompilation, restart and real 
   await expect(runtime.getByPlaceholder('Filter products')).toBeVisible({ timeout: 60_000 })
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return store?.graph.getPages().find((page) => page.name === 'Home')?.lowcodeApplicationPage
         ?.stateRetention
@@ -89,8 +92,12 @@ test('page recovery preference, undo, automatic recompilation, restart and real 
   before = await preview.getAttribute('src')
   // Edit the authored document through the same undo action used by property controls.
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
-    const title = store?.graph.getAllNodes().find((node) => node.name === 'Products title')
+    const title = [...(store?.graph.getAllNodes() ?? [])].find(
+      (node) => node.name === 'Products title'
+    )
     if (!store || !title) throw new Error('Product title unavailable')
     store.updateNodeWithUndo(title.id, { text: 'Products screen updated' })
   })

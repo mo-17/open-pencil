@@ -1,3 +1,4 @@
+import { isEqual } from 'es-toolkit'
 import { computed, ref, watch } from 'vue'
 
 import { IS_TAURI } from '@open-pencil/core/constants'
@@ -44,7 +45,8 @@ export const isAgentProvider = computed(() => isACPProvider.value || isHarnessPr
 
 export const isConfigured = computed(() => {
   if (isACPProvider.value) return IS_TAURI
-  if (isHarnessProvider.value) return IS_TAURI && apiKeyStatus.value === 'configured'
+  // Pi can use the CLI's own sign-in, so a key is optional.
+  if (isHarnessProvider.value) return IS_TAURI
   if (apiKeyStatus.value !== 'configured') return false
   const needsBaseURL =
     providerID.value === 'openai-compatible' || providerID.value === 'anthropic-compatible'
@@ -52,7 +54,10 @@ export const isConfigured = computed(() => {
 })
 
 async function refreshStatus(reference: CredentialRef): Promise<CredentialStatus> {
-  const status = await appCredentialServices.manager.status(reference)
+  // A key the store cannot read is reported as unavailable rather than rejecting startup.
+  const status = await appCredentialServices.manager
+    .status(reference)
+    .catch((): CredentialStatus => 'unavailable')
   return status === 'missing' && hasLegacyCredential(reference) ? 'configured' : status
 }
 
@@ -64,7 +69,9 @@ function designCredentialReference(): CredentialRef | null {
 
 export async function refreshAIProviderStatus(): Promise<void> {
   const reference = designCredentialReference()
-  apiKeyStatus.value = reference ? await refreshStatus(reference) : 'missing'
+  const status = reference ? await refreshStatus(reference) : 'missing'
+  // A connection chosen while the lookup ran owns the status now.
+  if (isEqual(designCredentialReference(), reference)) apiKeyStatus.value = status
 }
 
 // Startup checks metadata only. Secret migration/resolution belongs to explicit provider use.
@@ -120,7 +127,14 @@ export function registerAIChatEffects(markTransportDirty: () => void) {
     void refreshAIProviderStatus()
     markTransportDirty()
   })
-  watch(modelCredentialRevision, markTransportDirty, { flush: 'sync' })
+  watch(
+    modelCredentialRevision,
+    () => {
+      void refreshAIProviderStatus()
+      markTransportDirty()
+    },
+    { flush: 'sync' }
+  )
   watch(remoteMCPCredentialRevision, markTransportDirty)
   watch(
     () =>

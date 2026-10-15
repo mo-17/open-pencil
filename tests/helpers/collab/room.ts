@@ -1,10 +1,12 @@
-import type { Browser, BrowserContext, Page } from '@playwright/test'
+import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 /** Two-browser collaboration: a local WebSocket relay and peers connected through it. */
-export const ROOM_ID = 'e2e-collaboration-room'
+export const ROOM_ID = 'e2ecollaborationroom000000000000'
+/** A second room, for a peer in two rooms at once. */
+export const SECOND_ROOM_ID = 'e2ecollaborationroom111111111111'
 
 export type { TestRelay } from './test-relay'
 import type { TestRelay } from './test-relay'
@@ -96,17 +98,37 @@ export type Peer = {
   canvas: CanvasHelper
 }
 
-export async function createPeer(browser: Browser, name: string, relayURL: string): Promise<Peer> {
+/** The app URL for a path, on the test transport through the given relay. */
+export function relayURLFor(path: string, relayURL: string): string {
+  const url = new URL(path, 'http://fixture.invalid')
+  url.searchParams.set('test', '')
+  url.searchParams.set('collabTransport', 'test')
+  url.searchParams.set('collabRelay', relayURL)
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+/**
+ * A browser with the app open at `path`: `/` by default, or a share link. A share link shows the
+ * room's screen instead of a canvas until the room's document arrives, so only `/` waits for the
+ * canvas.
+ */
+export async function createPeer(
+  browser: Browser,
+  name: string,
+  relayURL: string,
+  { path = '/' }: { path?: string } = {}
+): Promise<Peer> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   try {
     const page = await context.newPage()
-    await page.goto(`/?test&collabTransport=test&collabRelay=${encodeURIComponent(relayURL)}`)
+    await page.goto(relayURLFor(path, relayURL))
+    await page.waitForFunction(() => window.openPencil?.test?.collab !== undefined)
     await page.evaluate(
       (localName) => window.openPencil?.test?.collab?.setLocalName(localName),
       name
     )
     const canvas = new CanvasHelper(page)
-    await canvas.waitForInit()
+    if (path === '/') await canvas.waitForInit()
     canvas.errors.length = 0
     return { context, page, canvas }
   } catch (error) {
@@ -119,10 +141,35 @@ export function collaborationErrors(peer: Peer): string[] {
   return peer.canvas.errors.filter((error) => !error.includes('127.0.0.1:7600'))
 }
 
-export async function connect(peer: Peer) {
-  await peer.page.evaluate((roomId) => {
+/** Joins the room in a tab of its own, as pasting its link does. */
+export async function connect(peer: Peer, invite: string) {
+  await peer.page.evaluate((input) => {
     const collab = window.openPencil?.test?.collab
     if (!collab) throw new Error('Collaboration bridge unavailable')
-    collab.connect(roomId)
-  }, ROOM_ID)
+    if (!collab.connect(input)) throw new Error('Room invitation rejected')
+  }, invite)
+}
+
+/** Shares through the app, then reads its actual random-key invitation from the address bar. */
+export async function share(peer: Peer, roomId = ROOM_ID) {
+  await peer.page.evaluate((id) => {
+    const collab = window.openPencil?.test?.collab
+    if (!collab) throw new Error('Collaboration bridge unavailable')
+    collab.share(id)
+  }, roomId)
+  await expect
+    .poll(() =>
+      peer.page.evaluate((id) => {
+        const key = new URLSearchParams(location.hash.slice(1)).get('k')
+        return location.pathname === `/share/${id}` && key !== null && /^[a-z0-9]{48}$/.test(key)
+      }, roomId)
+    )
+    .toBe(true)
+  const url = new URL(peer.page.url())
+  return `${url.pathname}${url.hash}`
+}
+
+/** The active tab's room status, from the test bridge. */
+export function roomStatus(peer: Peer) {
+  return peer.page.evaluate(() => window.openPencil?.test?.collab?.status() ?? null)
 }

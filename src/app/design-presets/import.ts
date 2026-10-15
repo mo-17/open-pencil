@@ -1,6 +1,6 @@
 import type { Editor } from '@open-pencil/core/editor'
-import { randomHex } from '@open-pencil/core/random'
 import type { Variable, VariableCollection } from '@open-pencil/scene-graph'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import { getDesignPresetTokens, type DesignPresetId } from './catalog'
 

@@ -11,13 +11,14 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { startServer } from '#mcp/server'
 import { paramToZod } from '#mcp/tool/schema'
-import type { DiscoveryInfo } from '#mcp/transport/discovery'
+import { parseDiscoveryInfo } from '#mcp/transport/discovery'
 import { DESKTOP_APP_ORIGINS, parseCORSOrigins, resolveCORSOrigins } from '#mcp/transport/origins'
 
+import { expectDefined } from '#tests/helpers/assert'
 import {
   connectMockBrowser,
-  waitForBrowserRegistration,
-  type HealthResponse
+  readHealth,
+  waitForBrowserRegistration
 } from '#tests/helpers/mcp/server'
 
 const isUnix = process.platform !== 'win32'
@@ -171,7 +172,7 @@ describe('MCP server auto-generated auth token', () => {
 
       // /health should show authRequired: true
       const healthResp = await fetch(`http://127.0.0.1:${httpPort}/health`)
-      const health = (await healthResp.json()) as HealthResponse
+      const health = await readHealth(healthResp)
       expect(health.authRequired).toBe(true)
       expect(health.tools).toBeUndefined()
     } finally {
@@ -205,7 +206,7 @@ describe('MCP server /rpc auth skip', () => {
     try {
       // /health should show authRequired: false
       const healthResp = await fetch(`http://127.0.0.1:${httpPort}/health`)
-      const health = (await healthResp.json()) as HealthResponse
+      const health = await readHealth(healthResp)
       expect(health.authRequired).toBe(false)
 
       // Connect a browser
@@ -218,7 +219,10 @@ describe('MCP server /rpc auth skip', () => {
         const rpcResp = await fetch(`http://127.0.0.1:${httpPort}/rpc`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ command: 'tool', args: { name: 'get_current_page' } })
+          body: JSON.stringify({
+            command: 'tool',
+            args: { name: 'get_current_page' }
+          })
         })
         expect(rpcResp.status).toBe(200)
 
@@ -255,12 +259,20 @@ describe('MCP server /rpc auth skip', () => {
 // ---------------------------------------------------------------------------
 
 describe('MCP numeric input coercion', () => {
-  const schema = v.object({ x: v.pipe(toolNumber(), v.minValue(0), v.maxValue(100)) })
+  const schema = v.object({
+    x: v.pipe(toolNumber(), v.minValue(0), v.maxValue(100))
+  })
 
   test('accepts numeric strings through Standard Schema validation', async () => {
-    expect(await schema['~standard'].validate({ x: '42' })).toMatchObject({ value: { x: 42 } })
-    expect(await schema['~standard'].validate({ x: 42 })).toMatchObject({ value: { x: 42 } })
-    expect(await schema['~standard'].validate({ x: '3.14' })).toMatchObject({ value: { x: 3.14 } })
+    expect(await schema['~standard'].validate({ x: '42' })).toMatchObject({
+      value: { x: 42 }
+    })
+    expect(await schema['~standard'].validate({ x: 42 })).toMatchObject({
+      value: { x: 42 }
+    })
+    expect(await schema['~standard'].validate({ x: '3.14' })).toMatchObject({
+      value: { x: 3.14 }
+    })
   })
 
   test('rejects non-numeric strings', async () => {
@@ -268,13 +280,19 @@ describe('MCP numeric input coercion', () => {
   })
 
   test('respects min/max after coercion', async () => {
-    expect(await schema['~standard'].validate({ x: '50' })).toMatchObject({ value: { x: 50 } })
+    expect(await schema['~standard'].validate({ x: '50' })).toMatchObject({
+      value: { x: 50 }
+    })
     expect((await schema['~standard'].validate({ x: '200' })).issues).toBeDefined()
     expect((await schema['~standard'].validate({ x: '-1' })).issues).toBeDefined()
   })
 
   test('object params accept JSON objects and reject non-JSON values', () => {
-    const schema = paramToZod({ type: 'object', description: 'patch', required: true })
+    const schema = paramToZod({
+      type: 'object',
+      description: 'patch',
+      required: true
+    })
     expect(schema.parse({ events: { onClick: [] }, enabled: true })).toEqual({
       events: { onClick: [] },
       enabled: true
@@ -334,7 +352,12 @@ describe('MCP auth boundary', () => {
           Authorization: 'Bearer wrong-token',
           'content-type': 'application/json'
         },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'mcp.ping', params: {} })
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'mcp.ping',
+          params: {}
+        })
       })
       expect(r.status).toBe(401)
     } finally {
@@ -362,7 +385,12 @@ describe('MCP auth boundary', () => {
       const r = await fetch(`http://127.0.0.1:${httpPort}/mcp`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'mcp.ping', params: {} })
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'mcp.ping',
+          params: {}
+        })
       })
       expect(r.status).toBe(401)
     } finally {
@@ -387,9 +415,7 @@ describe('MCP auth boundary', () => {
     }
 
     try {
-      const healthResp = (await (
-        await fetch(`http://127.0.0.1:${httpPort}/health`)
-      ).json()) as HealthResponse
+      const healthResp = await readHealth(await fetch(`http://127.0.0.1:${httpPort}/health`))
       expect(healthResp.authRequired).toBe(false)
 
       const mcpResp = await fetch(`http://127.0.0.1:${httpPort}/mcp`, {
@@ -441,7 +467,9 @@ describe('MCP session limits', () => {
     const openSession = async () => {
       const c = new Client({ name: 'limit-client', version: '0.0.0' })
       const t = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${httpPort}/mcp`), {
-        requestInit: { headers: { Authorization: `Bearer ${TEST_AUTH_TOKEN}` } }
+        requestInit: {
+          headers: { Authorization: `Bearer ${TEST_AUTH_TOKEN}` }
+        }
       })
       await c.connect(t)
       sessions.push(c)
@@ -458,7 +486,11 @@ describe('MCP session limits', () => {
       const overflow = new Client({ name: 'overflow', version: '0.0.0' })
       const overflowTransport = new StreamableHTTPClientTransport(
         new URL(`http://127.0.0.1:${httpPort}/mcp`),
-        { requestInit: { headers: { Authorization: `Bearer ${TEST_AUTH_TOKEN}` } } }
+        {
+          requestInit: {
+            headers: { Authorization: `Bearer ${TEST_AUTH_TOKEN}` }
+          }
+        }
       )
       let caught: unknown = null
       try {
@@ -496,7 +528,10 @@ describe('Discovery PID liveness', () => {
     })
     try {
       const discoveryPath = await getDiscoveryPath()
-      const raw = (await Bun.file(discoveryPath).json()) as Pick<DiscoveryInfo, 'pid'>
+      const raw = expectDefined(
+        parseDiscoveryInfo(await Bun.file(discoveryPath).text()),
+        'discovery file'
+      )
       expect(raw.pid).toBe(process.pid)
     } finally {
       await handle.close()

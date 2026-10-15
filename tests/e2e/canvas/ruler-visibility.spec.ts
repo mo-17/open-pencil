@@ -7,21 +7,26 @@ for (const suppressed of [false, true]) {
     const canvas = new CanvasHelper(page)
     await canvas.waitForInit()
     await page.mouse.move(0, 0)
-    const initial = await canvas.screenshotCanvasRegion()
+    async function captureCanvasRegion() {
+      const box = await canvas.canvas.boundingBox()
+      if (!box) throw new Error('Canvas is not visible')
+      return canvas.screenshotCanvasRegion(Math.min(900, box.width), Math.min(700, box.height))
+    }
+    const initial = await captureCanvasRegion()
 
     async function toggleRulers() {
       await page.getByRole('button', { name: '100%', exact: true }).click()
-      await page.getByRole('menuitem', { name: 'Rulers', exact: true }).click()
+      await page.getByRole('menuitem', { name: /^Rulers\b/ }).click()
       await page.keyboard.press('Escape')
       await page.mouse.move(0, 0)
       await canvas.waitForRender()
     }
 
     await toggleRulers()
-    const hidden = await canvas.screenshotCanvasRegion()
+    const hidden = await captureCanvasRegion()
     expect(hidden.equals(initial)).toBe(suppressed)
     await toggleRulers()
-    expect((await canvas.screenshotCanvasRegion()).equals(initial)).toBe(true)
+    expect((await captureCanvasRegion()).equals(initial)).toBe(true)
     canvas.assertNoErrors()
   })
 }

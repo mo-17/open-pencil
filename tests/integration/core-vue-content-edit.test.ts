@@ -6,7 +6,7 @@ import { createModalModuleInstance } from '@open-pencil/core/plugins'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { handleDrawMove, startShapeDraw } from '#vue/shared/input/draw'
-import { reparentOutsideNodes } from '#vue/shared/input/drop-target'
+import { reparentDroppedNodes } from '#vue/shared/input/drop-target'
 import type { DragState } from '#vue/shared/input/types'
 
 function fixture() {
@@ -187,9 +187,10 @@ describe('isolated Modal content editing', () => {
     editor.state.zoom = 2
     editor.enterContentEdit(rootId)
     editor.select([rootId])
-    editor.duplicateSelected(editor.getSelectedNodes())
+    editor.duplicateSelected()
     const duplicateId = [...editor.state.selectedIds][0]
-    expect(editor.graph.getNode(duplicateId)?.name).toBe('Body copy')
+    expect(duplicateId).not.toBe(rootId)
+    expect(editor.graph.getNode(duplicateId)?.parentId).toBe(editor.graph.getNode(rootId)?.parentId)
     expect(editor.state.contentEdit).toBeNull()
     expect(editor.state).toMatchObject({ panX: 44, panY: 55, zoom: 2 })
     expect(editor.state.selectedIds).toEqual(new Set([duplicateId]))
@@ -206,7 +207,7 @@ describe('isolated Modal content editing', () => {
   test('undo and additive external selections preserve their exact selection on scope exit', () => {
     const { editor, rootId, childId, outsideId } = fixture()
     editor.select([outsideId])
-    editor.duplicateSelected(editor.getSelectedNodes())
+    editor.duplicateSelected()
     editor.enterContentEdit(rootId)
     editor.undo.undo()
     expect(editor.state.contentEdit).toBeNull()
@@ -243,7 +244,7 @@ describe('isolated Modal content editing', () => {
     expect(created?.width).toBeCloseTo(100)
     expect(created?.height).toBeCloseTo(70)
     editor.graph.updateNode(drag.nodeId, { x: 900 })
-    reparentOutsideNodes(editor)
+    reparentDroppedNodes(editor, [drag.nodeId], null)
     expect(editor.graph.getNode(drag.nodeId)?.parentId).toBe(rootId)
     editor.dispose()
   })

@@ -1,9 +1,8 @@
-import type { Paragraph } from 'canvaskit-wasm'
-
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { moduleMultilineLabelNode } from '#core/canvas/modules/label'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 import {
   EMPTY_STATE_LAYOUT,
@@ -16,7 +15,7 @@ export function emptyStateParagraph(
   node: SceneNode,
   config: EmptyStateModuleConfigV1,
   heading: boolean
-): Paragraph | undefined {
+): TextLayout | undefined {
   const text = heading ? config.title : config.description
   const width = emptyStateGeometry(node.width, node.height, config, 0, 0).title.width
   if (!text || width <= 0 || !renderer.fontProvider || !renderer.fontsLoaded) return undefined

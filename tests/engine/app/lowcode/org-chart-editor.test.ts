@@ -8,6 +8,7 @@ import {
   createOrgChartModuleInstance,
   resolveOrgChartModule
 } from '@open-pencil/core/plugins'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { ModuleScalarCommit } from '@/app/lowcode/module-editor/scalar'
@@ -20,6 +21,8 @@ import {
   orgChartParentChoices
 } from '@/app/lowcode/org-chart-editor'
 import { useOrgChartDraft } from '@/app/lowcode/org-chart-editor/use'
+
+import { expectDefined } from '#tests/helpers/assert'
 
 const items = [
   { id: 'team', parentId: '', label: 'Team', description: 'Local text' },
@@ -76,7 +79,9 @@ test('org chart applies a whole valid hierarchy once and undo restores items and
       value: { kind: 'value', value: orgChartDraftConfig(config, draft) }
     }
     expect(commitOrgChartItems(editor, request)).toBe(true)
-    expect(owner.interactiveProps?.module?.config.initialCollapsedIds).toEqual(['team'])
+    expect(readModuleInstance(owner.interactiveProps?.module)?.config.initialCollapsedIds).toEqual([
+      'team'
+    ])
     editor.undo.undo()
     expect(owner.interactiveProps).toEqual(before)
     expect(editor.undo.canUndo).toBe(false)
@@ -161,7 +166,10 @@ test('org chart invalid name stays in the draft and external module change canno
     expect(draft.rows.value[0].label).toBe('')
     expect(requests).toEqual([])
     draft.input('team', 'label', 'Draft', version)
-    f.owner.interactiveProps.module = createOrgChartModuleInstance({ items, label: 'External' })
+    expectDefined(f.owner.interactiveProps).module = createOrgChartModuleInstance({
+      items,
+      label: 'External'
+    })
     draft.apply(version)
     expect(requests).toEqual([])
   } finally {

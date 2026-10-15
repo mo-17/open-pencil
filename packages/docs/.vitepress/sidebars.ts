@@ -8,9 +8,11 @@ export const guideSidebar = (prefix: string, labels: SidebarLabels): DefaultThem
     items: [
       { text: labels.gettingStarted, link: `${prefix}/getting-started` },
       { text: labels.features, link: `${prefix}/overview/features` },
-      { text: labels.comparison, link: `${prefix}/overview/comparison` }
-    ]
-  }
+      { text: labels.comparison, link: `${prefix}/overview/comparison` },
+      // English only until translated; locales link to the canonical page.
+      { text: labels.privacy, link: '/overview/privacy' },
+    ],
+  },
 ]
 
 export const userGuideSidebar = (
@@ -32,15 +34,19 @@ export const userGuideSidebar = (
       { text: labels.shapes, link: `${prefix}/user-guide/drawing-shapes` },
       { text: labels.text, link: `${prefix}/user-guide/text-editing` },
       { text: labels.pen, link: `${prefix}/user-guide/pen-tool` },
-      { text: labels.vectorEditing, link: `${prefix}/user-guide/vector-edit` }
-    ]
+      { text: labels.vectorEditing, link: `${prefix}/user-guide/vector-edit` },
+      // English only until translated; locales link to the canonical page.
+      { text: labels.icons, link: '/user-guide/icons' },
+    ],
   },
   {
     text: labels.organizing,
     items: [
       { text: labels.layers, link: `${prefix}/user-guide/layers-and-pages` },
-      { text: labels.exporting, link: `${prefix}/user-guide/exporting` }
-    ]
+      { text: labels.exporting, link: `${prefix}/user-guide/exporting` },
+      // English only until translated; locales link to the canonical page.
+      { text: labels.cloudStorage, link: '/user-guide/cloud-storage' },
+    ],
   },
   {
     text: labels.advanced,
@@ -77,6 +83,7 @@ export const programmableSidebar = (
       { text: labels.exporting, link: `${prefix}/programmable/cli/exporting` },
       { text: labels.analyzing, link: `${prefix}/programmable/cli/analyzing` },
       { text: labels.comparing, link: '/programmable/cli/comparing' },
+      { text: labels.appControl, link: '/programmable/cli/app-control' },
       { text: labels.scripting, link: `${prefix}/programmable/cli/scripting` },
       { text: labels.jsxRenderer, link: `${prefix}/programmable/jsx-renderer` },
       { text: 'Native JavaScript APIs', link: '/programmable/native-api' },
@@ -86,6 +93,7 @@ export const programmableSidebar = (
       { text: 'Motion Runtime SDK', link: '/programmable/motion-runtime' },
       ...(!prefix
         ? [
+            { text: 'Coding agents', link: '/programmable/coding-agents' },
             {
               text: 'BYOK Compatibility',
               link: '/programmable/byok-provider-compatibility'
@@ -138,6 +146,8 @@ export const developmentSidebar = (
               link: '/development/plugin-tutorial'
             },
             { text: 'Roadmap', link: '/development/roadmap' },
+            { text: 'AI Chat Replies', link: '/development/ai-chat' },
+            { text: 'Behaviours and Preview', link: '/development/behaviours-and-preview' },
             { text: 'Navigation Performance', link: '/development/navigation-performance' },
             { text: 'Renderer Lifecycle', link: '/development/renderer-lifecycle' },
             { text: 'Renderer Profiler', link: '/development/renderer-profiler' },

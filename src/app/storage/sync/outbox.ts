@@ -283,7 +283,7 @@ export function createMemoryOutbox(): Outbox {
   }
 }
 
-export function createIdbOutbox(databaseName = DB_NAME): Outbox {
+export function createIdbOutbox(databaseName: string = DB_NAME): Outbox {
   let dbPromise: Promise<IDBDatabase> | null = null
   function db() {
     if (!dbPromise) dbPromise = openDb(databaseName)

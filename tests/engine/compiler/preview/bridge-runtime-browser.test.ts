@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines -- One browser lifecycle exercises the complete cross-origin bridge. */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { dirname, resolve } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { chromium, expect as playwrightExpect, type Browser, type Page } from '@playwright/test'
@@ -344,13 +344,7 @@ async function loadBlobBridge(page: Page) {
   const input = await browserPreviewInput(fixture.files, { bundleReact: true })
   // Bundle the pinned router into the same React module graph; an external CDN
   // router would import a second React instance in this deliberately offline fixture.
-  const routerPaths = Array.from(
-    new Bun.Glob(
-      'node_modules/.bun/react-router-dom@7.18.*/node_modules/react-router-dom/dist/index.mjs'
-    ).scanSync({ cwd: process.cwd(), dot: true })
-  )
-  expect(routerPaths).toHaveLength(1)
-  const routerPath = resolve(routerPaths[0] ?? '')
+  const routerPath = fileURLToPath(import.meta.resolve('react-router-dom'))
   const esbuild = input.esbuild
   if (!esbuild) throw new Error('Expected local esbuild fixture implementation')
   input.esbuild = {

@@ -79,10 +79,10 @@ async function saveBrowserFile(
   return true
 }
 
-type TauriMotionExportInvoker = <T>(
+type TauriMotionExportInvoker = (
   command: string,
   args: { path: string; data: number[] }
-) => Promise<T>
+) => Promise<unknown>
 
 /** Claim the selected Tauri path atomically; never truncate a racing file. */
 export async function writeTauriMotionFileNoClobber(

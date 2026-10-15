@@ -4,6 +4,7 @@ import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { CORE_TOOLS } from '@open-pencil/core/tools'
 import {
+  parseMotionSpec,
   createMotionPreset,
   type MotionPresetDefinition,
   type MotionRecipe,
@@ -282,7 +283,7 @@ describe('MotionSpec tools', () => {
     expect(cleared).toEqual({ ok: true, data: { nodeId: page.id, cleared: true } })
     expect(graph.getNode(page.id)?.motionScene).toBeUndefined()
     expect(editor.undo.undo()).toBe('AI: clear_motion_scene')
-    expect(graph.getNode(page.id)?.motionScene).toEqual(scene)
+    expect<unknown>(graph.getNode(page.id)?.motionScene).toEqual(scene)
   })
 
   test('rejects invalid scene owners and enabled references before mutation', () => {
@@ -403,7 +404,7 @@ describe('MotionSpec tools', () => {
       triggers: ['mount'],
       preset: 'slide-up'
     })
-    expect(read.data.spec).toEqual(graph.getNode(node.id)?.motion)
+    expect<unknown>(read.data.spec).toEqual(graph.getNode(node.id)?.motion)
     expect(read.data.spec).not.toBe(graph.getNode(node.id)?.motion)
   })
 
@@ -745,7 +746,8 @@ describe('MotionSpec tools', () => {
       graph.getNode(instance.id)?.motion
     )
     expect(
-      graph.getNode(instance.id)?.overrides.motion?.tracks[0].keyframes[1].cornerRadii
+      parseMotionSpec(graph.getNode(instance.id)?.overrides.motion).tracks[0].keyframes[1]
+        .cornerRadii
     ).toEqual({ topLeft: 12, topRight: 14, bottomRight: 16, bottomLeft: 18 })
 
     const cleared = getTool('clear_motion').execute(figma, {

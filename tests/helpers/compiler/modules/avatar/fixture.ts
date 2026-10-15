@@ -1,7 +1,7 @@
 import { toUint8Array } from 'js-base64'
 
 import { compile, withDefaults, type CompilerTarget } from '@open-pencil/compiler'
-import { SceneGraph, type Fill } from '@open-pencil/scene-graph'
+import { SceneGraph, readModuleInstance, type Fill } from '@open-pencil/scene-graph'
 
 import { createAvatarModuleFrameOverrides } from '#core/plugins/avatar'
 
@@ -109,8 +109,12 @@ export function avatarFixture(target: CompilerTarget, updates = false) {
 }
 
 function avatarUpdates(files: Map<string, string | Uint8Array>, target: 'react' | 'vue'): void {
+  const module = readModuleInstance(
+    createAvatarModuleFrameOverrides({ name: 'Avatar update' }).interactiveProps?.module
+  )
+  if (!module) throw new Error('Avatar fixture module invalid')
   const initial = JSON.stringify({
-    ...createAvatarModuleFrameOverrides({ name: 'Avatar update' }).interactiveProps?.module?.config,
+    ...module.config,
     imageAsset: 'src/assets/openpencil-image-avatar-broken.png'
   })
   if (target === 'react')

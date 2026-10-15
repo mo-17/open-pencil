@@ -2,15 +2,18 @@ import { expect, test } from 'bun:test'
 
 import * as skeleton from '#core/plugins/skeleton'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('Skeleton is independent bounded FRAME data, without request or progress authority', () => {
   const first = skeleton.createSkeletonModuleInstance(),
     second = skeleton.createSkeletonModuleInstance()
   first.config.label = 'Changed'
   expect(second.config.label).toBe('Loading content')
   expect(skeleton.resolveSkeletonModule(second)?.ok).toBe(true)
-  expect(skeleton.createSkeletonModuleFrameOverrides().interactiveProps?.module?.moduleType).toBe(
-    'skeleton'
-  )
+  expect(
+    expectModuleInstance(skeleton.createSkeletonModuleFrameOverrides().interactiveProps?.module)
+      .moduleType
+  ).toBe('skeleton')
   expect(Object.keys(second.config)).not.toContain('value')
   expect(Object.keys(second.config)).not.toContain('url')
 })

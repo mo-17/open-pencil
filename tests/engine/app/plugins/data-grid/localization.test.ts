@@ -35,7 +35,7 @@ function propertyLabels(panels: Readonly<Record<string, unknown>>) {
     property: field.path.join('.'),
     label: field.i18nLabelKey ? panels[field.i18nLabelKey] : undefined,
     options:
-      field.kind === 'select'
+      field.kind === 'select' && field.options
         ? field.options.map((value) => {
             const key = moduleOptionPanelKey(field.i18nLabelKey, value)
             return { value, label: key ? panels[key] : undefined }

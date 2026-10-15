@@ -9,7 +9,7 @@ import { commerceApplication } from '../commerce/helpers'
 import { modelFiles } from '../model-capabilities/helpers'
 import { foodApplication } from './helpers'
 
-function text(files: Map<string, string | Uint8Array>, path: string): string {
+function text(files: ReadonlyMap<string, string | Uint8Array>, path: string): string {
   const value = files.get('backend/nestjs/' + path)
   if (typeof value !== 'string') throw new Error('Missing food ordering artifact: ' + path)
   return value

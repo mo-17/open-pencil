@@ -15,6 +15,8 @@ test.beforeAll(async ({ browser }) => {
   canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   targetId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -91,6 +93,8 @@ async function chooseStyle(section: string, label: string, option: string) {
 
 async function targetStyles(id = targetId) {
   return page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.getNode(nodeId)
@@ -156,6 +160,8 @@ test('manual paint edits detach the style and undo restores the reference', asyn
 
 test('applies text styles and batches mixed selection binding', async () => {
   const textId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const text = store.graph.createNode('TEXT', store.state.currentPageId, {
@@ -175,6 +181,8 @@ test('applies text styles and batches mixed selection binding', async () => {
   })
 
   const secondId = await page.evaluate((firstId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const second = store.graph.createNode('FRAME', store.state.currentPageId, {

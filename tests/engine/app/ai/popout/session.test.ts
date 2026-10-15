@@ -5,6 +5,7 @@ import { decodeBase64Text } from '@open-pencil/core/bytes'
 import { DEFAULT_AI_POPOUT_CONTROLS, type AIPopoutControls } from '@/app/ai/popout/controls'
 import {
   AI_POPOUT_PROTOCOL_VERSION,
+  parseAIPopoutProjection,
   type AIPopoutIntentResult,
   type AIPopoutProjection
 } from '@/app/ai/popout/protocol'
@@ -61,7 +62,9 @@ function requestFromCall(call: InvokeCall): {
 }
 
 function decodedProjection(call: InvokeCall): AIPopoutProjection {
-  return JSON.parse(decodeBase64Text(requestFromCall(call).envelope)) as AIPopoutProjection
+  return parseAIPopoutProjection(
+    JSON.parse(decodeBase64Text(requestFromCall(call).envelope)) as unknown
+  )
 }
 
 function lastCall(calls: readonly InvokeCall[]): InvokeCall {

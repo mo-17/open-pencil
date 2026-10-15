@@ -5,7 +5,7 @@ import type { ConversationStore } from './types'
 
 export type ChatDocumentEditor = Pick<
   EditorStore,
-  'getSourceIdentity' | 'getStorageBinding' | 'getDocumentFilePath' | 'getRecoveryId'
+  'graph' | 'getSourceIdentity' | 'getStorageBinding' | 'getDocumentFilePath' | 'getRecoveryId'
 > & { state: { documentName: string } }
 
 const fileIds = new WeakMap<FileSystemFileHandle, string>()

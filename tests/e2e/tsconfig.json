@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.tests.json",
+  "compilerOptions": {
+    "paths": {
+      "#vite-config/*": ["../../vite/*"],
+      "@/*": ["../../src/*"],
+      "#vue/*": ["../../packages/vue/src/*", "../../packages/vue/src/*.vue"],
+      "#core/*": ["../../packages/core/src/*"],
+      "#fig/*": ["../../packages/fig/src/*"],
+      "#cli/*": ["../../packages/cli/src/*"],
+      "#mcp/*": ["../../packages/mcp/src/*"],
+      "#feedback/*": ["../../packages/feedback/src/*"],
+      "#dom-css/*": ["../../packages/dom-css/src/*"],
+      "#tests/*": ["../../tests/*"],
+      "#docs-config/*": ["../../packages/docs/.vitepress/*"],
+      "#docs/*": ["../../packages/docs/.vitepress/*"],
+      "tinykeys": ["../../node_modules/tinykeys/dist/tinykeys.d.ts"],
+      "#scene-graph/*": ["../../packages/scene-graph/src/*"],
+      "#emit/*": ["../../packages/emit/src/*"],
+      "#design-jsx/*": ["../../packages/design-jsx/src/*"],
+      "#pen/*": ["../../packages/pen/src/*"],
+      "#core-assets/*": ["../../packages/core/assets/*"],
+      "#compiler/*": ["../../packages/compiler/src/*"],
+      "#lowcode/*": ["../../packages/lowcode/src/*"],
+      "#codepen-sidecar/*": ["../../packages/codepen-sidecar/*"],
+      "#tools/*": ["../../tools/*"],
+      "#vite/*": ["../../vite/*"],
+      "#authoring-reference/*": ["../../tools/generate/authoring-reference/src/*"],
+      "#ci/*": ["../../tools/ci/policy/src/*"],
+      "#core-tests/*": ["../../packages/core/tests/*"],
+      "#fig-tests/*": ["../../packages/fig/tests/*"],
+      "#cli-tests/*": ["../../packages/cli/tests/*"],
+      "/src/*": ["../../src/*"],
+      "/packages/*": ["../../packages/*"]
+    }
+  },
+  "include": ["./**/*.ts", "../helpers/**/*.ts"],
+  "exclude": ["./native/**", "./native-collab/**", "../helpers/tauri/native-global.d.ts"]
+}

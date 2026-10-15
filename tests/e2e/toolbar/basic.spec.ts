@@ -87,11 +87,11 @@ test('Pen creates VECTOR node with 3 vertices on Enter', async () => {
   const vectors = children.filter((n) => n.type === 'VECTOR')
   expect(vectors.length).toBeGreaterThan(0)
   const last = vectors[vectors.length - 1]
-  expect(last.vectorNetwork.vertices.length).toBe(3)
+  expect(last.vectorNetwork?.vertices.length).toBe(3)
   editor.canvas.assertNoErrors()
 })
 
-test('Pen Escape with 2 vertices cancels path without creating node', async () => {
+test('Pen Escape with 2 vertices keeps the open path', async () => {
   const before = (await getPageChildren(editor.page)).filter((n) => n.type === 'VECTOR').length
 
   await editor.canvas.pressKey('p')
@@ -102,8 +102,9 @@ test('Pen Escape with 2 vertices cancels path without creating node', async () =
   await editor.canvas.pressKey('Escape')
   await editor.canvas.waitForRender()
 
+  // Figma keeps the path drawn so far.
   const after = (await getPageChildren(editor.page)).filter((n) => n.type === 'VECTOR').length
-  expect(after).toBe(before)
+  expect(after).toBe(before + 1)
   editor.canvas.assertNoErrors()
 })
 
@@ -125,7 +126,7 @@ test('Pen close path creates VECTOR with closed region', async () => {
 
   const vectors = (await getPageChildren(editor.page)).filter((n) => n.type === 'VECTOR')
   const last = vectors[vectors.length - 1]
-  expect(last.vectorNetwork.regions?.length).toBeGreaterThan(0)
+  expect(last.vectorNetwork?.regions?.length).toBeGreaterThan(0)
   editor.canvas.assertNoErrors()
 })
 

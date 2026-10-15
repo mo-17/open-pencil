@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { SceneNode } from '@open-pencil/scene-graph'
+import { createDefaultNode, type SceneNode } from '@open-pencil/scene-graph'
 
 import type { EditorStore } from '@/app/editor/active-store'
 import { PLUGIN_RUNTIME_CONTEXT_LIMITS, preparePluginRuntimeInput } from '@/app/plugins/runtime'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 function node(index: number, type: SceneNode['type'] = 'RECTANGLE'): SceneNode {
-  return {
-    id: `node-${index}`,
+  return createDefaultNode(() => `node-${index}`, type, {
     parentId: null,
     type,
     name: 'N'.repeat(PLUGIN_RUNTIME_CONTEXT_LIMITS.maxNameBytes + 8),
@@ -20,7 +21,7 @@ function node(index: number, type: SceneNode['type'] = 'RECTANGLE'): SceneNode {
     visible: true,
     locked: false,
     text: 'T'.repeat(PLUGIN_RUNTIME_CONTEXT_LIMITS.maxTextBytes + 8)
-  } as SceneNode
+  })
 }
 
 describe('plugin runtime capability context', () => {
@@ -31,7 +32,7 @@ describe('plugin runtime capability context', () => {
     nodes[1].name = '惊'.repeat(PLUGIN_RUNTIME_CONTEXT_LIMITS.maxNameBytes)
     const byId = new Map(nodes.map((value) => [value.id, value]))
     let visitedNodes = 0
-    const editor = {
+    const editor = asDouble<EditorStore>({
       graph: {
         getAllNodes: function* () {
           for (const value of nodes) {
@@ -46,7 +47,7 @@ describe('plugin runtime capability context', () => {
         currentPageId: 'page-1',
         selectedIds: new Set(['node-0', 'node-2'])
       }
-    } as EditorStore
+    })
 
     const result = await preparePluginRuntimeInput(
       ['document.nodes.read', 'document.selection.read'],

@@ -13,8 +13,17 @@ import {
 } from '@/app/plugins/host/deployment/backend/release-controller/durable-mutation-dispatch'
 import {
   createIdbBackendHostReleaseDispatchJournal,
-  createMemoryBackendHostReleaseDispatchJournal
+  createMemoryBackendHostReleaseDispatchJournal,
+  type BackendHostReleaseDispatchJournalRecord,
+  type BackendHostReleaseDispatchJournalRecordV2
 } from '@/app/plugins/host/deployment/backend/release-journal'
+
+function v2Claim(
+  claim: BackendHostReleaseDispatchJournalRecord
+): BackendHostReleaseDispatchJournalRecordV2 {
+  if (claim.version !== 2) throw new TypeError('Expected a v2 durable dispatch claim.')
+  return claim
+}
 
 const CLAIMED_AT = '2026-09-07T01:00:00.000Z'
 const PRECOMMITTED_AT = '2026-09-07T01:00:01.000Z'
@@ -91,7 +100,7 @@ async function precommittedKernel(journal = createMemoryBackendHostReleaseDispat
 function permitExpectation(precommit: Awaited<ReturnType<typeof precommittedKernel>>['precommit']) {
   return {
     singleFlightKey: precommit.claim.singleFlightKey,
-    dispatchScopeKey: precommit.claim.dispatchScopeKey,
+    dispatchScopeKey: v2Claim(precommit.claim).dispatchScopeKey,
     releaseId: precommit.claim.releaseId,
     planDigest: precommit.claim.planDigest,
     progressPayloadDigest: precommit.evidence.payloadDigest
@@ -219,7 +228,7 @@ describe('Host durable mutation dispatch kernel', () => {
 
     const expectation = {
       singleFlightKey: precommit.claim.singleFlightKey,
-      dispatchScopeKey: precommit.claim.dispatchScopeKey,
+      dispatchScopeKey: v2Claim(precommit.claim).dispatchScopeKey,
       releaseId: precommit.claim.releaseId,
       planDigest: precommit.claim.planDigest,
       progressPayloadDigest: precommit.evidence.payloadDigest
@@ -267,7 +276,7 @@ describe('Host durable mutation dispatch kernel', () => {
     if (!precommit) throw new TypeError('Expected one fulfilled precommit result.')
     const expectation = {
       singleFlightKey: precommit.claim.singleFlightKey,
-      dispatchScopeKey: precommit.claim.dispatchScopeKey,
+      dispatchScopeKey: v2Claim(precommit.claim).dispatchScopeKey,
       releaseId: precommit.claim.releaseId,
       planDigest: precommit.claim.planDigest,
       progressPayloadDigest: precommit.evidence.payloadDigest
@@ -280,7 +289,7 @@ describe('Host durable mutation dispatch kernel', () => {
     const first = await precommittedKernel()
     const expectation = {
       singleFlightKey: first.precommit.claim.singleFlightKey,
-      dispatchScopeKey: first.precommit.claim.dispatchScopeKey,
+      dispatchScopeKey: v2Claim(first.precommit.claim).dispatchScopeKey,
       releaseId: first.precommit.claim.releaseId,
       planDigest: first.precommit.claim.planDigest,
       progressPayloadDigest: first.precommit.evidence.payloadDigest
@@ -326,7 +335,7 @@ describe('Host durable mutation dispatch kernel', () => {
     const invalid = await precommittedKernel()
     const expected = {
       singleFlightKey: invalid.precommit.claim.singleFlightKey,
-      dispatchScopeKey: invalid.precommit.claim.dispatchScopeKey,
+      dispatchScopeKey: v2Claim(invalid.precommit.claim).dispatchScopeKey,
       releaseId: invalid.precommit.claim.releaseId,
       planDigest: invalid.precommit.claim.planDigest,
       progressPayloadDigest: invalid.precommit.evidence.payloadDigest
@@ -350,7 +359,7 @@ describe('Host durable mutation dispatch kernel', () => {
     expect(
       await tampered.kernel.permitConsumer.consume(tampered.precommit.permit, {
         singleFlightKey: tampered.precommit.claim.singleFlightKey,
-        dispatchScopeKey: tampered.precommit.claim.dispatchScopeKey,
+        dispatchScopeKey: v2Claim(tampered.precommit.claim).dispatchScopeKey,
         releaseId: tampered.precommit.claim.releaseId,
         planDigest: tampered.precommit.claim.planDigest,
         progressPayloadDigest: tampered.precommit.evidence.payloadDigest
@@ -536,7 +545,7 @@ describe('Host durable mutation dispatch kernel', () => {
     const payload = finalPayload()
     await secondJournal.recordEvidence({
       singleFlightKey: reopened.claim.singleFlightKey,
-      dispatchScopeKey: reopened.claim.dispatchScopeKey,
+      dispatchScopeKey: v2Claim(reopened.claim).dispatchScopeKey,
       releaseId: reopened.claim.releaseId,
       planDigest: reopened.claim.planDigest,
       phase: 'final',

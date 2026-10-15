@@ -1,5 +1,7 @@
 import { serializePenFile } from '@open-pencil/pen'
 
+import { layoutAuthoredNodes } from '#core/layout'
+
 import { exportFigFileWithOptions, readFigSource } from './formats/fig'
 import { sceneNodeToJSX, selectionToJSX } from './formats/jsx'
 import { readPenDocument } from './formats/pen/read'
@@ -29,7 +31,10 @@ const EXPORT_EVERY_TARGET: IOFormatSupport = {
 }
 
 /** Formats with a size of their own, so no export scale or quality. */
-const FIXED_SIZE_EXPORT: IOFormatExportOptions = { scale: false, quality: false }
+const FIXED_SIZE_EXPORT: IOFormatExportOptions = {
+  scale: false,
+  quality: false
+}
 
 function lowerExt(name: string): string {
   const match = /\.([^.]+)$/.exec(name.toLowerCase())
@@ -232,6 +237,16 @@ export const penFormat: IOFormatAdapter<'pen'> = {
       signal: options?.signal,
       allowMainThreadFallback: options?.allowMainThreadFallback
     })
+    if (options?.deriveLayout !== false) {
+      graph.applyDerivedLayoutDuring(() =>
+        graph.preserveSourceMetadataDuring(() =>
+          layoutAuthoredNodes(
+            graph,
+            graph.getPages(true).map((page) => page.id)
+          )
+        )
+      )
+    }
     return { graph, sourceFormat: 'pen' }
   },
   async writeDocument(graph) {
@@ -307,7 +322,10 @@ function resolvePPTXExportNodes(
   if (request.target.scope !== 'document') return resolveExportNodes(request)
   const pages = request.graph.getPages()
   if (!pages.length) return null
-  return { pageId: pages[0].id, nodeIds: pages.flatMap((page) => page.childIds) }
+  return {
+    pageId: pages[0].id,
+    nodeIds: pages.flatMap((page) => page.childIds)
+  }
 }
 
 export const pptxFormat: IOFormatAdapter<'pptx'> = {
@@ -411,7 +429,10 @@ export const tailwindJSXFormat: IOFormatAdapter<'tailwind-jsx'> = {
     const target = resolveExportNodes(request)
     if (!target) throw new Error('Nothing to export')
     const { sceneNodesToTailwindJSX } = await import('@open-pencil/dom-css/export')
-    const data = sceneNodesToTailwindJSX(request.graph, target.nodeIds)
+    const { vectorElement } = await import('#core/io/formats/html/vectors')
+    const data = sceneNodesToTailwindJSX(request.graph, target.nodeIds, {
+      vectorElement
+    })
     if (!data) throw new Error('Nothing to export')
     return {
       format: 'tailwind-jsx',

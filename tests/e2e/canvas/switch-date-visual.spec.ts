@@ -23,6 +23,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const canvas = new CanvasHelper(page)
     await canvas.waitForInit()
     const ids = await page.evaluate(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const graph = editor.graph
       graph.updateNode(graph.rootId, {
@@ -134,9 +136,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       editor.requestRender()
       return { root: root.id, switch: boundSwitch.id, date: boundDate.id }
     })
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-live-initial.png`) })
     const initial = await page.evaluate(async (rootId) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const png = await window.openPencil.getStore().renderExportImage([rootId], 1, 'PNG')
       if (!png) throw new Error('Raster export unavailable')
       return Array.from(png)
@@ -146,6 +153,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
       threshold: 0.2
     })
     await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const root = editor.graph.getNode(editor.graph.rootId)
       editor.graph.updateNode(editor.graph.rootId, {
@@ -156,9 +165,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       })
       editor.requestRender()
     })
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-live-updated.png`) })
     const changed = await page.evaluate(async (ids) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const png = await editor.renderExportImage([ids.root], 1, 'PNG')
       if (!png) throw new Error('Raster export unavailable')
@@ -214,6 +228,8 @@ test('saved template FIG paints its switch and bound date without regenerating t
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const roots = await page.evaluate(async (bytes) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const url = performance
       .getEntriesByType('resource')
@@ -235,6 +251,8 @@ test('saved template FIG paints its switch and bound date without regenerating t
   }, Array.from(bytes))
   for (const [index, root] of roots.entries()) {
     const image = await page.evaluate(async (id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const node = editor.graph.getNode(id)
       if (!node) throw new Error('Template disappeared')
@@ -249,7 +267,10 @@ test('saved template FIG paints its switch and bound date without regenerating t
       if (!png) throw new Error('Template PNG unavailable')
       return Array.from(png)
     }, root.id)
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`template-${index}-live.png`) })
     writeFileSync(info.outputPath(`template-${index}.png`), Buffer.from(image))
     expect(Buffer.from(image)).toMatchSnapshot(`template-${index}.png`, {

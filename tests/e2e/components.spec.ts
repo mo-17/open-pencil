@@ -5,6 +5,8 @@ const editor = useEditorSetup()
 
 function getNodeById(id: string) {
   return editor.page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const n = store.graph.getNode(nodeId)
@@ -15,6 +17,8 @@ function getNodeById(id: string) {
 
 function getSelectedIds() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds]
@@ -23,6 +27,8 @@ function getSelectedIds() {
 
 function getPageChildren() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(store.state.currentPageId).map((n) => ({
@@ -62,6 +68,8 @@ test('component visible in layers panel', async () => {
   expect(count).toBeGreaterThan(0)
 
   const types = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(store.state.currentPageId).map((n) => n.type)
@@ -76,6 +84,8 @@ test('create instance from component (context menu)', async () => {
 
   // Use store directly to create instance
   await editor.page.evaluate((compId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.createInstanceFromComponent(compId, 300, 100)
@@ -96,6 +106,8 @@ test('instance shows INSTANCE type in design panel', async () => {
   )
 
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -105,17 +117,19 @@ test('instance shows INSTANCE type in design panel', async () => {
   await expect(editor.page.getByRole('img', { name: 'INSTANCE' })).toBeVisible()
 })
 
-test('instance has "Go to Main Component" button', async () => {
-  await expect(editor.page.getByRole('button', { name: 'Go to Main Component' })).toBeVisible()
+test('instance has "Go to main component" button', async () => {
+  await expect(editor.page.getByRole('button', { name: 'Go to main component' })).toBeVisible()
 })
 
 test('instance has "Detach" button', async () => {
-  await expect(editor.page.getByRole('button', { name: 'Detach Instance' })).toBeVisible()
+  await expect(editor.page.getByRole('button', { name: 'Detach instance' })).toBeVisible()
 })
 
 test('modifying component propagates to instance', async () => {
   // Select the component
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -124,6 +138,8 @@ test('modifying component propagates to instance', async () => {
 
   // Change component fill
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.updateNodeWithUndo(
@@ -151,6 +167,8 @@ test('modifying component propagates to instance', async () => {
     'instance node'
   )
   const instanceNode = await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const n = store.graph.getNode(id)
@@ -169,6 +187,8 @@ test('detach instance converts to frame', async () => {
   )
 
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -176,6 +196,8 @@ test('detach instance converts to frame', async () => {
   await editor.canvas.waitForRender()
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.detachInstance()

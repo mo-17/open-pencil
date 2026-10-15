@@ -58,7 +58,11 @@ function projection(contextId = 'context-a'): AIPopoutProjection {
 
 function intent(
   clientActionId: string,
-  value: Omit<AIPopoutIntent, 'protocolVersion' | 'contextId' | 'clientActionId'> = {
+  value: AIPopoutIntent extends infer Intent
+    ? Intent extends AIPopoutIntent
+      ? Omit<Intent, 'protocolVersion' | 'contextId' | 'clientActionId'>
+      : never
+    : never = {
     type: 'stop'
   }
 ): AIPopoutIntent {
@@ -281,7 +285,7 @@ describe('AI popout host', () => {
   })
 
   test('publishes projections without exposing the mutable host object', async () => {
-    let notify = () => undefined
+    let notify: () => void = () => undefined
     let current = projection()
     register({
       getProjection: () => current,

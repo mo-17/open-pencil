@@ -7,7 +7,7 @@ function designPanel() {
 }
 
 function workspace(id: 'classic' | 'focused' | 'studio') {
-  return editor.page.getByTestId(`design-panel-workspace-${id}`)
+  return editor.page.locator(`[data-slot="inspector-workspace"][data-workspace="${id}"]`)
 }
 
 function section(id: string) {
@@ -19,7 +19,9 @@ function sectionTrigger(id: string) {
 }
 
 function sectionHide(id: string) {
-  return editor.page.getByTestId(`inspector-section-hide-${id}`)
+  return editor.page.locator(
+    `[data-slot="inspector-section-action"][data-command="hide-section"][data-section-id="${id}"]`
+  )
 }
 
 async function visibleSectionOrder(): Promise<string[]> {
@@ -36,13 +38,11 @@ async function visibleSectionOrder(): Promise<string[]> {
 async function studioRowOrder(): Promise<string[]> {
   return editor.page
     .getByTestId('design-panel-studio-panel')
-    .getByTestId(/^design-panel-studio-row-(?!.*-(?:toggle|up|down)$)/)
+    .locator('[data-slot="inspector-section"]')
     .evaluateAll((elements) =>
       elements
-        .map((element) =>
-          element.getAttribute('data-test-id')?.replace('design-panel-studio-row-', '')
-        )
-        .filter((id): id is string => id !== undefined)
+        .map((element) => element.getAttribute('data-section-id'))
+        .filter((id): id is string => id !== null)
     )
 }
 
@@ -114,14 +114,20 @@ test('Studio reorders, hides, persists, resets, and does not pollute Classic fol
   const initialRows = await studioRowOrder()
   expect(initialRows.indexOf('position')).toBeLessThan(initialRows.indexOf('layout'))
 
-  await editor.page.getByTestId('design-panel-studio-row-layout-up').click()
+  await editor.page
+    .locator(
+      '[data-slot="inspector-section-action"][data-command="move-section-up"][data-section-id="layout"]'
+    )
+    .click()
   const movedRows = await studioRowOrder()
   expect(movedRows.indexOf('layout')).toBeLessThan(movedRows.indexOf('position'))
 
   const movedSections = await visibleSectionOrder()
   expect(movedSections.indexOf('layout')).toBeLessThan(movedSections.indexOf('position'))
 
-  const layoutToggle = editor.page.getByTestId('design-panel-studio-row-layout-toggle')
+  const layoutToggle = editor.page.locator(
+    '[data-slot="inspector-section-action"][data-command="toggle-section"][data-section-id="layout"]'
+  )
   await expect(layoutToggle).toHaveAttribute('aria-pressed', 'true')
   await layoutToggle.click()
   await expect(layoutToggle).toHaveAttribute('aria-pressed', 'false')
@@ -142,18 +148,20 @@ test('Studio reorders, hides, persists, resets, and does not pollute Classic fol
   await expect(workspace('studio')).toHaveAttribute('aria-pressed', 'true')
   await expect(section('layout')).not.toBeVisible()
   await editor.page.getByTestId('design-panel-studio-config').click()
-  await expect(editor.page.getByTestId('design-panel-studio-row-layout-toggle')).toHaveAttribute(
-    'aria-pressed',
-    'false'
-  )
+  await expect(
+    editor.page.locator(
+      '[data-slot="inspector-section-action"][data-command="toggle-section"][data-section-id="layout"]'
+    )
+  ).toHaveAttribute('aria-pressed', 'false')
   const persistedRows = await studioRowOrder()
   expect(persistedRows.indexOf('layout')).toBeLessThan(persistedRows.indexOf('position'))
 
   await editor.page.getByTestId('design-panel-studio-reset').click()
-  await expect(editor.page.getByTestId('design-panel-studio-row-layout-toggle')).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
+  await expect(
+    editor.page.locator(
+      '[data-slot="inspector-section-action"][data-command="toggle-section"][data-section-id="layout"]'
+    )
+  ).toHaveAttribute('aria-pressed', 'true')
   await expect(section('layout')).toBeVisible()
   const resetRows = await studioRowOrder()
   expect(resetRows.indexOf('position')).toBeLessThan(resetRows.indexOf('layout'))
@@ -185,7 +193,9 @@ test('Studio hides a section inline and restores it from the workspace configura
   await expect(studioConfig).toBeFocused()
 
   await studioConfig.click()
-  const layoutToggle = editor.page.getByTestId('design-panel-studio-row-layout-toggle')
+  const layoutToggle = editor.page.locator(
+    '[data-slot="inspector-section-action"][data-command="toggle-section"][data-section-id="layout"]'
+  )
   await expect(layoutToggle).toHaveAttribute('aria-pressed', 'false')
   await layoutToggle.click()
 
@@ -198,7 +208,9 @@ test('Appearance settings switches and persists the design panel workspace', asy
   await editor.page.getByTestId('app-settings-trigger').click()
   await editor.page.getByTestId('settings-section-appearance').click()
 
-  const focusedSetting = editor.page.getByTestId('settings-design-panel-workspace-focused')
+  const focusedSetting = editor.page.locator(
+    '[data-slot="inspector-workspace-option"][data-workspace="focused"]'
+  )
   await focusedSetting.click()
   await expect(focusedSetting).toHaveAttribute('data-selected', 'true')
   await expect(workspace('focused')).toHaveAttribute('aria-pressed', 'true')

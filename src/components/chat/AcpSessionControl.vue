@@ -88,14 +88,14 @@ const statusLabel = computed(() => {
 })
 
 const statusClass = computed(() => {
-  if (manualRestoreFailed.value || persistenceFailed.value) return 'text-amber-400'
+  if (manualRestoreFailed.value || persistenceFailed.value) return 'text-warning'
   switch (status.state) {
     case 'resumed':
-      return 'text-green-400'
+      return 'text-success'
     case 'fallback':
-      return 'text-amber-400'
+      return 'text-warning'
     case 'failed':
-      return 'text-red-400'
+      return 'text-error'
     default:
       return 'text-muted'
   }
@@ -240,17 +240,17 @@ async function copySessionId(sessionId: string): Promise<void> {
       <icon-lucide-triangle-alert
         v-else-if="manualRestoreFailed || persistenceFailed || status.state === 'fallback'"
         aria-hidden="true"
-        class="size-3 shrink-0 text-amber-400"
+        class="size-3 shrink-0 text-warning"
       />
       <icon-lucide-circle-check
         v-else-if="status.state === 'resumed'"
         aria-hidden="true"
-        class="size-3 shrink-0 text-green-400"
+        class="size-3 shrink-0 text-success"
       />
       <icon-lucide-circle-alert
         v-else-if="status.state === 'failed'"
         aria-hidden="true"
-        class="size-3 shrink-0 text-red-400"
+        class="size-3 shrink-0 text-error"
       />
       <icon-lucide-sparkles
         v-else-if="status.state === 'new'"
@@ -303,7 +303,7 @@ async function copySessionId(sessionId: string): Promise<void> {
               <p
                 v-if="status.sessionId"
                 data-test-id="acp-session-current-document"
-                class="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-green-500/10 px-1.5 py-0.5 text-[9px] font-medium text-green-300"
+                class="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-medium text-success"
               >
                 <icon-lucide-file-check-2 aria-hidden="true" class="size-3 shrink-0" />
                 <span class="truncate">
@@ -316,7 +316,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           <p
             v-if="statusErrorLabel"
             role="alert"
-            class="mt-2 line-clamp-3 break-words rounded bg-red-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-red-300"
+            class="mt-2 line-clamp-3 break-words rounded bg-error/10 px-2 py-1.5 text-[10px] leading-relaxed text-error"
           >
             {{ statusErrorLabel }}
           </p>
@@ -324,7 +324,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           <p
             v-if="persistenceErrorLabel"
             role="alert"
-            class="mt-2 line-clamp-3 break-words rounded bg-amber-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-amber-300"
+            class="mt-2 line-clamp-3 break-words rounded bg-warning/10 px-2 py-1.5 text-[10px] leading-relaxed text-warning"
           >
             {{ persistenceErrorLabel }}
           </p>
@@ -351,7 +351,7 @@ async function copySessionId(sessionId: string): Promise<void> {
                   <icon-lucide-check
                     v-if="copiedSessionId === status.sessionId"
                     aria-hidden="true"
-                    class="size-3 text-green-400"
+                    class="size-3 text-success"
                   />
                   <icon-lucide-copy v-else aria-hidden="true" class="size-3" />
                 </button>
@@ -401,7 +401,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           <div
             v-else-if="historyViewState === 'error'"
             role="alert"
-            class="rounded border border-red-500/20 bg-red-500/10 px-2 py-2 text-[10px] leading-relaxed text-red-300"
+            class="rounded border border-error/20 bg-error/10 px-2 py-2 text-[10px] leading-relaxed text-error"
           >
             <div class="flex items-start gap-2">
               <icon-lucide-circle-alert aria-hidden="true" class="mt-0.5 size-3.5 shrink-0" />
@@ -436,7 +436,7 @@ async function copySessionId(sessionId: string): Promise<void> {
             <p
               v-if="exactSessions.length === 0"
               data-test-id="acp-session-no-exact-match"
-              class="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-2 text-[10px] leading-relaxed text-amber-200"
+              class="rounded border border-warning/20 bg-warning/10 px-2 py-2 text-[10px] leading-relaxed text-warning"
             >
               {{ dialogs.aiSessionNoExactMatch({ document: documentLabel }) }}
             </p>
@@ -456,9 +456,9 @@ async function copySessionId(sessionId: string): Promise<void> {
                   class="rounded border bg-input/20 p-2"
                   :class="[
                     item.match === 'exact'
-                      ? 'border-green-500/30 bg-green-500/5'
+                      ? 'border-success/30 bg-success/5'
                       : item.match === 'same-document'
-                        ? 'border-amber-500/20 bg-amber-500/5'
+                        ? 'border-warning/20 bg-warning/5'
                         : 'border-border',
                     isCurrent(item) ? 'ring-1 ring-accent/30' : ''
                   ]"
@@ -477,9 +477,9 @@ async function copySessionId(sessionId: string): Promise<void> {
                           class="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
                           :class="
                             item.match === 'exact'
-                              ? 'bg-green-500/10 text-green-300'
+                              ? 'bg-success/10 text-success'
                               : item.match === 'same-document'
-                                ? 'bg-amber-500/10 text-amber-300'
+                                ? 'bg-warning/10 text-warning'
                                 : 'bg-input text-muted'
                           "
                         >
@@ -512,7 +512,7 @@ async function copySessionId(sessionId: string): Promise<void> {
                             <icon-lucide-check
                               v-if="copiedSessionId === item.sessionId"
                               aria-hidden="true"
-                              class="size-3 text-green-400"
+                              class="size-3 text-success"
                             />
                             <icon-lucide-copy v-else aria-hidden="true" class="size-3" />
                           </button>
@@ -538,7 +538,7 @@ async function copySessionId(sessionId: string): Promise<void> {
                     v-if="pendingResumeSessionId === item.sessionId"
                     role="alert"
                     data-test-id="acp-session-resume-confirmation"
-                    class="mt-2 rounded border border-amber-500/20 bg-amber-500/10 p-2 text-[9px] leading-relaxed text-amber-200"
+                    class="mt-2 rounded border border-warning/20 bg-warning/10 p-2 text-[9px] leading-relaxed text-warning"
                   >
                     <p>
                       {{

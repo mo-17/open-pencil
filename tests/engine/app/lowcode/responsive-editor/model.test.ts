@@ -184,7 +184,7 @@ describe('responsive editor field mutations', () => {
 
   test('does not prune unknown fields when removing the last recognized field', () => {
     const overrides = { md: { width: 640, futureSizing: null } } as ResponsiveOverrides
-    expect(responsiveSetField(overrides, 'md', 'width', undefined)).toEqual({
+    expect<unknown>(responsiveSetField(overrides, 'md', 'width', undefined)).toEqual({
       md: { futureSizing: null }
     })
   })
@@ -195,7 +195,7 @@ describe('responsive editor field mutations', () => {
       sm: { width: 640 },
       futureBreakpoint: { preserve: true }
     } as ResponsiveOverrides
-    expect(responsiveClearBreakpoint(overrides, 'compact')).toEqual({
+    expect<unknown>(responsiveClearBreakpoint(overrides, 'compact')).toEqual({
       sm: { width: 640 },
       futureBreakpoint: { preserve: true }
     })

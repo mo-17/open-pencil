@@ -54,14 +54,14 @@ function onChange(event: Event): void {
       :placeholder="panels.lowcodeRenderConditionPlaceholder"
       :class="[
         'w-full rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-        exprError ? 'border-red-500' : 'border-border'
+        exprError ? 'border-error' : 'border-border'
       ]"
       @change="onChange"
     />
     <p
       v-if="exprError"
       data-test-id="lowcode-render-condition-error"
-      class="mt-1 pl-1 text-[10px] text-red-500"
+      class="mt-1 pl-1 text-[10px] text-error"
     >
       {{ exprError }}
     </p>

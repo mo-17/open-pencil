@@ -168,7 +168,9 @@ describe('procurement and inventory model', () => {
           (step) => step.kind === 'data.mutate' && step.entityId === 'business-inventory-movements'
         ) ?? []
     expect(allWrites).toHaveLength(5)
-    expect(allWrites.every((step) => step.operation === 'insert')).toBe(true)
+    expect(
+      allWrites.every((step) => step.kind === 'data.mutate' && step.operation === 'insert')
+    ).toBe(true)
   })
 
   test('caps cumulative receiving and each return against the locked original document', () => {

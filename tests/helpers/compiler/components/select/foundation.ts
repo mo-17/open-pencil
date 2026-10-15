@@ -120,7 +120,9 @@ export function selectFoundationFixture(target: 'react' | 'vue', shadcn = false)
       width: 400,
       height: 36,
       interactiveProps: { text: name },
-      events: { onClick: [{ kind: 'setState', targetStateId: 'choices', valueExpr }] }
+      events: {
+        onClick: [{ id: 'fixture-action-1', kind: 'setState', targetStateId: 'choices', valueExpr }]
+      }
     })
   }
   graph.createNode('TEXT', root.id, {

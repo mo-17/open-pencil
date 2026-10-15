@@ -68,7 +68,7 @@ const { dialogs } = useI18n()
       <AlertDialogAction as-child>
         <button
           type="button"
-          class="rounded bg-danger px-3 py-1.5 text-[11px] font-medium text-white hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded bg-error-fill px-3 py-1.5 text-[11px] font-medium text-white hover:bg-error/90 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="busy || blocked"
           data-test-id="storage-delete-document-confirm"
           @click="emit('confirm')"

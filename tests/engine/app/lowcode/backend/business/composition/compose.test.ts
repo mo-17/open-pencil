@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { uniq } from 'es-toolkit'
+
 import { parseBackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import {
@@ -13,27 +15,27 @@ import { createCommerceOperationsApplication } from '@/app/lowcode/backend/comme
 import { authentication, BOUNDED_BUSINESS_GROUPS, business, resource } from './helpers'
 
 describe('pure business module composition', () => {
-  test.each(BUSINESS_TEMPLATE_IDS)(
+  test.each([...BUSINESS_TEMPLATE_IDS])(
     'adopts the unchanged %s standalone without changing any authority or record',
     (kind) => {
       const base = business(kind)
       const before = structuredClone(base)
-      expect(detectStandaloneBusinessKinds(base)).toEqual([kind])
+      expect<unknown>(detectStandaloneBusinessKinds(base)).toEqual([kind])
       const result = composeBusinessModules(base, [kind], { adoptExisting: [kind] })
       expect(result.addedKinds).toEqual([])
-      expect(result.adoptedKinds).toEqual([kind])
+      expect<unknown>(result.adoptedKinds).toEqual([kind])
       expect(result.addedEntities).toEqual([])
       expect(result.bindings[kind]).toEqual({ users: 'users' })
       expect(result.sharedAccountWasPresent).toBe(true)
       const { modules, ...unchanged } = result.application
       expect(unchanged).toEqual(before)
       expect(base).toEqual(before)
-      expect(modules?.modules.map((entry) => entry.id)).toEqual(['shared-accounts', kind])
+      expect<unknown>(modules?.modules.map((entry) => entry.id)).toEqual(['shared-accounts', kind])
       expect(parseBackendApplicationSpecV1(result.application).ok).toBe(true)
     }
   )
 
-  test.each(BOUNDED_BUSINESS_GROUPS)(
+  test.each([...BOUNDED_BUSINESS_GROUPS])(
     'composes $name while preserving CRM directory and sensitive record permissions',
     ({ kinds, entities, commands }) => {
       const base = business()
@@ -83,9 +85,9 @@ describe('pure business module composition', () => {
   )
 
   test('covers every available template in bounded groups and rejects the oversized all-in-one model atomically', () => {
-    expect(
-      [...new Set(BOUNDED_BUSINESS_GROUPS.flatMap((group) => [...group.kinds]))].sort()
-    ).toEqual([...BUSINESS_TEMPLATE_IDS].sort())
+    expect(uniq(BOUNDED_BUSINESS_GROUPS.flatMap((group) => [...group.kinds])).sort()).toEqual(
+      [...BUSINESS_TEMPLATE_IDS].sort()
+    )
     const base = business()
     const before = structuredClone(base)
     const result = previewComposeBusinessModules(base, BUSINESS_TEMPLATE_IDS, {
@@ -99,7 +101,7 @@ describe('pure business module composition', () => {
     expect(Object.hasOwn(result, 'application')).toBe(false)
   })
 
-  test.each(['single-merchant', 'multi-merchant'] as const)(
+  test.each([...(['single-merchant', 'multi-merchant'] as const)])(
     'adds CRM, support and knowledge to %s commerce without broadening commerce authority',
     (mode) => {
       const base = createCommerceOperationsApplication(

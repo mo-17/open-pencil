@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import { createSqliteMarketplaceRepository } from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
@@ -41,13 +42,31 @@ async function runCLI(
   return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
 }
 
-function successfulJSON<Value>(result: CLICommandResult): Value {
+const PublicationRequestResult = v.looseObject({
+  requestDigest: v.string(),
+  stateDigest: v.string()
+})
+const PublicationSequenceResult = v.looseObject({ sequence: v.number() })
+const PublicationCancellationResult = v.looseObject({
+  cancelled: v.boolean(),
+  requestDigest: v.string()
+})
+
+function successfulJSON(result: CLICommandResult): Record<string, unknown>
+function successfulJSON<Schema extends v.GenericSchema>(
+  result: CLICommandResult,
+  schema: Schema
+): v.InferOutput<Schema>
+function successfulJSON(
+  result: CLICommandResult,
+  schema: v.GenericSchema = v.record(v.string(), v.unknown())
+) {
   if (result.exitCode !== 0) {
     throw new Error(`Marketplace CLI failed: ${result.stderr || '(no stderr)'}`)
   }
   expect(result.exitCode).toBe(0)
   expect(result.stderr).toBe('')
-  return JSON.parse(result.stdout) as Value
+  return v.parse(v.pipe(v.string(), v.parseJson(), schema), result.stdout)
 }
 
 afterEach(async () => {
@@ -114,7 +133,7 @@ describe('offline publication CLI ceremony', () => {
         environment
       )
     )
-    const requested = successfulJSON<{ requestDigest: string; stateDigest: string }>(
+    const requested = successfulJSON(
       await runCLI(
         [
           'publication',
@@ -129,10 +148,12 @@ describe('offline publication CLI ceremony', () => {
           '--json'
         ],
         environment
-      )
+      ),
+      PublicationRequestResult
     )
-    const inspected = successfulJSON<{ requestDigest: string; stateDigest: string }>(
-      await runCLI(['publication', 'inspect', '--handoff', firstHandoff, '--json'], environment)
+    const inspected = successfulJSON(
+      await runCLI(['publication', 'inspect', '--handoff', firstHandoff, '--json'], environment),
+      PublicationRequestResult
     )
     expect(inspected.requestDigest).toBe(requested.requestDigest)
     expect(inspected.stateDigest).toBe(requested.stateDigest)
@@ -180,7 +201,7 @@ describe('offline publication CLI ceremony', () => {
       )
     )
 
-    const firstImport = successfulJSON<{ sequence: number }>(
+    const firstImport = successfulJSON(
       await runCLI(
         [
           'publication',
@@ -193,9 +214,10 @@ describe('offline publication CLI ceremony', () => {
           '--json'
         ],
         environment
-      )
+      ),
+      PublicationSequenceResult
     )
-    const exactReplay = successfulJSON<{ sequence: number }>(
+    const exactReplay = successfulJSON(
       await runCLI(
         [
           'publication',
@@ -208,12 +230,13 @@ describe('offline publication CLI ceremony', () => {
           '--json'
         ],
         environment
-      )
+      ),
+      PublicationSequenceResult
     )
     expect(firstImport.sequence).toBe(1)
     expect(exactReplay).toEqual(firstImport)
 
-    const secondRequest = successfulJSON<{ requestDigest: string }>(
+    const secondRequest = successfulJSON(
       await runCLI(
         [
           'publication',
@@ -228,7 +251,8 @@ describe('offline publication CLI ceremony', () => {
           '--json'
         ],
         environment
-      )
+      ),
+      PublicationRequestResult
     )
     const wrongCancellation = await runCLI(
       [
@@ -246,7 +270,7 @@ describe('offline publication CLI ceremony', () => {
     expect(wrongCancellation.exitCode).not.toBe(0)
     expect(wrongCancellation.stdout).toBe('')
 
-    const cancellation = successfulJSON<{ cancelled: boolean; requestDigest: string }>(
+    const cancellation = successfulJSON(
       await runCLI(
         [
           'publication',
@@ -259,7 +283,8 @@ describe('offline publication CLI ceremony', () => {
           '--json'
         ],
         environment
-      )
+      ),
+      PublicationCancellationResult
     )
     expect(cancellation).toMatchObject({
       cancelled: true,

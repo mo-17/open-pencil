@@ -1,7 +1,16 @@
-import type { SceneGraph, SceneNode, NodeType } from '@open-pencil/scene-graph'
+import { isEqual, omitBy, pick } from 'es-toolkit'
+
+import {
+  createDefaultNode,
+  layoutSizing,
+  type SceneGraph,
+  type SceneNode,
+  type NodeType
+} from '@open-pencil/scene-graph'
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/scene-graph/constants'
 import { resolveNodeTextDirection } from '@open-pencil/scene-graph/text-direction'
 
+import { collectDecorationProps } from './decoration'
 import {
   collectCornerRadii,
   collectPadding,
@@ -60,13 +69,12 @@ function collectFlexSizingProps(node: SceneNode, props: JSXProp[]): void {
   const primaryAxis = node.layoutMode === 'HORIZONTAL' ? 'width' : 'height'
   const crossAxis = node.layoutMode === 'HORIZONTAL' ? 'height' : 'width'
 
-  if (node.primaryAxisSizing === 'FILL') props.push([primaryAxis === 'width' ? 'w' : 'h', 'fill'])
-  else if (node.primaryAxisSizing !== 'HUG')
+  if (node.primaryAxisSizing !== 'HUG') {
     props.push([primaryAxis === 'width' ? 'w' : 'h', node[primaryAxis]])
-
-  if (node.counterAxisSizing === 'FILL') props.push([crossAxis === 'width' ? 'w' : 'h', 'fill'])
-  else if (node.counterAxisSizing !== 'HUG')
+  }
+  if (node.counterAxisSizing !== 'HUG') {
     props.push([crossAxis === 'width' ? 'w' : 'h', node[crossAxis]])
+  }
 }
 
 function collectGridPositionProps(node: SceneNode, props: JSXProp[]): void {
@@ -93,6 +101,7 @@ function collectFlexAlignmentProps(node: SceneNode, props: JSXProp[]): void {
   if (node.counterAxisAlign === 'CENTER') props.push(['items', 'center'])
   else if (node.counterAxisAlign === 'MAX') props.push(['items', 'end'])
   else if (node.counterAxisAlign === 'STRETCH') props.push(['items', 'stretch'])
+  else if (node.counterAxisAlign === 'BASELINE') props.push(['items', 'baseline'])
 }
 
 function collectAutoLayoutPaddingProps(node: SceneNode, props: JSXProp[]): void {
@@ -178,13 +187,23 @@ function collectSizingProps(
   }
 
   if (!ctx.parentIsAutoLayout) return
-  if (node.layoutGrow > 0) props.push(['grow', node.layoutGrow])
-  if (node.layoutAlignSelf === 'STRETCH') {
-    const parent = node.parentId ? graph.getNode(node.parentId) : null
-    if (parent && (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL')) {
-      const crossDim = parent.layoutMode === 'HORIZONTAL' ? 'h' : 'w'
-      if (!props.some(([k]) => k === crossDim)) props.push([crossDim, 'fill'])
-    }
+  const parent = node.parentId ? graph.getNode(node.parentId) : undefined
+  // A flex child's main-axis fill keeps its grow factor; every other fill is `"fill"`.
+  const growAxis = parent?.layoutMode === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'
+  const keepsGrow = parent?.layoutMode !== 'GRID' && node.layoutGrow > 0
+  if (keepsGrow) props.push(['grow', node.layoutGrow])
+  for (const [axis, key] of [
+    ['HORIZONTAL', 'w'],
+    ['VERTICAL', 'h']
+  ] as const) {
+    if (keepsGrow && axis === growAxis) continue
+    if (layoutSizing(graph, node, axis) !== 'FILL') continue
+    // Stretch inherited from the parent's alignment is written on the parent.
+    if (axis !== growAxis && node.layoutAlignSelf !== 'STRETCH') continue
+    // Fill replaces the size the node had before it filled.
+    const index = props.findIndex(([k]) => k === key)
+    if (index === -1) props.push([key, 'fill'])
+    else props[index] = [key, 'fill']
   }
 }
 
@@ -211,16 +230,32 @@ function collectTextSizingProps(node: SceneNode, graph: SceneGraph, props: JSXPr
   if (emitH && node.height > 0) props.push(['h', node.height])
 }
 
+const DECORATION_FIELDS = [
+  'textDecorationStyle',
+  'textDecorationFills',
+  'textDecorationThickness',
+  'textUnderlineOffset',
+  'textDecorationSkipInk'
+] as const
+
+const TEXT_DEFAULTS = pick(
+  createDefaultNode(() => '', 'TEXT'),
+  DECORATION_FIELDS
+)
+
+/** A font weight as `weight` writes it, by name for the weights that have one. */
+export function fontWeightValue(weight: number): string | number {
+  if (weight === 700) return 'bold'
+  if (weight === 500) return 'medium'
+  return weight
+}
+
 function collectTextNodeProps(node: SceneNode, props: JSXProp[]): void {
   const direction = resolveNodeTextDirection(node)
   if (node.fontSize !== 14) props.push(['size', node.fontSize])
   if (node.fontFamily && node.fontFamily !== DEFAULT_FONT_FAMILY)
     props.push(['font', node.fontFamily])
-  if (node.fontWeight !== 400) {
-    if (node.fontWeight === 700) props.push(['weight', 'bold'])
-    else if (node.fontWeight === 500) props.push(['weight', 'medium'])
-    else props.push(['weight', node.fontWeight])
-  }
+  if (node.fontWeight !== 400) props.push(['weight', fontWeightValue(node.fontWeight)])
   if (direction === 'RTL') props.push(['dir', 'rtl'])
   if (node.italic) props.push(['italic', true])
   if (node.textAlignHorizontal !== 'LEFT') {
@@ -233,9 +268,18 @@ function collectTextNodeProps(node: SceneNode, props: JSXProp[]): void {
   if (node.letterSpacing !== 0) props.push(['letterSpacing', node.letterSpacing])
   if (node.textDecoration !== 'NONE')
     props.push(['textDecoration', node.textDecoration.toLowerCase()])
+  collectDecorationProps(
+    omitBy(pick(node, DECORATION_FIELDS), (value, key) => isEqual(value, TEXT_DEFAULTS[key])),
+    node,
+    props
+  )
   if (node.textCase !== 'ORIGINAL') props.push(['textCase', node.textCase.toLowerCase()])
   if (node.maxLines != null) props.push(['maxLines', node.maxLines])
   if (node.textTruncation === 'ENDING' && node.maxLines == null) props.push(['truncate', true])
+  if (node.paragraphSpacing !== 0) props.push(['paragraphSpacing', node.paragraphSpacing])
+  if (node.listSpacing !== 0) props.push(['listSpacing', node.listSpacing])
+  if (node.paragraphIndent !== 0) props.push(['paragraphIndent', node.paragraphIndent])
+  if (node.hangingList) props.push(['hangingList', true])
 }
 
 const TEXT_AUTO_RESIZE: Record<SceneNode['textAutoResize'], string> = {

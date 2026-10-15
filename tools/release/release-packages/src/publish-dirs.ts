@@ -2,9 +2,15 @@ import { existsSync } from 'node:fs'
 import { copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 
+import * as v from 'valibot'
+
 import {
+  collectExportTargets,
   discoverPublicPackages,
   parseNpmPack,
+  parseJSONObject,
+  parseWorkspace,
+  parseWorkspacePackageJSON,
   readPackageManifest,
   runCommand
 } from '@open-pencil/package-artifacts-tools'
@@ -31,21 +37,7 @@ export interface PreparePublishDirectoriesOptions {
   log?: (message: string) => void
 }
 
-type PackageJSON = Record<string, unknown> & {
-  name?: string
-  optionalDependencies?: Record<string, string>
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  exports?: unknown
-  imports?: unknown
-  peerDependencies?: Record<string, string>
-  peerDependenciesMeta?: Record<string, unknown>
-  private?: boolean
-  publishConfig?: Record<string, unknown>
-  repository?: unknown
-  scripts?: unknown
-  version?: string
-}
+type PackageJSON = ReturnType<typeof parseWorkspacePackageJSON>
 
 interface WorkspacePackage {
   dir: string
@@ -149,10 +141,21 @@ export interface PreparedPublishPackage {
   version: string
 }
 
-export interface PreparedPublishPlan {
-  packages: PreparedPublishPackage[]
-  repository: string
-  version: string
+const preparedPublishPlanSchema = v.object({
+  packages: v.array(
+    v.object({
+      dir: v.string(),
+      name: v.string(),
+      requiredFiles: v.optional(v.array(v.string())),
+      version: v.string()
+    })
+  ),
+  repository: v.string(),
+  version: v.string()
+})
+export type PreparedPublishPlan = v.InferOutput<typeof preparedPublishPlanSchema>
+export function parsePreparedPublishPlan(source: string): PreparedPublishPlan {
+  return v.parse(v.pipe(v.string(), v.parseJson(), preparedPublishPlanSchema), source)
 }
 
 function escapeRegExp(value: string): string {
@@ -179,7 +182,7 @@ function remapDependencyRecord(
   )
 }
 
-function remapPackageKeyRecord(value: Record<string, unknown>): Record<string, unknown> {
+function remapPackageKeyRecord<T>(value: Record<string, T>): Record<string, T> {
   return Object.fromEntries(
     Object.entries(value).map(([name, metadata]) => [
       PUBLIC_PACKAGE_NAME_MAP[name as keyof typeof PUBLIC_PACKAGE_NAME_MAP] ?? name,
@@ -212,9 +215,29 @@ function assertPublishConfig(source: PackageJSON): void {
   }
 }
 
+function publishedImports(source: PackageJSON): PackageJSON['imports'] {
+  const entries = Object.entries(source.imports ?? {}).filter(([alias, target]) => {
+    const targets = collectExportTargets(target).map(({ target: path }) => path)
+    if (targets.length === 0) return true
+    const testOnly =
+      /^#[a-z0-9-]+-tests(?:\/|$)/.test(alias) &&
+      targets.every((path) => path.startsWith('./tests/'))
+    const bundledCLI =
+      source.name === '@open-pencil/cli' &&
+      source.files !== undefined &&
+      !source.files.includes('src') &&
+      targets.every((path) => path.startsWith('./src/'))
+    return !testOnly && !bundledCLI
+  })
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 export function publishPackageJSON(source: PackageJSON, coreVersion: string): PackageJSON {
   assertPublishConfig(source)
   const json = structuredClone(source)
+  const imports = publishedImports(source)
+  if (imports) json.imports = imports
+  else delete json.imports
   const sourceName = json.name
   const publishedName =
     sourceName && PUBLIC_PACKAGE_NAME_MAP[sourceName as keyof typeof PUBLIC_PACKAGE_NAME_MAP]
@@ -253,9 +276,10 @@ export function publishPackageJSON(source: PackageJSON, coreVersion: string): Pa
       : {}
   json.repository = { ...repository, type: 'git', url: PUBLISH_REPOSITORY_URL }
 
-  const published = JSON.parse(
-    remapPublicPackageSpecifiersInText(JSON.stringify(json))
-  ) as PackageJSON
+  const published = parseWorkspacePackageJSON(
+    remapPublicPackageSpecifiersInText(JSON.stringify(json)),
+    'published package.json'
+  )
   published.name = publishedName
   delete published.devDependencies
   delete published.private
@@ -264,9 +288,10 @@ export function publishPackageJSON(source: PackageJSON, coreVersion: string): Pa
 }
 
 async function workspacePackages(root: string): Promise<WorkspacePackage[]> {
-  const rootPackageJSON = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
-    workspaces?: unknown
-  }
+  const rootPackageJSON = parseWorkspace(
+    parseJSONObject(await readFile(join(root, 'package.json'), 'utf8'), 'workspace root'),
+    root
+  )
   if (
     !Array.isArray(rootPackageJSON.workspaces) ||
     !rootPackageJSON.workspaces.every((workspace) => typeof workspace === 'string')
@@ -276,9 +301,10 @@ async function workspacePackages(root: string): Promise<WorkspacePackage[]> {
 
   const packages: WorkspacePackage[] = []
   for (const dir of rootPackageJSON.workspaces) {
-    const manifest = JSON.parse(
-      await readFile(join(root, dir, 'package.json'), 'utf8')
-    ) as PackageJSON
+    const manifest = parseWorkspacePackageJSON(
+      await readFile(join(root, dir, 'package.json'), 'utf8'),
+      dir
+    )
     if (typeof manifest.name !== 'string')
       throw new Error(`${dir}: workspace package name is missing`)
     packages.push({

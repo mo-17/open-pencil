@@ -7,22 +7,35 @@ const PLUGIN_ID = 'open-pencil.upload-button'
 const MODULE_TYPE = 'upload-button'
 
 async function canvasPluginModules(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph
       .getChildren(store.state.currentPageId)
-      .flatMap((node) => (node.interactiveProps?.module ? [node.interactiveProps.module] : []))
+      .flatMap((node) => {
+        const module = readModuleInstance(node.interactiveProps?.module)
+        return module ? [module] : []
+      })
       .map(({ pluginId, moduleType }) => ({ pluginId, moduleType }))
   })
 }
 
 async function selectedModuleJSON(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const selectedId = [...store.state.selectedIds][0]
-    const module = selectedId ? store.graph.getNode(selectedId)?.interactiveProps?.module : null
+    const module = selectedId
+      ? readModuleInstance(store.graph.getNode(selectedId)?.interactiveProps?.module)
+      : null
     return module ? JSON.stringify(module) : null
   })
 }

@@ -20,6 +20,8 @@ import {
 } from '@open-pencil/plugin-contracts'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import {
   pluginConnectorContract,
   pluginPayloadV2,
@@ -170,19 +172,25 @@ describe('Phase 6 verified Submission revision diff', () => {
   test('derives readable permissions, network, and runtime changes from two immutable revisions', async () => {
     const value = await fixture()
     const payload = pluginPayloadV2('2.0.0')
-    const connector = structuredClone(pluginConnectorContract())
-    connector.network.origins = ['https://api-v2.example.com']
-    connector.network.methods = ['GET', 'POST']
-    connector.operations = connector.operations.map((operation) => ({
-      ...operation,
-      request: { ...operation.request, origin: 'https://api-v2.example.com' }
-    }))
+    const originalConnector = pluginConnectorContract()
+    const connector = {
+      ...originalConnector,
+      network: {
+        ...originalConnector.network,
+        origins: ['https://api-v2.example.com'],
+        methods: ['GET', 'POST'] as const
+      },
+      operations: originalConnector.operations.map((operation) => ({
+        ...operation,
+        request: { ...operation.request, origin: 'https://api-v2.example.com' }
+      }))
+    }
     const manifest = await signVersionedPluginManifest(
       {
         ...payload,
         contributions: {
           ...payload.contributions,
-          commands: payload.contributions.commands.map((command) => ({
+          commands: expectDefined(payload.contributions.commands, 'commands').map((command) => ({
             ...command,
             permissions: ['document.read']
           })),
@@ -236,7 +244,7 @@ describe('Phase 6 verified Submission revision diff', () => {
       },
       {
         actor: `publisher:${value.acme.id}`,
-        authenticatedKeyId: value.acme.keyId,
+        authenticatedRequestKeyId: value.acme.keyId,
         time: '2026-08-22T08:01:00.000Z'
       }
     )

@@ -25,18 +25,6 @@ const OPENAI_CONFIG: ModelConfig = {
   customAPIType: 'responses'
 }
 
-type OpenRouterRequestBody = {
-  model?: unknown
-  provider?: unknown
-  tools?: unknown
-}
-
-type OpenAIResponsesRequestBody = {
-  model?: unknown
-  include?: unknown
-  tools?: unknown
-}
-
 function createOpenRouterRuntime(policy?: ProviderFeaturePolicy, fetcher?: typeof fetch) {
   return modelProviderAdapter('openrouter').create(OPENROUTER_CONFIG, { fetch: fetcher }, policy)
 }
@@ -96,6 +84,7 @@ describe('provider model runtime', () => {
   test('keeps createLanguageModel compatible', () => {
     const model = createLanguageModel(OPENROUTER_CONFIG)
 
+    if (typeof model === 'string') throw new Error('Expected a concrete provider model')
     expect(model.provider).toBe('openrouter')
     expect(model.modelId).toBe(OPENROUTER_CONFIG.modelID)
   })
@@ -103,6 +92,7 @@ describe('provider model runtime', () => {
   test('reports OpenRouter capabilities without enabling web search by default', () => {
     const runtime = createOpenRouterRuntime()
 
+    if (typeof runtime.model === 'string') throw new Error('Expected a concrete provider model')
     expect(runtime.model.provider).toBe('openrouter')
     expect(runtime.capabilities.webSearch).toEqual({
       state: 'supported',
@@ -133,10 +123,10 @@ describe('provider model runtime', () => {
   })
 
   test('serializes web search beside application tools without a paid API call', async () => {
-    let requestBody: OpenRouterRequestBody | undefined
+    let requestBody: unknown
     const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body')
-      requestBody = JSON.parse(init.body) as OpenRouterRequestBody
+      requestBody = JSON.parse(init.body) as unknown
       return openRouterSuccessResponse()
     }) as typeof fetch
     const runtime = createOpenRouterRuntime(
@@ -177,6 +167,7 @@ describe('provider model runtime', () => {
   test('reports OpenAI Responses code execution without enabling it by default', () => {
     const runtime = createOpenAIRuntime()
 
+    if (typeof runtime.model === 'string') throw new Error('Expected a concrete provider model')
     expect(runtime.model.provider).toBe('openai.responses')
     expect(runtime.capabilities.codeExecution).toEqual({
       state: 'supported',
@@ -217,11 +208,11 @@ describe('provider model runtime', () => {
 
   test('serializes an auto Code Interpreter container beside application tools', async () => {
     let requestURL: string | undefined
-    let requestBody: OpenAIResponsesRequestBody | undefined
+    let requestBody: unknown
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
       requestURL = input instanceof Request ? input.url : String(input)
       if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body')
-      requestBody = JSON.parse(init.body) as OpenAIResponsesRequestBody
+      requestBody = JSON.parse(init.body) as unknown
       return openAIResponsesSuccessResponse()
     }) as typeof fetch
     const runtime = createOpenAIRuntime({ codeExecution: { enabled: true } }, fetcher)

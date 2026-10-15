@@ -15,7 +15,7 @@ export const render = defineTool({
   description:
     'Render JSX to design nodes, including real lowcode BUTTON/INPUT/SELECT/CHECKBOX/FORM/LIST/RADIO/TEXTAREA/DATEPICKER/SWITCH nodes through the matching PascalCase tags. Never use a Frame as a functional-control substitute. Lowcode tags accept direct control props plus a validated interactiveProps object; BUTTON/INPUT/TEXTAREA accept textColor and INPUT/TEXTAREA also accept placeholderColor as #RRGGBB values. Supports inline SVG paths, including open stroked paths: <svg viewBox="0 0 24 24" size={24}><path d="M2 12 L22 12" stroke="#000" fill="none" /></svg>. Use update_lowcode_node after render for bindings/events. Use replace_id to swap one skeleton placeholder for the complete rendered result; a JSX fragment replaces it with every root inserted consecutively at the old sibling index, and replace_id takes precedence over parent_id/insert_index. Example: <Form flex="col" gap={12}><Input placeholder="Email" textColor="#111827" placeholderColor="#6B7280" /><Button textColor="#F9FAFB">Submit</Button></Form>',
   execution: { kind: 'async', mutation: 'document' },
-  input: v.object({
+  input: v.strictObject({
     replace_id: v.optional(
       v.pipe(
         v.string(),
@@ -38,7 +38,8 @@ export const render = defineTool({
     jsx: v.pipe(v.string(), v.description('JSX string to render'))
   }),
   execute: async (figma, args, context) => {
-    const { renderJSX } = await import('#core/design-jsx')
+    const { designJSXRenderer } = await import('#core/design-jsx')
+    const { renderJSX } = designJSXRenderer(figma.icons)
 
     const placement = resolveRenderPlacement(figma.graph, args, figma.currentPageId)
 

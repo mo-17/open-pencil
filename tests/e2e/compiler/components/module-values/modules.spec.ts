@@ -1,12 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { withFormModules } from '#tests/helpers/compiler/components/form-modules/browser'
 
 async function submission(page: Page) {
-  return JSON.parse((await page.locator('[data-submission]').textContent()) || '[]') as [
-    string,
-    string
-  ][]
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
+    (await page.locator('[data-submission]').textContent()) || '[]'
+  )
 }
 for (const target of ['react', 'vue'] as const) {
   test(`${target} module controls write typed values once and submit independent named endpoints`, async ({

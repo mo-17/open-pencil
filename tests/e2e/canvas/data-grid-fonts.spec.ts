@@ -64,6 +64,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     })
     const ids = await page.evaluate(
       async ({ primary, largeText, noHeader }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         const moduleURL = performance
           .getEntriesByType('resource')
@@ -115,9 +117,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       },
       { primary, largeText, noHeader }
     )
-    await page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-data-grid-live.png`) })
     const initial = await page.evaluate(async ({ root }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const png = await editor.renderExportImage([root], 1, 'PNG')
       if (!png) throw new Error('DataGrid PNG export unavailable')
@@ -134,6 +141,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     })
     const changed = await page.evaluate(
       async ({ ids, updated }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         editor.graph.updateNode(ids.grid, { interactiveProps: updated.interactiveProps })
         await editor.loadFontsForNodes([ids.root])

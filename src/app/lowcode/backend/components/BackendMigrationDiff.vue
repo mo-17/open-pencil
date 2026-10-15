@@ -60,10 +60,10 @@ function operationLabel(operation: MigrationOperation): string {
 }
 
 function riskClass(risk: MigrationRiskLevel): string {
-  if (risk === 'destructive') return 'border-red-500/40 bg-red-500/10 text-red-500'
-  if (risk === 'high') return 'border-orange-500/40 bg-orange-500/10 text-orange-500'
-  if (risk === 'medium') return 'border-amber-500/40 bg-amber-500/10 text-amber-500'
-  return 'border-green-500/40 bg-green-500/10 text-green-500'
+  if (risk === 'destructive') return 'border-error/40 bg-error/10 text-error'
+  if (risk === 'high') return 'border-warning/40 bg-warning/10 text-warning'
+  if (risk === 'medium') return 'border-warning/40 bg-warning/10 text-warning'
+  return 'border-success/40 bg-success/10 text-success'
 }
 </script>
 
@@ -72,7 +72,7 @@ function riskClass(risk: MigrationRiskLevel): string {
     <p v-if="planning" class="text-[10px] text-muted">
       {{ panels.lowcodeBackendMigrationPlanning }}
     </p>
-    <p v-else-if="error || !application" class="text-[10px] text-red-500">
+    <p v-else-if="error || !application" class="text-[10px] text-error">
       {{ error || panels.lowcodeBackendMigrationInvalid }}
     </p>
     <template v-else-if="plan">
@@ -82,12 +82,12 @@ function riskClass(risk: MigrationRiskLevel): string {
           plan.highestRisk
         }}</span>
       </div>
-      <p v-if="plan.requiresBackup" class="mt-1 text-[10px] text-orange-500">
+      <p v-if="plan.requiresBackup" class="mt-1 text-[10px] text-warning">
         {{ panels.lowcodeBackendMigrationBackup }}
       </p>
       <p
         v-if="plan.highestRisk === 'destructive'"
-        class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+        class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
       >
         {{ panels.lowcodeBackendMigrationDestructive }}
       </p>

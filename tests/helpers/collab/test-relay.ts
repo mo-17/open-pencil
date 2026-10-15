@@ -34,9 +34,17 @@ export async function startRelay(): Promise<TestRelay> {
       if (Array.isArray(data)) text = Buffer.concat(data).toString('utf8')
       else if (data instanceof ArrayBuffer) text = Buffer.from(data).toString('utf8')
       else text = data.toString('utf8')
-      const message = JSON.parse(text) as { senderId?: string }
+      const message: unknown = JSON.parse(text)
       const state = sockets.get(socket)
-      if (state && message.senderId) state.peerId = message.senderId
+      if (
+        state &&
+        message &&
+        typeof message === 'object' &&
+        'senderId' in message &&
+        typeof message.senderId === 'string' &&
+        message.senderId
+      )
+        state.peerId = message.senderId
       if (paused) {
         queuedMessages.push({ sender: socket, room, text })
         return

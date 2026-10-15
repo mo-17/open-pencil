@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import {
   PLUGIN_DOCUMENT_LOCK_FORMAT,
   PLUGIN_DOCUMENT_LOCK_LIMITS,
@@ -158,7 +160,7 @@ function moduleReferences(
   return [...moduleTypes]
     .map(([moduleType, instances]) => ({
       moduleType,
-      configVersions: [...new Set(instances.map(({ instance }) => instance.configVersion))].sort(
+      configVersions: uniq(instances.map(({ instance }) => instance.configVersion)).sort(
         (left, right) => left - right
       )
     }))

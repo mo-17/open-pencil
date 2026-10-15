@@ -20,7 +20,7 @@ describe('business mobile module navigation', () => {
     expect(handlers.length).toBeGreaterThan(1)
     expect(
       handlers.every(
-        (handler) => handler.kind === 'condition' && handler.condExpr.startsWith('$value === ')
+        (handler) => handler.kind === 'condition' && handler.condExpr?.startsWith('$value === ')
       )
     ).toBe(true)
     const first = handlers[0]

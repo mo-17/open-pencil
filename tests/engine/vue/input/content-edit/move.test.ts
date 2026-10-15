@@ -95,7 +95,9 @@ describe('content view world-space dragging', () => {
         const delta = { x: 40.25, y: 17.75 }
         const drag = createSelectionMoveDrag(original.x, original.y, 0, 0, editor, false)
         if (drag.type !== 'move') throw new Error('Expected movement')
-        handleMoveMove(drag, original.x + delta.x, original.y + delta.y, 40, 18, editor, true)
+        handleMoveMove(drag, original.x + delta.x, original.y + delta.y, 40, 18, editor, {
+          ctrlKey: true
+        })
         expectWorldDelta(geometry.toWorld(node, { x: 0, y: 0 }), original, delta)
         handleMoveUp(drag, editor)
         expectWorldDelta(geometry.toWorld(node, { x: 0, y: 0 }), original, delta)
@@ -118,7 +120,7 @@ describe('content view world-space dragging', () => {
       const delta = { x: -23.5, y: 31.25 }
       const drag = createSelectionMoveDrag(start.x, start.y, 0, 0, editor, false)
       if (drag.type !== 'move') throw new Error('Expected movement')
-      handleMoveMove(drag, start.x + delta.x, start.y + delta.y, -24, 31, editor, true)
+      handleMoveMove(drag, start.x + delta.x, start.y + delta.y, -24, 31, editor, { ctrlKey: true })
       for (const [index, node] of nodes.entries())
         expectWorldDelta(geometry.toWorld(node, { x: 0, y: 0 }), originals[index], delta)
       handleMoveUp(drag, editor)

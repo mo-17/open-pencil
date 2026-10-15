@@ -317,7 +317,7 @@ onBeforeUnmount(() => {
           <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             <code class="break-all text-[8px] text-surface">{{ field.path }}</code>
             <span class="font-mono text-[8px]">{{ operationFieldType(field) }}</span>
-            <span v-if="field.required" class="text-[8px] text-[var(--color-warning-text)]">
+            <span v-if="field.required" class="text-[8px] text-warning">
               {{ copy.required }}
             </span>
           </div>
@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="pendingReview"
-      class="mt-1.5 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-1.5 text-[var(--color-warning-text)]"
+      class="mt-1.5 rounded border border-warning-border bg-warning-bg p-1.5 text-warning"
       role="alert"
     >
       <p class="font-medium">{{ copy.reviewTitle }}</p>

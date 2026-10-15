@@ -227,7 +227,8 @@ function updateVectorPoint(index: number, axis: 'x' | 'y', value: number): void 
         v-for="channel in ['paints', 'gradientStops', 'effects'] as const"
         :key="channel"
         class="space-y-2 border-t border-border pt-2"
-        :data-test-id="`motion-structured-${channel}`"
+        data-slot="motion-structured-channel"
+        :data-channel="channel"
         :data-capability-reason="reason(channel) || undefined"
       >
         <label class="flex items-center gap-2 text-[10px] text-surface">
@@ -237,7 +238,8 @@ function updateVectorPoint(index: number, axis: 'x' | 'y', value: number): void 
             :checked="enabled(channel)"
             :disabled="!supported(channel) && !enabled(channel)"
             :aria-description="reason(channel) || undefined"
-            :data-test-id="`motion-structured-toggle-${channel}`"
+            data-slot="motion-channel-toggle"
+            :data-channel="channel"
             @change="toggle(channel, $event)"
           />
           {{ channelLabel(channel) }}
@@ -366,7 +368,8 @@ function updateVectorPoint(index: number, axis: 'x' | 'y', value: number): void 
           v-if="enabled(channel)"
           type="button"
           class="h-6 rounded border border-border px-2 text-[9px] text-surface"
-          :data-test-id="`motion-structured-add-${channel}`"
+          data-slot="motion-channel-add"
+          :data-channel="channel"
           @click="addTarget(channel)"
         >
           {{ ui.addTarget }}
@@ -377,7 +380,8 @@ function updateVectorPoint(index: number, axis: 'x' | 'y', value: number): void 
         v-for="channel in ['cornerRadii', 'textReveal', 'fontAxes', 'vectorMorph'] as const"
         :key="channel"
         class="space-y-2 border-t border-border pt-2"
-        :data-test-id="`motion-structured-${channel}`"
+        data-slot="motion-structured-channel"
+        :data-channel="channel"
         :data-capability-reason="reason(channel) || undefined"
       >
         <label class="flex items-center gap-2 text-[10px] text-surface">
@@ -387,7 +391,8 @@ function updateVectorPoint(index: number, axis: 'x' | 'y', value: number): void 
             :checked="enabled(channel)"
             :disabled="!supported(channel) && !enabled(channel)"
             :aria-description="reason(channel) || undefined"
-            :data-test-id="`motion-structured-toggle-${channel}`"
+            data-slot="motion-channel-toggle"
+            :data-channel="channel"
             @change="toggle(channel, $event)"
           />
           {{ channelLabel(channel) }}

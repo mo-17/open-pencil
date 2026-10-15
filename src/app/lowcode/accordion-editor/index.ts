@@ -1,4 +1,4 @@
-import { isEqual } from 'es-toolkit'
+import { uniq, isEqual } from 'es-toolkit'
 
 import type { Editor } from '@open-pencil/core/editor'
 import {
@@ -84,7 +84,7 @@ export function editAccordionEditor(
           initialOpenIndexes: current.initialOpenIndexes.filter((index) => index !== edit.index)
         }
       const initialOpenIndexes = current.allowMultiple
-        ? [...new Set([...current.initialOpenIndexes, edit.index])].sort((a, b) => a - b)
+        ? uniq([...current.initialOpenIndexes, edit.index]).sort((a, b) => a - b)
         : [edit.index]
       return { ...current, initialOpenIndexes }
     }

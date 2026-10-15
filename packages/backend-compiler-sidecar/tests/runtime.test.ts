@@ -1,7 +1,10 @@
 /* oxlint-disable max-lines -- Protocol, pure runtime, and process boundaries share one fixture. */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import * as v from 'valibot'
 
 import {
   parseSupabaseBackfillInspectionWireRequestV1,
@@ -10,6 +13,7 @@ import {
   SUPABASE_BACKFILL_COMPILER_TRUST_SELECTION_DIGEST_V1,
   type SupabaseBackfillInspectionWireRequestV1
 } from '@open-pencil/compiler/backend'
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
 
 import {
   handleBackendCompilerSidecarInput,
@@ -33,19 +37,23 @@ interface MutableWireRequest {
   version: unknown
 }
 
-interface ProcessResponseShape {
-  [key: string]: unknown
-  ok: unknown
-  requestNonce: unknown
-  version: unknown
-}
+const GoldenFixtureSchema = v.strictObject({
+  fixtureFormat: v.literal('openpencil.test.backend.supabase.backfill-compiler-sidecar.v1'),
+  fixtureVersion: v.literal(1),
+  request: v.unknown(),
+  requestDigest: v.string(),
+  response: v.unknown()
+})
+const ProcessSuccessSchema = v.strictObject({
+  version: v.literal(1),
+  requestNonce: v.string(),
+  ok: v.literal(true),
+  result: v.unknown()
+})
+const WORKSPACE_ROOT = await resolveWorkspaceRoot(import.meta.dir)
 
-interface NativeCompilerSidecarFixtureV1 {
-  readonly fixtureFormat: 'openpencil.test.backend.supabase.backfill-compiler-sidecar.v1'
-  readonly fixtureVersion: 1
-  readonly request: SupabaseBackfillInspectionWireRequestV1
-  readonly requestDigest: string
-  readonly response: unknown
+function mutableWireRequest(): MutableWireRequest {
+  return { ...structuredClone(parseSupabaseBackfillInspectionWireRequestV1(requestJSON()).request) }
 }
 
 function backfillApplication(): SupabaseBackfillInspectionWireRequestV1['application'] {
@@ -162,22 +170,26 @@ async function rejected(promise: Promise<unknown>): Promise<unknown> {
 }
 
 function mutatedRequest(mutate: (request: MutableWireRequest) => void): string {
-  const request = JSON.parse(requestJSON()) as MutableWireRequest
+  const request = mutableWireRequest()
   mutate(request)
   return canonicalBackendCompilerSidecarJSON(request)
 }
 
 describe('Backend Compiler sidecar runtime', () => {
   test('matches the checked-in native request and two-envelope response golden', () => {
-    const fixture = JSON.parse(
+    const parsed = v.parse(
+      v.pipe(v.string(), v.parseJson(), GoldenFixtureSchema),
       readFileSync(
-        new URL(
-          '../../../tests/fixtures/backend/supabase/backfill-compiler-sidecar-v1.json',
-          import.meta.url
-        ),
+        join(WORKSPACE_ROOT, 'tests/fixtures/backend/supabase/backfill-compiler-sidecar-v1.json'),
         'utf8'
       )
-    ) as NativeCompilerSidecarFixtureV1
+    )
+    const fixture = {
+      ...parsed,
+      request: parseSupabaseBackfillInspectionWireRequestV1(
+        canonicalBackendCompilerSidecarJSON(parsed.request)
+      ).request
+    }
     expect(fixture.fixtureFormat).toBe(
       'openpencil.test.backend.supabase.backfill-compiler-sidecar.v1'
     )
@@ -290,7 +302,7 @@ describe('Backend Compiler sidecar runtime', () => {
 
   test('rejects unpaired UTF-16 surrogates before returning a native-incompatible success', () => {
     for (const invalid of ['\ud800', '\ud800A', '\udc00']) {
-      const malformed = JSON.parse(requestJSON()) as MutableWireRequest
+      const malformed = mutableWireRequest()
       const application = malformed.application as {
         dataMigrations: { migrations: Array<{ name: string }> }
       }
@@ -449,7 +461,7 @@ describe('Backend Compiler sidecar framing', () => {
     expect(stderr).toBe('')
     expect(stdout.endsWith('\n')).toBe(true)
     expect(stdout.indexOf('\n')).toBe(stdout.length - 1)
-    const response = JSON.parse(stdout) as ProcessResponseShape
+    const response = v.parse(v.pipe(v.string(), v.parseJson(), ProcessSuccessSchema), stdout)
     expect(response).toMatchObject({ version: 1, requestNonce: REQUEST_NONCE, ok: true })
     expect(stdout).toBe(`${canonicalBackendCompilerSidecarJSON(response)}\n`)
   })

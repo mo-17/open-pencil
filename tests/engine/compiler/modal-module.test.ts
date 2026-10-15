@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { trustedNativeModalTrigger } from '#compiler/adapters/native-shared'
 import { buildOpenPencilModalComponent } from '#compiler/adapters/react/modules/modal'
 import type { IRElement } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
@@ -15,6 +16,7 @@ import {
   MODAL_MODULE_DEFAULT_CONFIG
 } from '@open-pencil/core/plugins'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 const MODAL_CONFIG = {
@@ -67,8 +69,8 @@ describe('compiler trusted Modal module adapter', () => {
     const legacyConfig = structuredClone(MODAL_CONFIG)
     Reflect.deleteProperty(legacyConfig, 'contentChildName')
     const legacyFrame = createModalModuleFrameOverrides(MODAL_CONFIG)
-    if (!legacyFrame.interactiveProps?.module) throw new Error('Expected modal module')
-    legacyFrame.interactiveProps.module.config = legacyConfig
+    const module = expectModuleInstance(legacyFrame.interactiveProps?.module)
+    module.config = legacyConfig
     const frame = graph.createNode('FRAME', pageId, {
       ...legacyFrame,
       width: 220,
@@ -97,9 +99,14 @@ describe('compiler trusted Modal module adapter', () => {
     })
     const app = output.files.get('src/App.tsx') as string
     const runtime = output.files.get('src/__openpencil_modal.tsx') as string
-    const pkg = JSON.parse(output.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      output.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilModal from './__openpencil_modal'")
     expect(app).toContain('<OpenPencilModal config={{')
@@ -188,9 +195,7 @@ describe('compiler trusted Modal module adapter', () => {
     ).toBeUndefined()
     expect(
       trustedNativeModalTrigger(
-        nativeModalTriggerElement(payload, [
-          { kind: 'text', value: 'Authored trigger', sourceId: 'authored-trigger' }
-        ])
+        nativeModalTriggerElement(payload, [{ kind: 'text', value: 'Authored trigger' }])
       )
     ).toBeUndefined()
   })

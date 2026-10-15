@@ -3,6 +3,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 import { expansionField, type ExpansionRenderer } from './component-expansion'
+import { readNodeModule } from './module'
 
 export type ContentModule = 'code-block' | 'markdown'
 export const CONTENT_MODULES = ['code-block', 'markdown'] as const
@@ -42,7 +43,10 @@ export async function prepareContentModule(
 
 export async function selectedContentNodeId(page: Page) {
   return page.evaluate(() => {
-    const id = [...window.openPencil.getStore().state.selectedIds][0]
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const id = [...initializedEditorBridge.getStore().state.selectedIds][0]
     if (!id) throw new Error('Selected content module unavailable')
     return id
   })
@@ -50,16 +54,10 @@ export async function selectedContentNodeId(page: Page) {
 
 /** Read document state only; edits and selection use visible editor controls. */
 export async function savedContentSource(page: Page, id: string, module: ContentModule) {
-  return page.evaluate(
-    ({ id, module }) => {
-      const config = window.openPencil.getStore().graph.getNode(id)?.interactiveProps
-        ?.module?.config
-      const value = config?.[module === 'code-block' ? 'code' : 'source']
-      if (typeof value !== 'string') throw new Error('Saved module content unavailable')
-      return value
-    },
-    { id, module }
-  )
+  const config = (await readNodeModule(page, id)).config
+  const value = config[module === 'code-block' ? 'code' : 'source']
+  if (typeof value !== 'string') throw new Error('Saved module content unavailable')
+  return value
 }
 
 export async function selectContentLayer(page: Page, id: string) {

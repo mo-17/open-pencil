@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas, Paragraph, TypefaceFontProvider } from 'canvaskit-wasm'
+import type { TypefaceFontProvider } from 'canvaskit-wasm'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
@@ -8,6 +8,8 @@ import { renderTabsModulePreview } from '#core/canvas/modules/tabs'
 import { RenderChunkIndex } from '#core/canvas/renderer/chunks'
 import { resolveTabsContent } from '#core/plugins/content/tabs'
 import { createTabsModuleFrameOverrides } from '#core/plugins/tabs'
+
+import { asDouble, asCanvas, textLayoutDouble } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer } from '../effects/helpers'
 
@@ -93,22 +95,22 @@ test('Tabs labels use the shared paragraph fallback with the real host identity'
         size = value
       }
     } as never,
-    fontProvider: {} as TypefaceFontProvider,
+    fontProvider: asDouble<TypefaceFontProvider>({}),
     fontsLoaded: true,
     nodeFontReadiness: () => 'ready',
     buildParagraph: (node) => {
       labels.push(node)
-      return {
+      return textLayoutDouble({
         getAlphabeticBaseline: () => 12,
         getLongestLine: () => 28,
         getHeight: () => 18,
         layout: () => undefined,
         delete: dispose
-      } as Paragraph
+      })
     }
   })
   const drawParagraph = mock(() => undefined)
-  const canvas = { ...createMockCanvas(), drawParagraph } as Canvas
+  const canvas = asCanvas({ ...createMockCanvas(), drawParagraph })
   expect(renderTabsModulePreview(renderer, canvas, tabs)).toBe(true)
   expect(labels.map((node) => [node.id, node.text])).toEqual([
     [tabs.id, '概览'],

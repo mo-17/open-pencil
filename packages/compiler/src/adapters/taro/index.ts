@@ -2,6 +2,7 @@ import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types
 import { emitVRTourHybridProject } from '#compiler/adapters/vr-tour/hybrid'
 import type { ComponentDef, IRAsset, IRTree } from '#compiler/ir/types'
 import type { CompileWarning, CompilerOptions } from '#compiler/types'
+import { compact } from 'es-toolkit'
 
 import {
   assertMiniProgramProjectBudget,
@@ -141,14 +142,14 @@ function warnUnsupportedOptions(
       message: `Taro ignored incompatible router ${JSON.stringify(options.router)} and emitted Taro page routing`
     })
   }
-  const names = [
+  const names = compact([
     options.uiKit ? 'uiKit' : '',
     options.metadata ? 'HTML metadata' : '',
     options.themeCss?.trim() ? 'themeCss' : '',
     options.themeSwitch ? 'themeSwitch' : '',
     options.i18n ? 'i18n runtime' : '',
     options.packaging ? 'microfrontend packaging' : ''
-  ].filter(Boolean)
+  ])
   if (names.length === 0) return
   warn({
     code: 'taro-web-option-unsupported',

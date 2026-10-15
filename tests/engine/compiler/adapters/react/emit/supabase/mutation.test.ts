@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
-import type { IREventHandler, IRSupabaseFilter } from '@open-pencil/compiler/ir/types'
+import type {
+  IREventHandler,
+  IRSupabaseFilter,
+  IRSupabaseMutationHandler
+} from '@open-pencil/compiler/ir/types'
 import type { ExprAst } from '@open-pencil/lowcode'
 
 /**
@@ -19,7 +23,7 @@ function filter(column: string, op: IRSupabaseFilter['op'], ast: ExprAst): IRSup
   return { column, op, ast, references: ast.kind === 'ident' ? [ast.name] : [] }
 }
 
-const BASE = (operation: 'insert' | 'update' | 'delete' | 'upsert'): IREventHandler => ({
+const BASE = (operation: 'insert' | 'update' | 'delete' | 'upsert'): IRSupabaseMutationHandler => ({
   kind: 'supabaseMutation',
   operation,
   table: 'users',

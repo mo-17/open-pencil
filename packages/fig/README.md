@@ -20,6 +20,7 @@ Current ownership:
 - SceneGraph-to-`NodeChange` export conversion with an explicit glyph-outline runtime service
 - Strict shared Motion envelopes, official Motion Plugin API plans/scripts/applicator transactions,
   and bounded detached native inspect/import/compare helpers
+- SceneGraph-to-`NodeChange` export conversion with an explicit text-shaping runtime service for saved glyphs
 - Package-local archive, conversion, instance, export, and dist smoke tests
 
 ## Architecture documentation

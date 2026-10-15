@@ -2,6 +2,13 @@
   "name": "@open-pencil/navigation-benchmark-tools",
   "private": true,
   "type": "module",
+  "exports": {
+    "./metrics": "./src/metrics.ts",
+    "./recording": "./src/recording.ts",
+    "./replay": "./src/replay.ts",
+    "./scenario": "./src/scenario.ts",
+    "./types": "./src/types.ts"
+  },
   "scripts": {
     "test": "bun test tests"
   }

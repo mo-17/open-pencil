@@ -31,7 +31,11 @@ function textBinding(): NodeChange['variableConsumptionMap'] {
 
 function resources(value: string): NodeChange[] {
   return [
-    { guid: collection, type: 'VARIABLE_SET', variableSetModes: [{ id: mode, name: 'Default' }] },
+    {
+      guid: collection,
+      type: 'VARIABLE_SET',
+      variableSetModes: [{ id: mode, name: 'Default' }]
+    },
     {
       guid: variable,
       type: 'VARIABLE',
@@ -39,7 +43,10 @@ function resources(value: string): NodeChange[] {
       variableSetID: { guid: collection },
       variableDataValues: {
         entries: [
-          { modeID: mode, variableData: { dataType: 'STRING', value: { textValue: value } } }
+          {
+            modeID: mode,
+            variableData: { dataType: 'STRING', value: { textValue: value } }
+          }
         ]
       }
     }
@@ -47,7 +54,7 @@ function resources(value: string): NodeChange[] {
 }
 
 function textOf(graph: ReturnType<typeof materializeDocument>['graph'], name: string): string {
-  const node = Array.from(graph.getAllNodes()).find((candidate) => candidate.name === name)
+  const node = [...graph.getAllNodes()].find((candidate) => candidate.name === name)
   if (!node) throw new Error(`Missing ${name}`)
   return node.text
 }
@@ -77,7 +84,11 @@ test('a bound layer keeps its variable value over an owner’s literal override'
   const changes = [
     ...resources('Bound'),
     { guid: page, type: 'CANVAS' },
-    { guid: component, type: 'SYMBOL', parentIndex: { guid: page, position: '!' } },
+    {
+      guid: component,
+      type: 'SYMBOL',
+      parentIndex: { guid: page, position: '!' }
+    },
     {
       guid: label,
       type: 'TEXT',
@@ -93,12 +104,17 @@ test('a bound layer keeps its variable value over an owner’s literal override'
       parentIndex: { guid: page, position: '"' },
       symbolData: {
         symbolID: component,
-        symbolOverrides: [{ guidPath: { guids: [label] }, textData: { characters: 'Override' } }]
+        symbolOverrides: [
+          {
+            guidPath: { guids: [label] },
+            textData: { characters: 'Override' }
+          }
+        ]
       }
     }
   ] as NodeChange[]
   const { graph } = materializeDocument(changes)
-  const instance = Array.from(graph.getAllNodes()).find((node) => node.name === 'Placed')
+  const instance = [...graph.getAllNodes()].find((node) => node.name === 'Placed')
   if (!instance) throw new Error('Missing instance')
   const child = graph.getChildren(instance.id)[0]
   expect(child.boundVariables.text).toBe('1:12')
@@ -110,7 +126,11 @@ test('an override that only binds a variable supplies the text', () => {
   const changes = [
     ...resources('9+'),
     { guid: page, type: 'CANVAS' },
-    { guid: component, type: 'SYMBOL', parentIndex: { guid: page, position: '!' } },
+    {
+      guid: component,
+      type: 'SYMBOL',
+      parentIndex: { guid: page, position: '!' }
+    },
     {
       guid: label,
       type: 'TEXT',
@@ -125,12 +145,76 @@ test('an override that only binds a variable supplies the text', () => {
       parentIndex: { guid: page, position: '"' },
       symbolData: {
         symbolID: component,
-        symbolOverrides: [{ guidPath: { guids: [label] }, variableConsumptionMap: textBinding() }]
+        symbolOverrides: [
+          {
+            guidPath: { guids: [label] },
+            variableConsumptionMap: textBinding()
+          }
+        ]
       }
     }
   ] as NodeChange[]
   const { graph } = materializeDocument(changes)
-  const instance = Array.from(graph.getAllNodes()).find((node) => node.name === 'Placed')
+  const instance = [...graph.getAllNodes()].find((node) => node.name === 'Placed')
   if (!instance) throw new Error('Missing instance')
   expect(graph.getChildren(instance.id)[0].text).toBe('9+')
+})
+
+test('reads a layer whose text is a number variable, as Figma binds one through STRINGIFY', () => {
+  // As the ChatGPT 5 Web UI kit binds its size labels (#1110).
+  const changes = [
+    {
+      guid: collection,
+      type: 'VARIABLE_SET',
+      variableSetModes: [{ id: mode, name: 'Default' }]
+    },
+    {
+      guid: variable,
+      type: 'VARIABLE',
+      variableResolvedType: 'FLOAT',
+      variableSetID: { guid: collection },
+      variableDataValues: {
+        entries: [
+          {
+            modeID: mode,
+            variableData: { dataType: 'FLOAT', value: { floatValue: 12.5 } }
+          }
+        ]
+      }
+    },
+    { guid: page, type: 'CANVAS' },
+    {
+      guid: label,
+      type: 'TEXT',
+      name: 'Size',
+      parentIndex: { guid: page, position: '!' },
+      textData: { characters: '16' },
+      variableConsumptionMap: {
+        entries: [
+          {
+            variableField: 'TEXT_DATA',
+            variableData: {
+              dataType: 'EXPRESSION',
+              resolvedDataType: 'STRING',
+              value: {
+                expressionValue: {
+                  expressionFunction: 'STRINGIFY',
+                  expressionArguments: [
+                    {
+                      dataType: 'ALIAS',
+                      resolvedDataType: 'FLOAT',
+                      value: { alias: { guid: variable } }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ] as NodeChange[]
+  const { graph } = materializeDocument(changes)
+  const node = [...graph.getAllNodes()].find((candidate) => candidate.name === 'Size')
+  expect([node?.text, node?.boundVariables.text]).toEqual(['12.50', '1:12'])
 })

@@ -4,6 +4,8 @@ import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { discoverFfmpegMotionEncoders } from '@open-pencil/mcp/motion-export'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -93,7 +95,11 @@ heavy('motion export CLI', () => {
     const encoded = await io.writeDocument('fig', graph)
     await Bun.write(fixture, encoded.data as Uint8Array)
     const found = await run(['find', fixture, '--name', node.name, '--json'])
-    nodeId = (JSON.parse(found.stdout) as Array<{ id: string }>)[0]?.id ?? ''
+    nodeId =
+      v.parse(
+        v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+        found.stdout
+      )[0]?.id ?? ''
     if (!nodeId) throw new Error('Motion export fixture node was not imported')
   })
 
@@ -119,11 +125,18 @@ heavy('motion export CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    const report = JSON.parse(result.stdout) as {
-      format: string
-      output: { output: string }
-      manifest: { fps: number; frameCount: number }
-    }
+    const report = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          format: v.string(),
+          output: v.looseObject({ output: v.string() }),
+          manifest: v.looseObject({ fps: v.number(), frameCount: v.number() })
+        })
+      ),
+      result.stdout
+    )
     expect(report).toMatchObject({
       format: 'png-sequence',
       output: { output },
@@ -223,11 +236,27 @@ heavy('motion export CLI', () => {
 
       expect(result.exitCode).toBe(0)
       expect(result.stderr).toBe('')
-      const report = JSON.parse(result.stdout) as {
-        format: string
-        encoded: { alpha: string; plan: { frameCount: number } }
-        capabilities: Array<{ format: string; available: boolean; alpha?: string }>
-      }
+      const report = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({
+            format: v.string(),
+            encoded: v.looseObject({
+              alpha: v.string(),
+              plan: v.looseObject({ frameCount: v.number() })
+            }),
+            capabilities: v.array(
+              v.looseObject({
+                format: v.string(),
+                available: v.boolean(),
+                alpha: v.optional(v.string())
+              })
+            )
+          })
+        ),
+        result.stdout
+      )
       expect(report.format).toBe(format)
       expect(report.encoded).toMatchObject({ alpha: 'opaque-only', plan: { frameCount: 2 } })
       expect(report.capabilities.find((capability) => capability.format === format)).toMatchObject({

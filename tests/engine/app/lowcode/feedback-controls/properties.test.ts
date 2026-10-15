@@ -12,6 +12,8 @@ import {
 } from '@/app/lowcode/feedback-controls/properties'
 import { localizedAppPluginModulePropertyText } from '@/app/plugins/localization'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 describe('feedback module visual authoring', () => {
   test('mode changes preserve authored values while hiding irrelevant controls', () => {
     const progress = { value: 72.5, indeterminate: true, variant: 'linear' }
@@ -44,7 +46,9 @@ describe('feedback module visual authoring', () => {
       CHIP_MODULE_DEFINITION
     ]) {
       for (const field of definition.fields) {
-        expect(localizedAppPluginModulePropertyText(field.i18nLabelKey, 'zh-CN')).toBeTruthy()
+        expect(
+          localizedAppPluginModulePropertyText(expectDefined(field.i18nLabelKey), 'zh-CN')
+        ).toBeTruthy()
         for (const option of field.options ?? [])
           expect(
             localizedAppPluginModulePropertyText(`${field.i18nLabelKey}:${option}`, 'zh-CN')

@@ -133,7 +133,7 @@ function deleteListItem(index: number, itemIndex: number): void {
     <article
       v-for="(block, index) in modelValue.blocks"
       :key="index"
-      class="rounded border border-border bg-secondary/20 p-2"
+      class="rounded border border-border bg-panel-secondary/20 p-2"
       data-test-id="rich-text-block"
     >
       <header class="mb-1.5 flex items-center gap-1">
@@ -156,7 +156,7 @@ function deleteListItem(index: number, itemIndex: number): void {
         </select>
         <button
           type="button"
-          class="rounded p-1 text-muted hover:bg-secondary hover:text-surface disabled:opacity-30"
+          class="rounded p-1 text-muted hover:bg-panel-secondary hover:text-surface disabled:opacity-30"
           :disabled="index === 0"
           :aria-label="panels.lowcodeRichTextMoveUp"
           data-test-id="rich-text-move-up"
@@ -166,7 +166,7 @@ function deleteListItem(index: number, itemIndex: number): void {
         </button>
         <button
           type="button"
-          class="rounded p-1 text-muted hover:bg-secondary hover:text-surface disabled:opacity-30"
+          class="rounded p-1 text-muted hover:bg-panel-secondary hover:text-surface disabled:opacity-30"
           :disabled="index === modelValue.blocks.length - 1"
           :aria-label="panels.lowcodeRichTextMoveDown"
           data-test-id="rich-text-move-down"
@@ -176,7 +176,7 @@ function deleteListItem(index: number, itemIndex: number): void {
         </button>
         <button
           type="button"
-          class="rounded p-1 text-muted hover:bg-secondary hover:text-danger"
+          class="rounded p-1 text-muted hover:bg-panel-secondary hover:text-error"
           :aria-label="panels.lowcodeRichTextDeleteBlock"
           data-test-id="rich-text-delete-block"
           @click="deleteBlock(index)"
@@ -263,7 +263,7 @@ function deleteListItem(index: number, itemIndex: number): void {
           </div>
           <button
             type="button"
-            class="mt-1 rounded p-1 text-muted hover:bg-secondary hover:text-danger"
+            class="mt-1 rounded p-1 text-muted hover:bg-panel-secondary hover:text-error"
             :aria-label="panels.lowcodeRichTextDeleteListItem"
             data-test-id="rich-text-delete-list-item"
             @click="deleteListItem(index, itemIndex)"

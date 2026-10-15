@@ -1,7 +1,5 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
@@ -10,6 +8,8 @@ import { chartDataProjection } from '#core/canvas/modules/chart/data'
 import { chartTextNode } from '#core/canvas/modules/chart/text'
 import { createChartModuleFrameOverrides, CHART_MODULE_DEFAULT_CONFIG } from '#core/plugins/chart'
 import { collectGraphFontRequirements } from '#core/text/requirements'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer } from '../effects/helpers'
 
@@ -97,7 +97,7 @@ test('Chart painter uses bound geometry and removes authored marks for invalid b
   const canvas = createMockCanvas(),
     renderer = createMockRenderer({ zoom: 1 })
   renderer.ck.Path.MakeFromSVGString = mock(() => new renderer.ck.PathBuilder().detachAndDelete())
-  expect(renderChartModulePreview(renderer, canvas as Canvas, node, graph)).toBe(true)
+  expect(renderChartModulePreview(renderer, asCanvas(canvas), node, graph)).toBe(true)
   expect(canvas.drawRect).toHaveBeenCalledTimes(3)
   expect(canvas.drawPath).toHaveBeenCalledTimes(1)
   canvas.drawRect.mockClear()
@@ -112,7 +112,7 @@ test('Chart painter uses bound geometry and removes authored marks for invalid b
       }
     ]
   })
-  expect(renderChartModulePreview(renderer, canvas as Canvas, node, graph)).toBe(true)
+  expect(renderChartModulePreview(renderer, asCanvas(canvas), node, graph)).toBe(true)
   expect(canvas.drawRect).toHaveBeenCalledTimes(1)
   expect(canvas.drawPath).not.toHaveBeenCalled()
 })

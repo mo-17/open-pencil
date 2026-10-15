@@ -1,4 +1,4 @@
-import bundledFontLicenseManifest from '#core-assets/font-licenses.json'
+import bundledFontLicenseManifest from '#core-assets/font-licenses.json' with { type: 'json' }
 import ofl11LicenseText from '#core-assets/licenses/OFL-1.1.txt?raw'
 
 import type { NodeFontFace } from '#core/text/requirements'

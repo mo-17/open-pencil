@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import type {
   BindingExpr,
   SceneGraph,
@@ -442,11 +444,12 @@ function reserveListQueryIdentifiers(
 // Keep this normalization byte-for-byte equivalent to compiler tree.ts:
 // Products -> productsRows, duplicate Products -> productsRows2.
 function uniqueListRowsName(name: string, used: ReadonlySet<string>): string {
-  const words = (name || 'list')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
+  const words = compact(
+    (name || 'list')
+      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+  )
   const camel = words
     .map((word, index) =>
       index === 0 ? word.toLowerCase() : word[0].toUpperCase() + word.slice(1).toLowerCase()
@@ -508,10 +511,7 @@ function controlDefaultValue(node: SceneNode, type: FormControlStateType): unkno
 
 function controlBaseName(name: string): string {
   const withoutSuffix = name.trim().replace(CONTROL_SUFFIX_RE, '') || name.trim()
-  const words = withoutSuffix
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
+  const words = compact(withoutSuffix.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+/))
   if (words.length === 0) return 'field'
   const [first, ...rest] = words
   const base =

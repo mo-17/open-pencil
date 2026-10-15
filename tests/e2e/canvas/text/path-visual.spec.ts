@@ -12,10 +12,15 @@ test('renders imported text on a path with its selection overlay', async () => {
     onlineFontsEnabled.value = false
     await Promise.resolve()
   })
-  await editor.page.evaluate(() => window.openPencil?.openFile?.('/tests/fixtures/circle-text.fig'))
+  await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.openFile?.('/tests/fixtures/circle-text.fig')
+  })
   await editor.canvas.waitForRender()
 
   const selected = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = [...store.graph.getAllNodes()].find(
@@ -30,6 +35,8 @@ test('renders imported text on a path with its selection overlay', async () => {
   expect(selected).toBe(true)
   await editor.page.waitForFunction(
     () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) return false
       return store.canvasRenderers.some((renderer) => {

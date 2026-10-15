@@ -1,17 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 import { compileScript, compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
-const componentPath = resolve(
-  import.meta.dir,
-  '../../../../src/components/settings/plugins/SupabaseDatabaseReadCredentialControls.vue'
+import { repoPath } from '#tests/helpers/paths'
+
+const componentPath = repoPath(
+  'src/components/settings/plugins/SupabaseDatabaseReadCredentialControls.vue'
 )
-const parentPath = resolve(
-  import.meta.dir,
-  '../../../../src/components/settings/plugins/PluginDeploymentControls.vue'
-)
+const parentPath = repoPath('src/components/settings/plugins/PluginDeploymentControls.vue')
 const source = readFileSync(componentPath, 'utf8')
 const parent = readFileSync(parentPath, 'utf8')
 

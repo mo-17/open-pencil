@@ -162,6 +162,10 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     PenOverlay.drawPenOverlay(this, canvas, penState)
   },
 
+  drawPencilOverlay(canvas: Canvas, pencilState: RenderOverlays['pencilState']): void {
+    PenOverlay.drawPencilOverlay(this, canvas, pencilState)
+  },
+
   drawPresenceCursors(canvas: Canvas, graph: SceneGraph, cursors?: PresenceCursor[]): void {
     Overlays.drawPresenceCursors(this, canvas, graph, cursors)
   },
@@ -173,6 +177,15 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     guides?: RenderOverlays['guides']
   ): void {
     Rulers.drawRulers(this, canvas, graph, selectedIds, guides)
+  },
+
+  drawFrameTitles(
+    canvas: Canvas,
+    graph: SceneGraph,
+    selectedIds: ReadonlySet<string>,
+    overlays?: RenderOverlays
+  ): void {
+    Labels.drawFrameTitles(this, canvas, graph, selectedIds, overlays)
   },
 
   drawSectionTitles(canvas: Canvas, graph: SceneGraph, overlays?: RenderOverlays): void {

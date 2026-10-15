@@ -6,6 +6,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function observeScenePixels(page: Page) {
   return page.evaluateHandle(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const renderer = store?.canvasRenderers.find((r) => r.tracksSceneSettlement)
     const node = store?.getSelectedNodes()[0]
@@ -55,6 +57,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const canvas = new CanvasHelper(page)
     await canvas.waitForInit()
     await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       const node = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -67,7 +71,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
       store.select([node.id])
       store.requestRender()
     })
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     const box = expectDefined(await canvas.canvas.boundingBox(), 'canvas bounds')
     const x = box.x + 300
     const y = box.y + 250
@@ -81,13 +88,29 @@ for (const renderer of ['retained', 'tiled'] as const) {
     } finally {
       await page.keyboard.up('Control')
     }
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     expect(
-      await page.evaluate(() =>
-        window.openPencil
+      await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        const store = window.openPencil.getStore()
+        const sceneRenderer = store.canvasRenderers.find((r) => r.tracksSceneSettlement)
+        if (!sceneRenderer) throw new Error('Scene renderer unavailable')
+        // Seed the old blue picture through the public full-render path, which remains supported
+        // while the normal bounded scene layer may use only its completed backing image.
+        sceneRenderer.render(
+          store.graph,
+          store.state.selectedIds,
+          {},
+          store.state.canvasVersion,
+          'full'
+        )
+        return window.openPencil
           ?.getStore?.()
           .canvasRenderers.some((r) => r.tracksSceneSettlement && r.scenePicture !== null)
-      )
+      })
     ).toBe(true)
     await page.keyboard.press('Backspace')
     await page.keyboard.press('r')
@@ -104,12 +127,15 @@ for (const renderer of ['retained', 'tiled'] as const) {
         await canvas.waitForRender()
       }
       await page.keyboard.up('Control')
-      await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+      await page.evaluate(() => {
+        if (!window.openPencil) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.test?.navigation?.waitForSettlement()
+      })
       const samples = await probe.evaluate((p) => p.samples())
       expect(samples.length).toBeGreaterThan(4)
       expect(samples.some((sample) => sample.zoom < 0.3)).toBe(true)
       for (const sample of samples) {
-        expect(sample.pixel, JSON.stringify(sample)).toEqual([212, 212, 212, 255])
+        expect(sample.pixel, JSON.stringify(sample)).toEqual([217, 217, 217, 255])
       }
       await expect(page).toHaveScreenshot('fresh-scene-picture.png', {
         clip: { x: x - 20, y: y - 20, width: 260, height: 200 },

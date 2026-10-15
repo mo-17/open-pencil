@@ -15,6 +15,8 @@ import { unrefTimer } from '#compiler/node-runtime/timers'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
+import { uniq } from 'es-toolkit'
+import * as v from 'valibot'
 import { createServer, type Plugin, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
 import { APPLICATION_SESSION_FILE } from './adapters/application-session/runtime'
@@ -31,8 +33,7 @@ import {
 import {
   createPreviewFileDecodeCache,
   deserializePreviewFiles,
-  type PreviewFileDecodeCache,
-  type SerializedPreviewFile
+  type PreviewFileDecodeCache
 } from './preview-protocol'
 import {
   inMemoryVFS,
@@ -267,13 +268,11 @@ export function previewOptimizeDeps(files: PreviewFiles, target: WebVfsTarget = 
       ...vueModuleOptimizeDepsForFiles(files)
     ]
   }
-  return [
-    ...new Set([
-      ...PREVIEW_BASE_OPTIMIZE_DEPS,
-      ...reactModuleOptimizeDepsForFiles(files),
-      ...reactUIKitOptimizeDepsForFiles(files)
-    ])
-  ]
+  return uniq([
+    ...PREVIEW_BASE_OPTIMIZE_DEPS,
+    ...reactModuleOptimizeDepsForFiles(files),
+    ...reactUIKitOptimizeDepsForFiles(files)
+  ])
 }
 
 // VFS ids look like `${scanRoot}/src/main.tsx`. Two constraints:
@@ -456,10 +455,19 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
 // CLI / sidecar entrypoint
 // ────────────────────────────────────────────────────────────────────────────
 
-interface IncomingCommand {
-  type: 'update' | 'close'
-  files?: SerializedPreviewFile[]
-}
+const SerializedFileSchema = v.tuple([
+  v.string(),
+  v.union([
+    v.string(),
+    v.strictObject({ type: v.literal('binary'), base64: v.string() }),
+    v.strictObject({ type: v.literal('binary-ref') })
+  ])
+])
+const IncomingCommandSchema = v.variant('type', [
+  v.strictObject({ type: v.literal('update'), files: v.array(SerializedFileSchema) }),
+  v.strictObject({ type: v.literal('close') })
+])
+type IncomingCommand = v.InferOutput<typeof IncomingCommandSchema>
 
 interface OutgoingEvent {
   type: 'ready' | 'updated' | 'error' | 'closing'
@@ -535,7 +543,7 @@ async function runCLI(): Promise<void> {
       nl = buffer.indexOf('\n')
       if (!line) continue
       try {
-        const cmd = JSON.parse(line) as IncomingCommand
+        const cmd = v.parse(v.pipe(v.string(), v.parseJson(), IncomingCommandSchema), line)
         handleCommand(server, cmd, decodeCache).catch((e) => {
           emit({ type: 'error', message: e instanceof Error ? e.message : String(e) })
         })
@@ -575,17 +583,24 @@ async function handleCommand(
   cmd: IncomingCommand,
   decodeCache: PreviewFileDecodeCache
 ): Promise<void> {
-  if (cmd.type === 'update' && Array.isArray(cmd.files)) {
-    const files = deserializePreviewFiles(cmd.files, decodeCache)
-    await server.updateFiles(files)
-    emit({ type: 'updated' })
-    return
+  switch (cmd.type) {
+    case 'update': {
+      const files = deserializePreviewFiles(cmd.files, decodeCache)
+      await server.updateFiles(files)
+      emit({ type: 'updated' })
+      return
+    }
+    case 'close':
+      emit({ type: 'closing' })
+      await server.close()
+      process.exit(0)
+    default:
+      return unsupportedPreviewCommand(cmd)
   }
-  if (cmd.type === 'close') {
-    emit({ type: 'closing' })
-    await server.close()
-    process.exit(0)
-  }
+}
+
+function unsupportedPreviewCommand(_cmd: never): never {
+  throw new Error('Unsupported preview command.')
 }
 
 // Bun sets `import.meta.main = true` for the entry module. The type

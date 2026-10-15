@@ -788,7 +788,7 @@ onBeforeUnmount(() => {
         <template v-if="connected">
           <button
             type="button"
-            class="rounded bg-hover px-3 py-1.5 text-[10px] font-medium text-surface hover:bg-active disabled:opacity-50"
+            class="rounded bg-hover px-3 py-1.5 text-[10px] font-medium text-surface hover:bg-panel-selected-muted disabled:opacity-50"
             :disabled="busy"
             data-test-id="settings-storage-baidu-netdisk-check"
             @click="checkConnection"
@@ -814,7 +814,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="rounded px-3 py-1.5 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
+            class="rounded px-3 py-1.5 text-[10px] text-error hover:bg-error/10 disabled:opacity-50"
             :disabled="busy"
             data-test-id="settings-storage-baidu-netdisk-disconnect"
             @click="disconnect"
@@ -839,7 +839,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="rounded bg-hover px-3 py-1.5 text-[10px] font-medium text-surface hover:bg-active disabled:opacity-50"
+            class="rounded bg-hover px-3 py-1.5 text-[10px] font-medium text-surface hover:bg-panel-selected-muted disabled:opacity-50"
             :disabled="busy"
             data-test-id="settings-storage-baidu-netdisk-import-credentials"
             @click="chooseSelfHostedCredentials"
@@ -850,7 +850,7 @@ onBeforeUnmount(() => {
         <button
           v-if="connectionState.state === 'invalid'"
           type="button"
-          class="rounded px-3 py-1.5 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
+          class="rounded px-3 py-1.5 text-[10px] text-error hover:bg-error/10 disabled:opacity-50"
           :disabled="busy"
           data-test-id="settings-storage-baidu-netdisk-remove-invalid"
           @click="disconnect"
@@ -911,7 +911,7 @@ onBeforeUnmount(() => {
       </p>
       <button
         type="button"
-        class="mt-2 rounded bg-hover px-2.5 py-1 text-[10px] font-medium text-surface hover:bg-active disabled:opacity-50"
+        class="mt-2 rounded bg-hover px-2.5 py-1 text-[10px] font-medium text-surface hover:bg-panel-selected-muted disabled:opacity-50"
         :disabled="busy"
         data-test-id="settings-storage-baidu-netdisk-repair-authorization"
         @click="repairStaleWork"
@@ -939,7 +939,7 @@ onBeforeUnmount(() => {
 
     <p
       v-if="feedback"
-      class="rounded border border-border bg-panel px-2 py-1.5 text-[10px] text-muted data-[tone=success]:text-success data-[tone=error]:text-danger"
+      class="rounded border border-border bg-panel px-2 py-1.5 text-[10px] text-muted data-[tone=success]:text-success data-[tone=error]:text-error"
       :data-tone="feedback.tone"
       role="status"
       aria-live="polite"

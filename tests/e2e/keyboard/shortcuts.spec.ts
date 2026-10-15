@@ -1,10 +1,20 @@
+import * as v from 'valibot'
+
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 import { expectDefined } from '#tests/helpers/assert'
 
 const editor = useEditorSetup()
 
+const ObservedShortcutJSON = v.pipe(
+  v.string(),
+  v.parseJson(),
+  v.object({ defaultPrevented: v.boolean(), shiftKey: v.boolean() })
+)
+
 function getActiveTool() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.activeTool
@@ -13,6 +23,8 @@ function getActiveTool() {
 
 function getSelectedCount() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.selectedIds.size
@@ -21,6 +33,8 @@ function getSelectedCount() {
 
 function getPageChildren() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(store.state.currentPageId).map((n) => ({
@@ -34,6 +48,8 @@ function getPageChildren() {
 
 function getUIVisible() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.showUI
@@ -42,6 +58,8 @@ function getUIVisible() {
 
 function getZoom() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.zoom
@@ -50,6 +68,8 @@ function getZoom() {
 
 function getSelectedOpacity() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -98,9 +118,21 @@ test.describe('tool switching', () => {
     expect(await getActiveTool()).toBe('HAND')
   })
 
-  test('S → SECTION', async () => {
-    await editor.page.keyboard.press('s')
+  test('A → FRAME', async () => {
+    await editor.page.keyboard.press('v')
+    await editor.page.keyboard.press('a')
+    expect(await getActiveTool()).toBe('FRAME')
+  })
+
+  test('⇧S → SECTION', async () => {
+    await editor.page.keyboard.press('Shift+KeyS')
     expect(await getActiveTool()).toBe('SECTION')
+  })
+
+  test('S alone leaves the tool unchanged', async () => {
+    await editor.page.keyboard.press('v')
+    await editor.page.keyboard.press('s')
+    expect(await getActiveTool()).toBe('SELECT')
   })
 })
 
@@ -116,6 +148,8 @@ test.describe('selection shortcuts', () => {
 
   test('⌘R starts inline rename for one layer', async () => {
     const id = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const node = store.graph.createNode('RECTANGLE', store.state.currentPageId)
@@ -135,6 +169,8 @@ test.describe('selection shortcuts', () => {
 
   test('⌘R opens bulk rename for multiple layers', async () => {
     const ids = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const first = store.graph.createNode('RECTANGLE', store.state.currentPageId)
@@ -149,6 +185,8 @@ test.describe('selection shortcuts', () => {
     await expect(dialog).toBeVisible()
     await dialog.getByLabel('Rename to').fill('Layer $n')
     await dialog.getByRole('button', { name: 'Rename', exact: true }).click()
+    // The next test's keys must reach the canvas, not the closing dialog.
+    await expect(dialog).toBeHidden()
     const renamed = (await getPageChildren()).filter((node) => ids.includes(node.id))
     expect(renamed.map((node) => node.name)).toEqual(['Layer 1', 'Layer 2'])
   })
@@ -182,6 +220,8 @@ test.describe('z-order shortcuts', () => {
 
     // Select the first (bottom) node
     await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.select([id])
@@ -201,6 +241,8 @@ test.describe('z-order shortcuts', () => {
 
     // Select the last (top) node
     await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.select([id])
@@ -323,6 +365,8 @@ test.describe('opacity shortcuts', () => {
 test.describe('zoom shortcuts', () => {
   test('⌘=, ⌘+ and ⌘- zoom the canvas and prevent browser defaults', async () => {
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.zoomTo100()
@@ -344,11 +388,12 @@ test.describe('zoom shortcuts', () => {
 
       await editor.page.keyboard.press(shortcut)
       await editor.canvas.waitForRender()
-      const event = await editor.page.evaluate(() => {
+      const observed = await editor.page.evaluate(() => {
         const observed = document.documentElement.dataset.observedShortcut
         if (!observed) throw new Error('Expected shortcut keydown event')
-        return JSON.parse(observed) as { defaultPrevented: boolean; shiftKey: boolean }
+        return observed
       })
+      const event = v.parse(ObservedShortcutJSON, observed)
       return { event, zoom: await getZoom() }
     }
 
@@ -366,6 +411,8 @@ test.describe('zoom shortcuts', () => {
 
   test('Figma plus and minus shortcuts zoom around the active canvas center', async () => {
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.zoomTo100()
@@ -393,6 +440,8 @@ test.describe('zoom shortcuts', () => {
     expect(activeBounds.width).toBeLessThan(inactiveBounds.width)
 
     const centerBefore = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const center = store.viewportCanvasCenter()
@@ -406,6 +455,8 @@ test.describe('zoom shortcuts', () => {
     await editor.canvas.waitForRender()
     const zoomedIn = await getZoom()
     const centerAfter = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const center = store.viewportCanvasCenter()
@@ -418,6 +469,8 @@ test.describe('zoom shortcuts', () => {
     const inactivePaneId = await inactiveCanvas.getAttribute('data-pane-id')
     if (!inactivePaneId) throw new Error('Expected inactive canvas pane')
     await editor.page.evaluate((paneId) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.closePane(paneId)
@@ -437,6 +490,8 @@ test.describe('zoom shortcuts', () => {
 
     // Set zoom to something other than 100%
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.state.zoom = 2
@@ -519,6 +574,8 @@ test.describe('auto-layout shortcut', () => {
 
     // Change to frame type for auto-layout
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const nodes = [...store.state.selectedIds]
@@ -527,6 +584,8 @@ test.describe('auto-layout shortcut', () => {
     await editor.canvas.waitForRender()
 
     const layoutBefore = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const nodes = [...store.state.selectedIds]
@@ -538,6 +597,8 @@ test.describe('auto-layout shortcut', () => {
     await editor.canvas.waitForRender()
 
     const layoutAfter = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const nodes = [...store.state.selectedIds]
@@ -550,6 +611,8 @@ test.describe('auto-layout shortcut', () => {
     await editor.canvas.waitForRender()
 
     const layoutFinal = await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const nodes = [...store.state.selectedIds]

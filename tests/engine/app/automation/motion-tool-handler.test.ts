@@ -54,7 +54,7 @@ describe('automation Motion tool handler', () => {
     expect(ids.map((id) => store.graph.getNode(id)?.motion?.tracks[0]?.timing.delayMs)).toEqual([
       0, 40
     ])
-    expect(store.undo.undoLabel).toBe('AI: apply_motion_preset')
+    expect(store.undo.undoLabel).toBe('Agent: apply_motion_preset')
 
     store.undo.undo()
     expect(ids.map((id) => store.graph.getNode(id)?.motion)).toEqual([undefined, undefined])
@@ -255,7 +255,8 @@ describe('automation Motion tool handler', () => {
       }
     })
     expect(store.graph.getNode(ids[0])).toBeUndefined()
-    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([rendered?.id, ids[1]])
+    if (!rendered) throw new Error('Expected rendered replacement')
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([rendered.id, ids[1]])
     expect(store.graph.getNode(ignoredPage.id)?.childIds).toEqual([])
   })
 
@@ -283,7 +284,8 @@ describe('automation Motion tool handler', () => {
     expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty(
       'replaced_id'
     )
-    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([ids[0], rendered?.id, ids[1]])
+    if (!rendered) throw new Error('Expected rendered insertion')
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([ids[0], rendered.id, ids[1]])
   })
 
   test('inserts fragment roots as one contiguous block with the same placement semantics', async () => {
@@ -446,7 +448,7 @@ describe('automation Motion tool handler', () => {
       meta: { mutatedIds: [target.pageId] }
     })
     expect(store.graph.getNode(target.pageId)?.lowcodeRoutePattern).toBe('/home')
-    expect(store.undo.undoLabel).toBe('AI: update_page_route')
+    expect(store.undo.undoLabel).toBe('Agent: update_page_route')
     store.undo.undo()
     expect(store.graph.getNode(target.pageId)?.lowcodeRoutePattern).toBeUndefined()
   })

@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 
 import { expect, test } from '@playwright/test'
 
-import type { ApplicationBrowserOutput } from '#tests/helpers/compiler/application-mode/browser'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
 
 for (const target of ['react', 'vue'] as const)
   for (const device of ['desktop', 'mobile'] as const) {
@@ -13,7 +13,7 @@ for (const target of ['react', 'vue'] as const)
       await page.setViewportSize(
         device === 'mobile' ? { width: 390, height: 844 } : { width: 1200, height: 900 }
       )
-      const result = JSON.parse(
+      const result = parseCompilerBrowserOutput(
         execFileSync(
           'bun',
           [
@@ -22,7 +22,7 @@ for (const target of ['react', 'vue'] as const)
           ],
           { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
         )
-      ) as ApplicationBrowserOutput
+      )
       expect(result.warnings).toEqual([])
       await withComponentTemplateFiles(page, target, new Map(result.files), async () => {
         await expect(page.getByText('Home screen', { exact: true })).toBeVisible()

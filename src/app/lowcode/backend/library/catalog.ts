@@ -1,3 +1,5 @@
+import { compact, uniq } from 'es-toolkit/array'
+
 import type { AppBackendProviderDescriptor } from '@/app/plugins/host/backend-provider'
 
 import { BUSINESS_TEMPLATE_IDS, type BusinessTemplateId } from '../business/model/types'
@@ -93,28 +95,24 @@ function immutableItem<T extends BackendLibraryItem>(item: T): T {
 }
 
 function providerIdentity(descriptor: BackendLibraryProviderInput['descriptor']): string {
-  return [
+  return compact([
     descriptor.pluginId,
     descriptor.contributionId,
     descriptor.adapterId && descriptor.adapterVersion
       ? descriptor.adapterId + '@' + descriptor.adapterVersion
       : (descriptor.adapterId ?? descriptor.adapterVersion),
     descriptor.packageAuthority?.packageDigest
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  ]).join(' · ')
 }
 
 function shortProviderIdentity(descriptor: BackendLibraryProviderInput['descriptor']): string {
   const digest = descriptor.packageAuthority?.packageDigest
   const suffix = digest?.slice(digest.lastIndexOf(':') + 1).slice(0, 10)
-  return [
+  return compact([
     descriptor.contributionId ?? descriptor.adapterId ?? descriptor.pluginId,
     descriptor.adapterVersion,
     suffix
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  ]).join(' · ')
 }
 
 function distinguishProviders(
@@ -163,7 +161,7 @@ export function createBackendLibraryCatalog(
         providerId: descriptor.providerId,
         descriptorKey,
         identity: providerIdentity(descriptor),
-        tags: [...new Set([...(profile?.tags ?? []), descriptor.providerId, descriptor.pluginId])],
+        tags: uniq([...(profile?.tags ?? []), descriptor.providerId, descriptor.pluginId]),
         features: [...new Set(descriptor.capabilities)].map(
           (capability) => copy.capabilities[capability]
         ),
@@ -351,7 +349,7 @@ export function filterBackendLibraryCatalog(
   items: readonly BackendLibraryItem[],
   filter: BackendLibraryFilter
 ): readonly BackendLibraryItem[] {
-  const tokens = normalizedSearch(filter.query).split(/\s+/u).filter(Boolean)
+  const tokens = compact(normalizedSearch(filter.query).split(/\s+/u))
   return Object.freeze(
     items.filter((item) => {
       if (filter.category === 'providers' && item.kind !== 'provider') return false

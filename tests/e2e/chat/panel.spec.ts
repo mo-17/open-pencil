@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 import { toUint8Array } from 'js-base64'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
@@ -51,6 +51,8 @@ test.afterAll(async () => {
 
 async function injectMockTransport(page: Page) {
   await page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     const setChatTransport = window.openPencil?.setChatTransport
     if (!setChatTransport) throw new Error('Transport override not available')
 
@@ -108,7 +110,6 @@ async function injectMockTransport(page: Page) {
               controller.enqueue({
                 type: 'tool-output-available',
                 toolCallId,
-                toolName: 'create_shape',
                 output: {
                   result: {
                     content: [
@@ -345,7 +346,11 @@ test('Enter submits message and clears input', async () => {
 
 test('assistant responds', async () => {
   if (USE_REAL_LLM) {
-    await expect(page.locator('.chat-markdown, [class*="rounded-tl-md"]').first()).toBeVisible({
+    await expect(
+      page
+        .locator('[data-slot="chat-markdown"] .markdown-content, [class*="rounded-tl-md"]')
+        .first()
+    ).toBeVisible({
       timeout: 30000
     })
   } else {
@@ -359,9 +364,9 @@ test('completed Markdown responses release streaming parser history', async () =
   await chatInput().fill('Show a code block')
   await chatInput().press('Enter')
 
-  const markdown = page.locator('.chat-markdown').last()
+  const markdown = page.locator('[data-slot="chat-markdown"] .markdown-content').last()
   await expect(markdown).toBeVisible()
-  await expect(markdown).toHaveAttribute('data-chat-markdown-mode', 'static')
+  await expect(markdown).toHaveAttribute('data-markdown-mode', 'static')
   await expect(markdown.locator('.shiki').first()).toBeVisible()
 })
 
@@ -371,7 +376,9 @@ test('assistant code blocks follow the active theme with readable contrast', asy
 
   const code = page.getByTestId('chat-message-assistant').last().locator('.shiki').first()
   await expect(code).toBeVisible()
-  await expect(page.locator('.chat-markdown').last()).toHaveClass(/dark/)
+  await expect(page.locator('[data-slot="chat-markdown"] .markdown-content').last()).toHaveClass(
+    /dark/
+  )
   await expect(code).toHaveCSS('background-color', 'rgb(30, 30, 30)')
   await expect(code.locator('span').filter({ hasText: 'const' }).first()).not.toHaveCSS(
     'color',
@@ -383,7 +390,9 @@ test('assistant code blocks follow the active theme with readable contrast', asy
     themeModule.useAppTheme().setTheme('light')
   })
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'light')
-  await expect(page.locator('.chat-markdown').last()).toHaveClass(/light/)
+  await expect(page.locator('[data-slot="chat-markdown"] .markdown-content').last()).toHaveClass(
+    /light/
+  )
   await expect(code).toHaveCSS('background-color', 'rgb(255, 255, 255)')
 })
 
@@ -407,14 +416,23 @@ test('successful ACP tool envelopes render as done', async () => {
   await chatInput().press('Enter')
 
   if (USE_REAL_LLM) {
-    await expect(page.locator('.chat-markdown, [class*="rounded-tl-md"]').first()).toBeVisible({
+    await expect(
+      page
+        .locator('[data-slot="chat-markdown"] .markdown-content, [class*="rounded-tl-md"]')
+        .first()
+    ).toBeVisible({
       timeout: 30000
     })
   } else {
-    const toolCall = page.getByTestId('chat-tool-call').filter({ hasText: 'Create Shape' })
+    const toolCall = page
+      .getByTestId('chat-message-assistant')
+      .last()
+      .locator('[data-slot="chat-tool-call"]')
+      .filter({ has: page.getByRole('button', { name: /\bCreate Shape\b/ }) })
     await expect(toolCall).toBeVisible({ timeout: 5000 })
-    await expect(toolCall.getByText('Done', { exact: true })).toBeVisible()
-    await expect(toolCall.getByText('Error', { exact: true })).toHaveCount(0)
+    await expect(toolCall).toHaveAttribute('data-tool-state', 'done')
+    await expect(toolCall.getByRole('img', { name: 'Done', exact: true })).toBeVisible()
+    await expect(toolCall.getByRole('img', { name: 'Error', exact: true })).toHaveCount(0)
   }
 })
 
@@ -466,42 +484,57 @@ test('transport errors show a safe localized toast', async () => {
   await chatInput().press('Enter')
 
   await expect(
-    page.getByTestId('toast-item').filter({
+    page.locator('[data-slot="toast"]').filter({
       hasText: 'The model request failed. Check the provider settings and try again.'
     })
   ).toBeVisible({ timeout: 5000 })
 })
 
-test('"Get API key" link opens external URL via window.open', async () => {
+test('"Get API key" link opens the provider key page externally', async () => {
   await page.getByTestId('provider-settings-trigger').click()
   await page.locator('[data-model-id]').first().click()
   await page.getByTestId('provider-settings-clear-key').click()
 
-  const link = page.getByRole('button', { name: 'Get API key →' })
+  const editor = page.getByTestId('settings-model-editor')
+  await expect(editor.getByRole('combobox', { name: 'AI Provider', exact: true })).toHaveText(
+    'OpenRouter'
+  )
+  const keyURL = 'https://openrouter.ai/keys'
+  const link = editor.getByRole('link', { name: 'Get API key', exact: true })
   await expect(link).toBeVisible()
+  await expect(link).toHaveAttribute('href', keyURL)
+  await expect(link).toHaveAttribute('target', '_blank')
 
-  // Intercept window.open to verify it's called with the right URL
-  const openedUrls: string[] = []
-  await page.exposeFunction('mockWindowOpen', (url: string) => openedUrls.push(url))
-  await page.evaluate(() => {
-    window.openPencil ??= {}
-    window.openPencil.test = { ...window.openPencil.test, savedOpen: window.open }
-    window.open = (url: string | URL) => {
-      window.mockWindowOpen?.(String(url))
-      return null
+  const context = page.context()
+  const openedURLs: string[] = []
+  const openedPages: Page[] = []
+  const rememberPage = (openedPage: Page) => {
+    openedPages.push(openedPage)
+  }
+  const serveKeyPage = (route: Route) => {
+    openedURLs.push(route.request().url())
+    return route.fulfill({
+      contentType: 'text/html',
+      body: '<!doctype html><title>Provider key page</title>'
+    })
+  }
+  await context.route(keyURL, serveKeyPage)
+  context.on('page', rememberPage)
+  try {
+    const [openedPage] = await Promise.all([
+      context.waitForEvent('page', { timeout: 3000 }),
+      link.click()
+    ])
+    expect(openedURLs.length).toBeGreaterThan(0)
+    expect(openedURLs[0]).toMatch(/^https:\/\//)
+    expect(openedURLs).toEqual([keyURL])
+    expect(openedPage.url()).toBe(keyURL)
+  } finally {
+    context.off('page', rememberPage)
+    try {
+      await Promise.all(openedPages.map((openedPage) => openedPage.close()))
+    } finally {
+      await context.unroute(keyURL, serveKeyPage)
     }
-  })
-
-  await link.click()
-
-  await expect(() => {
-    expect(openedUrls.length).toBeGreaterThan(0)
-    expect(openedUrls[0]).toMatch(/^https:\/\//)
-  }).toPass({ timeout: 3000 })
-
-  // Restore
-  await page.evaluate(() => {
-    const savedOpen = window.openPencil?.test?.savedOpen
-    if (savedOpen) window.open = savedOpen
-  })
+  }
 })

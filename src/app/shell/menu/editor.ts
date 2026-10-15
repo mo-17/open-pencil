@@ -11,13 +11,14 @@ import { ALIYUN_DRIVE_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/ali
 import { BAIDU_NETDISK_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/baidu-netdisk/config'
 import { clearRecentFiles, forgetRecentFile, recentLocalFileAt } from '@/app/recent-files'
 import { openSettingsDialog } from '@/app/settings/dialog'
-import { createSharedEditorMenuActions } from '@/app/shell/menu/editor-actions'
+import { runFocusedCommand } from '@/app/shell/commands/focused'
+import { createSharedEditorMenuActions } from '@/app/shell/menu/actions/editor'
+import { createSelectionMenuActions } from '@/app/shell/menu/actions/selection'
 import { openFileDialog, openFileFromPath } from '@/app/shell/menu/files'
 import { useNativeMenuEvents } from '@/app/shell/menu/native-events'
 import { createPluginMenuActions } from '@/app/shell/menu/plugin-actions'
 import { OPEN_RECENT_EVENT_PREFIX, watchRecentFilesMenu } from '@/app/shell/menu/recent-files'
 import { APP_MENU_SCHEMA, type AppMenuEntry } from '@/app/shell/menu/schema'
-import { createSelectionMenuActions } from '@/app/shell/menu/selection-actions'
 import { SHELL_MENU_IDS } from '@/app/shell/menu/shell'
 import { useAppTheme } from '@/app/shell/theme'
 import { toast } from '@/app/shell/ui'
@@ -25,6 +26,7 @@ import {
   StorageEditorCopyError,
   queueEditorDocumentCopyToStorage
 } from '@/app/storage/workspace/editor-copy'
+import { saveDocumentToStorage } from '@/app/storage/workspace/save'
 import { createTab, closeTab, activeTab } from '@/app/tabs'
 import { isTauri } from '@/app/tauri/env'
 
@@ -90,6 +92,7 @@ export function useEditorMenu() {
       void saveCopyToStorage(ALIYUN_DRIVE_STORAGE_PROVIDER_ID, 'Aliyun Drive'),
     'save-copy-baidu-netdisk': () =>
       void saveCopyToStorage(BAIDU_NETDISK_STORAGE_PROVIDER_ID, 'Baidu Netdisk'),
+    'save-to-storage': () => void saveDocumentToStorage(store),
     'export-selection': () => {
       if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'png')
     },
@@ -133,7 +136,7 @@ export function useEditorMenu() {
     }
     if (SHELL_MENU_IDS.has(id)) return
     if (COMMAND_MENU_IDS.has(id as EditorCommandId)) {
-      runCommand(id as EditorCommandId)
+      runFocusedCommand(store, runCommand, id as EditorCommandId)
       return
     }
     actions[id]?.()

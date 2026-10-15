@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -39,7 +37,13 @@ import { createPDFViewerModuleFrameOverrides } from '#core/plugins/pdf-viewer'
 import { createQrBarcodeModuleFrameOverrides } from '#core/plugins/qr-barcode'
 import { createTabsModuleFrameOverrides } from '#core/plugins/tabs'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asDouble, asCanvas } from '#tests/engine/render/canvas/helpers'
+import { expectModuleInstance } from '#tests/helpers/assert'
 
 function rendererWithFont() {
   let fontSize = 11
@@ -126,10 +130,10 @@ describe('phase 6 content module CanvasKit previews', () => {
   test('draw all seven adapters offline without executing content or requesting remote assets', () => {
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas preview must stay offline')))
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = asDouble<typeof fetch>(fetchMock)
     try {
       for (const entry of CASES) {
-        const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+        const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
         let depth = 0
         canvas.save.mockImplementation(() => {
           depth += 1
@@ -138,7 +142,7 @@ describe('phase 6 content module CanvasKit previews', () => {
           expect(depth, entry.name).toBeGreaterThan(0)
           depth -= 1
         })
-        expect(entry.render(rendererWithFont(), canvas as Canvas, entry.frame()), entry.name).toBe(
+        expect(entry.render(rendererWithFont(), asCanvas(canvas), entry.frame()), entry.name).toBe(
           true
         )
         expect(canvas.save).toHaveBeenCalled()
@@ -174,13 +178,13 @@ describe('phase 6 content module CanvasKit previews', () => {
     for (const entry of CASES) {
       const rectangle = createDefaultNode(() => `rectangle-${entry.name}`, 'RECTANGLE')
       const frame = entry.frame()
-      const module = frame.interactiveProps?.module
+      const module = expectModuleInstance(frame.interactiveProps?.module)
       const tampered = moduleFrame(`tampered-${entry.name}`, {
         ...frame,
         interactiveProps: { module: { ...module, pluginId: 'unknown.plugin' } as never }
       })
-      expect(entry.render(rendererWithFont(), createMockCanvas() as Canvas, rectangle)).toBe(false)
-      expect(entry.render(rendererWithFont(), createMockCanvas() as Canvas, tampered)).toBe(false)
+      expect(entry.render(rendererWithFont(), asCanvas(createMockCanvas()), rectangle)).toBe(false)
+      expect(entry.render(rendererWithFont(), asCanvas(createMockCanvas()), tampered)).toBe(false)
     }
   })
 })

@@ -10,10 +10,16 @@ import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plu
 export function restoreReaderMetadata(
   graph: SceneGraph,
   sources: ReadonlyMap<string, string>,
-  records: readonly NodeChange[]
+  records: readonly NodeChange[],
+  newSourceNodeIds?: ReadonlySet<string>
 ): void {
   reapplyInstanceOverrides(graph)
-  graph.remapClonedNodeReferences(sources)
+  // Existing policies already use runtime IDs, which can coincide with other saved GUIDs.
+  // The reader supplies first-hydrated receivers; Motion and other references keep their
+  // existing full-map late resolution when another page arrives.
+  graph.remapClonedNodeReferences(sources, 'copy', {
+    applicationReferenceNodeIds: newSourceNodeIds
+  })
   const byId = new Map(
     records.flatMap((record) => (record.guid ? [[guidToString(record.guid), record] as const] : []))
   )

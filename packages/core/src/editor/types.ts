@@ -23,9 +23,18 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 import type { GuideOverlayState } from '#core/canvas/guides/types'
 import type { DesignIssueOverlay } from '#core/canvas/issues/types'
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
-import type { MeasurementMode, PresenceCursor, RenderOverlays } from '#core/canvas/renderer/types'
+import type {
+  MeasurementMode,
+  PresenceCursor,
+  RenderOverlays,
+  SelectionTheme
+} from '#core/canvas/renderer/types'
+import type { InterfaceTheme } from '#core/constants'
+import type { PlayState } from '#core/editor/play/actions'
 import type { SnappingPreferences } from '#core/editor/preferences'
-import type { RotationPreview } from '#core/geometry'
+import type { ShaderRasterizer } from '#core/editor/shaders/types'
+import type { RotationPreview, ShapeHandleKind } from '#core/geometry'
+import type { IconProvider } from '#core/icons/provider'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
@@ -41,6 +50,7 @@ export type Tool =
   | 'STAR'
   | 'TEXT'
   | 'PEN'
+  | 'PENCIL'
   | 'HAND'
   | 'INPUT'
   | 'BUTTON'
@@ -53,6 +63,7 @@ export type Tool =
   | 'DATEPICKER'
   | 'SWITCH'
   | 'MAP'
+  | 'COMMENT'
 
 export interface MotionPreviewTarget {
   readonly nodeId: string
@@ -109,9 +120,35 @@ export interface MotionPreviewState {
   readonly finished: boolean
 }
 
+/** The gradient whose handles the canvas shows while its paint picker is open. */
+export interface GradientEdit {
+  nodeId: string
+  paint: 'fills' | 'strokes'
+  index: number
+  /** The selected stop, shared by the canvas handles and the picker. */
+  stop: number
+}
+
+/** The selected shape's radius, point count, and ratio handles, shown while the pointer is over it. */
+export interface ShapeHandleHover {
+  nodeId: string
+  /** Whether a drag changes only the corner it holds; each handle then shows a dot. */
+  single: boolean
+  /** The handle under the pointer or being dragged, whose value the label shows. */
+  handle: ShapeHandleKind | null
+  /** The handle's name in the label, in the interface language. */
+  label: string
+  /** The pointer in screen coordinates, which the label follows. */
+  pointer: Vector
+}
+
 export interface EditorSharedState {
   activeTool: Tool
   snappingPreferences: SnappingPreferences
+  /** Draw the pixel grid once zoomed in far enough, as Figma's View › Pixel grid; shown unless false. */
+  showPixelGrid?: boolean
+  /** The gradient being edited, whose handles the canvas draws and drags. */
+  gradientEdit?: GradientEdit | null
   presenceCursors: PresenceCursor[]
   documentName: string
   /** Design check markers and highlight, shared by every canvas pane. */
@@ -119,10 +156,24 @@ export interface EditorSharedState {
   /** The layer of the code element around the cursor in a code editor, shown in every pane. */
   codeFocusNodeId: string | null
   rulerTheme?: RulerTheme
+  /** Selection chrome on the canvas, following the interface accent; the default blue when unset. */
+  selectionTheme?: SelectionTheme
+  /** The interface theme new sections take their fill from; light when unset. */
+  theme?: InterfaceTheme
+  /** Bumped by every document change; views, saving, and recovery follow it. */
   sceneVersion: number
   loading: boolean
   /** One editor-owned ephemeral preview shared by every canvas pane. */
   motionPreview: MotionPreviewState | null
+  canvasVersion: number
+}
+
+export interface PencilState {
+  points: Vector[]
+  /** The point Shift was pressed at; the stroke runs straight from it while Shift is held. */
+  straightFrom: number | null
+  /** How the stroke shows while it is drawn. */
+  preview: { color: Color; weight: number }
 }
 
 export interface EditorViewState {
@@ -150,6 +201,8 @@ export interface EditorViewState {
     direction: 'HORIZONTAL' | 'VERTICAL'
   } | null
   hoveredNodeId: string | null
+  /** A pointer move, resize, or rotation is in progress. */
+  transforming: boolean
   measurementMode: MeasurementMode
   editingTextId: string | null
   penState: {
@@ -165,22 +218,29 @@ export interface EditorViewState {
   } | null
   penCursorX: number | null
   penCursorY: number | null
+  /** The freehand stroke being drawn with the pencil, in canvas coordinates. */
+  pencilState: PencilState | null
   autoLayoutHover: {
     nodeId: string
     kind: 'frame' | 'children' | 'spacing' | 'spacing-value' | 'padding' | 'padding-value'
     index?: number
     side?: 'top' | 'right' | 'bottom' | 'left'
   } | null
+  shapeHandleHover: ShapeHandleHover | null
   panX: number
   pageColor: Color
   panY: number
   zoom: number
   navigation: NavigationState
   renderVersion: number
+  /** Bumped when the caret or selection of the text being edited moves, which changes nothing else. */
+  textSelectionVersion: number
   enteredContainerId: string | null
   nodeEditState?: RenderOverlays['nodeEditState'] | null
   cursorCanvasX?: number | null
   cursorCanvasY?: number | null
+  /** This canvas's preview, or null while it edits. */
+  play: PlayState | null
 }
 
 export type NavigationPhase = 'idle' | 'pan' | 'zoom' | 'momentum' | 'settling'
@@ -254,6 +314,10 @@ export interface EditorOptions {
   resolveFigmaClipboardImages?: FigmaClipboardImageResolver
   getViewportSize?: () => { width: number; height: number }
   prefersReducedMotion?: () => boolean
+  /** Where icons are searched and fetched; defaults to Iconify. */
+  icons?: IconProvider
+  /** What draws shader frames, which needs a GPU; without one, saved frames stay. */
+  shaderRasterizer?: ShaderRasterizer | null
   skipInitialGraphSetup?: boolean
 }
 
@@ -271,11 +335,13 @@ export interface EditorContext {
   resolveFigmaClipboardImages: FigmaClipboardImageResolver | null
   getViewportSize: () => { width: number; height: number }
   prefersReducedMotion: () => boolean
+  icons: IconProvider
   getCk: () => CanvasKit | null
   getRenderer: () => SkiaRenderer | null
   getRenderers: () => ReadonlySet<SkiaRenderer>
   getTextEditor: () => TextEditor | null
   requestRender: (reason?: 'page-navigation') => void
+  requestRefresh: () => void
   requestRepaint: () => void
   requestOverlayRepaint: () => void
   beginLoading: (options?: { releaseDocumentCaches?: boolean }) => () => void

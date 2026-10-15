@@ -10,6 +10,10 @@ test.use({ viewport: { width: 1600, height: 1100 } })
 async function prepare(page: Page, info: TestInfo, renderer: 'retained' | 'tiled') {
   const fixture = await openComponentGallery(page, info, renderer)
   const ids = await page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const card = editor.graph
       .getChildren(editor.state.currentPageId)
@@ -18,7 +22,10 @@ async function prepare(page: Page, info: TestInfo, renderer: 'retained' | 'tiled
       card &&
       editor.graph
         .getChildren(card.id)
-        .find((node) => node.interactiveProps?.module?.pluginId === 'open-pencil.tabs')
+        .find(
+          (node) =>
+            readModuleInstance(node.interactiveProps?.module)?.pluginId === 'open-pencil.tabs'
+        )
     const details = tabs && editor.graph.getChildren(tabs.id).find((node) => node.type === 'FORM')
     const overview =
       tabs && editor.graph.getChildren(tabs.id).find((node) => node.name === '概览内容')
@@ -30,7 +37,7 @@ async function prepare(page: Page, info: TestInfo, renderer: 'retained' | 'tiled
       host: tabs.id,
       details: details.id,
       overview: overview.id,
-      config: JSON.stringify(tabs.interactiveProps?.module),
+      config: JSON.stringify(readModuleInstance(tabs.interactiveProps?.module)),
       canUndo: editor.undo.canUndo
     }
   })
@@ -81,7 +88,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await rows.nth(1).getByTestId('tabs-view-content').click()
     await expect
       .poll(() =>
-        page.evaluate((host) => window.openPencil.getStore().getTabsTabPreview(host), ids.host)
+        page.evaluate((host) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil.getStore().getTabsTabPreview(host)
+        }, ids.host)
       )
       .toBe('details')
     await expect(rows.nth(1).getByTestId('tabs-view-content')).toHaveAttribute(
@@ -95,7 +105,11 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await paint(page)
     await editorScreenshot(page, info, 'details-editor.png')
     await canvas.canvas.screenshot({ path: info.outputPath('details-canvas.png') })
-    const result = await page.evaluate(({ host, details }) => {
+    const result = await page.evaluate(async ({ host, details }) => {
+      const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const children = [...editor.graph.getAllNodes()].filter((node) => {
         if (node.type !== 'INPUT') return false
@@ -113,7 +127,9 @@ for (const renderer of ['retained', 'tiled'] as const) {
         widths: children.map((node) => node.width),
         hit: editor.hitTestPageAtPoint(pos.x + 8, pos.y + 8)?.id,
         first: first.id,
-        config: JSON.stringify(editor.graph.getNode(host)?.interactiveProps?.module),
+        config: JSON.stringify(
+          readModuleInstance(editor.graph.getNode(host)?.interactiveProps?.module)
+        ),
         canUndo: editor.undo.canUndo
       }
     }, ids)
@@ -124,25 +140,33 @@ for (const renderer of ['retained', 'tiled'] as const) {
     expect(result.canUndo).toBe(ids.canUndo)
     await rows.nth(1).getByTestId('tabs-edit-content').click()
     await expect(page.getByTestId('content-edit-banner')).toContainText('详情表单内容')
-    expect(await page.evaluate(() => window.openPencil.getStore().state.contentEdit?.rootId)).toBe(
-      ids.details
-    )
+    expect(
+      await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil.getStore().state.contentEdit?.rootId
+      })
+    ).toBe(ids.details)
     await paint(page)
     await editorScreenshot(page, info, 'editing-details.png')
     await page.getByTestId('modal-finish-content').click()
     await expect(page.getByTestId('content-edit-banner')).toHaveCount(0)
     await page.getByTestId('tabs-reset-preview').click()
     expect(
-      await page.evaluate((host) => window.openPencil.getStore().getTabsTabPreview(host), ids.host)
+      await page.evaluate((host) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil.getStore().getTabsTabPreview(host)
+      }, ids.host)
     ).toBeUndefined()
     expect(
-      await page.evaluate(
-        (host) =>
-          JSON.stringify(
+      await page.evaluate(async (host) => {
+        const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return JSON.stringify(
+          readModuleInstance(
             window.openPencil.getStore().graph.getNode(host)?.interactiveProps?.module
-          ),
-        ids.host
-      )
+          )
+        )
+      }, ids.host)
     ).toBe(ids.config)
     expect(readFileSync(path)).toEqual(bytes)
     canvas.assertNoErrors()
@@ -164,28 +188,29 @@ test('Tabs text mode and broken child mappings cannot silently edit a different 
   await row.getByTestId('tabs-view-content').click()
   await expect
     .poll(() =>
-      page.evaluate((host) => window.openPencil.getStore().getTabsTabPreview(host), ids.host)
+      page.evaluate((host) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil.getStore().getTabsTabPreview(host)
+      }, ids.host)
     )
     .toBe('details')
   await expect(row.getByTestId('tabs-edit-content')).toHaveCount(0)
   await row.getByTestId('module-content-child-select').getByRole('combobox').click()
   await page.getByRole('option', { name: '详情表单内容', exact: true }).click()
   await expect(content).toHaveCount(0)
-  await page.evaluate(
-    ({ details }) =>
-      window.openPencil.getStore().updateNodeWithUndo(details, { name: 'Moved detail name' }),
-    ids
-  )
+  await page.evaluate(({ details }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().updateNodeWithUndo(details, { name: 'Moved detail name' })
+  }, ids)
   await expect(row.getByTestId('tabs-content-status')).toContainText('missing')
   await expect(row.getByTestId('tabs-edit-content')).toBeDisabled()
   await expect(content).toHaveCount(0)
   await canvas.undo()
   await expect(row.getByTestId('tabs-edit-content')).toBeEnabled()
-  await page.evaluate(
-    ({ overview }) =>
-      window.openPencil.getStore().updateNodeWithUndo(overview, { name: '详情表单内容' }),
-    ids
-  )
+  await page.evaluate(({ overview }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().updateNodeWithUndo(overview, { name: '详情表单内容' })
+  }, ids)
   await expect(row.getByTestId('tabs-content-status')).toContainText('unique')
   await expect(row.getByTestId('tabs-edit-content')).toBeDisabled()
   canvas.assertNoErrors()

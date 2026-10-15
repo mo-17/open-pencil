@@ -10,6 +10,7 @@ import type {
   IRStateDecl,
   IRTree
 } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
@@ -656,14 +657,12 @@ function emitTextInput(node: IRElement, style: FlutterStyle, environment: NodeEn
   let initialValue = ''
   if (value) initialValue = `initialValue: OpenPencilRuntime.text(${value}),`
   else if (defaultValue !== undefined) initialValue = `initialValue: ${dartString(defaultValue)},`
-  const decoration = `InputDecoration(${[
+  const decoration = `InputDecoration(${compact([
     placeholder ? `hintText: ${dartString(placeholder)}` : '',
     style.placeholderColor
       ? `hintStyle: TextStyle(color: ${flutterColor(style.placeholderColor)})`
       : ''
-  ]
-    .filter(Boolean)
-    .join(', ')})`
+  ]).join(', ')})`
   return `TextFormField(
   ${initialValue}
   decoration: ${decoration},
@@ -793,7 +792,7 @@ function wrapStyle(
   semanticLabel?: string,
   fallbackWidth?: number
 ): string {
-  const args = [
+  const args = compact([
     style.width !== undefined ? `width: ${style.width}` : '',
     style.height !== undefined ? `height: ${style.height}` : '',
     edgeInsets(style.margin) ? `margin: ${edgeInsets(style.margin)}` : '',
@@ -802,21 +801,19 @@ function wrapStyle(
     boxDecoration(style, 'assets/images/')
       ? `decoration: ${boxDecoration(style, 'assets/images/')}`
       : ''
-  ].filter(Boolean)
+  ])
   let value = args.length > 0 ? `Container(${args.join(', ')}, child: ${child})` : child
   value = wrapAdaptiveFlutterStyle(value, style.layout)
   value = constrainFixedWidth(value, fallbackWidth)
   if (style.opacity !== undefined) value = `Opacity(opacity: ${style.opacity}, child: ${value})`
   if (semanticLabel) value = `Semantics(label: ${dartString(semanticLabel)}, child: ${value})`
   if (style.position === 'absolute') {
-    const position = [
+    const position = compact([
       style.left !== undefined ? `left: ${style.left}` : '',
       style.top !== undefined ? `top: ${style.top}` : '',
       style.right !== undefined ? `right: ${style.right}` : '',
       style.bottom !== undefined ? `bottom: ${style.bottom}` : ''
-    ]
-      .filter(Boolean)
-      .join(', ')
+    ]).join(', ')
     value = `Positioned(${position ? `${position}, ` : ''}child: ${value})`
   }
   return value
@@ -1124,7 +1121,7 @@ function warnPageFeatures(ir: IRTree, warn: FlutterWarningSink): void {
 }
 
 function warnElementFeatures(node: IRElement, warn: FlutterWarningSink): void {
-  const features = [
+  const features = compact([
     node.module && !isFlutterVRTour(node) ? 'plugin module' : '',
     node.rawHtml ? 'raw HTML/vector markup' : '',
     node.upload ? 'upload' : '',
@@ -1135,7 +1132,7 @@ function warnElementFeatures(node: IRElement, warn: FlutterWarningSink): void {
     node.motion || node.motionDrivers || node.motionScene || node.generatedEffect
       ? 'motion/effect'
       : ''
-  ].filter(Boolean)
+  ])
   if (features.length) {
     warn({
       code: 'flutter-element-feature-unsupported',

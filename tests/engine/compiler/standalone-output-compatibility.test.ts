@@ -32,7 +32,7 @@ const VUE_BASELINE = Object.freeze({
 
 async function sha256Hex(value: string | Uint8Array): Promise<string> {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)))
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 

@@ -1,12 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const source = readFileSync(
-  resolve(
-    import.meta.dir,
-    '../../../../../../src/components/settings/storage/BaiduNetdiskStorageConnection.vue'
-  ),
+  repoPath('src/components/settings/storage/BaiduNetdiskStorageConnection.vue'),
   'utf8'
 )
 

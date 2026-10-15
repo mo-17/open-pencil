@@ -37,8 +37,8 @@ export function dataGridRowsFixture(target: 'react' | 'vue', document = false) {
   if (document) graph.updateNode(graph.rootId, { lowcodeDocumentState: [gridState] })
   const action = (name: string, valueExpr: string) =>
     document && name === 'gridRows'
-      ? { kind: 'setVariable' as const, targetName: name, valueExpr }
-      : { kind: 'setState' as const, targetStateId: name, valueExpr }
+      ? { id: name + ':' + valueExpr, kind: 'setVariable' as const, targetName: name, valueExpr }
+      : { id: name + ':' + valueExpr, kind: 'setState' as const, targetStateId: name, valueExpr }
   const controls = [
     ['Rerender host', 'revision', 'revision + 1'],
     ['Equal rows', 'gridRows', 'equalRows'],

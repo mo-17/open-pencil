@@ -17,6 +17,8 @@ async function openEditor(page: Page): Promise<CanvasHelper> {
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -43,7 +45,7 @@ async function expectCanvas(canvas: CanvasHelper, name: string): Promise<void> {
   await canvas.page.evaluate(
     () =>
       new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve))
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       })
   )
   canvas.assertNoErrors()
@@ -54,6 +56,8 @@ test('international text is correct on its first visible paint', async ({ page }
   await openEditor(page)
 
   const result = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     const fontModuleURL = performance
@@ -202,6 +206,8 @@ test('typed and tool-created text repaint with the same resolved fallbacks', asy
   const canvas = await openEditor(page)
 
   const ids = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -272,6 +278,8 @@ test('typed and tool-created text repaint with the same resolved fallbacks', asy
 
   await page.locator('textarea[aria-hidden="true"]').fill('OpenPencil · 你好 · مرحبا')
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     store.renderer.invalidateAllPictures()
@@ -301,6 +309,8 @@ test('typed and tool-created text repaint with the same resolved fallbacks', asy
   await expectCanvas(canvas, 'interactive-font-fallback-pending')
 
   const resolved = await page.evaluate(async ({ nodeIds, toolId, typedId }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     const fontModuleURL = performance
@@ -366,6 +376,8 @@ test('substituted fonts still request fallbacks for CJK text', async ({ page }) 
   await openEditor(page)
 
   const result = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     const fontModuleURL = performance

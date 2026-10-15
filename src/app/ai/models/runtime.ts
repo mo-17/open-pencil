@@ -89,9 +89,12 @@ export async function setModelConnectionAPIKey(connectionId: string, value: stri
   if (!connection || connection.providerID.startsWith('acp:')) return
   const reference = modelConnectionCredentialRef(connection)
   const key = value.trim()
-  if (key) await appCredentialServices.manager.set(reference, key)
-  else await appCredentialServices.manager.clear(reference)
-  mutableModelCredentialRevision.value++
+  try {
+    if (key) await appCredentialServices.manager.set(reference, key)
+    else await appCredentialServices.manager.clear(reference)
+  } finally {
+    mutableModelCredentialRevision.value++
+  }
 }
 
 export async function resolveModelConnectionAPIKey(connectionId: string): Promise<string | null> {

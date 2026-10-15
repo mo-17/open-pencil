@@ -5,10 +5,11 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { installedMarkdownDependency } from '#compiler/markdown-dependencies'
+import * as v from 'valibot'
 
 /** Type-check generated source against locally installed dependencies without installing or building. */
 export function typeCheckCompilerFiles(
-  files: ReadonlyMap<string, string>,
+  files: ReadonlyMap<string, string | Uint8Array>,
   target: 'react' | 'vue',
   options: {
     preserveSymlinks?: boolean
@@ -18,9 +19,18 @@ export function typeCheckCompilerFiles(
 ): void {
   const directory = mkdtempSync(join(tmpdir(), 'openpencil-control-types-'))
   try {
-    const manifest = JSON.parse(files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const manifest = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      (() => {
+        const source = files.get('package.json')
+        if (typeof source !== 'string') throw new Error('Expected a package.json source')
+        return source
+      })()
+    )
     for (const dependency of [
       ...Object.keys(manifest.dependencies),
       ...(target === 'react' ? ['@types/react', '@types/react-dom'] : []),

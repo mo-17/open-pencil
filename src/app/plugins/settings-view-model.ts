@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import {
   searchMarketplaceListings,
   type MarketplacePluginListingV1,
@@ -302,7 +304,7 @@ export function pluginMarketplaceListingViews(
   const views = snapshot.listings.map((listing) => {
     const publisher = publishers.get(listing.publisherId)
     const ownership = ownerships.get(listing.pluginId)
-    const channels = [...new Set(listing.releases.map((release) => release.channel))].sort(
+    const channels = uniq(listing.releases.map((release) => release.channel)).sort(
       compareMarketplaceChannel
     )
     return [

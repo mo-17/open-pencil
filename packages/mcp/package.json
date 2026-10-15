@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/mcp",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -78,10 +78,10 @@
     "@hono/node-server": "^1.19.17",
     "@modelcontextprotocol/server": "^2.0.0",
     "@open-pencil/core": "workspace:*",
-    "@open-pencil/design-jsx": "workspace:*",
     "@open-pencil/plugin-contracts": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@valibot/to-json-schema": "^1.8.0",
+    "es-toolkit": "^1.52.0",
     "hono": "^4.13.13",
     "js-base64": "^3.9.3",
     "package-manager-detector": "^1.8.0",

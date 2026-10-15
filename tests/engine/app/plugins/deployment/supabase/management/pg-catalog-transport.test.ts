@@ -14,7 +14,7 @@ import {
   type SupabasePgCatalogReadRequest
 } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
 
-import type { QueryBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
+import { parseQueryBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 const PROJECT_REF = 'enekobitnhobuiuamvqj'
 const ORGANIZATION_ID = 'org-123'
@@ -22,8 +22,6 @@ const GRANT_GENERATION = '123e4567-e89b-42d3-a456-426614174000'
 const PAT = 'sbp_transport_secret_canary_1234567890'
 const SNAPSHOT_MARKER = '123:123:'
 const OBSERVED_AT = '2026-08-30T10:00:00.000Z'
-
-type SupabaseReadOnlyQueryBody = QueryBody
 
 function readRequest(): SupabasePgCatalogReadRequest {
   return {
@@ -41,7 +39,7 @@ function readRequest(): SupabasePgCatalogReadRequest {
   }
 }
 
-function aggregateResponse(overrides: Record<string, unknown> = {}): unknown {
+function aggregateResponse(overrides: Record<string, unknown> = {}) {
   return [
     {
       snapshotMarker: SNAPSHOT_MARKER,
@@ -117,7 +115,7 @@ describe('Supabase Management fixed pg_catalog transport', () => {
     const serializedBody = post?.init.body
     expect(typeof serializedBody).toBe('string')
     if (typeof serializedBody !== 'string') throw new TypeError('Expected a JSON request body.')
-    const body = JSON.parse(serializedBody) as SupabaseReadOnlyQueryBody
+    const body = parseQueryBody(serializedBody)
     expect(Object.keys(body)).toEqual(['query', 'parameters'])
     expect(body.query).toBe(SUPABASE_PG_CATALOG_AGGREGATE_SQL)
     expect(body.parameters).toHaveLength(SUPABASE_PG_CATALOG_QUERY_IDS.length * 2)
@@ -171,7 +169,7 @@ describe('Supabase Management fixed pg_catalog transport', () => {
     let postCalls = 0
     const transport = createSupabaseManagementPgCatalogTransport({
       personalAccessToken: PAT,
-      fetcher: async (input, init) => {
+      fetcher: async (_input, init) => {
         if (init?.method === 'POST') postCalls += 1
         return jsonResponse({
           ref: PROJECT_REF,

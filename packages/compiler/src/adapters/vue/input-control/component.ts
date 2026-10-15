@@ -24,8 +24,8 @@ function nativeInputProps() {
     pattern: props.config.kind === 'color' ? '#[0-9a-fA-F]{6}' : typeof attrs.pattern === 'string' ? attrs.pattern : undefined,
     placeholder: placeholder()
   }
-  // The constant initial value serves SSR without patching a live numeric draft on unrelated renders.
-  return props.config.kind === 'number' ? { ...common, value: initialNumber } : { ...common, value: props.value ?? internal.value }
+  // Seed SSR from the business value; live numeric drafts stay owned by the native input.
+  return props.config.kind === 'number' ? { ...common, value: input.value?.value ?? initialNumber } : { ...common, value: props.value ?? internal.value }
 }
 function numberRequired(element: HTMLInputElement) { return element.required || element.getAttribute('aria-required') === 'true' }
 watch(() => props.value, (value, previous) => {

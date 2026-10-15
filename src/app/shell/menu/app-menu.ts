@@ -12,6 +12,7 @@ import IconSave from '~icons/lucide/save'
 import IconSettings from '~icons/lucide/settings'
 import IconType from '~icons/lucide/type'
 import IconUndo from '~icons/lucide/undo-2'
+import IconVariables from '~icons/lucide/variable'
 import IconZoomIn from '~icons/lucide/zoom-in'
 import IconZoomOut from '~icons/lucide/zoom-out'
 
@@ -19,11 +20,18 @@ import type { BuiltinIOFormatId } from '@open-pencil/core/io'
 import type { CommandPaletteGroup, CommandPaletteItem, MenuEntry } from '@open-pencil/vue'
 import { shortcutPlatform, useEditorCommands, useI18n } from '@open-pencil/vue'
 
+import { openTour } from '@/app/demo/document'
 import { useEditorStore } from '@/app/editor/active-store'
+import { openVariablesDialog } from '@/app/editor/tokens/dialog'
 import { openSettingsDialog } from '@/app/settings/dialog'
-import { setDesignIssuesOnCanvas, setSnappingPreference } from '@/app/settings/preferences/apply'
+import {
+  setCommentsOnCanvas,
+  setDesignIssuesOnCanvas,
+  setSnappingPreference
+} from '@/app/settings/preferences/apply'
 import { appPreferences } from '@/app/settings/preferences/store'
-import { createSharedEditorMenuActions } from '@/app/shell/menu/editor-actions'
+import { createSharedEditorMenuActions } from '@/app/shell/menu/actions/editor'
+import { createSelectionMenuActions } from '@/app/shell/menu/actions/selection'
 import { openStorageWorkspace } from '@/app/shell/menu/navigation'
 import { createPluginMenuActions } from '@/app/shell/menu/plugin-actions'
 import type {
@@ -33,10 +41,10 @@ import type {
   AppMenuIcon
 } from '@/app/shell/menu/schema'
 import { APP_MENU_SCHEMA } from '@/app/shell/menu/schema'
-import { createSelectionMenuActions } from '@/app/shell/menu/selection-actions'
 import { appMenuShortcutLabel } from '@/app/shell/menu/shortcut'
 import { openFileDialog } from '@/app/shell/menu/use'
 import { useAppTheme } from '@/app/shell/theme'
+import { saveDocumentToStorage } from '@/app/storage/workspace/save'
 import { closeTab, activeTab } from '@/app/tabs'
 
 export interface AppMenuGroup {
@@ -57,6 +65,7 @@ const APP_MENU_ICONS: Record<AppMenuIcon, Component> = {
   settings: IconSettings,
   type: IconType,
   undo: IconUndo,
+  variables: IconVariables,
   'zoom-in': IconZoomIn,
   'zoom-out': IconZoomOut
 }
@@ -96,9 +105,9 @@ export function useAppMenu() {
     new: 'new',
     open: 'open',
     'open-storage-workspace': 'openStorageWorkspace',
+    'open-tour': 'openTour',
     save: 'save',
     'save-as': 'saveAs',
-    'export-selection': 'export',
     'plugin.export.tauri-react': 'exportTauriReactProject',
     'plugin.export.expo-react-native': 'exportExpoReactNativeProject',
     'plugin.export.flutter': 'exportFlutterProject',
@@ -110,6 +119,8 @@ export function useAppMenu() {
     'plugin.export.taro': 'exportTaroProject',
     'plugin.export.uni-app': 'exportUniAppProject',
     'plugin.export.mpx': 'exportMpxProject',
+    'save-to-storage': 'saveToStorage',
+    'export-selection': 'exportSelection',
     autosave: 'autosave',
     close: 'closeTab',
     copy: 'copy',
@@ -126,14 +137,19 @@ export function useAppMenu() {
     language: 'language',
     preferences: 'preferences',
     settings: 'settings',
+    variables: 'variables',
+    'insert-icon': 'insertIcon',
     'view-rulers': 'rulers',
+    'view-pixel-grid': 'pixelGrid',
     'view-multiplayer-cursors': 'multiplayerCursors',
     'view-design-issues': 'designIssues',
+    'view-comments': 'comments',
     'snap-geometry': 'snapToGeometry',
     'snap-objects': 'snapToObjects',
     'snap-pixel-grid': 'snapToPixelGrid',
     profiler: 'profiler',
     'toggle-ui': 'toggleUI',
+    'toggle-preview': 'togglePreview',
     theme: 'theme',
     'theme-light': 'themeLight',
     'theme-dark': 'themeDark',
@@ -174,8 +190,12 @@ export function useAppMenu() {
     },
     open: () => void openFileDialog(),
     'open-storage-workspace': () => openStorageWorkspace(router),
+    'open-tour': () => {
+      openTour().catch((error: unknown) => console.error('[Tour] Could not open the tour:', error))
+    },
     save: () => void store.saveFigFile(),
     'save-as': () => void store.saveFigFileAs(),
+    'save-to-storage': () => void saveDocumentToStorage(store),
     'export-selection': () => exportSelection('png'),
     ...createSelectionMenuActions(store),
     ...createPluginMenuActions(store, {
@@ -185,6 +205,10 @@ export function useAppMenu() {
       if (activeTab.value) void closeTab(activeTab.value.id)
     },
     settings: openSettingsDialog,
+    variables: () => openVariablesDialog(store),
+    'insert-icon': () => {
+      store.state.iconPickerOpen = true
+    },
     'export-png': () => exportSelection('png'),
     'export-svg': () => exportSelection('svg'),
     'export-pptx': () => exportSelection('pptx'),
@@ -204,10 +228,14 @@ export function useAppMenu() {
         return store.renderer?.profiler.hudVisible ?? false
       case 'view-rulers':
         return store.state.showRulers
+      case 'view-pixel-grid':
+        return store.state.showPixelGrid !== false
       case 'view-multiplayer-cursors':
         return store.state.showRemoteCursors
       case 'view-design-issues':
         return appPreferences.value.designCheck.showOnCanvas
+      case 'view-comments':
+        return appPreferences.value.comments.showOnCanvas
       case 'snap-geometry':
         return store.state.snappingPreferences.geometry
       case 'snap-objects':
@@ -237,12 +265,18 @@ export function useAppMenu() {
         return (value: boolean) => {
           if (store.state.showRulers !== value) itemAction(item)?.()
         }
+      case 'view-pixel-grid':
+        return (value: boolean) => {
+          if ((store.state.showPixelGrid !== false) !== value) itemAction(item)?.()
+        }
       case 'view-multiplayer-cursors':
         return (value: boolean) => {
           if (store.state.showRemoteCursors !== value) itemAction(item)?.()
         }
       case 'view-design-issues':
         return (value: boolean) => setDesignIssuesOnCanvas(value)
+      case 'view-comments':
+        return (value: boolean) => setCommentsOnCanvas(value)
       case 'snap-geometry':
         return (value: boolean) => setSnappingPreference('geometry', value)
       case 'snap-objects':

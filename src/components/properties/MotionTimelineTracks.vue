@@ -238,7 +238,8 @@ function selectKeyframeFromClick(
       v-for="(track, trackIndex) in motion.tracks"
       :key="track.id"
       class="flex min-w-0 items-center gap-1.5"
-      :data-test-id="`motion-track-${track.id}`"
+      data-slot="motion-track"
+      :data-track-id="track.id"
     >
       <button
         type="button"
@@ -289,11 +290,10 @@ function selectKeyframeFromClick(
             ]"
             :style="markerStyle(time, track, keyframe)"
             :aria-label="`${panels.motionKeyframe} ${keyframeIndex + 1}`"
-            :data-test-id="
-              occurrenceIndex === 0
-                ? `motion-keyframe-${track.id}-${keyframeIndex}`
-                : `motion-keyframe-${track.id}-${keyframeIndex}-${occurrenceIndex}`
-            "
+            data-slot="motion-keyframe"
+            :data-track-id="track.id"
+            :data-keyframe-index="keyframeIndex"
+            :data-occurrence-index="occurrenceIndex"
             @pointerdown.stop.prevent="startKeyframeDrag($event, track, keyframeIndex, time)"
             @pointermove.stop.prevent="moveKeyframeDrag"
             @pointerup.stop="finishKeyframeDrag"

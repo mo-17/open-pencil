@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 /* eslint-disable max-lines -- Backend draft mutations stay co-located to share invariant checks. */
 import {
   BACKEND_LIMITS,
@@ -280,7 +282,7 @@ export function setBackendFieldPrimary(
   const field = fieldById(entity, fieldId)
   const fields = entity.primaryKey?.fields ?? []
   const next = enabled
-    ? [...new Set([...fields, fieldId])]
+    ? uniq([...fields, fieldId])
     : fields.filter((candidate) => candidate !== fieldId)
   if (enabled) {
     field.nullable = false

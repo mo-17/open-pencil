@@ -5,6 +5,8 @@ test('recovering an unsaved document restores its selected conversation automati
   page
 }) => {
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     editor.createShape('RECTANGLE', 100, 100, 200, 100)

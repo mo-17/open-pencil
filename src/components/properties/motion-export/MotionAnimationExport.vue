@@ -163,7 +163,7 @@ const progressLabel = computed(() => {
 
     <p
       v-if="motionExport.error.value"
-      class="text-[10px] text-danger"
+      class="text-[10px] text-error"
       data-test-id="motion-export-error"
     >
       {{ motionExport.error.value }}
@@ -178,7 +178,7 @@ const progressLabel = computed(() => {
 
     <button
       type="button"
-      class="w-full rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-default disabled:opacity-50"
+      class="w-full rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:cursor-default disabled:opacity-50"
       :disabled="!motionExport.canExport.value"
       data-test-id="motion-export-start"
       @click="motionExport.start"

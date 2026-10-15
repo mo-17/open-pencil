@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear()
 
 async function setupWorkflowGraphMixedIssueTypes() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -48,6 +50,8 @@ async function setupWorkflowGraphMixedIssueTypes() {
 
 async function setupWorkflowGraphEntrypointWithIsolatedIssue() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)

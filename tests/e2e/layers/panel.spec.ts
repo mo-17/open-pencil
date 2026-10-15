@@ -3,21 +3,18 @@ import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 const editor = useEditorSetup('/demo')
 
 function layerRows() {
-  return editor.page.locator('[data-node-id]')
+  return editor.page.getByTestId('layers-tree').locator('[data-node-id]')
 }
 
 async function getLayerNames(): Promise<string[]> {
-  const rows = layerRows()
-  const count = await rows.count()
-  const names: string[] = []
-  for (let i = 0; i < count; i++) {
-    const text = await rows.nth(i).innerText()
-    names.push(text.trim())
-  }
-  return names
+  const names = await layerRows()
+    .locator('[data-slot="label"] > span:not([data-slot])')
+    .allTextContents()
+  return names.map((name) => name.trim())
 }
 
 interface SceneTreeNode {
+  id: string
   name: string
   type: string
   children: SceneTreeNode[]
@@ -25,16 +22,21 @@ interface SceneTreeNode {
 
 async function getSceneTree(): Promise<SceneTreeNode> {
   return editor.page.evaluate(() => {
-    const store = window.openPencil?.getStore?.()
-    if (!store) return null
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
 
-    function nodeTree(id: string): SceneTreeNode | null {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+
+    const nodeTree = (id: string): SceneTreeNode | null => {
       const node = store.graph.getNode(id)
       if (!node) return null
       return {
+        id: node.id,
         name: node.name,
         type: node.type,
-        children: node.childIds.map((cid: string) => nodeTree(cid)).filter(Boolean)
+        children: node.childIds
+          .map((cid: string) => nodeTree(cid))
+          .filter((child): child is SceneTreeNode => child !== null)
       }
     }
     const tree = nodeTree(store.state.currentPageId)
@@ -45,27 +47,106 @@ async function getSceneTree(): Promise<SceneTreeNode> {
 
 async function getSelectedCount(): Promise<number> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.selectedIds.size
   })
 }
 
+const NUMBERED_GROUP = /^Group \d+$/
+
+function sceneNodes(tree: SceneTreeNode): SceneTreeNode[] {
+  return [tree, ...tree.children.flatMap(sceneNodes)]
+}
+
+async function drawRectanglesInsideCanvas(
+  rectangles: ReadonlyArray<Parameters<typeof editor.canvas.drawRect>>
+) {
+  const bounds = await editor.canvas.canvas.boundingBox()
+  if (!bounds) throw new Error('The layer fixture canvas has no visible bounds')
+  expect(rectangles.length).toBeGreaterThan(0)
+  const inset = 16
+  const minX = Math.min(...rectangles.map(([x]) => x))
+  const minY = Math.min(...rectangles.map(([, y]) => y))
+  const maxX = Math.max(...rectangles.map(([x, , width]) => x + width))
+  const maxY = Math.max(...rectangles.map(([, y, , height]) => y + height))
+  expect(bounds.width).toBeGreaterThanOrEqual(maxX - minX + inset * 2)
+  expect(bounds.height).toBeGreaterThanOrEqual(maxY - minY + inset * 2)
+  const offsetX = Math.min(0, bounds.width - maxX - inset)
+  const offsetY = Math.min(0, bounds.height - maxY - inset)
+  const beforeIds = new Set(sceneNodes(await getSceneTree()).map(({ id }) => id))
+
+  for (const [x, y, width, height] of rectangles) {
+    await editor.canvas.drawRect(x + offsetX, y + offsetY, width, height)
+  }
+
+  const created = sceneNodes(await getSceneTree()).filter(({ id }) => !beforeIds.has(id))
+  expect(created).toHaveLength(rectangles.length)
+  for (const node of created) {
+    expect(node.type).toBe('RECTANGLE')
+    expect(node.name).toMatch(/^Rectangle \d+$/)
+  }
+  await test.info().attach('layer-rectangle-fixture-input', {
+    body: JSON.stringify({ bounds, rectangles, offsetX, offsetY, created }),
+    contentType: 'application/json'
+  })
+}
+
 test('demo layers visible in panel', async () => {
-  const names = await getLayerNames()
-  expect(names).toContain('Announcement system')
-  expect(names).toContain('Components')
+  const original = await getSceneTree()
+  expect(original.children.length).toBeGreaterThan(0)
+  expect(await getLayerNames()).toEqual(original.children.map(({ name }) => name))
+  for (const root of original.children) {
+    const row = editor.page.getByTestId('layers-tree').locator(`[data-node-id="${root.id}"]`)
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute('aria-level', '1')
+    await expect(row.locator('[data-slot="label"] > span:not([data-slot])')).toHaveText(root.name)
+  }
+  const root = original.children.find((node) => node.children.length > 0)
+  const child = root?.children[0]
+  if (!root || !child) throw new Error('The demo has no expandable layer hierarchy')
+  const rootRow = editor.page.getByTestId('layers-tree').locator(`[data-node-id="${root.id}"]`)
+  const disclosure = rootRow.locator('[data-slot="disclosure"]')
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+  await disclosure.click()
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+  const childRow = editor.page.getByTestId('layers-tree').locator(`[data-node-id="${child.id}"]`)
+  await expect(childRow).toBeVisible()
+  await expect(childRow).toHaveAttribute('aria-level', '2')
+  await expect(childRow.locator('[data-slot="label"] > span:not([data-slot])')).toHaveText(
+    child.name
+  )
+  await disclosure.click()
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+  await expect(childRow).toHaveCount(0)
+  expect(await getLayerNames()).toEqual(original.children.map(({ name }) => name))
+  expect(await getSceneTree()).toEqual(original)
+  editor.canvas.assertNoErrors()
 })
 
 test('clicking a node inside a frame does not reparent it', async () => {
   const target = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
-    const nodes = [...store.graph.nodes.values()]
-    const root = nodes.find((node) => node.name === 'Announcement system')
-    const nested = nodes.find((node) => node.name === 'Source components')
-    if (!root || !nested?.parentId) throw new Error('Demo announcement structure not found')
+    const candidate = store.graph
+      .getChildren(store.state.currentPageId)
+      .flatMap((root) => store.graph.getChildren(root.id).map((nested) => ({ root, nested })))
+      .find(
+        ({ root, nested }) =>
+          root.type === 'SECTION' &&
+          nested.type === 'FRAME' &&
+          nested.width > 0 &&
+          nested.height > 0
+      )
+    if (!candidate?.nested.parentId) throw new Error('The demo has no nested frame')
+    const { root, nested } = candidate
     const origin = store.graph.getAbsolutePosition(nested.id)
+    store.zoomToBounds(origin.x, origin.y, origin.x + nested.width, origin.y + nested.height)
+    store.requestRender()
     return {
       id: nested.id,
       parentId: nested.parentId,
@@ -75,12 +156,15 @@ test('clicking a node inside a frame does not reparent it', async () => {
     }
   })
 
-  // Click inside the nested frame hierarchy.
+  // Fit the independent scene target before clicking inside its frame hierarchy.
+  await editor.canvas.waitForRender()
   await editor.canvas.click(target.x, target.y)
   await editor.canvas.waitForRender()
 
   const after = await editor.page.evaluate(
     ({ id, rootId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return {
@@ -101,21 +185,23 @@ test('clicking a node inside a frame does not reparent it', async () => {
 
 test('creating a shape updates layers', async () => {
   const before = await getLayerNames()
-  await editor.canvas.drawRect(600, 500, 50, 50)
+  await drawRectanglesInsideCanvas([[600, 500, 50, 50]])
   const names = await getLayerNames()
-  expect(names).toContain('Rectangle')
+  expect(names).toContain('Rectangle 1')
   expect(names.length).toBe(before.length + 1)
 
   await editor.canvas.undo()
   const after = await getLayerNames()
   expect(after.length).toBe(before.length)
-  expect(after).not.toContain('Rectangle')
+  expect(after).not.toContain('Rectangle 1')
 })
 
 test('Shift+A wraps selection in auto-layout frame', async () => {
   // Draw two loose rectangles for this test
-  await editor.canvas.drawRect(700, 600, 60, 60)
-  await editor.canvas.drawRect(800, 600, 60, 60)
+  await drawRectanglesInsideCanvas([
+    [700, 600, 60, 60],
+    [800, 600, 60, 60]
+  ])
   await editor.canvas.selectAll()
   const count = await getSelectedCount()
   expect(count).toBeGreaterThanOrEqual(2)
@@ -143,19 +229,22 @@ test('grouping updates layers', async () => {
   await editor.canvas.waitForRender()
 
   // Draw two rects and group them
-  await editor.canvas.drawRect(700, 600, 60, 60)
-  await editor.canvas.drawRect(800, 600, 60, 60)
+  await drawRectanglesInsideCanvas([
+    [700, 600, 60, 60],
+    [800, 600, 60, 60]
+  ])
   await editor.canvas.selectAll()
 
   await editor.page.keyboard.press('Meta+g')
   await editor.canvas.waitForRender()
 
+  // The canvas numbers a group past the highest "Group" number on the page, as Figma does.
   const tree = await getSceneTree()
-  const group = tree.children.find((c) => c.name === 'Group' && c.type === 'GROUP')
+  const group = tree.children.find((c) => NUMBERED_GROUP.test(c.name) && c.type === 'GROUP')
   expect(group).toBeTruthy()
 
   const names = await getLayerNames()
-  expect(names).toContain('Group')
+  expect(names.some((name) => NUMBERED_GROUP.test(name))).toBe(true)
 
   editor.canvas.assertNoErrors()
 })
@@ -165,14 +254,14 @@ test('ungrouping updates layers', async () => {
   await editor.canvas.waitForRender()
 
   const names = await getLayerNames()
-  expect(names).not.toContain('Group')
-  expect(names).toContain('Rectangle')
+  expect(names.some((name) => NUMBERED_GROUP.test(name))).toBe(false)
+  expect(names.some((name) => /^Rectangle \d+$/.test(name))).toBe(true)
 
   editor.canvas.assertNoErrors()
 })
 
 test('double-click layer to rename', async () => {
-  await editor.canvas.drawRect(900, 600, 50, 50)
+  await drawRectanglesInsideCanvas([[900, 600, 50, 50]])
   await editor.canvas.waitForRender()
 
   const row = layerRows().filter({ hasText: 'Rectangle' }).first()
@@ -208,11 +297,18 @@ test('clicking outside rename input commits', async () => {
   editor.canvas.assertNoErrors()
 })
 
-test('clearing a layer name falls back to the default node name', async () => {
-  await editor.canvas.drawRect(980, 600, 50, 50)
+test('clearing a layer name keeps the name it had', async () => {
+  await drawRectanglesInsideCanvas([[980, 600, 50, 50]])
   await editor.canvas.waitForRender()
 
-  const row = layerRows().filter({ hasText: 'Rectangle' }).last()
+  const drawn = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+    const store = window.openPencil?.getStore?.()
+    const id = store ? [...store.state.selectedIds][0] : undefined
+    return id ? (store?.graph.getNode(id)?.name ?? '') : ''
+  })
+  const row = layerRows().filter({ hasText: drawn }).last()
   const countBefore = await layerRows().count()
 
   await row.dblclick()
@@ -228,15 +324,27 @@ test('clearing a layer name falls back to the default node name', async () => {
   expect(countAfter).toBe(countBefore)
 
   const names = await getLayerNames()
-  expect(names.filter((name) => name === 'Rectangle').length).toBeGreaterThan(0)
+  expect(drawn).toMatch(/^Rectangle \d+$/)
+  expect(names).toContain(drawn)
 
   editor.canvas.assertNoErrors()
 })
 
 test('double-click does not toggle tree expand', async () => {
+  const tree = await getSceneTree()
+  const container = tree.children.find((node) => node.children.length > 0)
+  if (!container) throw new Error('The current page has no layer container')
+  await editor.page.evaluate((id) => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.select([id])
+    store.requestRender()
+  }, container.id)
+  await editor.canvas.waitForRender()
   const rowCountBefore = await layerRows().count()
-
-  const containerRow = layerRows().filter({ hasText: 'Components' }).first()
+  const containerRow = editor.page
+    .getByTestId('layers-tree')
+    .locator(`[data-node-id="${container.id}"]`)
   await containerRow.dblclick()
   await editor.canvas.waitForRender()
 

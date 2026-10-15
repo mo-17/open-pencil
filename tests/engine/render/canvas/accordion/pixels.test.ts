@@ -54,7 +54,7 @@ test('Accordion actual Chinese paragraphs, right indicators, transparent divider
     const paragraph = nativeBuild(label, color, options)
     shaped.push({
       text: label.text,
-      lines: paragraph.getNumberOfLines(),
+      lines: paragraph.getShapedLines().length,
       missing: missingGlyphCharacters(label.text, paragraph.getShapedLines())
     })
     return paragraph

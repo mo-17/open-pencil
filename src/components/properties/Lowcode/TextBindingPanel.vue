@@ -169,14 +169,14 @@ function onDocStateChange(event: Event): void {
         :placeholder="panels.lowcodeTextSourceExprPlaceholder"
         :class="[
           'w-full rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-          exprError ? 'border-red-500' : 'border-border'
+          exprError ? 'border-error' : 'border-border'
         ]"
         @change="onExprChange"
       />
       <p
         v-if="exprError"
         data-test-id="lowcode-text-binding-expr-error"
-        class="pl-1 text-[10px] text-red-500"
+        class="pl-1 text-[10px] text-error"
       >
         {{ exprError }}
       </p>

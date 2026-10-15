@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { createRedirect } from 'cloudflare-redirect-parser'
+import { uniq } from 'es-toolkit'
+
 import { docsLocales, docsLocalesFor } from '../.vitepress/locales'
 import { ZH_CN_TRANSLATED_ROUTES, zhCnThemeConfig } from '../.vitepress/zh-cn-theme'
 
@@ -31,16 +34,41 @@ describe('Simplified Chinese documentation theme', () => {
     expect(locales.de.label).toBe('Deutsch')
   })
 
-  test('uses zh-cn links only for routes with planned translations', () => {
+  test('uses translated pages for Chinese navigation and keeps English fallbacks', () => {
     const links = collectLinks(zhCnThemeConfig())
-    const localizedLinks = [...new Set(links.filter((link) => link.startsWith('/zh-cn')))].sort()
+    const localizedLinks = uniq(links.filter((link) => link.startsWith('/zh-cn'))).sort()
 
-    expect(localizedLinks).toEqual([...ZH_CN_TRANSLATED_ROUTES].sort())
+    for (const link of localizedLinks)
+      expect<readonly string[]>(ZH_CN_TRANSLATED_ROUTES).toContain(link)
+    expect(links).toContain('/zh-cn/getting-started')
+    expect(links).not.toContain('/zh-cn/guide/getting-started')
     expect(links).toContain('/guide/architecture')
     expect(links).toContain('/user-guide/canvas-navigation')
     expect(links).toContain('/programmable/sdk/')
     expect(links).toContain('/reference/keyboard-shortcuts')
     expect(links).toContain('/development/contributing')
     expect(links).toContain('/zh-cn/development/plugin-tutorial')
+  })
+
+  test('keeps canonical landing destinations reachable and redirects the legacy guide', async () => {
+    const redirect = createRedirect(
+      await Bun.file(new URL('../public/_redirects', import.meta.url)).text()
+    )
+
+    expect(redirect('/zh-cn/guide/getting-started')).toEqual({
+      to: '/zh-cn/getting-started',
+      status: 301
+    })
+    expect(redirect('/zh-cn/getting-started')).toBeUndefined()
+    expect(redirect('/zh-cn/download')).toBeUndefined()
+    expect(ZH_CN_TRANSLATED_ROUTES).toContain('/zh-cn/getting-started')
+    expect(ZH_CN_TRANSLATED_ROUTES).toContain('/zh-cn/download')
+    expect(await Bun.file(new URL('../zh-cn/getting-started.md', import.meta.url)).exists()).toBe(
+      true
+    )
+    expect(await Bun.file(new URL('../zh-cn/download.md', import.meta.url)).exists()).toBe(true)
+    expect(
+      await Bun.file(new URL('../zh-cn/guide/getting-started.md', import.meta.url)).exists()
+    ).toBe(false)
   })
 })

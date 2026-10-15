@@ -172,7 +172,7 @@ function onIndexNameChange(event: Event): void {
         <p
           v-if="!hasAnyArraySource"
           data-test-id="lowcode-list-no-arrays"
-          class="pl-1 text-[10px] text-amber-500"
+          class="pl-1 text-[10px] text-warning"
         >
           {{ panels.lowcodeListNoArrayStates }}
         </p>
@@ -194,14 +194,14 @@ function onIndexNameChange(event: Event): void {
             spellcheck="false"
             :class="[
               'w-full rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-              itemNameError ? 'border-red-500' : 'border-border'
+              itemNameError ? 'border-error' : 'border-border'
             ]"
             @change="onItemNameChange"
           />
           <p
             v-if="itemNameError"
             data-test-id="lowcode-list-item-name-error"
-            class="pl-1 text-[10px] text-red-500"
+            class="pl-1 text-[10px] text-error"
           >
             {{ itemNameError }}
           </p>
@@ -217,14 +217,14 @@ function onIndexNameChange(event: Event): void {
             spellcheck="false"
             :class="[
               'w-full rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-              indexNameError ? 'border-red-500' : 'border-border'
+              indexNameError ? 'border-error' : 'border-border'
             ]"
             @change="onIndexNameChange"
           />
           <p
             v-if="indexNameError"
             data-test-id="lowcode-list-index-name-error"
-            class="pl-1 text-[10px] text-red-500"
+            class="pl-1 text-[10px] text-error"
           >
             {{ indexNameError }}
           </p>

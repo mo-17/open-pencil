@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
@@ -15,6 +16,7 @@ import {
   type TeamMotionLibraryPayload
 } from '@open-pencil/scene-graph'
 
+import { expectRecord, expectString } from '#tests/helpers/assert'
 import { runOpenPencilCLI } from '#tests/helpers/cli'
 
 const temporaryDirectories: string[] = []
@@ -138,7 +140,10 @@ async function createFigFixture(directory: string): Promise<{ input: string; tar
   await Bun.write(input, encoded.data)
   const found = await runOpenPencilCLI(['find', input, '--name', 'Team Motion target', '--json'])
   expect(found).toMatchObject({ exitCode: 0, stderr: '' })
-  const target = (JSON.parse(found.stdout) as Array<{ id: string }>)[0]
+  const target = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+    found.stdout
+  )[0]
   if (!target) throw new Error('Expected Team Motion target')
   return { input, targetId: target.id }
 }
@@ -231,7 +236,9 @@ describe('motion team CLI', () => {
       '--json'
     ])
     expect(verified).toMatchObject({ exitCode: 0, stderr: '' })
-    const firstDigest = JSON.parse(verified.stdout).verifiedDigest as string
+    const firstDigest = expectString(
+      expectRecord(JSON.parse(verified.stdout) as unknown).verifiedDigest
+    )
 
     const imported = await runOpenPencilCLI([
       'motion',

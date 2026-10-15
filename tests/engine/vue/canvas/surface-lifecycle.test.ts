@@ -1,11 +1,13 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 
-import type { CanvasKit, Surface } from 'canvaskit-wasm'
+import type { CanvasKit, Surface, GrDirectContext } from 'canvaskit-wasm'
 
-import type { CanvasPerformanceMode } from '#core/canvas'
-import type { SkiaRenderer } from '#core/canvas/renderer'
-import type { Editor } from '#core/editor'
+import type { CanvasPerformanceMode, SkiaRenderer } from '@open-pencil/core/canvas'
+import type { Editor } from '@open-pencil/core/editor'
+
 import { createCanvasSurfaceManager, surfaceRecoveryDelayMs } from '#vue/canvas/surface/lifecycle'
+
+import { asDouble } from '#tests/helpers/doubles'
 
 const originalWindow = globalThis.window
 
@@ -42,22 +44,24 @@ function createCanvas() {
 }
 
 function createEditor(events: string[]) {
-  const editor: Partial<Editor> = {
+  const editor = {
     graph: { documentColorSpace: 'srgb' },
     state: {},
     textEditor: null,
     onEditorEvent: mock(() => () => undefined),
     isInteractiveEditing: mock(() => false),
+    hasShaderRasterizer: mock(() => true),
     setCanvasKit: mock(() => events.push('register')),
     removeCanvasRenderer: mock(() => events.push('remove')),
     setViewportSize: mock()
   }
-  return editor as Editor
+  return asDouble<Editor>(editor)
 }
 
 function createRenderer(name: string, events: string[]): FakeRenderer {
   const renderer: Partial<FakeRenderer> & { hasLastGoodFrame: boolean } = {
     hasLastGoodFrame: false,
+    imagePreviews: asDouble<SkiaRenderer['imagePreviews']>({ setDecoder: mock() }),
     performanceMode: 'balanced',
     sceneBackingBuild: null,
     sceneBackingNeedsCrispRender: false,
@@ -96,7 +100,7 @@ test('renderer recreation presents the transferred last-good frame before destro
   const canvas = createCanvas()
   const editor = createEditor(events)
   const renderers = [createRenderer('old', events), createRenderer('next', events)]
-  const glContext = { delete: mock() }
+  const glContext = asDouble<GrDirectContext>({ delete: mock() })
   const manager = createCanvasSurfaceManager({
     editor,
     canvasRef: { value: canvas },
@@ -107,7 +111,12 @@ test('renderer recreation presents the transferred last-good frame before destro
     dependencies: {
       makeSurface: mock(() => {
         events.push('make-surface')
-        return { surface: createSurface(), glContext, presentation: 'srgb' }
+        return {
+          surface: createSurface(),
+          glContext,
+          glHandle: null,
+          presentation: 'srgb' as const
+        }
       }),
       makeRenderer: mock(() => renderers.shift() as FakeRenderer)
     }
@@ -139,7 +148,7 @@ test('failed surface recreation keeps the old renderer and re-presents its frame
   const canvas = createCanvas()
   const editor = createEditor(events)
   const oldRenderer = createRenderer('old', events)
-  const glContext = { delete: mock() }
+  const glContext = asDouble<GrDirectContext>({ delete: mock() })
   let failRecreation = false
   const manager = createCanvasSurfaceManager({
     editor,
@@ -151,7 +160,9 @@ test('failed surface recreation keeps the old renderer and re-presents its frame
     dependencies: {
       makeSurface: mock(() => ({
         surface: failRecreation ? null : createSurface(),
-        glContext
+        glContext,
+        glHandle: null,
+        presentation: null
       })),
       makeRenderer: mock(() => oldRenderer)
     }
@@ -187,7 +198,8 @@ test('direct renders wait until the editor loading lease is released', () => {
       makeSurface: mock(() => ({
         surface: createSurface(),
         glContext: null,
-        presentation: 'srgb'
+        glHandle: null,
+        presentation: 'srgb' as const
       })),
       makeRenderer: mock(() => renderer)
     }
@@ -214,7 +226,8 @@ test('performance mode changes update the live renderer without recreating its s
   const makeSurface = mock(() => ({
     surface: createSurface(),
     glContext: null,
-    presentation: 'srgb'
+    glHandle: null,
+    presentation: 'srgb' as const
   }))
   const makeRenderer = mock(() => renderer)
   const manager = createCanvasSurfaceManager({
@@ -260,7 +273,8 @@ test('page presentation waits for retained content and accepts the live-render f
       makeSurface: mock(() => ({
         surface: createSurface(),
         glContext: null,
-        presentation: 'srgb'
+        glHandle: null,
+        presentation: 'srgb' as const
       })),
       makeRenderer: mock(() => renderer)
     }

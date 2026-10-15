@@ -54,7 +54,7 @@ export function expectServerSource(built: BusinessStaticExport, sourcePath: stri
   expect(outputPath).toBeDefined()
   if (!outputPath) throw new Error('Missing server-only artifact: ' + sourcePath)
   expect(built.result.staticFiles).not.toContain(outputPath)
-  expect(readFileSync(join(built.directory, outputPath), 'utf8')).toBe(
+  expect<unknown>(readFileSync(join(built.directory, outputPath), 'utf8')).toBe(
     built.fixture.output.files.get(sourcePath)
   )
 }

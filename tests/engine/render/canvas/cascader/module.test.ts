@@ -6,6 +6,8 @@ import { renderCascaderModulePreview } from '#core/canvas/modules/cascader'
 import { cascaderTextNode } from '#core/canvas/modules/cascader/text'
 import { createCascaderModuleFrameOverrides } from '#core/plugins/cascader'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('Cascader closed Canvas shapes CJK path, reserves arrow/clear space and never mutates live state', async () => {
@@ -79,7 +81,7 @@ test('Cascader tiny/disabled hosts stay clipped and unknown version grants no Ca
       createCascaderModuleFrameOverrides()
     )
     if (!node.interactiveProps?.module) throw new Error('Expected Cascader module')
-    node.interactiveProps.module.configVersion = 99
+    expectModuleInstance(node.interactiveProps?.module).configVersion = 99
     expect(renderCascaderModulePreview(h.renderer, h.canvas, node)).toBe(false)
     expect(cascaderTextNode(node)).toBeNull()
   } finally {

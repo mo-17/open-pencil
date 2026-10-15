@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -16,7 +14,13 @@ import {
   type DataGridModuleConfigV1
 } from '#core/plugins/data-grid'
 
-import { createMockCanvas, createMockRenderer } from '#tests/engine/render/canvas/effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas, textLayoutDouble } from '#tests/engine/render/canvas/helpers'
+import { paragraphText } from '#tests/engine/render/canvas/modules/helpers'
 
 const CONFIG: DataGridModuleConfigV1 = {
   data: {
@@ -87,11 +91,13 @@ function rendererWithFont() {
     fontsLoaded: true,
     fontProvider: {} as never,
     nodeFontReadiness: mock(() => 'ready' as const),
-    buildParagraph: mock((node) => ({
-      text: node.text,
-      getAlphabeticBaseline: () => 10,
-      delete: mock(() => undefined)
-    })) as never
+    buildParagraph: mock((node) =>
+      textLayoutDouble({
+        text: node.text,
+        getAlphabeticBaseline: () => 10,
+        delete: mock(() => undefined)
+      })
+    )
   })
   return { renderer, labelFont }
 }
@@ -108,11 +114,11 @@ describe('advanced data grid module canvas preview', () => {
   })
 
   test('draws typed cells, sort marker, and bounded first-page summary', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const { renderer, labelFont } = rendererWithFont()
 
-    expect(renderDataGridModulePreview(renderer, canvas as Canvas, dataGridFrame())).toBe(true)
-    const labels = canvas.drawParagraph.mock.calls.map((call) => (call[0] as { text: string }).text)
+    expect(renderDataGridModulePreview(renderer, asCanvas(canvas), dataGridFrame())).toBe(true)
+    const labels = canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))
     expect(labels).toContain('Name')
     expect(labels).toContain('Score ↓')
     expect(labels).toContain('Alpha')
@@ -127,13 +133,13 @@ describe('advanced data grid module canvas preview', () => {
 
   test('fails closed for invalid metadata and restores state after drawing errors', () => {
     const { renderer } = rendererWithFont()
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const invalid = dataGridFrame({
       interactiveProps: {
         module: { ...createDataGridModuleInstance(CONFIG), pluginId: 'unknown.plugin' }
       }
     })
-    expect(renderDataGridModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderDataGridModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.save).not.toHaveBeenCalled()
 
     const throwingCanvas = {
@@ -143,7 +149,7 @@ describe('advanced data grid module canvas preview', () => {
       })
     }
     expect(() =>
-      renderDataGridModulePreview(renderer, throwingCanvas as Canvas, dataGridFrame())
+      renderDataGridModulePreview(renderer, asCanvas(throwingCanvas), dataGridFrame())
     ).toThrow('draw failed')
     expect(throwingCanvas.restore).toHaveBeenCalledTimes(throwingCanvas.save.mock.calls.length)
   })

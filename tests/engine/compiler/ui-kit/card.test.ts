@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import type { Fill, SceneGraph } from '@open-pencil/scene-graph'
 
@@ -91,9 +93,14 @@ describe('compile — FRAME→Card (Phase 4 §15.1)', () => {
     graph.createNode('TEXT', frame.id, { text: 'x' })
 
     const out = compileWith(graph, pageId, 'shadcn')
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
     expect(pkg.dependencies).toHaveProperty('clsx')
     expect(pkg.dependencies).toHaveProperty('tailwind-merge')
     // Card is a plain styled <div> — no Radix.

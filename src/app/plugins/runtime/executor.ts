@@ -1,10 +1,10 @@
-import { randomHex } from '@open-pencil/core/random'
 import {
   PLUGIN_RUNTIME_COMPUTE_ABI,
   PLUGIN_RUNTIME_PACKAGE_LIMITS
 } from '@open-pencil/plugin-contracts'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import {
   PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION,

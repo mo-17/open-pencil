@@ -30,7 +30,7 @@ describe('AI command recovery authoring', () => {
           patch_json: JSON.stringify({ events })
         })
       ).toMatchObject({ ok: true })
-      expect(graph.getNode(button.id)?.events).toEqual(events)
+      expect<unknown>(graph.getNode(button.id)?.events).toEqual(events)
     }
   )
 
@@ -55,7 +55,7 @@ describe('AI command recovery authoring', () => {
     expect(
       tool.execute(figma, { id: button.id, patch_json: JSON.stringify({ events }) })
     ).toMatchObject({ ok: true })
-    expect(graph.getNode(button.id)?.events).toEqual(events)
+    expect<unknown>(graph.getNode(button.id)?.events).toEqual(events)
   })
 
   test.each([

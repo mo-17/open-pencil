@@ -4,7 +4,7 @@ import { ref, type Ref } from 'vue'
 import type { Editor } from '@open-pencil/core/editor'
 import { createSceneGeometry } from '@open-pencil/core/geometry'
 
-import { findMoveDropTarget } from '#vue/shared/input/drop-target'
+import { cycleSafeTarget, findMoveDropTarget } from '#vue/shared/input/drop-target'
 
 const RASTER_IMAGE_TYPES = new Set([
   'image/png',
@@ -28,7 +28,8 @@ function componentDropPlacement(componentId: string, cx: number, cy: number, edi
   const component = editor.graph.getNode(componentId)
   if (component?.type !== 'COMPONENT') return null
 
-  const target = findMoveDropTarget(cx, cy, editor)
+  const dragged = new Set([componentId])
+  const target = cycleSafeTarget(findMoveDropTarget(cx, cy, editor, dragged), [componentId], editor)
   const parentId = target?.id ?? editor.getContentEditInsertionParent()
   if (!parentId) return null
   const parent = editor.graph.getNode(parentId)

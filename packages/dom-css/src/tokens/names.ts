@@ -1,9 +1,19 @@
 import { compact } from 'es-toolkit/array'
-import { kebabCase } from 'es-toolkit/string'
 import valueParser from 'postcss-value-parser'
 import { themeNamespaces, type ThemeNamespace } from 'twirlwind'
 
-import type { Variable, VariableScope } from '@open-pencil/scene-graph'
+import type { SceneGraph, Variable, VariableScope } from '@open-pencil/scene-graph'
+
+/** Every variable, collection by collection, in each collection's own order. */
+export function collectionVariables(
+  source: Pick<SceneGraph, 'variables' | 'variableCollections'>
+): Variable[] {
+  return compact(
+    [...source.variableCollections.values()].flatMap((collection) =>
+      collection.variableIds.map((id) => source.variables.get(id))
+    )
+  )
+}
 
 const SCOPE_NAMESPACES: Partial<Record<VariableScope, ThemeNamespace>> = {
   CORNER_RADIUS: 'radius',
@@ -37,13 +47,27 @@ const NAMESPACE_WORDS: Record<string, ThemeNamespace> = {
   shadows: 'shadow'
 }
 
+/**
+ * Lowercase words joined by `-`, keeping digits on their word, as Tailwind keys do: `Text/2xl`
+ * is `text-2xl`, `Heading/H1` is `heading-h1`, `brandPrimary` is `brand-primary`. es-toolkit's
+ * `kebabCase` splits digits off (`text-2-xl`), which no design system writes.
+ */
+export function tokenSlug(text: string): string {
+  const words = text
+    .normalize('NFKC')
+    .replaceAll(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+  return compact(words).join('-')
+}
+
 /** The Tailwind namespace a token belongs to, from its type, its scopes, then its leading name segment. */
 export function variableNamespace(variable: Variable): ThemeNamespace | undefined {
   if (variable.type === 'COLOR') return 'color'
   const fromScopes = new Set((variable.scopes ?? []).map((scope) => SCOPE_NAMESPACES[scope]))
   const [only] = fromScopes
   if (fromScopes.size === 1 && only) return only
-  return NAMESPACE_WORDS[kebabCase(variable.name.split('/')[0] ?? '')]
+  return NAMESPACE_WORDS[tokenSlug(variable.name.split('/')[0] ?? '')]
 }
 
 /**
@@ -70,16 +94,23 @@ export function explicitCSSName(variable: Variable): string | undefined {
 }
 
 /**
- * `Gray/50` as COLOR is `color-gray-50`; `Space/small` is `spacing-small`. Two tokens can derive
+ * `Gray/50` as COLOR is `color-gray-50`; `Space/small` is `spacing-small`. A group the next segment
+ * repeats is said once, so `Gap/gap-1` is `gap-1`, as kits that mirror Tailwind classes name them. Two tokens can derive
  * the same name, so stylesheet output takes names from `variableCSSNames`, which makes them unique.
  */
 export function deriveCSSName(variable: Variable): string {
   const namespace = variableNamespace(variable)
-  const segments = compact(variable.name.split('/').map((segment) => kebabCase(segment)))
+  const segments = compact(variable.name.split('/').map(tokenSlug))
   if (segments.length > 1 && namespace && NAMESPACE_WORDS[segments[0] ?? ''] === namespace) {
     segments.shift()
   }
-  const body = segments.join('-') || 'token'
+  const body =
+    segments
+      .filter((segment, index) => {
+        const next = segments.at(index + 1)
+        return next === undefined || (next !== segment && !next.startsWith(`${segment}-`))
+      })
+      .join('-') || 'token'
   if (!namespace || body === namespace || body.startsWith(`${namespace}-`)) return body
   return `${namespace}-${body}`
 }

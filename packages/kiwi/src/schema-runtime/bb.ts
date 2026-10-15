@@ -32,6 +32,11 @@ export class ByteBuffer {
     this._index = value
   }
 
+  /** The bytes this buffer reads, as a view rather than a copy. */
+  get bytes(): Uint8Array {
+    return this._data
+  }
+
   /**
    * Returns a view into the internal buffer, not a copy.
    *

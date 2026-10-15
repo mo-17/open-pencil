@@ -48,7 +48,7 @@ const invalid = computed(() => !applicationRouteValid(field.draft.value))
       @enter="field.commit"
       @keydown.esc="field.cancel"
     />
-    <p v-if="invalid" :id="`${id}-error`" role="alert" class="text-[10px] text-danger">
+    <p v-if="invalid" :id="`${id}-error`" role="alert" class="text-[10px] text-error">
       {{ messages.applicationModeRouteInvalid }}
     </p>
   </div>

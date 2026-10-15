@@ -7,6 +7,7 @@ import type { PropertyListItemSlotProps, PropertyListKey } from '@open-pencil/vu
 
 import Tip from '@/components/ui/overlay/Tip.vue'
 import PanelItemRow from '@/components/ui/panel/PanelItemRow.vue'
+import type { PanelItemRowUI } from '@/components/ui/panel/PanelItemRow.vue'
 
 const {
   propKey,
@@ -14,6 +15,7 @@ const {
   visibilityLabel,
   removeLabel,
   showVisibility = true,
+  ui,
   class: className
 } = defineProps<{
   propKey: K
@@ -21,6 +23,7 @@ const {
   visibilityLabel: string
   removeLabel: string
   showVisibility?: boolean
+  ui?: PanelItemRowUI
   class?: ClassValue
 }>()
 
@@ -46,7 +49,7 @@ defineSlots<{
     :data-index="index"
     as-child
   >
-    <PanelItemRow>
+    <PanelItemRow :ui="ui">
       <slot v-bind="item" />
       <template v-if="$slots.details" #details>
         <slot name="details" v-bind="item" />

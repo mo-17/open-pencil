@@ -1,15 +1,25 @@
-import { expect, test } from '@playwright/test'
+import { expect, test as base, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
-test('library manager scopes populated updates and does not mutate on discovery', async ({
-  page
-}) => {
-  const canvas = new CanvasHelper(page)
-  await page.goto('/?test')
-  await canvas.waitForInit()
+const test = base.extend<{ readyPage: Page }>({
+  readyPage: [
+    async ({ page }, use) => {
+      const canvas = new CanvasHelper(page)
+      await page.goto('/?test')
+      await canvas.waitForInit()
+      await use(page)
+    },
+    { timeout: 15_000 }
+  ]
+})
 
+test('library manager scopes populated updates and does not mutate on discovery', async ({
+  readyPage: page
+}) => {
   const source = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -50,7 +60,7 @@ test('library manager scopes populated updates and does not mutate on discovery'
   })
 
   await page.getByTestId('left-panel-assets-tab').click()
-  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByTestId('assets-panel').getByLabel('Manage libraries', { exact: true }).click()
   await page.getByRole('button', { name: 'Publish library' }).click()
   const publish = page.getByRole('dialog').filter({ hasText: 'Publish library' })
   await publish.getByLabel('Library ID').fill('manager-e2e')
@@ -66,7 +76,7 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await expect.poll(() => page.evaluate(() => !!window.openPencil?.getStore?.())).toBe(true)
 
   await page.getByTestId('left-panel-assets-tab').click()
-  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByTestId('assets-panel').getByLabel('Manage libraries', { exact: true }).click()
   const manager = page.getByTestId('asset-libraries-dialog')
   const libraryRow = manager.getByText('Manager E2E').locator('..').locator('..')
   await libraryRow.getByRole('button', { name: 'Enable library' }).click()
@@ -84,6 +94,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
     .click()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const instances = [...store.graph.getAllNodes()].filter((node) => node.type === 'INSTANCE')
@@ -98,6 +110,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
 
   await page.getByTestId('tabbar-tab').nth(0).click()
   await page.evaluate(({ buttonId, cardId }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.updateNode(buttonId, {
@@ -121,7 +135,7 @@ test('library manager scopes populated updates and does not mutate on discovery'
     store.requestRender()
   }, source)
   await page.getByTestId('left-panel-assets-tab').click()
-  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByTestId('assets-panel').getByLabel('Manage libraries', { exact: true }).click()
   await page.getByRole('button', { name: 'Publish library' }).click()
   await publish.getByLabel('Revision description').fill('Wider button')
   await expect(publish.getByLabel('Library ID')).toBeDisabled()
@@ -143,7 +157,7 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await publish.getByRole('button', { name: 'Publish library' }).click()
   await expect(publish.getByLabel('Revision description')).toBeHidden()
   await page.getByTestId('left-panel-assets-tab').click()
-  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByTestId('assets-panel').getByLabel('Manage libraries', { exact: true }).click()
   await page.getByRole('button', { name: 'Publish library' }).click()
   await expect(publish.getByLabel('Card updated')).toBeChecked()
   await expect(publish.getByLabel('Button updated')).toHaveCount(0)
@@ -162,6 +176,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   )
   await expect(manager.getByText('Button updated')).toBeVisible()
   const before = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.graph.getAllNodes()].map((node) => node.id)
@@ -169,6 +185,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await expect(manager.getByTestId('library-update-instance-count')).toHaveText('Instances: 1')
   expect(
     await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return [...store.graph.getAllNodes()].map((node) => node.id)
@@ -180,6 +198,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await page.keyboard.press('Escape')
 
   const instances = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const ids = [...store.graph.getAllNodes()]
@@ -199,6 +219,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await page.keyboard.press('Escape')
   await expect(updateMenuItem).toBeHidden()
   const reviewOrigin = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return {
@@ -223,6 +245,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
     animations: 'disabled'
   })
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const otherPage = store.graph.getPages().find((page) => page.id !== store.state.currentPageId)
@@ -237,6 +261,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) return null
         return {
@@ -253,6 +279,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   await updateMenuItem.click()
   await expect(instanceUpdate).toBeHidden()
   const mixedComponents = await page.evaluate((ids) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return ids.map((id) => store.graph.getNode(id)?.componentId)
@@ -260,6 +288,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
   expect(new Set(mixedComponents).size).toBe(2)
 
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -268,6 +298,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
 
   await page.keyboard.press('ControlOrMeta+KeyZ')
   const undoneComponents = await page.evaluate((ids) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return ids.map((id) => store.graph.getNode(id)?.componentId)
@@ -276,6 +308,8 @@ test('library manager scopes populated updates and does not mutate on discovery'
 
   await page.keyboard.press('ControlOrMeta+Shift+KeyZ')
   const redoneComponents = await page.evaluate((ids) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return ids.map((id) => store.graph.getNode(id)?.componentId)
@@ -283,7 +317,10 @@ test('library manager scopes populated updates and does not mutate on discovery'
   expect(new Set(redoneComponents).size).toBe(2)
 
   await page.getByTestId('left-panel-assets-tab').click()
-  await page.getByRole('button', { name: /libraries|updates/i }).click()
+  await page
+    .getByTestId('assets-panel')
+    .getByLabel(/^(Manage libraries|Review library updates)$/)
+    .click()
   await manager.getByRole('tab', { name: /Updates/ }).click()
   await manager.getByRole('button', { name: 'Button updated' }).click()
   await expect(reviewDialog).toBeVisible()

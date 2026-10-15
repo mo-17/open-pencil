@@ -22,6 +22,8 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
   // A public client configuration is required to emit executable frontend workflow bindings.
   // This fixture compiles source only and never connects to Supabase.
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.updateNode(store.graph.rootId, {
@@ -50,13 +52,21 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
   const rootSteps = workflow
     .getByTestId('lowcode-backend-workflow-steps')
     .and(workflow.locator('[data-depth="0"]'))
-  await rootSteps.getByTestId('lowcode-backend-add-step-branch').click()
-  const branch = rootSteps.getByTestId('lowcode-backend-workflow-step-branch')
+  await rootSteps
+    .locator(
+      '[data-slot="workflow-add-step"][data-command="add-workflow-step"][data-step-kind="branch"]'
+    )
+    .click()
+  const branch = rootSteps.locator('[data-slot="workflow-step"][data-step-kind="branch"]')
   await branch.getByLabel('Branch condition expression').fill('true')
-  const consequent = branch.getByTestId('lowcode-backend-workflow-consequent')
-  const alternate = branch.getByTestId('lowcode-backend-workflow-alternate')
-  await consequent.getByTestId('lowcode-backend-add-step-http.request').click()
-  const http = consequent.getByTestId('lowcode-backend-workflow-step-http.request')
+  const consequent = branch.locator('[data-slot="workflow-branch"][data-branch="consequent"]')
+  const alternate = branch.locator('[data-slot="workflow-branch"][data-branch="alternate"]')
+  await consequent
+    .locator(
+      '[data-slot="workflow-add-step"][data-command="add-workflow-step"][data-step-kind="http.request"]'
+    )
+    .click()
+  const http = consequent.locator('[data-slot="workflow-step"][data-step-kind="http.request"]')
   await http.getByLabel('Value source', { exact: true }).selectOption('environment')
   await expect(http.getByLabel('URL value source')).toHaveValue('WEBHOOK_ENDPOINT')
   const panelBounds = await panel.boundingBox()
@@ -98,6 +108,8 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
   await expect(alternate.getByLabel('HTTP status')).toHaveValue('403')
 
   const compiled = await editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const resources = performance.getEntriesByType('resource').map((entry) => entry.name)
@@ -153,6 +165,8 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
 
 async function readDocumentPluginData(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(store.graph.rootId)?.pluginData ?? []

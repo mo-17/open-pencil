@@ -30,7 +30,14 @@ export function numberBindingFixture(
     paddingLeft: 12,
     paddingTop: 12,
     events: {
-      onSubmit: [{ kind: 'setState', targetStateId: 'submitCount', valueExpr: 'submitCount + 1' }]
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submitCount',
+          valueExpr: 'submitCount + 1'
+        }
+      ]
     }
   })
   const pageInput = graph.createNode('INPUT', form.id, {
@@ -88,7 +95,11 @@ export function numberBindingFixture(
     width: 160,
     height: 40,
     interactiveProps: { text: 'Set page externally', type: 'button' },
-    events: { onClick: [{ kind: 'setState', targetStateId: 'pageQuantity', valueExpr: '7' }] }
+    events: {
+      onClick: [
+        { id: 'fixture-action-2', kind: 'setState', targetStateId: 'pageQuantity', valueExpr: '7' }
+      ]
+    }
   })
   graph.createNode('TEXT', form.id, {
     width: 320,

@@ -1,5 +1,6 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js'
+import { compact } from 'es-toolkit/array'
 
 import type { ModuleDefinition } from '@open-pencil/core/plugins'
 import type {
@@ -264,13 +265,11 @@ function moduleConfigDescription(fields: ModuleDefinition['fields']): string {
   const fieldSummary = fields
     .map((field) => {
       const path = field.path.join('.')
-      const bounds = [
+      const bounds = compact([
         field.min === undefined ? '' : `min ${field.min}`,
         field.max === undefined ? '' : `max ${field.max}`,
         field.options?.length ? `options ${field.options.join('|')}` : ''
-      ]
-        .filter(Boolean)
-        .join(', ')
+      ]).join(', ')
       return `${path} (${field.kind}${bounds ? `; ${bounds}` : ''})`
     })
     .join('; ')

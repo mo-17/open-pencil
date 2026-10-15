@@ -37,7 +37,7 @@ for (const target of ['react', 'vue'] as const) {
     for (const link of links) {
       const href = /href="#([^"]+)"/.exec(link)?.[1]
       expect(href).toBeDefined()
-      expect(ids).toContain(href)
+      expect<unknown>(ids).toContain(href)
       expect(link).not.toContain('target="_blank"')
       const description = /aria-describedby="([^"]+)"/.exec(link)?.[1]
       if (description) expect(ids).toContain(description)

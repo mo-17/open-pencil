@@ -2,7 +2,13 @@ import { describe, expect, mock, spyOn, test } from 'bun:test'
 
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { PluginData } from '@open-pencil/kiwi/fig/codec'
-import type { PluginDataEntry, SceneNode } from '@open-pencil/scene-graph'
+import {
+  createDefaultNode,
+  type StateDef,
+  type DocumentStateDef,
+  type SceneNode,
+  type PluginDataEntry
+} from '@open-pencil/scene-graph'
 
 import {
   extractLowcodeAndPluginData,
@@ -17,24 +23,8 @@ import {
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
-/**
- * `serializeLowcodeFields` only reads a handful of fields, so test inputs
- * are built as the minimal SceneNode subset rather than going through
- * `SceneGraph.createNode`. Pruning to the relevant fields keeps the test
- * intent obvious.
- */
 function makeNode(fields: Partial<SceneNode> = {}): SceneNode {
-  return {
-    type: 'RECTANGLE',
-    pluginData: [] as PluginDataEntry[],
-    state: undefined,
-    bindings: undefined,
-    events: undefined,
-    interactiveProps: undefined,
-    renderCondition: undefined,
-    lowcodeDocumentState: undefined,
-    ...fields
-  } as SceneNode
+  return createDefaultNode(() => 'test-node', 'RECTANGLE', fields)
 }
 
 describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
@@ -70,7 +60,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
   })
 
   test('round-trips computedExpr inside lowcode/state', () => {
-    const state = [
+    const state: StateDef[] = [
       { id: 's1', name: 'count', type: 'number' as const, defaultValue: 2 },
       {
         id: 's2',
@@ -185,7 +175,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
 
   test('emits a lowcode/documentState entry only when the array is non-empty (Phase 2 §2)', () => {
     expect(serializeLowcodeFields(makeNode({ lowcodeDocumentState: [] }))).toEqual([])
-    const docState = [
+    const docState: DocumentStateDef[] = [
       { id: 'd1', name: 'username', type: 'string' as const, defaultValue: 'guest' }
     ]
     const entries = serializeLowcodeFields(makeNode({ lowcodeDocumentState: docState }))
@@ -271,7 +261,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
     ]) {
       const entries = serializeLowcodeFields(
         makeNode({
-          lowcodeSupabaseConfig: bad as Parameters<typeof makeNode>[0]['lowcodeSupabaseConfig']
+          lowcodeSupabaseConfig: bad as SceneNode['lowcodeSupabaseConfig']
         })
       )
       expect(entries.map((e) => e.key)).not.toContain('lowcode/supabaseConfig')
@@ -308,7 +298,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
   })
 
   test('hydrates a single lowcode/state entry into the structured field', () => {
-    const state = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
+    const state: StateDef[] = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     const result = extractLowcodeAndPluginData(
       makeNc([
         { pluginID: OPEN_PENCIL_PLUGIN_ID, key: LOWCODE_STATE_KEY, value: JSON.stringify(state) }
@@ -320,7 +310,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
   })
 
   test('hydrates all four lowcode fields when all four entries are present', () => {
-    const state = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
+    const state: StateDef[] = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     const bindings = { text: { kind: 'ref' as const, stateId: 's1' } }
     const events = {
       onClick: [
@@ -408,7 +398,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
   })
 
   test('foreign plugin entries are preserved alongside hydrated lowcode entries', () => {
-    const state = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
+    const state: StateDef[] = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     const result = extractLowcodeAndPluginData(
       makeNc([
         { pluginID: 'other-plugin', key: 'foo', value: 'bar' },
@@ -424,7 +414,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
   })
 
   test('hydrates lowcode/nodeType into nodeTypeOverride for each of the 6 lowcode NodeTypes', () => {
-    for (const type of ['BUTTON', 'INPUT', 'CHECKBOX', 'FORM', 'LIST', 'SELECT']) {
+    for (const type of ['BUTTON', 'INPUT', 'CHECKBOX', 'FORM', 'LIST', 'SELECT'] as const) {
       const result = extractLowcodeAndPluginData(
         makeNc([
           {
@@ -499,7 +489,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
   })
 
   test('hydrates lowcode/documentState into lowcodeDocumentState array (Phase 2 §2)', () => {
-    const docState = [
+    const docState: DocumentStateDef[] = [
       { id: 'd1', name: 'username', type: 'string', defaultValue: 'guest' },
       { id: 'd2', name: 'cartCount', type: 'number', defaultValue: 0 },
       { id: 'd3', name: 'isLoggedIn', type: 'boolean', defaultValue: false }

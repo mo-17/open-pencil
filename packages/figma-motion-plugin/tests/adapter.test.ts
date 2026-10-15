@@ -18,7 +18,7 @@ import type { FigmaMotionSelectionHost, FigmaMotionTarget } from '../src/types'
 interface MutableKeyframe {
   id: string
   timelinePosition: number
-  easing: MotionEasing
+  easing: NonNullable<ManualKeyframeTrackInput['keyframes'][number]['easing']>
   value: KeyframeValue
 }
 
@@ -70,7 +70,11 @@ class MockMotionNode implements FigmaMotionTarget {
     }
     if (this.corruptField === field.name) {
       const value = binding.keyframes[0]?.value
-      if (value?.type === 'FLOAT') value.value += 1
+      if (value?.type === 'FLOAT' && binding.keyframes[0])
+        binding.keyframes[0] = {
+          ...binding.keyframes[0],
+          value: { ...value, value: value.value + 1 }
+        }
     }
     this.trackStore()[field.name] = binding
 

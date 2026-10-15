@@ -14,7 +14,7 @@ export async function validateVRTourSampleBytes(
   const copy = Uint8Array.from(bytes)
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', copy))
   const sha256 = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-  if (sha256 !== asset.sha256 || computeImageHash(copy) !== asset.graphImageHash)
+  if (sha256 !== asset.sha256 || computeImageHash(copy) !== asset.sha1)
     throw new VRTourSampleAssetError('integrity')
   return copy
 }

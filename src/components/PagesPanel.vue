@@ -19,9 +19,11 @@ import { presenceByPage } from '@/app/presence/registry'
 import { appPreferences } from '@/app/settings/preferences/store'
 import ApplicationModePanel from '@/components/ApplicationModePanel/ApplicationModePanel.vue'
 import PageIssueBadge from '@/components/design-check/PageIssueBadge.vue'
+import PagePresenceHover from '@/components/presence/PagePresenceHover.vue'
 import PresenceMarkers from '@/components/presence/PresenceMarkers.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import { useMenuUI } from '@/components/ui/menu/menu'
+import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import pageListTheme from '@/theme/page-list'
 
 type PageItem = Pick<SceneNode, 'id' | 'name' | 'childIds'>
@@ -37,7 +39,7 @@ const rename = useInlineRename((id, name) => pageActions.value?.rename(id, name)
 const { panels, pages: pageMessages } = useI18n()
 const { panel: applicationPanel } = useApplicationMode()
 const menuCls = useMenuUI({
-  content: 'min-w-36 shadow-[0_8px_30px_rgb(0_0_0/0.4)]',
+  content: 'min-w-36',
   item: 'justify-start gap-2'
 })
 const pageListStyles = tv(pageListTheme)
@@ -138,6 +140,7 @@ function setupPageRowRef(
                   <input
                     ref="pageInput"
                     data-test-id="pages-item-input"
+                    :aria-label="pageMessages.pageNameLabel"
                     :class="pageStyles(pg, currentPageId).renameInput()"
                     :value="pg.name"
                     @blur="rename.commit(pg.id, $event)"
@@ -152,20 +155,21 @@ function setupPageRowRef(
                 >
                   <div :class="pageStyles(pg, currentPageId).dividerLine()" />
                 </div>
-                <button
-                  v-else
-                  data-test-id="pages-item"
-                  :class="pageStyles(pg, currentPageId).item()"
-                  @click="actions.switch(pg.id)"
-                  @dblclick="startRename(pg, actions.rename)"
-                >
-                  <icon-lucide-file :class="pageStyles(pg, currentPageId).icon()" />
-                  <span :class="pageStyles(pg, currentPageId).label()">{{ pg.name }}</span>
-                  <span :class="pageStyles(pg, currentPageId).trailing()">
-                    <PresenceMarkers :entries="pagePresence.get(pg.id) ?? []" />
-                    <PageIssueBadge :counts="pageIssues(pg.id)" />
-                  </span>
-                </button>
+                <PagePresenceHover v-else :page-id="pg.id">
+                  <button
+                    data-test-id="pages-item"
+                    :class="pageStyles(pg, currentPageId).item()"
+                    @click="actions.switch(pg.id)"
+                    @dblclick="startRename(pg, actions.rename)"
+                  >
+                    <icon-lucide-file :class="pageStyles(pg, currentPageId).icon()" />
+                    <span :class="pageStyles(pg, currentPageId).label()">{{ pg.name }}</span>
+                    <span :class="pageStyles(pg, currentPageId).trailing()">
+                      <PresenceMarkers :entries="pagePresence.get(pg.id) ?? []" />
+                      <PageIssueBadge :counts="pageIssues(pg.id)" />
+                    </span>
+                  </button>
+                </PagePresenceHover>
                 <div
                   v-if="pageDropPosition(pg) === 'after'"
                   data-test-id="pages-drop-indicator"
@@ -175,23 +179,25 @@ function setupPageRowRef(
             </ContextMenuTrigger>
             <ContextMenuPortal>
               <ContextMenuContent :class="menuCls.content" :side-offset="2" align="start">
-                <ContextMenuItem
-                  data-test-id="pages-context-rename"
-                  :class="menuCls.item"
-                  @select="startRename(pg, actions.rename)"
-                >
-                  <icon-lucide-pencil :class="menuCls.icon" />
-                  <span>{{ pageMessages.rename }}</span>
-                </ContextMenuItem>
-                <ContextMenuItem
-                  data-test-id="pages-context-delete"
-                  :class="menuCls.item"
-                  :disabled="pages.length <= 1"
-                  @select="actions.delete(pg.id)"
-                >
-                  <icon-lucide-trash-2 :class="menuCls.icon" />
-                  <span>{{ pageMessages.delete }}</span>
-                </ContextMenuItem>
+                <MenuScrollArea>
+                  <ContextMenuItem
+                    data-test-id="pages-context-rename"
+                    :class="menuCls.item"
+                    @select="startRename(pg, actions.rename)"
+                  >
+                    <icon-lucide-pencil :class="menuCls.icon" />
+                    <span>{{ pageMessages.rename }}</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    data-test-id="pages-context-delete"
+                    :class="menuCls.item"
+                    :disabled="pages.length <= 1"
+                    @select="actions.delete(pg.id)"
+                  >
+                    <icon-lucide-trash-2 :class="menuCls.icon" />
+                    <span>{{ pageMessages.delete }}</span>
+                  </ContextMenuItem>
+                </MenuScrollArea>
               </ContextMenuContent>
             </ContextMenuPortal>
           </ContextMenuRoot>

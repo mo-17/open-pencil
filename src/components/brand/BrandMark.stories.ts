@@ -4,7 +4,7 @@ import BrandMark from './BrandMark.vue'
 import type { BrandMarkProps } from './types'
 
 const meta = {
-  title: 'Brand/Mark',
+  title: 'App/Brand/Mark',
   component: BrandMark,
   args: { variant: 'mark', appearance: 'light', class: 'size-32' }
 } satisfies Meta<BrandMarkProps>
@@ -21,7 +21,7 @@ export const AppIconDark: Story = {
   render: (args) => ({
     components: { BrandMark },
     setup: () => ({ args }),
-    template: '<div class="bg-neutral-800 p-8"><BrandMark v-bind="args" /></div>'
+    template: '<div class="bg-panel p-8"><BrandMark v-bind="args" /></div>'
   })
 }
 export const Dark: Story = {
@@ -29,6 +29,6 @@ export const Dark: Story = {
   render: (args) => ({
     components: { BrandMark },
     setup: () => ({ args }),
-    template: '<div class="bg-gray-950 p-8"><BrandMark v-bind="args" /></div>'
+    template: '<div class="bg-canvas p-8"><BrandMark v-bind="args" /></div>'
   })
 }

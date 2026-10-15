@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
-import type { ApplicationBrowserOutput } from '../application-mode/browser'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
+
 import { withComponentTemplateFiles } from '../components/templates/browser'
 
 export async function withApplicationNavigation(
@@ -10,7 +12,7 @@ export async function withApplicationNavigation(
   target: 'react' | 'vue',
   run: () => Promise<void>
 ): Promise<void> {
-  const result = JSON.parse(
+  const result = parseCompilerBrowserOutput(
     execFileSync(
       'bun',
       [
@@ -22,13 +24,14 @@ export async function withApplicationNavigation(
         maxBuffer: 16 * 1024 * 1024
       }
     )
-  ) as ApplicationBrowserOutput
+  )
   expect(result.warnings).toEqual([])
   await withComponentTemplateFiles(page, target, new Map(result.files), run)
 }
 
 export function applicationNavigationDocument(): number[] {
-  return JSON.parse(
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.number())),
     execFileSync(
       'bun',
       [
@@ -40,5 +43,5 @@ export function applicationNavigationDocument(): number[] {
         maxBuffer: 16 * 1024 * 1024
       }
     )
-  ) as number[]
+  )
 }

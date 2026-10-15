@@ -12,6 +12,7 @@ import {
 } from '@open-pencil/core/io'
 import { SceneGraph, type MotionSpec } from '@open-pencil/scene-graph'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { generatedEffect } from '#tests/helpers/generated-effect'
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const
@@ -97,7 +98,7 @@ describe('Motion animation export', () => {
     })
 
     expect(preflight.plan).toEqual(exported.plan)
-    expect(preflight.bounds).toEqual(renderedBounds)
+    expect(preflight.bounds).toEqual(expectDefined(renderedBounds, 'rendered motion bounds'))
     expect(preflight.plan).toMatchObject({ fps: 30, pixelWidth: 110, pixelHeight: 40 })
   })
 

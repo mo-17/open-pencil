@@ -10,6 +10,8 @@ import {
   limitS3ResponseBody
 } from '@/app/integrations/storage/s3/response'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 function chunkedResponse(chunks: number[][], onCancel?: () => void): Response {
   return new Response(
     new ReadableStream<Uint8Array>({
@@ -73,13 +75,14 @@ describe('S3 response boundaries', () => {
 
   test('enforces the streaming boundary through the browser storage fetch path', async () => {
     const originalFetch = globalThis.fetch
-    globalThis.fetch = (() =>
+    globalThis.fetch = fetchStub(() =>
       Promise.resolve(
         chunkedResponse([
           [1, 2, 3],
           [4, 5, 6]
         ])
-      )) as typeof fetch
+      )
+    )
     try {
       const response = await storageFetch('https://storage.example/document.fig', undefined, 5)
       await expect(response.arrayBuffer()).rejects.toBeInstanceOf(S3ResponseTooLargeError)
@@ -90,7 +93,7 @@ describe('S3 response boundaries', () => {
 
   test('uses the smaller error-body limit in the browser path', async () => {
     const originalFetch = globalThis.fetch
-    globalThis.fetch = (() =>
+    globalThis.fetch = fetchStub(() =>
       Promise.resolve(
         new Response(
           new ReadableStream<Uint8Array>({
@@ -101,7 +104,8 @@ describe('S3 response boundaries', () => {
           }),
           { status: 500 }
         )
-      )) as typeof fetch
+      )
+    )
     try {
       const response = await storageFetch('https://storage.example/error', undefined, 100, 3)
       await expect(response.arrayBuffer()).rejects.toBeInstanceOf(S3ResponseTooLargeError)

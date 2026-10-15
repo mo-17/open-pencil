@@ -93,7 +93,7 @@ function updateDraft(event: Event): void {
     <p
       v-if="overLimit || error"
       data-test-id="multiline-module-text-error"
-      class="text-[10px] text-red-400"
+      class="text-[10px] text-error"
     >
       {{ error }}
     </p>

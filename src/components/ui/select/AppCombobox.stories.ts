@@ -53,7 +53,7 @@ type AppComboboxStoryArgs = {
 type Story = StoryObj<AppComboboxStoryArgs>
 
 const meta = {
-  title: 'Design System/Combobox',
+  title: 'Design System/Selection/Combobox',
   component: AppCombobox,
   parameters: { layout: 'centered' },
   render: (args) => ({
@@ -63,7 +63,7 @@ const meta = {
       return { args, value }
     },
     template: `
-      <div class="w-80 bg-app p-6 text-surface">
+      <div class="w-80 bg-canvas p-6 text-surface">
         <AppCombobox v-model="value" v-bind="args" />
         <p class="mt-3 font-mono text-[10px] text-muted">{{ value }}</p>
       </div>

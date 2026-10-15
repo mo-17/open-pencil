@@ -66,8 +66,8 @@ function asFixture<T>(value: object): T {
   return value as T
 }
 
-function required<T>(value: T | undefined, label: string): T {
-  if (value === undefined) throw new Error(`Missing ${label}`)
+function required<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) throw new Error(`Missing ${label}`)
   return value
 }
 
@@ -613,9 +613,11 @@ describe('Desktop Supabase source migration export authority', () => {
           required(files[SUPABASE_SOURCE_MIGRATION_EXPORT_MANIFEST_PATH], 'export manifest')
         )
       )
-      expect(manifest.bundleManifestDigest).toBe(result.bundleManifestDigest)
+      expect(manifest.bundleManifestDigest).toBe(
+        required(result.bundleManifestDigest, 'bundle manifest digest')
+      )
       expect(await digestCanonicalManifest(manifest.bundleManifest)).toBe(
-        result.bundleManifestDigest
+        required(result.bundleManifestDigest, 'bundle manifest digest')
       )
       expect(
         new TextDecoder().decode(required(files[result.migrationPath ?? ''], 'SQL'))
@@ -661,7 +663,9 @@ describe('Desktop Supabase source migration export authority', () => {
     if (typeof hostManifestContent !== 'string') throw new Error('Missing Host export manifest')
     const hostManifest = JSON.parse(hostManifestContent) as HostExportManifestFixture
     expect(hostManifest.format).toBe('openpencil.supabase-source-migration-host-export.v1')
-    expect(hostManifest.bundleManifestDigest).toBe(result.bundleManifestDigest)
+    expect(hostManifest.bundleManifestDigest).toBe(
+      required(result.bundleManifestDigest, 'bundle manifest digest')
+    )
     expect(hostManifest.files).toHaveLength(3)
     expect(capture.buildCalls).toBe(4)
     expect(capture.writes).toHaveLength(1)

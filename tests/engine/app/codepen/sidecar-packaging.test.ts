@@ -13,6 +13,7 @@ import {
   parseCodePenSidecarBuildArgs,
   parseCodePenSidecarTarget
 } from '#codepen-sidecar/scripts/build'
+import * as v from 'valibot'
 
 describe('CodePen sidecar packaging contract', () => {
   test('covers exactly the five desktop release targets', () => {
@@ -187,15 +188,17 @@ describe('CodePen sidecar packaging contract', () => {
     )
     expect(sidecar).toEqual({
       name: 'binaries/openpencil-codepen-sidecar',
-      sidecar: true
+      sidecar: true,
+      args: false
     })
   })
 
   test('release CI builds every target and smokes every native runner', () => {
     const workflow = readFileSync('.github/workflows/build.yml', 'utf8')
-    const rootManifest = JSON.parse(readFileSync('package.json', 'utf8')) as {
-      packageManager: string
-    }
+    const rootManifest = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ packageManager: v.string() })),
+      readFileSync('package.json', 'utf8')
+    )
     const bunVersion = rootManifest.packageManager.replace(/^bun@/, '')
     for (const [target, config] of Object.entries(CODEPEN_SIDECAR_TARGETS)) {
       expect(workflow).toContain(`target: ${target}`)
@@ -251,18 +254,28 @@ describe('CodePen sidecar packaging contract', () => {
   })
 
   test('root quality gates own the private sidecar source, scripts, and tests', () => {
-    const packageJSON = JSON.parse(readFileSync('package.json', 'utf8')) as {
-      scripts: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ scripts: v.record(v.string(), v.string()) })
+      ),
+      readFileSync('package.json', 'utf8')
+    )
     for (const script of ['lint:structure', 'format']) {
       expect(packageJSON.scripts[script]).toContain('packages/codepen-sidecar/src')
       expect(packageJSON.scripts[script]).toContain('packages/codepen-sidecar/scripts')
       expect(packageJSON.scripts[script]).toContain('packages/codepen-sidecar/tests')
     }
     expect(packageJSON.scripts.lint).toContain('@open-pencil/codepen-sidecar lint')
-    const sidecarPackageJSON = JSON.parse(
+    const sidecarPackageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ scripts: v.record(v.string(), v.string()) })
+      ),
       readFileSync('packages/codepen-sidecar/package.json', 'utf8')
-    ) as { scripts: Record<string, string> }
+    )
     for (const path of ['src', 'scripts', 'tests']) {
       expect(sidecarPackageJSON.scripts.lint).toContain(path)
     }

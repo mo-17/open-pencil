@@ -87,7 +87,7 @@ export function handoffFixture(target: 'react' | 'vue' = 'react') {
 
 export function deployMessage(stage: 'ready' | 'authorize' | 'cancel' = 'ready') {
   return {
-    format: 'openpencil.backend-provider-deploy.v1',
+    format: 'openpencil.backend-provider-deploy.v1' as const,
     stage,
     handoffDigest: 'A'.repeat(43),
     dispatchDigest: OTHER_DIGEST,

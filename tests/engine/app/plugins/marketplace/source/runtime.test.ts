@@ -20,6 +20,8 @@ import {
   parseMarketplaceSourceStateJSON
 } from '@/app/plugins'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 const NOW = Date.parse('2026-08-05T00:00:00.000Z')
 const SNAPSHOT_URL = 'https://plugins.example.com/marketplace.json'
 const MIRROR_URL = 'https://mirror.example.com/marketplace.json'
@@ -110,14 +112,14 @@ describe('marketplace source runtime', () => {
     const data = await fixture()
     let failNetwork = false
     let requests = 0
-    const fetchImpl: typeof fetch = async (input) => {
+    const fetchImpl: typeof fetch = fetchStub(async (input) => {
       requests += 1
       if (failNetwork) throw new Error('offline')
       const url = input instanceof Request ? input.url : input.toString()
       if (url === SNAPSHOT_URL) return jsonResponse(data.snapshot)
       if (url === CATALOG_URL) return jsonResponse(data.catalog)
       throw new Error(`Unexpected URL: ${url}`)
-    }
+    })
     let id = 0
     const manager = createMarketplaceSourceManager({
       storage: createMemoryMarketplaceSourceStorage(),
@@ -174,11 +176,12 @@ describe('marketplace source runtime', () => {
       snapshotSequence: 14,
       snapshotDigest: data.snapshot.integrity.digest
     })
+    if (!committed.active) throw new Error('Expected committed marketplace source authority')
     expect(bundle?.lease.authority).toEqual({
-      sourceId: committed.active?.sourceId,
-      trustDomainId: committed.active?.trustDomainId,
-      sourceGeneration: committed.active?.sourceGeneration,
-      rootKeySpkiSha256: committed.active?.rootKeySpkiSha256
+      sourceId: committed.active.sourceId,
+      trustDomainId: committed.active.trustDomainId,
+      sourceGeneration: committed.active.sourceGeneration,
+      rootKeySpkiSha256: committed.active.rootKeySpkiSha256
     })
   })
 
@@ -186,12 +189,12 @@ describe('marketplace source runtime', () => {
     let clock = NOW
     let served = await fixture()
     const storage = createMemoryMarketplaceSourceStorage()
-    const fetchImpl: typeof fetch = async (input) => {
+    const fetchImpl: typeof fetch = fetchStub(async (input) => {
       const url = input instanceof Request ? input.url : input.toString()
       if (url === served.source.url) return jsonResponse(served.snapshot)
       if (url === served.snapshot.catalogs[0].url) return jsonResponse(served.catalog)
       throw new Error(`Unexpected URL: ${url}`)
-    }
+    })
     let id = 0
     const manager = createMarketplaceSourceManager({
       storage,

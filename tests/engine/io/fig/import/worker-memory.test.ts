@@ -2,11 +2,14 @@ import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { compact } from 'es-toolkit'
 import { fromUint8Array } from 'js-base64'
 
 import { exportFigFile, initCodec, SceneGraph } from '@open-pencil/core'
 
-const ROOT = resolve(import.meta.dir, '../../../../..')
+import { repoPath } from '#tests/helpers/paths'
+
+const ROOT = repoPath()
 const READ_MODULE_URL = pathToFileURL(
   resolve(ROOT, 'packages/core/src/io/formats/fig/read.ts')
 ).href
@@ -329,5 +332,5 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
     process.exited
   ])
 
-  expect(exitCode, [stdout, stderr].filter(Boolean).join('\n')).toBe(0)
+  expect(exitCode, compact([stdout, stderr]).join('\n')).toBe(0)
 }, 20_000)

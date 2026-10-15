@@ -1,12 +1,12 @@
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
+import type { Editor } from '@open-pencil/core/editor'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { PREVIEW_MAX_DIMENSION, PREVIEW_MIN_DIMENSION } from './dimensions'
 
-export interface WebPreviewWidthOwner {
-  readonly graph: SceneGraph
-  readonly state: { readonly currentPageId: string; readonly sceneVersion: number }
+export type WebPreviewWidthOwner = Readonly<Pick<Editor, 'graph'>> & {
+  readonly state: Readonly<Pick<Editor['state'], 'currentPageId' | 'sceneVersion'>>
 }
 
 export interface WebPreviewWidthRequest {

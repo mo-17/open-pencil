@@ -207,7 +207,7 @@ async function deleteEntry(index: number): Promise<void> {
             </span>
             <span
               v-if="entry.danger"
-              class="rounded border border-red-500/50 px-1 py-0.5 text-[8px] text-red-400"
+              class="rounded border border-error/50 px-1 py-0.5 text-[8px] text-error"
             >
               {{ panels.lowcodeDropdownMenuItemDanger }}
             </span>

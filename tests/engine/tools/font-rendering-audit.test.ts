@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { FigmaAPI } from '@open-pencil/core'
+import { getTool, setupToolTest } from '#core-tests/helpers/tools'
 
+import type { FigmaAPI } from '#core/figma-api'
 import { fontManager } from '#core/text/fonts'
 
-import { getTool, setupToolTest } from '#tests/helpers/tools'
+import { repoPath } from '#tests/helpers/paths'
 
-const registeredFontBytes = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+const registeredFontBytes = await Bun.file(
+  repoPath('packages/core/assets/Inter-Regular.ttf')
+).arrayBuffer()
 
 interface FontAuditResult {
   error?: string

@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import type {
   ActionDef,
   EventName,
@@ -231,7 +233,7 @@ function collectRouteCollisions(
   const collisions: NavigationRouteCollision[] = []
   for (const [routeKey, group] of groups) {
     if (group.length < 2) continue
-    const distinctRoutes = [...new Set(group.map((route) => route.route))]
+    const distinctRoutes = uniq(group.map((route) => route.route))
     const collision: NavigationRouteCollision = {
       kind: distinctRoutes.length === 1 ? 'exact' : 'dynamic-shape',
       routeKey,

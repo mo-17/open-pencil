@@ -489,7 +489,7 @@ function cleanOptions(
     ...(options.title?.trim() ? { title: options.title.trim() } : {}),
     ...(options.description?.trim() ? { description: options.description.trim() } : {}),
     ...(options.tags?.length
-      ? { tags: options.tags.map((tag) => tag.trim()).filter(Boolean) }
+      ? { tags: options.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0) }
       : {}),
     ...(options.private === undefined ? {} : { private: options.private }),
     ...(options.layout === undefined ? {} : { layout: options.layout }),

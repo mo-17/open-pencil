@@ -10,6 +10,8 @@ import {
   paginationLayout
 } from '#core/plugins/pagination'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('Pagination canvas paints the authored current page and shapes bounded numbers with paragraphs', async () => {
@@ -86,7 +88,7 @@ test('invalid Pagination modules fail closed without painting', async () => {
     graph.getPages()[0].id,
     createPaginationModuleFrameOverrides()
   )
-  const module = node.interactiveProps?.module
+  const module = expectModuleInstance(node.interactiveProps?.module)
   if (!module) throw new Error('Expected module fixture')
   module.configVersion = 9
   try {

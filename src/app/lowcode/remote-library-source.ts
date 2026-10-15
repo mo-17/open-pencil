@@ -299,6 +299,7 @@ export async function loadRemoteLibraryCandidate(
         : {
             populate: 'all',
             penLimits: REMOTE_PEN_PARSE_LIMITS,
+            deriveLayout: false,
             signal: clock.signal,
             allowMainThreadFallback: false
           }

@@ -32,6 +32,7 @@ import {
   buildOpenPencilTabsComponent,
   TABS_REACT_MODULE_ADAPTER
 } from '#compiler/adapters/react/modules/tabs'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 
@@ -209,9 +210,14 @@ describe('phase 6 React content module adapters', () => {
       })
     })
     const app = String(output.files.get('src/App.tsx'))
-    const packageJSON = JSON.parse(String(output.files.get('package.json'))) as {
-      dependencies: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      String(output.files.get('package.json'))
+    )
 
     for (const adapter of ADAPTERS) {
       expect(output.files.has(adapter.runtimePath)).toBe(true)

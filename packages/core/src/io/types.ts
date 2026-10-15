@@ -27,6 +27,8 @@ export interface ReadDocumentInput {
 
 export interface ReadDocumentOptions {
   populate?: 'all' | 'first-page' | 'none'
+  /** Derive authored .pen layout on ordinary opens; disable for source-integrity inspection. */
+  deriveLayout?: boolean
   /** Optional quotas for decoding untrusted `.fig` archives. */
   archiveLimits?: FigArchiveLimits
   /** Optional quotas for decoding untrusted `.pen` JSON. */

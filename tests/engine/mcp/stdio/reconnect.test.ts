@@ -219,7 +219,8 @@ describe('stdio-bridge transport reconnection', () => {
     let server: Server | null = null
     let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     let healthResponse: ServerResponse | null = null
-    let resolveHealthSeen = () => undefined
+    const currentHealthResponse = (): ServerResponse | null => healthResponse
+    let resolveHealthSeen: () => void = () => undefined
     const healthSeen = new Promise<void>((resolve) => {
       resolveHealthSeen = resolve
     })
@@ -245,11 +246,12 @@ describe('stdio-bridge transport reconnection', () => {
       controller.abort()
 
       await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-      healthResponse?.writeHead(200, { 'Content-Type': 'application/json' })
-      healthResponse?.end(JSON.stringify({ status: 'ok' }))
+      currentHealthResponse()?.writeHead(200, { 'Content-Type': 'application/json' })
+      currentHealthResponse()?.end(JSON.stringify({ status: 'ok' }))
     } finally {
       bridge?.close()
-      if (healthResponse && !healthResponse.writableEnded) healthResponse.end()
+      const response = currentHealthResponse()
+      if (response && !response.writableEnded) response.end()
       await closeMockServer(server, SOCKET_PATH)
     }
   })
@@ -258,8 +260,8 @@ describe('stdio-bridge transport reconnection', () => {
     let server: Server | null = null
     let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     let rpcCount = 0
-    let resolveRetrySeen = () => undefined
-    let resolveRetryClosed = () => undefined
+    let resolveRetrySeen: () => void = () => undefined
+    let resolveRetryClosed: () => void = () => undefined
     const retrySeen = new Promise<void>((resolve) => {
       resolveRetrySeen = resolve
     })
@@ -283,7 +285,7 @@ describe('stdio-bridge transport reconnection', () => {
           response.end(JSON.stringify({ error: 'Unauthorized' }))
           return
         }
-        request.once('close', resolveRetryClosed)
+        request.socket.once('close', resolveRetryClosed)
         resolveRetrySeen()
       })
       await new Promise<void>((resolve) => {

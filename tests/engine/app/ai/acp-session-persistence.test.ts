@@ -56,6 +56,7 @@ function resolvedRole(providerId: AIProviderID = 'acp:codex'): ResolvedAIModelRo
       modelID: '',
       customModelID: '',
       maxOutputTokens: 16_384,
+      thinkingLevel: 'default',
       capabilities: ['tools'],
       featurePolicy: {
         webSearch: { enabled: false },

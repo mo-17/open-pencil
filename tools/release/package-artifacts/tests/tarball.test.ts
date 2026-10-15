@@ -101,6 +101,53 @@ describe('inspectTarball', () => {
     ])
   })
 
+  test('validates every conditional package import target against packed files', async () => {
+    const tarball = await createTarball({
+      'package.json': JSON.stringify({
+        name: '@fixture/resolution',
+        version: '1.0.0',
+        imports: {
+          '#fixture/*': { types: './src/*.ts', bun: './src/*.ts', default: './dist/*.js' }
+        }
+      }),
+      'src/value.ts': 'export const ready = true\n',
+      'dist/value.js': 'export const ready = true\n'
+    })
+    expect((await inspectTarball(tarball)).diagnostics).toEqual([])
+  })
+
+  test('rejects missing, external, escaping, and invalid package import mappings', async () => {
+    const tarball = await createTarball({
+      'package.json': JSON.stringify({
+        name: '@fixture/resolution',
+        version: '1.0.0',
+        imports: {
+          '#missing/*': './missing/*.ts',
+          '#private': '@open-pencil/compiler',
+          '#escape': './../outside.js',
+          '#encoded-escape': './%2e%2e/outside.js',
+          '#/invalid': './dist/index.js'
+        }
+      }),
+      'dist/index.js': 'export {}\n',
+      '%2e%2e/outside.js': 'export {}\n'
+    })
+    const diagnostics = (await inspectTarball(tarball)).diagnostics
+    expect(diagnostics.map(({ field, message }) => ({ field, message }))).toEqual([
+      { field: 'imports["#missing/*"]', message: 'target is missing (./missing/*.ts)' },
+      {
+        field: 'imports["#private"]',
+        message: 'target must be package-relative (@open-pencil/compiler)'
+      },
+      { field: 'imports["#escape"]', message: 'target is missing (./../outside.js)' },
+      {
+        field: 'imports["#encoded-escape"]',
+        message: 'target is missing (./%2e%2e/outside.js)'
+      },
+      { field: 'imports["#/invalid"]', message: 'invalid package import specifier' }
+    ])
+  })
+
   test('rejects archives without a package manifest', async () => {
     const tarball = await createTarball({ 'dist/index.js': 'export {}\n' })
     await expect(inspectTarball(tarball)).rejects.toThrow('package/package.json is missing')

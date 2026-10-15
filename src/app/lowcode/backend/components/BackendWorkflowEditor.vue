@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact, uniq } from 'es-toolkit/array'
 import { ref } from 'vue'
 
 import {
@@ -34,14 +35,7 @@ function parameters(workflow: BackendWorkflowDefinitionIR): string {
 
 function updateParameters(workflow: BackendWorkflowDefinitionIR, value: string): void {
   run(() => {
-    const parameters = [
-      ...new Set(
-        value
-          .split(',')
-          .map((parameter) => parameter.trim())
-          .filter(Boolean)
-      )
-    ]
+    const parameters = uniq(compact(value.split(',').map((parameter) => parameter.trim())))
     if (parameters.length > 64) {
       throw new BackendDraftOperationError('Workflow parameters are limited to 64 items.')
     }
@@ -87,7 +81,7 @@ function removeWorkflow(workflowId: string): void {
         /><button
           type="button"
           :aria-label="panels.lowcodeBackendRemoveWorkflow"
-          class="px-1 text-muted hover:text-red-500"
+          class="px-1 text-muted hover:text-error"
           @click="removeWorkflow(workflow.id)"
         >
           ×
@@ -113,7 +107,7 @@ function removeWorkflow(workflowId: string): void {
       v-if="operationError"
       role="alert"
       data-test-id="lowcode-backend-workflow-operation-error"
-      class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[9px] text-red-500"
+      class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[9px] text-error"
     >
       {{ operationError }}
     </p>

@@ -150,10 +150,10 @@ function prepareCsv(): void {
       </p>
     </div>
 
-    <p v-if="status" data-test-id="data-grid-csv-status" class="text-[10px] text-emerald-400">
+    <p v-if="status" data-test-id="data-grid-csv-status" class="text-[10px] text-success">
       {{ status }}
     </p>
-    <p v-if="errorMessage" data-test-id="data-grid-csv-error" class="text-[10px] text-red-400">
+    <p v-if="errorMessage" data-test-id="data-grid-csv-error" class="text-[10px] text-error">
       {{ errorMessage }}
     </p>
   </div>

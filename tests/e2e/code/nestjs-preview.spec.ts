@@ -8,7 +8,8 @@ import {
   changeNotesClient,
   managedCommands,
   mockDesktopPreview,
-  type PreviewFixtureWindow
+  readPreviewFixtureState,
+  resolvePreviewCA
 } from '#tests/helpers/nestjs-preview'
 
 test.beforeEach(async ({ page }) => {
@@ -37,7 +38,7 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
   await expect(embedded).toHaveAttribute('src', `http://127.0.0.1:5181${loginPath}`)
   await expect(embedded).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
   await expect(embedded.contentFrame().getByText('Connected preview fixture')).toBeVisible()
-  const fixture = await page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__)
+  const fixture = await readPreviewFixtureState(page)
   const latest = fixture.spawns.at(-1)
   if (!latest) throw new Error('No local preview sidecar was launched')
   const connection = JSON.parse(latest.args[latest.args.indexOf('--local-backend') + 1])
@@ -50,20 +51,22 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
   })
   await page.getByTestId('lowcode-preview-local-open').click()
   await expect
-    .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
+    .poll(() => readPreviewFixtureState(page).then((state) => state.opened))
     .toEqual([`http://127.0.0.1:5181${loginPath}`])
   await page.getByRole('button', { name: 'Preview here', exact: true }).click()
   await expect(settings).not.toBeVisible()
   await embedded.contentFrame().getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(embedded.contentFrame().getByText('Browser opened', { exact: true })).toBeVisible()
   await expect
-    .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
+    .poll(() => readPreviewFixtureState(page).then((state) => state.opened))
     .toEqual([
       `http://127.0.0.1:5181${loginPath}`,
       `http://127.0.0.1:5181/_openpencil/preview-auth/start/${'a'.repeat(43)}`
     ])
   const previousUpdates = fixture.updates.length
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const label = [...editor.graph.getAllNodes()].find((node) => node.type === 'TEXT')
@@ -71,16 +74,14 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
     editor.updateNodeWithUndo(label.id, { text: 'Live frontend edit' }, 'Update preview text')
   })
   await expect
-    .poll(() =>
-      page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.updates.length)
-    )
+    .poll(() => readPreviewFixtureState(page).then((state) => state.updates.length))
     .toBeGreaterThan(previousUpdates)
   await expect
-    .poll(() =>
-      page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.updates.at(-1))
-    )
+    .poll(() => readPreviewFixtureState(page).then((state) => state.updates.at(-1)))
     .toContain('Live frontend edit')
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const backendURL = new URL('/src/app/plugins/host/backend-provider.ts', window.location.origin)
@@ -105,7 +106,7 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
     'Synchronize your local backend, then reconnect.'
   )
   await expect
-    .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.killed))
+    .poll(() => readPreviewFixtureState(page).then((state) => state.killed))
     .toContain(latest.pid)
   await expect(page.getByTestId('lowcode-preview-local-browser')).toHaveCount(0)
   await expect(page.locator('iframe[aria-label="lowcode preview"]')).toHaveCount(0)
@@ -136,6 +137,8 @@ test('UI-created app keeps its ID through managed SQL review and frontend connec
   await canvas.waitForInit()
   await useBackendTemplate(page, 'Personal notes')
   const authored = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const root = editor.graph.getNode(editor.graph.rootId)
@@ -199,21 +202,17 @@ test('UI-created app keeps its ID through managed SQL review and frontend connec
   await panel.screenshot({ path: test.info().outputPath('managed-running.png') })
   await open.click()
   await expect
-    .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
+    .poll(() => readPreviewFixtureState(page).then((state) => state.opened))
     .toEqual([`http://127.0.0.1:5181${authored.loginPath}`])
-  const first = await page.evaluate(() =>
-    (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.managedCommands.find(
-      (command) => command.command === 'prepare'
-    )
+  const first = await readPreviewFixtureState(page).then((state) =>
+    state.managedCommands.find((command) => command.command === 'prepare')
   )
   expect(first).toMatchObject({
     application: { applicationId: authored.applicationId },
     config: { previewPort: 5181, apiPort: 3012, dbPort: 55443 }
   })
-  const connected = await page.evaluate(() =>
-    (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.spawns.find((spawn) =>
-      spawn.args.includes('--local-backend')
-    )
+  const connected = await readPreviewFixtureState(page).then((state) =>
+    state.spawns.find((spawn) => spawn.args.includes('--local-backend'))
   )
   if (!connected) throw new Error('Managed backend did not connect its frontend preview')
   // The IPC fixture only intercepts spawn after the real connection parser has accepted the ID.
@@ -276,6 +275,8 @@ test('managed configuration stays local and presets only fill empty fields after
   await createNotes(page)
   const documentBackend = () =>
     page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil?.getStore?.()
       if (!editor) throw new Error('Missing editor')
       return editor.graph
@@ -370,9 +371,7 @@ test('a late native certificate choice cannot overwrite a reopened or switched p
     await page.getByRole('button', { name: 'Choose file', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Choose file', exact: true })).toBeDisabled()
     await expect
-      .poll(() =>
-        page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.caDialogs)
-      )
+      .poll(() => readPreviewFixtureState(page).then((state) => state.caDialogs))
       .toBe(++dialogCount)
     if (transition === 'close') {
       await page.getByRole('button', { name: 'Close backend panel' }).click()
@@ -383,8 +382,8 @@ test('a late native certificate choice cannot overwrite a reopened or switched p
       await expect(page.getByTestId('lowcode-preview-local-connect')).toBeVisible()
       await page.getByTestId('backend-preview-managed-mode').click()
     }
+    await resolvePreviewCA(page, '/tmp/late-preview-ca.pem')
     await page.evaluate(async () => {
-      ;(window as PreviewFixtureWindow).__OP_NESTJS_RESOLVE_CA__('/tmp/late-preview-ca.pem')
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve())
       })

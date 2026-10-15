@@ -60,7 +60,7 @@ export function drawOrgChartCardText(
       label,
       renderer.color4f(color.r, color.g, color.b, color.a),
       { halfLeading: true },
-      (paragraph) => canvas.drawParagraph(paragraph, card.x + padding, card.y + part.top)
+      (paragraph) => paragraph.draw(canvas, card.x + padding, card.y + part.top)
     )
   }
 }

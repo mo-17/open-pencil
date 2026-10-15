@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { withComponentTemplateFiles } from '../templates/browser'
 import type { StepperBindingVariant } from './fixture'
@@ -12,13 +13,21 @@ export async function withStepperBinding(
   run: () => Promise<void>
 ): Promise<void> {
   const source = `import {stepperBindingFixture} from './tests/helpers/compiler/components/stepper/fixture';const result=stepperBindingFixture(${JSON.stringify(target)},${JSON.stringify(variant)});process.stdout.write(JSON.stringify({files:[...result.files],warnings:result.warnings}));`
-  const result = JSON.parse(
+  const result = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        files: v.array(v.tuple([v.string(), v.string()])),
+        warnings: v.array(v.looseObject({ code: v.string(), nodeId: v.optional(v.string()) }))
+      })
+    ),
     execFileSync('bun', ['-e', source], {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024
     })
-  ) as { files: [string, string][]; warnings: { code: string; nodeId?: string }[] }
+  )
   if (variant === 'invalid') {
     expect(result.warnings).toHaveLength(4)
     expect(result.warnings.every((warning) => warning.code === 'stepper-binding-invalid')).toBe(

@@ -1,10 +1,9 @@
-import { fileURLToPath } from 'node:url'
-
 import type { Page } from '@playwright/test'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { expectDefined } from '#tests/helpers/assert'
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { testPath } from '#tests/helpers/paths'
 
 // This size exceeds the 3x overscan budget and previously produced fractional
 // raster offsets, even though the live scene itself was pixel-aligned.
@@ -12,6 +11,8 @@ test.use({ viewport: { width: 1700, height: 1100 }, deviceScaleFactor: 2 })
 
 async function createSelectedFrame(page: Page) {
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const id = store.createShape('FRAME', 100, 100, 320, 120)
@@ -27,6 +28,8 @@ test.beforeEach(async ({ page }) => {
 
 test('settled HiDPI content is as sharp as the live drag rendering', async ({ page }) => {
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const id = [...store.state.selectedIds][0]
@@ -80,11 +83,13 @@ for (const imported of [false, true]) {
       test.setTimeout(45_000)
       await page.route('**/__fixtures/gold-preview.fig', (route) =>
         route.fulfill({
-          path: fileURLToPath(new URL('../../fixtures/gold-preview.fig', import.meta.url)),
+          path: testPath('fixtures/gold-preview.fig'),
           contentType: 'application/octet-stream'
         })
       )
       await page.evaluate(async () => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         const response = await fetch('/__fixtures/gold-preview.fig')
@@ -95,7 +100,10 @@ for (const imported of [false, true]) {
       await createSelectedFrame(page)
     }
     // Recreate the surface in sRGB for platform-independent pixel expectations.
-    await page.evaluate(() => window.openPencil?.getStore?.().setDocumentColorSpace('srgb'))
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().setDocumentColorSpace('srgb')
+    })
     await page.setViewportSize({ width: 1700, height: 1101 })
     const canvas = new CanvasHelper(page)
     await page.getByRole('button', { name: 'Fill', exact: true }).click()
@@ -106,6 +114,8 @@ for (const imported of [false, true]) {
     await canvas.waitForRender()
 
     const trace = await page.evaluateHandle(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       const renderer = [...store.canvasRenderers].find((r) => r.tracksSceneSettlement)

@@ -9,6 +9,7 @@ function treeWithClick(
   attrs: Record<string, boolean | string> = {}
 ): IRTree {
   return {
+    usesRouteParams: false,
     pageId: 'page',
     pageName: 'Request gate',
     states: [],
@@ -107,7 +108,7 @@ describe('React request single-flight gate', () => {
   test('a nested network action still opts the activation into one gate', () => {
     const conditional: IREventHandler = {
       kind: 'condition',
-      condAst: { kind: 'boolean', value: true },
+      condAst: { kind: 'ident', name: 'true' },
       references: [],
       consequent: [mutation],
       alternate: []
@@ -148,6 +149,7 @@ describe('React request single-flight gate', () => {
       docStateName: 'results'
     }
     const tree: IRTree = {
+      usesRouteParams: false,
       pageId: 'page',
       pageName: 'Debounced search',
       states: [],

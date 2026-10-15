@@ -62,7 +62,7 @@ describe('built-in upload button plugin', () => {
       [['accentColor'], 'color'],
       [['errorColor'], 'color']
     ])
-    expect(Object.keys(instance.config)).toEqual(CONFIG_KEYS)
+    expect(Object.keys(instance.config)).toEqual([...CONFIG_KEYS])
     expect(instance.config).toEqual(UPLOAD_BUTTON_MODULE_DEFAULT_CONFIG)
     expect(Object.isFrozen(UPLOAD_BUTTON_MODULE_DEFAULT_CONFIG)).toBe(true)
     expect(Object.isFrozen(UPLOAD_BUTTON_MODULE_DEFAULT_CONFIG.accept)).toBe(true)

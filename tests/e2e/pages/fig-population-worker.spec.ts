@@ -11,13 +11,16 @@ test('populates a real lazy FIG page in the retained parse worker', async () => 
       if (event instanceof CustomEvent) events.push(event.detail)
     })
   })
-  const openFile = editor.page.evaluate(() =>
-    window.openPencil?.openFile?.('/tests/fixtures/material3.fig')
-  )
+  const openFile = editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.openFile?.('/tests/fixtures/material3.fig')
+  })
   await openFile
   await editor.canvas.waitForRender()
 
   const targetPageId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getPages(true).at(-1)?.id
@@ -31,6 +34,8 @@ test('populates a real lazy FIG page in the retained parse worker', async () => 
       ).length
   )
   await editor.page.evaluate((pageId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.switchPage(pageId)
@@ -50,6 +55,8 @@ test('populates a real lazy FIG page in the retained parse worker', async () => 
     .toBe(true)
 
   const currentPage = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return {
@@ -67,7 +74,10 @@ test('populates a real lazy FIG page in the retained parse worker', async () => 
     expect.arrayContaining(['registered', 'populate'])
   )
 
-  await editor.page.evaluate(() => window.openPencil?.getStore?.()?.dispose())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.dispose()
+  })
   await expect
     .poll(() =>
       editor.page.evaluate(

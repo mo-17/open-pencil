@@ -26,7 +26,7 @@ const UNKNOWN = {
   outcome: 'outcome-unknown',
   code: 'supabase-staging-apply-outcome-not-provable',
   remoteOperationIds: []
-}
+} as const
 async function digest(label: string): Promise<string> {
   return digestCanonicalManifest({ label })
 }
@@ -95,7 +95,10 @@ async function fixture(): Promise<BackendHostReleaseReconcileInput> {
     requiredCredentialRefs: plan.requiredCredentialRefs,
     artifacts,
     authority,
-    claim
+    claim,
+    attestApplied() {
+      throw new TypeError('Baseline reconciliation cannot attest remote application.')
+    }
   }
 }
 
@@ -115,6 +118,7 @@ function withClaim(
   input: BackendHostReleaseReconcileInput,
   overrides: Partial<BackendHostReleaseDispatchJournalRecordV2>
 ): BackendHostReleaseReconcileInput {
+  if (input.claim.version !== 2) throw new TypeError('Expected a v2 dispatch claim.')
   return { ...input, claim: { ...input.claim, ...overrides, version: 2 } }
 }
 

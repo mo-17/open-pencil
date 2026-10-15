@@ -10,11 +10,8 @@ import type {
 } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '#tests/helpers/assert'
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 import { generatedEffect } from '#tests/helpers/generated-effect'
-
-function exactBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-}
 
 function scene(targetNodeId: string): MotionSceneSpec {
   return {
@@ -70,7 +67,7 @@ function motion(distance: number): MotionSpec {
           { id: 'start', offset: 0, x: 0 },
           { id: 'end', offset: 1, x: distance }
         ],
-        timing: { duration: 300, easing: 'ease-out' },
+        timing: { durationMs: 300, easing: 'ease-out' },
         composition: { mode: 'replace', weight: 1, priority: 0 }
       }
     ]
@@ -174,7 +171,7 @@ describe('Figma instance Motion contract overrides', () => {
       'transitionKey'
     ])
 
-    const reopened = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const reopened = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const reopenedComponent = named(reopened, component.name)
     const reopenedInherited = named(reopened, inherited.name)
     const reopenedCustom = named(reopened, custom.name)

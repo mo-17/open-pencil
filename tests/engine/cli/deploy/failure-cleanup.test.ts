@@ -30,7 +30,7 @@ describe('direct CLI deployment failure cleanup', () => {
 
         expect(result.exitCode).toBe(1)
         expect(result.stderr).toContain(failure.message)
-        expect(result.requests).toEqual(failure.requests)
+        expect<unknown>(result.requests).toEqual(failure.requests)
         expect(result.stdout).not.toContain('"status"')
         expect(result.stdout).not.toContain('"provider"')
         const output = result.stdout + result.stderr

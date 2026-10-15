@@ -4,6 +4,8 @@ import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
   createFigmaNativeMotionApplyRequest,
@@ -87,7 +89,11 @@ describe('motion native CLI commands', () => {
     const document = await io.writeDocument('fig', graph)
     await Bun.write(designFile, document.data as Uint8Array)
     const found = await runOpenPencilCLI(['find', designFile, '--name', node.name, '--json'])
-    importedNodeId = (JSON.parse(found.stdout) as Array<{ id: string }>)[0]?.id ?? ''
+    importedNodeId =
+      v.parse(
+        v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+        found.stdout
+      )[0]?.id ?? ''
     if (!importedNodeId) throw new Error('Motion source node was not imported')
 
     const plan = createFigmaNativeMotionPlan(motion, { nodeOpacity: 0.6 })

@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines -- One client owns Baidu origin policy, lossless IDs, bounded paging, capability URLs, and the three-stage upload protocol. */
 
-import { md5 } from '@noble/hashes/legacy'
+import { md5 } from '@noble/hashes/legacy.js'
 
 import type {
   StorageDocumentAuthority,

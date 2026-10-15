@@ -2,7 +2,8 @@ import type { DefaultTheme } from 'vitepress'
 
 export const ZH_CN_TRANSLATED_ROUTES = [
   '/zh-cn/',
-  '/zh-cn/guide/getting-started',
+  '/zh-cn/download',
+  '/zh-cn/getting-started',
   '/zh-cn/guide/features',
   '/zh-cn/user-guide/',
   '/zh-cn/user-guide/lowcode-apps',
@@ -20,7 +21,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
     text: '指南',
     items: [
       { text: '文档首页', link: '/zh-cn/' },
-      { text: '快速开始', link: '/zh-cn/guide/getting-started' },
+      { text: '快速开始', link: '/zh-cn/getting-started' },
       { text: '功能概览', link: '/zh-cn/guide/features' },
       { text: '架构（英文）', link: '/guide/architecture' },
       { text: '技术栈（英文）', link: '/guide/tech-stack' },
@@ -95,7 +96,7 @@ export function zhCnThemeConfig(): DefaultTheme.Config {
   return {
     nav: [
       { text: '文档首页', link: '/zh-cn/' },
-      { text: '指南', link: '/zh-cn/guide/getting-started' },
+      { text: '指南', link: '/zh-cn/getting-started' },
       { text: '用户指南', link: '/zh-cn/user-guide/' },
       { text: 'AI 与 MCP', link: '/zh-cn/programmable/ai-chat' },
       { text: 'SDK（英文）', link: '/programmable/sdk/' },

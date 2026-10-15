@@ -6,11 +6,8 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 import { expectDefined } from '#tests/helpers/assert'
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 import { generatedEffect } from '#tests/helpers/generated-effect'
-
-function exactBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-}
 
 function named(graph: SceneGraph, name: string): SceneNode {
   return expectDefined(
@@ -69,7 +66,7 @@ describe('Figma instance generated-effect overrides', () => {
       }
     })
 
-    const reopened = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const reopened = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const reopenedComponent = named(reopened, component.name)
     const reopenedComponentChild = namedChild(reopened, reopenedComponent, componentChild.name)
     const reopenedCustom = named(reopened, custom.name)

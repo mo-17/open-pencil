@@ -14,6 +14,7 @@ import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGlyphCharacters } from '#core/text/resolver'
 
+import { expectRgbaPixels, asCanvas } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 import { repoPath } from '#tests/helpers/paths'
 
@@ -135,7 +136,7 @@ describe('lowcode INPUT and TEXTAREA canvas text', () => {
       renderText
     })
 
-    renderShapeUncached(renderer, canvas as Canvas, node, new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), node, new SceneGraph())
 
     expect(callOrder).toEqual(['effects:behind', 'fill', 'effects:front', 'text:Email address'])
     expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 1)
@@ -168,7 +169,7 @@ describe('lowcode INPUT and TEXTAREA canvas text', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderTextInputContent(renderer, canvas as Canvas, node)
+    renderTextInputContent(renderer, asCanvas(canvas), node)
 
     expect(renderer.color4f).toHaveBeenCalledWith(0, 1, 0, 1)
     expect(canvas.translate).toHaveBeenCalledWith(14, 11)
@@ -187,7 +188,7 @@ describe('lowcode INPUT and TEXTAREA canvas text', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderTextInputContent(renderer, canvas as Canvas, node)
+    renderTextInputContent(renderer, asCanvas(canvas), node)
 
     expect(renderer.renderText).not.toHaveBeenCalled()
     expect(canvas.save).not.toHaveBeenCalled()
@@ -238,13 +239,15 @@ describe('lowcode INPUT and TEXTAREA canvas text', () => {
       surface.flush()
 
       const image = surface.makeImageSnapshot()
-      const pixels = image.readPixels(0, 0, {
-        width: 220,
-        height: 44,
-        colorType: ck.ColorType.RGBA_8888,
-        alphaType: ck.AlphaType.Unpremul,
-        colorSpace: ck.ColorSpace.SRGB
-      })
+      const pixels = expectRgbaPixels(
+        image.readPixels(0, 0, {
+          width: 220,
+          height: 44,
+          colorType: ck.ColorType.RGBA_8888,
+          alphaType: ck.AlphaType.Unpremul,
+          colorSpace: ck.ColorSpace.SRGB
+        })
+      )
       image.delete()
 
       let blueTextPixels = 0
@@ -277,7 +280,7 @@ test('INPUT and TEXTAREA canvas use the bound initial value rather than a stale 
       bindings: { value: { kind: 'ref', stateId: 'name' } }
     })
     const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    renderShapeUncached(renderer, asCanvas(createMockCanvas()), node, graph)
     expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
       text: '张三'
     })
@@ -293,7 +296,7 @@ test('input bindings honor empty/document defaults, unknown scopes and font pref
   })
   const labels = () => {
     const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    renderShapeUncached(renderer, asCanvas(createMockCanvas()), node, graph)
     return mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
   }
   for (const defaultValue of ['中文姓名', '']) {
@@ -312,7 +315,7 @@ test('input bindings honor empty/document defaults, unknown scopes and font pref
   const component = graph.createNode('COMPONENT', page.id)
   graph.reparentNode(node.id, component.id)
   expect(labels()).toMatchObject([{ text: '请输入' }])
-  expect(node.interactiveProps.value).toBe('Stale')
+  expect(node.interactiveProps?.value).toBe('Stale')
 })
 
 test('password values are masked, single-line inputs remove line breaks, and textareas retain them', () => {
@@ -347,15 +350,15 @@ test('disabled text dims, readonly text remains legible, and zero content area n
   })
   const renderer = createMockRenderer()
   const canvas = createMockCanvas()
-  renderTextInputContent(renderer, canvas as Canvas, node)
+  renderTextInputContent(renderer, asCanvas(canvas), node)
   expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 0.45)
-  renderTextInputContent(renderer, canvas as Canvas, {
+  renderTextInputContent(renderer, asCanvas(canvas), {
     ...node,
     interactiveProps: { value: 'Text', textColor: '#336699', readOnly: true }
   })
   expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 1)
   const count = mockCalls(renderer.renderText as ReturnType<typeof mock>).length
-  renderTextInputContent(renderer, canvas as Canvas, {
+  renderTextInputContent(renderer, asCanvas(canvas), {
     ...node,
     width: 10,
     paddingLeft: 12,
@@ -443,7 +446,7 @@ test('real single-line and multiline input pixels stay within small authored con
     const projection = expectDefined(lowcodeTextProjection(node), 'input text projection')
     const paragraph = h.renderer.buildParagraph(projection.node, h.ck.BLACK)
     try {
-      expect(paragraph.getNumberOfLines()).toBe(1)
+      expect(paragraph.getShapedLines().length).toBe(1)
     } finally {
       paragraph.delete()
     }
@@ -479,7 +482,7 @@ test('number bindings are supported by INPUT but do not invent a valid TEXTAREA 
       bindings: { value: { kind: 'ref', stateId: 'amount' } }
     })
     const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    renderShapeUncached(renderer, asCanvas(createMockCanvas()), node, graph)
     expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
       text: type === 'INPUT' ? '42' : 'Not configured'
     })

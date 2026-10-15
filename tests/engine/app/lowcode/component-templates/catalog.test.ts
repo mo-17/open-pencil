@@ -29,7 +29,7 @@ describe('built-in component template catalogue', () => {
     editor.dispose()
   })
 
-  test.each(getComponentTemplates('en'))(
+  test.each([...getComponentTemplates('en')])(
     '$id inserts independent editable instances while preserving existing content',
     ({ id }) => {
       const { editor, graph, pageId } = componentTemplateFixture([])

@@ -7,6 +7,8 @@ const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
 
 test('saved glyphs remain authoritative with an available font and invalidate on edit', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const bytes = new Uint8Array(37)
@@ -71,6 +73,8 @@ test('saved glyphs remain authoritative with an available font and invalidate on
     store.requestRender()
   })
   await editor.page.evaluate((fixture) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     store.graph.createNode('TEXT', store.state.currentPageId, {
@@ -87,6 +91,8 @@ test('saved glyphs remain authoritative with an available font and invalidate on
     store.requestRender()
   }, styledGlyphs)
   await editor.page.waitForFunction(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     return (
       store?.graph.getChildren(store.state.currentPageId).filter((node) => node.type === 'TEXT')

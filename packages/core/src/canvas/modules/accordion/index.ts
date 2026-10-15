@@ -51,9 +51,14 @@ function drawText(
       withModulePreviewRectClip(
         renderer,
         canvas,
-        { x: 16, y: box.top, width: box.width, height: Math.max(0, host.height - box.top) },
+        {
+          x: 16,
+          y: box.top,
+          width: box.width,
+          height: Math.max(0, host.height - box.top)
+        },
         () => {
-          canvas.drawParagraph(paragraph, 16, box.top)
+          paragraph.draw(canvas, 16, box.top)
           return paragraph.getHeight()
         }
       )

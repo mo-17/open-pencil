@@ -12,6 +12,8 @@ test('collapsed equivalent corners preserve their shared token through expansion
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const collection = editor.graph.createCollection('Corners')
@@ -48,6 +50,8 @@ test('collapsed equivalent corners preserve their shared token through expansion
   const readCorners = () =>
     page.evaluate(
       ({ id, paths }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const node = window.openPencil?.getStore?.().graph.getNode(id)
         if (!node) throw new Error('Missing fixture')
         return {

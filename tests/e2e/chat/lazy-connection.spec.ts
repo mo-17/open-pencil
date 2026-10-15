@@ -6,6 +6,8 @@ test('creating a new chat does not connect before an explicit submission', async
   page
 }) => {
   const probe = await page.evaluateHandle(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     const setTransport = window.openPencil?.setChatTransport
     if (!setTransport) throw new Error('Transport override unavailable')
     const state = { connections: 0 }

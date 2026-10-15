@@ -121,7 +121,9 @@ for (const target of ['react', 'vue'] as const) {
         await submitBusinessAction(page, 'Add follow-up')
         await browserExpect.poll(() => !!heldPost).toBe(true)
         await page.getByRole('button', { name: 'Refresh list', exact: true }).click()
-        await browserExpect(page.getByText('Request in progress…', { exact: true })).toBeVisible()
+        await browserExpect(
+          page.getByRole('paragraph').and(page.getByText('Request in progress…', { exact: true }))
+        ).toBeVisible()
         await browserExpect(page.getByPlaceholder('Explanation', { exact: true })).toHaveValue(
           'Preserve my pending request'
         )

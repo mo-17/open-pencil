@@ -10,6 +10,8 @@ import {
   type BackendArtifactSource
 } from '@open-pencil/compiler'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import { createFakeBackendProviderBundle, fakeBackendApplication, fakeSelection } from '../helpers'
 import {
   createFakeBackendProviderBundleV2,
@@ -17,12 +19,12 @@ import {
   fakeSelectionV2
 } from '../v2/helpers'
 
-const artifact: BackendArtifactSource = {
+const artifact = {
   path: 'backend/schema.sql',
   kind: 'database-schema',
   mediaType: 'application/sql',
   content: '-- deterministic fixture\n'
-}
+} satisfies BackendArtifactSource
 
 function createEmissions() {
   const bundle = createFakeBackendProviderBundle({ artifacts: [artifact] })
@@ -80,12 +82,15 @@ describe('versioned Backend artifact file map', () => {
       files.forEach(function (this: typeof context, content, path, owner) {
         expect(this).toBe(context)
         expect(owner).toBe(files)
-        expect(content).toBe(files.get(path))
+        expect(content).toBe(expectDefined(files.get(path), path))
         visited.push(path)
       }, context)
       expect(visited).toEqual([artifact.path, manifestPath])
       expect([...files.entries()]).toEqual([...files])
-      expect([...files.values()]).toEqual([artifact.content, files.get(manifestPath)])
+      expect([...files.values()]).toEqual([
+        artifact.content,
+        expectDefined(files.get(manifestPath), manifestPath)
+      ])
     }
   })
 })

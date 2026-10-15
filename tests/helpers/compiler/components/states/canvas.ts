@@ -37,7 +37,13 @@ export async function openComponentStateCanvas(
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const rootId = await page.evaluate(async (data) => {
-    const editor = window.openPencil.getStore()
+    const api = window.openPencil
+    if (!api?.getStore) throw new Error('OpenPencil test host unavailable')
+
+    const initializedEditorBridge = api
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const url = performance
       .getEntriesByType('resource')
       .map((entry) => entry.name)
@@ -56,13 +62,25 @@ export async function openComponentStateCanvas(
     editor.requestRender()
     return root.id
   }, Array.from(bytes))
-  await page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+  await page.evaluate(() => {
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+    const initializedEditorBridge = api
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+    return initializedEditorBridge.test?.navigation?.waitForSettlement()
+  })
   return { canvas, rootId }
 }
 
 export async function componentStateCanvasMetrics(page: Page, rootId: string) {
   return page.evaluate((id) => {
-    const editor = window.openPencil.getStore()
+    const api = window.openPencil
+    if (!api?.getStore) throw new Error('OpenPencil test host unavailable')
+
+    const initializedEditorBridge = api
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const root = editor.graph.getNode(id)
     const pane = editor.panes.getActivePane()
     const canvas = document.querySelector<HTMLCanvasElement>(
@@ -81,7 +99,13 @@ export async function componentStateCanvasMetrics(page: Page, rootId: string) {
 
 export async function captureComponentStateCanvas(page: Page, rootId: string): Promise<Buffer> {
   const png = await page.evaluate(async (id) => {
-    const image = await window.openPencil.getStore().renderExportImage([id], 1, 'PNG')
+    const api = window.openPencil
+    if (!api?.getStore) throw new Error('OpenPencil test host unavailable')
+
+    const initializedEditorBridge = api
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const image = await initializedEditorBridge.getStore().renderExportImage([id], 1, 'PNG')
     if (!image?.length) throw new Error('State Canvas PNG unavailable')
     return Array.from(image)
   }, rootId)
@@ -111,7 +135,13 @@ export async function zoomComponentStateCanvas(
     .toEqual({ samePane: true, widthReady: true, heightReady: true })
   await page.evaluate(
     ({ id, padding }) => {
-      const editor = window.openPencil.getStore()
+      const api = window.openPencil
+      if (!api?.getStore) throw new Error('OpenPencil test host unavailable')
+
+      const initializedEditorBridge = api
+      if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+      const editor = initializedEditorBridge.getStore()
       const root = editor.graph.getNode(id)
       if (!root) throw new Error('State fixture root disappeared')
       editor.zoomToBounds(-padding, -padding, root.width + padding, root.height + padding)
@@ -119,5 +149,11 @@ export async function zoomComponentStateCanvas(
     },
     { id: rootId, padding }
   )
-  await page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+  await page.evaluate(() => {
+    const api = window.openPencil
+    if (!api) throw new Error('OpenPencil test host unavailable')
+    const initializedEditorBridge = api
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+    return initializedEditorBridge.test?.navigation?.waitForSettlement()
+  })
 }

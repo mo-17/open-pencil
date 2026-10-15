@@ -25,7 +25,7 @@ describe('AI command action authoring', () => {
         patch_json: JSON.stringify({ events })
       })
     ).toMatchObject({ ok: true })
-    expect(graph.getNode(button.id)?.events).toEqual(events)
+    expect<unknown>(graph.getNode(button.id)?.events).toEqual(events)
   })
   test('invalid nested command content fails atomically without changing the button', () => {
     const { figma, graph } = setupToolTest()

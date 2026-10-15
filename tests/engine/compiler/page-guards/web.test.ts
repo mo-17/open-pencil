@@ -9,11 +9,12 @@ import { compile, withDefaults } from '#compiler/index'
 
 import { applicationGuardsFixture } from '#tests/helpers/compiler/application-guards/fixture'
 import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
+import { repoPath } from '#tests/helpers/paths'
 
 import { browserPreviewInput } from '../browser-preview/helpers'
 
 function routerDirectories(): Record<string, string> {
-  const compiler = new URL('../../../../packages/compiler/', import.meta.url).pathname
+  const compiler = repoPath('packages/compiler/')
   const dom = Bun.resolveSync('react-router-dom/package.json', compiler)
   const router = Bun.resolveSync('react-router/package.json', dirname(dom))
   return { 'react-router-dom': dirname(dom), 'react-router': dirname(router) }
@@ -29,7 +30,7 @@ function project(target: 'react' | 'vue', rootStart = false) {
         Object.entries(node.events).map(([key, actions]) => [
           key,
           actions.map((action) => {
-            if (action.kind === 'navigate')
+            if (action.kind === 'navigate' && action.to)
               return { ...action, to: action.to.replace(/^\/home(?=[?#]|$)/, '/') }
             if (action.kind === 'back')
               return { ...action, fallback: action.fallback.replace(/^\/home(?=[?#]|$)/, '/') }

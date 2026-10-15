@@ -210,7 +210,8 @@ function setCornerRadius(event: Event): void {
         type="button"
         role="tab"
         :aria-selected="activeState === state"
-        :data-test-id="`lowcode-interaction-state-${state}`"
+        data-slot="interaction-state"
+        :data-state="state"
         :class="[
           'relative min-w-0 rounded px-1 py-1 text-[10px] transition-colors',
           activeState === state

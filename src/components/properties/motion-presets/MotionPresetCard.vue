@@ -92,7 +92,8 @@ onBeforeUnmount(stopPreview)
 
 <template>
   <article
-    :data-test-id="`motion-preset-card-${item.key}`"
+    data-slot="motion-preset"
+    :data-preset-key="item.key"
     class="group relative min-w-0 rounded border p-2 transition-colors"
     :class="[
       selected
@@ -112,7 +113,9 @@ onBeforeUnmount(stopPreview)
         class="min-w-0 flex-1 rounded text-left outline-none focus-visible:ring-1 focus-visible:ring-accent"
         :aria-label="panels.motionPresetApplyNamed({ name: displayName })"
         :aria-pressed="selected"
-        :data-test-id="`motion-preset-apply-${item.key}`"
+        data-slot="motion-preset-action"
+        data-command="apply-preset"
+        :data-preset-key="item.key"
         :disabled="disabled || authoringDisabled"
         @click="emit('apply', item)"
         @keydown.enter.space.prevent.stop="emit('apply', item)"
@@ -142,7 +145,9 @@ onBeforeUnmount(stopPreview)
               : panels.motionPresetFavoriteNamed({ name: displayName })
           "
           :aria-pressed="favorite"
-          :data-test-id="`motion-preset-favorite-${item.key}`"
+          data-slot="motion-preset-action"
+          data-command="toggle-preset-favorite"
+          :data-preset-key="item.key"
           :disabled="disabled"
           @click="emit('toggle-favorite', item)"
         >
@@ -177,7 +182,9 @@ onBeforeUnmount(stopPreview)
       <button
         type="button"
         class="col-span-2 rounded px-1.5 py-0.5 text-[10px] text-muted outline-none hover:bg-panel hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
-        :data-test-id="`motion-preset-update-current-${item.key.slice('user:'.length)}`"
+        data-slot="motion-preset-action"
+        data-command="update-preset"
+        :data-preset-key="item.key"
         :disabled="disabled || authoringDisabled || !canUpdateCurrent"
         @click="emit('update-current', item)"
       >
@@ -186,7 +193,9 @@ onBeforeUnmount(stopPreview)
       <button
         type="button"
         class="rounded px-1.5 py-0.5 text-[10px] text-muted outline-none hover:bg-panel hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
-        :data-test-id="`motion-preset-rename-${item.key.slice('user:'.length)}`"
+        data-slot="motion-preset-action"
+        data-command="rename-preset"
+        :data-preset-key="item.key"
         :disabled="disabled"
         @click="emit('edit', item)"
       >
@@ -194,8 +203,10 @@ onBeforeUnmount(stopPreview)
       </button>
       <button
         type="button"
-        class="rounded px-1.5 py-0.5 text-[10px] text-muted outline-none hover:bg-danger/10 hover:text-danger focus-visible:ring-1 focus-visible:ring-danger"
-        :data-test-id="`motion-preset-delete-${item.key.slice('user:'.length)}`"
+        class="rounded px-1.5 py-0.5 text-[10px] text-muted outline-none hover:bg-error/10 hover:text-error focus-visible:ring-1 focus-visible:ring-error"
+        data-slot="motion-preset-action"
+        data-command="delete-preset"
+        :data-preset-key="item.key"
         :disabled="disabled"
         @click="emit('delete', item)"
       >

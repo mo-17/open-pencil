@@ -3,7 +3,10 @@ import type { Page } from '@playwright/test'
 /** Fixture creation only. Tests edit and select through visible editor controls. */
 export function colorPickerFixture(page: Page) {
   return page.evaluate(() => {
-    const editor = window.openPencil.getStore()
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const color = editor.createShape('INPUT', 120, 140, 320, 44),
       other = editor.createShape('INPUT', 120, 225, 320, 44)
     editor.updateNode(color, {

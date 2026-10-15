@@ -89,7 +89,14 @@ export function controlFoundationGraph() {
   })
   graph.updateNode(action.id, {
     events: {
-      onClick: [{ kind: 'setState', targetStateId: 'amount', valueExpr: '"unexpected-write"' }]
+      onClick: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'amount',
+          valueExpr: '"unexpected-write"'
+        }
+      ]
     }
   })
   const output = graph.createNode('TEXT', root.id, {
@@ -108,9 +115,15 @@ export function controlFoundationGraph() {
   graph.updateNode(contact.id, {
     bindings: { value: { kind: 'ref', stateId: 'contact' } },
     events: {
-      onFocus: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"focus"' }],
-      onChange: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"change"' }],
-      onBlur: [{ kind: 'setState', targetStateId: 'signal', valueExpr: '"blur"' }]
+      onFocus: [
+        { id: 'fixture-action-2', kind: 'setState', targetStateId: 'signal', valueExpr: '"focus"' }
+      ],
+      onChange: [
+        { id: 'fixture-action-3', kind: 'setState', targetStateId: 'signal', valueExpr: '"change"' }
+      ],
+      onBlur: [
+        { id: 'fixture-action-4', kind: 'setState', targetStateId: 'signal', valueExpr: '"blur"' }
+      ]
     }
   })
   graph.createNode('TEXT', root.id, {

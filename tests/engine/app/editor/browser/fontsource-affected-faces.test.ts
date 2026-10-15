@@ -6,6 +6,8 @@ import { FontManager } from '@open-pencil/core/text'
 
 import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser/web-font-fetch'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 const FONTSOURCE_VERSION = '5.3.0'
 const BEBAS_SUBSETS = ['latin', 'latin-ext'] as const
 const SOURCE_SANS_SUBSETS = [
@@ -97,7 +99,7 @@ describe('browser Fontsource affected faces', () => {
     const registrations: string[] = []
     const cacheWrites: Array<[family: string, style: string, characters: string]> = []
     const transport = createBrowserWebFontFetch({
-      fetch: async (input) => {
+      fetch: fetchStub(async (input) => {
         const url = String(input)
         seen.push(url)
         if (url === 'https://api.fontsource.org/v1/fonts') {
@@ -109,7 +111,7 @@ describe('browser Fontsource affected faces', () => {
           return responseAt(url, Uint8Array.from([0, 1, 0, 0, 1, 2, 3, 4]))
         }
         throw new Error(`Unexpected Fontsource request: ${url}`)
-      }
+      })
     })
     const manager = new FontManager()
     manager.attachProvider(

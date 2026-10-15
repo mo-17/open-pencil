@@ -5,7 +5,7 @@ import { validateLowcodePageViewport } from '../src/page-viewport'
 describe('page viewport v1 policy', () => {
   test('copies each supported explicit mode into a canonical data contract', () => {
     for (const mode of ['responsive', 'fit-width', 'fixed'] as const) {
-      const source = { version: 1, mode }
+      const source = { version: 1 as const, mode }
       const result = validateLowcodePageViewport(source)
       expect(result).toEqual({ ok: true, value: source })
       if (result.ok) expect(result.value).not.toBe(source)

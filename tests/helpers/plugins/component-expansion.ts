@@ -1,6 +1,10 @@
 import { expect, type Page } from '@playwright/test'
 
+import { readModuleInstance } from '@open-pencil/scene-graph'
+
 import { CanvasHelper } from '#tests/helpers/canvas'
+
+import { readSelectedModule } from './module'
 
 export type ExpansionModule =
   | 'cascader'
@@ -94,12 +98,7 @@ export async function setExpansionNumber(page: Page, field: string, value: strin
 
 /** Observe document persistence while all edits themselves go through the visible controls. */
 export async function selectedExpansionConfig(page: Page) {
-  return page.evaluate(() => {
-    const editor = window.openPencil.getStore()
-    const module = editor.graph.getNode([...editor.state.selectedIds][0])?.interactiveProps?.module
-    if (!module) throw new Error('Selected module unavailable')
-    return module.config
-  })
+  return (await readSelectedModule(page)).module.config
 }
 
 /** Do not capture a stale backing or mistake a blue selection outline for painted content. */
@@ -109,7 +108,10 @@ export async function waitForExpansionPaint(
 ): Promise<void> {
   await canvas.page.waitForFunction(
     () => {
-      const editor = window.openPencil.getStore()
+      const initializedEditorBridge = window.openPencil
+      if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+      const editor = initializedEditorBridge.getStore()
       const renderers = editor.canvasRenderers.filter(
         (renderer) =>
           renderer.tracksSceneSettlement && renderer.pageId === editor.state.currentPageId
@@ -185,17 +187,25 @@ export async function waitForExpansionPaint(
 }
 
 export async function selectOtherExpansionNode(page: Page, moduleType: ExpansionModule) {
-  return page.evaluate((module) => {
-    const editor = window.openPencil.getStore()
+  const nodes = await page.evaluate(() => {
+    const editor = window.openPencil?.getStore?.()
+    if (!editor) throw new Error('OpenPencil store not initialized')
     const current = [...editor.state.selectedIds][0]
-    const other = editor.graph
+    return editor.graph
       .getChildren(editor.state.currentPageId)
-      .find((node) => node.id !== current && node.interactiveProps?.module?.moduleType === module)
-    if (!other) throw new Error('Second module unavailable')
-    const saved = JSON.stringify(other.interactiveProps?.module?.config)
-    editor.select([other.id])
-    return saved
-  }, moduleType)
+      .filter((node) => node.id !== current)
+      .map((node) => ({ id: node.id, module: node.interactiveProps?.module }))
+  })
+  const other = nodes
+    .map((node) => ({ ...node, module: readModuleInstance(node.module) }))
+    .find((node) => node.module?.moduleType === moduleType)
+  if (!other?.module) throw new Error('Second module unavailable')
+  await page.evaluate((id) => {
+    const editor = window.openPencil?.getStore?.()
+    if (!editor) throw new Error('OpenPencil store not initialized')
+    editor.select([id])
+  }, other.id)
+  return JSON.stringify(other.module.config)
 }
 
 // Limit visual assertions to the authored node, excluding unrelated floating editor UI.
@@ -204,7 +214,10 @@ export async function selectedModuleClip(page: Page) {
   const surface = await page.getByTestId('canvas-element').boundingBox()
   if (!surface) throw new Error('Canvas surface unavailable')
   const bounds = await page.evaluate(() => {
-    const editor = window.openPencil.getStore()
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const nodeId = editor.state.contentEdit?.rootId ?? [...editor.state.selectedIds][0]
     const node = editor.graph.getNode(nodeId)
     if (!node) throw new Error('Selected module or content root unavailable')

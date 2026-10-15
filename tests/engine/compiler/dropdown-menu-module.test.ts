@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import { trustedNativeDropdownMenuTrigger } from '#compiler/adapters/native-shared'
 import type { IRElement } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
@@ -107,9 +108,14 @@ describe('compiler trusted Dropdown Menu module adapter', () => {
     })
     const app = output.files.get('src/App.tsx') as string
     const runtime = output.files.get('src/__openpencil_dropdown_menu.tsx') as string
-    const pkg = JSON.parse(output.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      output.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilDropdownMenu from './__openpencil_dropdown_menu'")
     expect(app).toContain('<OpenPencilDropdownMenu config={{')
@@ -162,9 +168,7 @@ describe('compiler trusted Dropdown Menu module adapter', () => {
     ).toBeUndefined()
     expect(
       trustedNativeDropdownMenuTrigger(
-        nativeDropdownTriggerElement(payload, [
-          { kind: 'text', value: 'Authored trigger', sourceId: 'authored-trigger' }
-        ])
+        nativeDropdownTriggerElement(payload, [{ kind: 'text', value: 'Authored trigger' }])
       )
     ).toBeUndefined()
   })

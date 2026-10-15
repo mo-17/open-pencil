@@ -56,7 +56,7 @@ export async function createSelectPropertiesFixture(page: Page) {
           { label: 'Bound beta', value: 'b' }
         ]
       },
-      bindings: { value: { kind: 'ref', ref: 'selected_topics' } }
+      bindings: { value: { kind: 'ref', stateId: 'selected_topics' } }
     })
     store.select([first])
     return { first, second, bound }

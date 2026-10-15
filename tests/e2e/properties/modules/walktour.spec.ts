@@ -20,6 +20,8 @@ test.setTimeout(120_000)
 /** Authored child fixture; all subsequent configuration, remapping and selection use editor UI. */
 async function addEditableTargets(page: Page) {
   return page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore(),
       host = [...editor.state.selectedIds][0]
     editor.updateNodeWithUndo(host, { height: 310 })

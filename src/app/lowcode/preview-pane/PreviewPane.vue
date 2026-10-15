@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /* oxlint-disable eslint/max-lines -- Existing preview controls and runtime transport share lifecycle state. */
 import { useElementSize, useEventListener, useLocalStorage } from '@vueuse/core'
+import { compact } from 'es-toolkit/array'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -313,10 +314,10 @@ const previewStatusShort = computed(() => {
   }
 })
 const previewStatusTone = computed(() => {
-  if (status.value.kind === 'ready') return 'bg-emerald-500'
-  if (status.value.kind === 'error') return 'bg-red-500'
+  if (status.value.kind === 'ready') return 'bg-success-fill'
+  if (status.value.kind === 'error') return 'bg-error-fill'
   if (status.value.kind === 'unsupported') return 'bg-violet-500'
-  if (status.value.kind === 'starting') return 'bg-amber-500'
+  if (status.value.kind === 'starting') return 'bg-warning'
   return 'bg-muted/60'
 })
 const previewSettingsSummary = computed(() => {
@@ -325,9 +326,7 @@ const previewSettingsSummary = computed(() => {
   const refresh = localBackendActive.value
     ? codeMessages.value.previewSyncAutoBackend
     : previewSyncLabel(codeMessages.value, previewRefreshPolicy.value)
-  return [uiKit, theme, refresh, previewI18nEnabled.value ? 'i18n' : null]
-    .filter(Boolean)
-    .join(' · ')
+  return compact([uiKit, theme, refresh, previewI18nEnabled.value ? 'i18n' : null]).join(' · ')
 })
 const compileActivityDetail = computed(() => {
   const state = compileState.value
@@ -1364,7 +1363,7 @@ onBeforeUnmount(() => {
   >
     <div
       ref="toolbarEl"
-      class="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2"
+      class="flex min-h-9 shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-0.5 data-[layout=classic]:h-9 data-[layout=classic]:flex-nowrap data-[layout=classic]:py-0"
       :data-layout="previewToolbarLayout"
       :data-band="groupedToolbar ? toolbarBand : undefined"
       data-test-id="lowcode-preview-toolbar"
@@ -1410,14 +1409,16 @@ onBeforeUnmount(() => {
           </div>
         </Tip>
 
-        <div class="ml-auto flex min-w-0 shrink-0 items-center gap-1">
-          <Tip v-if="showInlineTarget" label="Compiler preview framework">
+        <div
+          class="ml-auto flex min-w-0 max-w-full shrink-0 flex-wrap items-center justify-end gap-1"
+        >
+          <Tip v-if="showInlineTarget" :label="codeMessages.previewFramework">
             <label class="flex shrink-0 items-center gap-1 text-xs text-muted">
               <span v-if="showToolbarActionLabels">Target</span>
               <select
                 v-model="previewTarget"
                 data-test-id="lowcode-preview-target"
-                aria-label="Compiler preview framework"
+                :aria-label="codeMessages.previewFramework"
                 class="h-7 max-w-24 rounded border border-border bg-input px-1.5 text-xs text-surface outline-none focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <option value="react">React</option>
@@ -1444,9 +1445,9 @@ onBeforeUnmount(() => {
             :label="
               canRecompile
                 ? url
-                  ? `Reload (${statusLabel})`
-                  : 'Recompile preview'
-                : 'Preview is compiling'
+                  ? codeMessages.previewReloadLabel({ status: statusLabel })
+                  : codeMessages.previewRecompile
+                : codeMessages.previewCompiling
             "
           >
             <button
@@ -1484,14 +1485,14 @@ onBeforeUnmount(() => {
             v-if="compilerPreviewPopoutCommand && showInlinePopout"
             :label="
               compilerPreviewPopoutOpen
-                ? 'Focus compiler preview window'
-                : 'Open compiler preview in a separate window'
+                ? codeMessages.previewFocusWindow
+                : codeMessages.previewOpenWindow
             "
           >
             <button
               type="button"
               data-test-id="lowcode-preview-popout-toggle"
-              aria-label="Open compiler preview in a separate window"
+              :aria-label="codeMessages.previewOpenWindow"
               :aria-pressed="compilerPreviewPopoutOpen"
               class="flex h-7 shrink-0 items-center gap-1 rounded px-2 text-xs outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40"
               :class="compilerPreviewPopoutOpen ? 'bg-hover text-surface' : 'text-muted'"
@@ -1509,13 +1510,13 @@ onBeforeUnmount(() => {
 
           <DeployControls ref="deployControls" show-icon :icon-only="!showToolbarActionLabels" />
 
-          <Tip v-if="showDiagnosticsInline" label="Inspect compiler diagnostics">
+          <Tip v-if="showDiagnosticsInline" :label="codeMessages.previewDiagnostics">
             <button
               type="button"
               data-test-id="lowcode-preview-diagnostics-toggle"
               aria-controls="lowcode-preview-diagnostics"
               :aria-expanded="diagnosticsOpen"
-              aria-label="Inspect compiler diagnostics"
+              :aria-label="codeMessages.previewDiagnostics"
               class="flex h-7 shrink-0 items-center gap-1 rounded px-2 text-xs outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent"
               :class="diagnosticsOpen ? 'bg-hover text-surface' : 'text-muted'"
               @click="diagnosticsOpen = !diagnosticsOpen"
@@ -1525,7 +1526,7 @@ onBeforeUnmount(() => {
               <span
                 v-if="diagnosticSummary.total > 0"
                 data-test-id="lowcode-preview-diagnostics-count"
-                class="rounded bg-amber-500/15 px-1 text-[10px] text-amber-500"
+                class="rounded bg-warning/15 px-1 text-[10px] text-warning"
               >
                 {{ diagnosticSummary.total }}
               </span>
@@ -1543,7 +1544,7 @@ onBeforeUnmount(() => {
                 <icon-lucide-ellipsis class="size-3.5" />
                 <span
                   v-if="!showDiagnosticsInline && diagnosticSummary.total > 0"
-                  class="absolute -mt-5 ml-5 min-w-3 rounded-full bg-amber-500 px-0.5 text-center text-[8px] leading-3 text-black"
+                  class="absolute -mt-5 ml-5 min-w-3 rounded-full bg-warning px-0.5 text-center text-[8px] leading-3 text-black"
                 >
                   {{ diagnosticSummary.total }}
                 </span>
@@ -1574,7 +1575,7 @@ onBeforeUnmount(() => {
                 >
                   <icon-lucide-activity class="size-3.5 text-muted" />
                   <span class="flex-1">Diagnostics</span>
-                  <span v-if="diagnosticSummary.total > 0" class="text-amber-500">
+                  <span v-if="diagnosticSummary.total > 0" class="text-warning">
                     {{ diagnosticSummary.total }}
                   </span>
                 </DropdownMenuItem>
@@ -1627,11 +1628,11 @@ onBeforeUnmount(() => {
             </DropdownMenuPortal>
           </DropdownMenuRoot>
 
-          <Tip label="Close compiler preview">
+          <Tip :label="codeMessages.previewClose">
             <button
               type="button"
               data-test-id="lowcode-preview-close"
-              aria-label="Close compiler preview"
+              :aria-label="codeMessages.previewClose"
               aria-controls="lowcode-preview-pane"
               :aria-expanded="true"
               class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
@@ -1648,7 +1649,7 @@ onBeforeUnmount(() => {
           Preview · {{ statusLabel }}
         </span>
         <div class="flex shrink-0 items-center gap-1">
-          <Tip label="Compiler preview framework">
+          <Tip :label="codeMessages.previewFramework">
             <label class="flex items-center gap-1 text-xs text-muted">
               <span>Target</span>
               <select
@@ -1661,7 +1662,7 @@ onBeforeUnmount(() => {
               </select>
             </label>
           </Tip>
-          <Tip label="Preview UI components">
+          <Tip :label="codeMessages.previewComponents">
             <label class="flex items-center gap-1 text-xs text-muted">
               <span>UI</span>
               <select
@@ -1675,7 +1676,7 @@ onBeforeUnmount(() => {
               </select>
             </label>
           </Tip>
-          <Tip label="Preview theme">
+          <Tip :label="codeMessages.previewTheme">
             <label class="flex items-center gap-1 text-xs text-muted">
               <span>Theme</span>
               <select
@@ -1688,7 +1689,7 @@ onBeforeUnmount(() => {
               </select>
             </label>
           </Tip>
-          <Tip label="Preview i18n">
+          <Tip :label="codeMessages.previewI18n">
             <label
               class="flex h-6 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-hover"
             >
@@ -1746,14 +1747,14 @@ onBeforeUnmount(() => {
             v-if="compilerPreviewPopoutCommand"
             :label="
               compilerPreviewPopoutOpen
-                ? 'Focus compiler preview window'
-                : 'Open compiler preview in a separate window'
+                ? codeMessages.previewFocusWindow
+                : codeMessages.previewOpenWindow
             "
           >
             <button
               type="button"
               data-test-id="lowcode-preview-popout-toggle"
-              aria-label="Open compiler preview in a separate window"
+              :aria-label="codeMessages.previewOpenWindow"
               :aria-pressed="compilerPreviewPopoutOpen"
               class="flex size-6 shrink-0 items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!compilerPreviewPopoutReady"
@@ -1767,7 +1768,7 @@ onBeforeUnmount(() => {
             </button>
           </Tip>
           <DeployControls ref="deployControls" />
-          <Tip label="Inspect compiler diagnostics">
+          <Tip :label="codeMessages.previewDiagnostics">
             <button
               type="button"
               data-test-id="lowcode-preview-diagnostics-toggle"
@@ -1781,13 +1782,13 @@ onBeforeUnmount(() => {
               <span
                 v-if="diagnosticSummary.total > 0"
                 data-test-id="lowcode-preview-diagnostics-count"
-                class="rounded bg-amber-500/15 px-1 text-[10px] text-amber-500"
+                class="rounded bg-warning/15 px-1 text-[10px] text-warning"
               >
                 {{ diagnosticSummary.total }}
               </span>
             </button>
           </Tip>
-          <Tip label="Inspect Motion runtime tracks">
+          <Tip :label="codeMessages.previewMotionDebug">
             <button
               type="button"
               data-test-id="lowcode-preview-motion-debug-toggle"
@@ -1802,7 +1803,11 @@ onBeforeUnmount(() => {
           </Tip>
           <Tip
             :label="
-              canRecompile ? (url ? `Reload (${statusLabel})` : 'Recompile preview') : undefined
+              canRecompile
+                ? url
+                  ? codeMessages.previewReloadLabel({ status: statusLabel })
+                  : codeMessages.previewRecompile
+                : undefined
             "
           >
             <button
@@ -1814,11 +1819,11 @@ onBeforeUnmount(() => {
               ↻
             </button>
           </Tip>
-          <Tip label="Close compiler preview">
+          <Tip :label="codeMessages.previewClose">
             <button
               type="button"
               data-test-id="lowcode-preview-close"
-              aria-label="Close compiler preview"
+              :aria-label="codeMessages.previewClose"
               aria-controls="lowcode-preview-pane"
               :aria-expanded="true"
               class="flex size-6 cursor-pointer items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
@@ -1941,7 +1946,7 @@ onBeforeUnmount(() => {
           >
             <span
               class="mt-0.5 shrink-0 uppercase"
-              :class="diagnostic.severity === 'error' ? 'text-red-500' : 'text-amber-500'"
+              :class="diagnostic.severity === 'error' ? 'text-error' : 'text-warning'"
             >
               {{ diagnostic.severity }}
             </span>
@@ -1986,14 +1991,14 @@ onBeforeUnmount(() => {
         <div
           v-if="motionCompileError"
           role="alert"
-          class="border-t border-border px-2 py-1.5 text-red-500"
+          class="border-t border-border px-2 py-1.5 text-error"
         >
           Motion compile failed: {{ motionCompileError }}
         </div>
         <ul
           v-if="motionWarnings.length"
           aria-label="Motion compile warnings"
-          class="border-t border-border px-2 py-1.5 text-amber-500"
+          class="border-t border-border px-2 py-1.5 text-warning"
         >
           <li
             v-for="(warning, index) in motionWarnings"

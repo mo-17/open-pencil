@@ -10,6 +10,8 @@ import {
   createSliderModuleFrameOverrides
 } from '#core/plugins/slider'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('Slider range geometry shares normalized values and stays inside narrow frames', () => {
@@ -77,7 +79,7 @@ test('invalid Slider modules fall back without throwing or painting', async () =
   const h = await carouselPixelHarness()
   const graph = new SceneGraph()
   const node = graph.createNode('FRAME', graph.getPages()[0].id, createSliderModuleFrameOverrides())
-  const module = node.interactiveProps?.module
+  const module = expectModuleInstance(node.interactiveProps?.module)
   if (!module) throw new Error('Expected module fixture')
   module.configVersion = 9
   try {

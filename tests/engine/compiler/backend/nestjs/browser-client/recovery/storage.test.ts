@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 import { commandInput, recoveryEnvironment, recoveryFixture, recoveryInput } from './helpers'
 
 describe('command recovery persistence failures', () => {
   test.each([
     { keyPath: 'key' },
     { keyPath: null },
-    { keyPath: ['slot'] },
+    { keyPath: 'slot'.split(',') },
     { keyPath: 'slot', autoIncrement: true }
   ])('rejects an incompatible pre-existing object-store schema %j before HTTP', async (options) => {
     const environment = recoveryEnvironment()
@@ -99,13 +101,15 @@ describe('command recovery persistence failures', () => {
 
   test('bounds a blocked IndexedDB open and releases the same-slot lock', async () => {
     const environment = recoveryEnvironment()
-    environment.indexedDB = {
+    environment.indexedDB = asDouble<IDBFactory>({
       open() {
-        const request = {} as IDBOpenDBRequest
-        queueMicrotask(() => request.onblocked?.(new Event('blocked') as IDBVersionChangeEvent))
+        const request = asDouble<IDBOpenDBRequest>({})
+        queueMicrotask(() =>
+          request.onblocked?.(asDouble<IDBVersionChangeEvent>(new Event('blocked')))
+        )
         return request
       }
-    } as IDBFactory
+    })
     const fixture = await recoveryFixture(environment)
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -125,9 +129,9 @@ describe('command recovery persistence failures', () => {
     async (mode) => {
       const environment = recoveryEnvironment()
       environment.storageTimeoutMs = 25
-      environment.indexedDB = {
+      environment.indexedDB = asDouble<IDBFactory>({
         open() {
-          const request = {} as IDBOpenDBRequest
+          const request = asDouble<IDBOpenDBRequest>({})
           if (mode === 'open') return request
           const database = {
             close() {
@@ -154,7 +158,7 @@ describe('command recovery persistence failures', () => {
           queueMicrotask(() => request.onsuccess?.(new Event('success')))
           return request
         }
-      } as IDBFactory
+      })
       const fixture = await recoveryFixture(environment)
       try {
         for (let attempt = 0; attempt < 2; attempt++)

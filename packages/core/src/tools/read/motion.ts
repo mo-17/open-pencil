@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import {
   inspectMotionAdvancedChannels,
   motionAdvancedChannelTemplates,
@@ -88,7 +90,7 @@ export function summarizeMotion(spec: MotionSpec): MotionSummary {
     version: spec.version,
     trackCount: spec.tracks.length,
     keyframeCount: spec.tracks.reduce((total, track) => total + track.keyframes.length, 0),
-    triggers: [...new Set(spec.tracks.map((track) => track.trigger))]
+    triggers: uniq(spec.tracks.map((track) => track.trigger))
   }
   if (spec.reducedMotion !== undefined) summary.reducedMotion = spec.reducedMotion
   if (spec.preset?.id) summary.preset = spec.preset.id

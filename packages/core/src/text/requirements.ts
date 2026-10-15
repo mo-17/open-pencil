@@ -37,7 +37,7 @@ import { triggerTextNode } from '#core/canvas/modules/trigger/text'
 import { walktourTextNode } from '#core/canvas/modules/walktour/text'
 import { selectDesignContent } from '#core/canvas/select-state'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
-import { transformTextCase } from '#core/text/case'
+import { shownCharacters } from '#core/text/case'
 import { cjkFallbackScriptForLanguage, type FontFallbackScript } from '#core/text/fallbacks'
 import { weightToStyle } from '#core/text/font/style'
 import { lowcodeTextNode, selectTextProjection, textInputProjection } from '#core/text/lowcode'
@@ -67,7 +67,9 @@ export function requiredNodeFontFaceUsages(node: SceneNode): NodeFontFaceUsage[]
     }
   }
 
-  add(baseFamily, weightToStyle(node.fontWeight || 400, node.italic), { kind: 'base' })
+  add(baseFamily, weightToStyle(node.fontWeight || 400, node.italic), {
+    kind: 'base'
+  })
   for (const run of node.styleRuns) {
     const family = run.style.fontFamily ?? baseFamily
     const weight = run.style.fontWeight ?? node.fontWeight
@@ -82,7 +84,10 @@ export function requiredNodeFontFaceUsages(node: SceneNode): NodeFontFaceUsage[]
 }
 
 export function requiredNodeFontFaces(node: SceneNode): NodeFontFace[] {
-  return requiredNodeFontFaceUsages(node).map(({ family, style }) => ({ family, style }))
+  return requiredNodeFontFaceUsages(node).map(({ family, style }) => ({
+    family,
+    style
+  }))
 }
 
 export { requiredNodeFontFaces as collectNodeFontFaces }
@@ -155,19 +160,6 @@ function textLanguageAt(node: SceneNode, index: number): string | null {
   return run?.style.textLanguage ?? node.textLanguage
 }
 
-function transformedCharactersWithSourceOffsets(
-  node: SceneNode
-): Array<{ character: string; sourceIndex: number }> {
-  const result: Array<{ character: string; sourceIndex: number }> = []
-  let sourceIndex = 0
-  for (const sourceCharacter of node.text) {
-    for (const character of transformTextCase(sourceCharacter, node.textCase)) {
-      result.push({ character, sourceIndex })
-    }
-    sourceIndex += sourceCharacter.length
-  }
-  return result
-}
 export interface GraphFontRequirements {
   characters: string
   nodes: SceneNode[]
@@ -187,7 +179,7 @@ export function collectGraphFontRequirements(
     const textNode = graphTextNode(graph, node)
     nodes.push(textNode)
     if (textNode.type === 'TEXT') {
-      for (const { character, sourceIndex } of transformedCharactersWithSourceOffsets(textNode)) {
+      for (const { character, sourceIndex } of shownCharacters(textNode)) {
         characters.add(character)
         const script = fallbackScriptForCharacter(character, textLanguageAt(textNode, sourceIndex))
         if (script) scripts.add(script)
@@ -196,7 +188,11 @@ export function collectGraphFontRequirements(
     for (const childId of node.childIds) collect(childId)
   }
   for (const nodeId of nodeIds) collect(nodeId)
-  return { characters: Array.from(characters).join(''), nodes, scripts: Array.from(scripts) }
+  return {
+    characters: Array.from(characters).join(''),
+    nodes,
+    scripts: Array.from(scripts)
+  }
 }
 
 function displayTextNode(node: SceneNode, graph: SceneGraph): SceneNode | null {

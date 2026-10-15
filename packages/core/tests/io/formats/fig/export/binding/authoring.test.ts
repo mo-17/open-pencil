@@ -1,29 +1,32 @@
 import { expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
-import type {
-  NestedBindingAuthoringOracle,
-  NestedBindingCapture
-} from '#core-tests/helpers/fig/captures'
-import { readFixtureJSON } from '#core-tests/helpers/fig/fixtures'
+import { CapturedFigRecords, readFixture } from '#core-tests/helpers/fig/fixtures'
 import { inheritedNestedBindingRecords } from '#core-tests/helpers/fig/nested-binding'
+import * as v from 'valibot'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { exportFigFile } from '@open-pencil/core/io'
 import { initCodec } from '@open-pencil/core/kiwi'
 import { materializeDocument, parseFigBuffer } from '@open-pencil/fig'
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { cloneInstanceOverrideState } from '@open-pencil/scene-graph'
 
-const oracle = readFixtureJSON<NestedBindingAuthoringOracle>('nested-binding-authoring.json')
+/** Only the component-edit measurements this file asserts against are read from the oracle. */
+const AuthoringOracle = v.looseObject({
+  componentEdit: v.looseObject({
+    sourcePaddingTop: v.number(),
+    paddingTop: v.number(),
+    height: v.number()
+  })
+})
 
-const fixture = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const oracle = readFixture('nested-binding-authoring.json', AuthoringOracle)
+
+const fixture = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 function document(inherited = false) {
-  const changes = inherited
-    ? inheritedNestedBindingRecords()
-    : (structuredClone(fixture.nodeChanges) as NodeChange[])
+  const changes = inherited ? inheritedNestedBindingRecords() : structuredClone(fixture.nodeChanges)
   const result = materializeDocument(
     changes,
     fixture.blobs.map((value) => Uint8Array.fromBase64(value)),
@@ -55,7 +58,7 @@ for (const caller of ['editor', 'api'] as const) {
       derivedBounds: true
     }).graph
     const restored = expectDefined(
-      Array.from(reopened.getAllNodes()).find((node) => node.name === 'Authored binding'),
+      [...reopened.getAllNodes()].find((node) => node.name === 'Authored binding'),
       'reopened root'
     )
     const child = expectDefined(reopened.getChildren(restored.id)[0], 'reopened child')
@@ -71,7 +74,9 @@ test('component edits preserve authored aliases and subsequent declaration units
   const editor = createEditor({ graph })
   editor.bindVariable(nested.id, 'paddingRight', '293742:7')
   const component = expectDefined(sources.get('1:2'), 'component')
-  editor.updateNodeWithUndo(component, { paddingTop: oracle.componentEdit.sourcePaddingTop })
+  editor.updateNodeWithUndo(component, {
+    paddingTop: oracle.componentEdit.sourcePaddingTop
+  })
   await Promise.resolve()
   expect(nested.paddingTop).toBe(oracle.componentEdit.paddingTop)
   expect(nested.height).toBe(oracle.componentEdit.height)
@@ -111,7 +116,7 @@ test('saved inherited multiplication stays live through token edits and edited e
     derivedBounds: true
   }).graph
   const restored = expectDefined(
-    Array.from(reopened.getAllNodes()).find((node) => node.name === 'Expression round-trip'),
+    [...reopened.getAllNodes()].find((node) => node.name === 'Expression round-trip'),
     'root'
   )
   const child = expectDefined(reopened.getChildren(restored.id)[0], 'nested')

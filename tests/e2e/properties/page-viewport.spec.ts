@@ -9,6 +9,8 @@ test.setTimeout(90_000)
 
 async function snapshotPage() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -29,7 +31,10 @@ async function snapshotPage() {
 // eslint-disable-next-line no-empty-pattern -- The editor browser page is owned by useEditorSetup.
 test('page modes switch with one undo, preserve design boxes and survive a real FIG download/reopen', async ({}, testInfo) => {
   await openPreviewSyncDocument(editor.page)
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().clearSelection())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().clearSelection()
+  })
   const select = editor.page.getByTestId('page-viewport-select')
   await expect(select).toContainText('Fixed size')
   const initial = await snapshotPage()
@@ -62,6 +67,8 @@ test('page modes switch with one undo, preserve design boxes and survive a real 
   await chooseAppSelect(editor.page, select, 'Responsive layout')
   const bytes = [...(await readFile(path))]
   await editor.page.evaluate(async (data) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor not initialized')
     await store.openFigFile(new File([new Uint8Array(data)], 'mobile-fit-width.fig'))

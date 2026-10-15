@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -17,7 +18,8 @@ export async function withDataModules(
   configuredFilters = false,
   options: DataModulesFixtureOptions = {}
 ): Promise<void> {
-  const files = JSON.parse(
+  const files = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
     execFileSync(
       'bun',
       [
@@ -26,7 +28,7 @@ export async function withDataModules(
       ],
       { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as [string, string][]
+  )
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

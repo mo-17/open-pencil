@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import * as v from 'valibot'
 import type { WebSocket } from 'ws'
 
 import { isAuthorized } from '#mcp/auth'
@@ -28,16 +29,32 @@ type BrowserRPCBridgeOptions = {
 
 type ConnectionListener = (connected: boolean) => void
 
-type BrowserMessage = {
-  type: string
-  id?: string
-  token?: unknown
-  result?: unknown
-  error?: string
-  ok?: boolean
-  progress?: unknown
-  revision?: unknown
-}
+/** Any JSON object; the per-type schemas below run only once its `type` is known. */
+const BrowserEnvelopeJSON = v.pipe(
+  v.string(),
+  v.parseJson(),
+  v.custom<Record<string, unknown>>(
+    (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+  )
+)
+
+const HandshakeMessage = v.looseObject({
+  token: v.optional(v.nullable(v.string()))
+})
+
+const RequestMessage = v.looseObject({
+  type: v.literal('request'),
+  id: v.pipe(v.string(), v.nonEmpty())
+})
+
+const ResponseMessage = v.looseObject({
+  type: v.literal('response'),
+  id: v.pipe(v.string(), v.nonEmpty()),
+  ok: v.optional(v.boolean()),
+  error: v.optional(v.string())
+})
+
+type BrowserMessage = Record<string, unknown>
 
 export type BrowserRPCSendOptions = RPCSendOptions
 
@@ -325,11 +342,15 @@ export function createBrowserRPCBridge({
     return sendRPCWithAuthorityLease(body, options)
   }
 
-  async function handleClientRequest(ws: WebSocket, msg: BrowserMessage) {
-    if (!msg.id) return
+  async function handleClientRequest(ws: WebSocket, msg: v.InferOutput<typeof RequestMessage>) {
     try {
       const result = await sendRPC(stripEnvelope(msg))
-      sendJSON(ws, { ...responsePayload(result), type: 'response', id: msg.id, ok: true })
+      sendJSON(ws, {
+        ...responsePayload(result),
+        type: 'response',
+        id: msg.id,
+        ok: true
+      })
     } catch (e) {
       sendJSON(ws, {
         type: 'response',
@@ -367,8 +388,8 @@ export function createBrowserRPCBridge({
     broadcastRegisterPrompt()
   }
 
-  function handleBrowserResponse(msg: BrowserMessage, ws: WebSocket) {
-    if (!browserRegistered || browserWs !== ws || !msg.id) return
+  function handleBrowserResponse(msg: v.InferOutput<typeof ResponseMessage>, ws: WebSocket) {
+    if (!browserRegistered || browserWs !== ws) return
     const req = pending.get(msg.id)
     if (!req) return
     pending.delete(msg.id)
@@ -378,21 +399,6 @@ export function createBrowserRPCBridge({
     } else {
       req.resolve(stripEnvelope(msg))
     }
-  }
-
-  function handleHandshakeMessage(msg: BrowserMessage, ws: WebSocket): boolean {
-    if (msg.type === 'auth') {
-      // Authenticate a stdio bridge client without registering it as the browser app.
-      if (msg.token === null || typeof msg.token === 'string') {
-        if (!isAuthorized(msg.token, authToken)) ws.close()
-        else authenticatedClients.add(ws)
-      } else if (msg.token !== undefined) ws.close()
-      return true
-    }
-    if (msg.type !== 'register') return false
-    if (msg.token === null || typeof msg.token === 'string') registerBrowser(ws, msg.token)
-    else if (msg.token !== undefined) ws.close()
-    return true
   }
 
   function handleAuthenticatedMessage(msg: BrowserMessage, ws: WebSocket): void {
@@ -407,32 +413,57 @@ export function createBrowserRPCBridge({
       return
     }
     if (msg.type === 'request') {
-      void handleClientRequest(ws, msg)
+      const request = v.safeParse(RequestMessage, msg)
+      if (request.success) void handleClientRequest(ws, request.output)
       return
     }
     if (msg.type === 'progress') {
-      if (!browserRegistered || browserWs !== ws || !msg.id) return
+      if (!browserRegistered || browserWs !== ws || typeof msg.id !== 'string') return
       pending.get(msg.id)?.onProgress?.(msg.progress)
       return
     }
-    if (msg.type === 'response') handleBrowserResponse(msg, ws)
+    if (msg.type === 'response') {
+      const response = v.safeParse(ResponseMessage, msg)
+      if (response.success) handleBrowserResponse(response.output, ws)
+    }
   }
 
   function handleMessage(data: string, ws: WebSocket) {
     if (bridgeClosed) return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(data)
-    } catch (e) {
-      console.warn('Malformed automation message:', e)
+    const envelope = v.safeParse(BrowserEnvelopeJSON, data)
+    if (!envelope.success) {
+      if (envelope.issues.some((issue) => issue.type === 'parse_json')) {
+        console.warn('Malformed automation message:', v.summarize(envelope.issues))
+      } else {
+        ws.close()
+      }
       return
     }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      ws.close()
+    const msg = envelope.output
+
+    if (msg.type === 'auth' || msg.type === 'register') {
+      // `auth` authenticates a stdio bridge client without registering it as
+      // the browser app, so it can send request/response messages without
+      // becoming the RPC target. The token is validated the same way as
+      // registerBrowser — when auth is disabled (authToken === null), any
+      // token is accepted. A message without a token is ignored; a token of
+      // any other type closes the socket.
+      const handshake = v.safeParse(HandshakeMessage, msg)
+      if (!handshake.success) {
+        ws.close()
+        return
+      }
+      const { token } = handshake.output
+      if (token === undefined) return
+      if (msg.type === 'register') {
+        registerBrowser(ws, token)
+      } else if (isAuthorized(token, authToken)) {
+        authenticatedClients.add(ws)
+      } else {
+        ws.close()
+      }
       return
     }
-    const msg = parsed as BrowserMessage
-    if (handleHandshakeMessage(msg, ws)) return
     // All non-register messages require authentication. Without this
     // check, an unauthenticated WebSocket client (that hasn't sent a
     // valid register message) could bypass the HTTP auth on /rpc by

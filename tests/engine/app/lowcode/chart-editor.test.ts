@@ -7,6 +7,7 @@ import {
   CHART_MODULE_DEFAULT_CONFIG,
   createChartModuleFrameOverrides
 } from '@open-pencil/core/plugins'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
@@ -67,7 +68,7 @@ test('paired chart data is one undo entry and stale or protected owners reject t
       value: [{ label: '新标签', value: '42.5' }]
     }
     expect(commitChartData(editor, request)).toBe(true)
-    expect(owner.interactiveProps?.module?.config).toMatchObject({
+    expect(readModuleInstance(owner.interactiveProps?.module)?.config).toMatchObject({
       labels: ['新标签'],
       values: [42.5]
     })

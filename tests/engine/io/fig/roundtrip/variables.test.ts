@@ -7,7 +7,6 @@ import {
   initCodec,
   parseFigFile,
   SceneGraph,
-  type Color,
   type NodeChange
 } from '@open-pencil/core'
 import { parseFigBuffer } from '@open-pencil/fig'
@@ -15,6 +14,7 @@ import {
   kiwiVariableFieldToBindingField,
   variableBindingFieldToKiwi
 } from '@open-pencil/fig/node-change'
+import type { Color } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { parseFixture } from '#tests/helpers/fig/fixtures'
@@ -25,7 +25,7 @@ import { canvas, doc, node } from '../import/legacy/helpers'
 setDefaultTimeout(60_000)
 
 function decodeExport(bytes: Uint8Array) {
-  return parseFigBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
+  return parseFigBuffer(new Uint8Array(bytes).buffer)
 }
 
 describe('variable roundtrip', () => {
@@ -60,23 +60,35 @@ describe('variable roundtrip', () => {
     expect(reimportedCol.variableIds).toHaveLength(4)
 
     const vars = [...reimported.variables.values()]
-    const colorVar = vars.find((v) => v.name === 'color/primary')
+    const colorVar = expectDefined(
+      vars.find((v) => v.name === 'color/primary'),
+      'colorVar'
+    )
     expect(colorVar).toBeDefined()
     expect(expectDefined(colorVar, 'colorVar').type).toBe('COLOR')
     const colorVal = Object.values(colorVar.valuesByMode)[0] as Color
     expect(colorVal.r).toBeCloseTo(0.23, 1)
 
-    const floatVar = vars.find((v) => v.name === 'spacing/base')
+    const floatVar = expectDefined(
+      vars.find((v) => v.name === 'spacing/base'),
+      'floatVar'
+    )
     expect(floatVar).toBeDefined()
     expect(expectDefined(floatVar, 'floatVar').type).toBe('FLOAT')
     expect(Object.values(floatVar.valuesByMode)[0]).toBe(8)
 
-    const boolVar = vars.find((v) => v.name === 'visible')
+    const boolVar = expectDefined(
+      vars.find((v) => v.name === 'visible'),
+      'boolVar'
+    )
     expect(boolVar).toBeDefined()
     expect(expectDefined(boolVar, 'boolVar').type).toBe('BOOLEAN')
     expect(Object.values(boolVar.valuesByMode)[0]).toBe(true)
 
-    const strVar = vars.find((v) => v.name === 'label')
+    const strVar = expectDefined(
+      vars.find((v) => v.name === 'label'),
+      'strVar'
+    )
     expect(strVar).toBeDefined()
     expect(expectDefined(strVar, 'strVar').type).toBe('STRING')
     expect(Object.values(strVar.valuesByMode)[0]).toBe('Hello')
@@ -131,7 +143,10 @@ describe('variable roundtrip', () => {
     const exported = await exportFigFile(graph)
     const reimported = await parseFigFile(exported.buffer as ArrayBuffer)
 
-    const reimportedRect = [...reimported.getAllNodes()].find((n) => n.name === 'Bound Rect')
+    const reimportedRect = expectDefined(
+      [...reimported.getAllNodes()].find((n) => n.name === 'Bound Rect'),
+      'bound rectangle'
+    )
     expect(reimportedRect).toBeDefined()
     expect(Object.keys(expectDefined(reimportedRect, 'reimportedRect').boundVariables)).toContain(
       'cornerRadius'

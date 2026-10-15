@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { GradientTransform, ImageScaleMode, SceneGraph } from '@open-pencil/scene-graph'
+import {
+  type StateDef,
+  type GradientTransform,
+  type ImageScaleMode,
+  type SceneGraph
+} from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -14,7 +19,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 describe('compile — images & aspect-ratio (Phase 4 §24.1/§24.3)', () => {
   function compileNode(
     interactiveProps: Record<string, unknown>,
-    opts: { type?: 'RECTANGLE' | 'FRAME'; docStates?: unknown[] } = {}
+    opts: { type?: 'RECTANGLE' | 'FRAME'; docStates?: StateDef[] } = {}
   ): { app: string; warnings: { code: string }[]; files: Map<string, string | Uint8Array> } {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

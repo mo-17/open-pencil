@@ -101,7 +101,7 @@ function hasMark(inline: RichTextInlineV1, type: RichTextSimpleMarkTypeV1): bool
         />
         <button
           type="button"
-          class="rounded p-1 text-muted hover:bg-secondary hover:text-surface"
+          class="rounded p-1 text-muted hover:bg-panel-secondary hover:text-surface"
           :aria-label="panels.lowcodeRichTextDeleteInline"
           data-test-id="rich-text-delete-inline"
           @click="removeInline(index)"
@@ -144,7 +144,7 @@ function hasMark(inline: RichTextInlineV1, type: RichTextSimpleMarkTypeV1): bool
 
         <button
           type="button"
-          class="rounded p-1 text-muted hover:bg-secondary hover:text-surface disabled:opacity-40"
+          class="rounded p-1 text-muted hover:bg-panel-secondary hover:text-surface disabled:opacity-40"
           :disabled="modelValue.length >= RICH_TEXT_MODULE_LIMITS.inlinesPerBlock"
           :aria-label="panels.lowcodeRichTextAddInline"
           data-test-id="rich-text-add-inline"
@@ -166,7 +166,7 @@ function hasMark(inline: RichTextInlineV1, type: RichTextSimpleMarkTypeV1): bool
       {{ panels.lowcodeRichTextAddInline }}
     </button>
 
-    <p v-if="error" class="text-[9px] text-red-400" data-test-id="rich-text-inline-error">
+    <p v-if="error" class="text-[9px] text-error" data-test-id="rich-text-inline-error">
       {{ error }}
     </p>
   </div>

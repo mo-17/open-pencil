@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { FigmaAPI, SceneGraph } from '@open-pencil/core'
 import type { NodeType } from '@open-pencil/scene-graph'
 import { copyFills } from '@open-pencil/scene-graph/copy'
 
+import { FigmaAPI, SceneGraph } from '#core/index'
 import { applyPhoto } from '#core/tools/stock-photo/apply'
 import type { StockPhotoProvider } from '#core/tools/stock-photo/providers'
 

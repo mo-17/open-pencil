@@ -2,11 +2,22 @@ import { readFile } from 'node:fs/promises'
 
 import type { Page, Route } from '@playwright/test'
 
+import { repoPath } from '#tests/helpers/paths'
+
 interface FontsourceFixture {
   family: string
   subset: string
   data: Buffer
   format?: 'ttf' | 'otf'
+  unicodeRange?: string
+}
+
+function fixtureUnicodeRange(
+  fixture: string | FontsourceFixture | undefined
+): Record<string, string> {
+  if (typeof fixture === 'string') return { latin: 'U+0000-00FF' }
+  if (fixture?.unicodeRange === undefined) return {}
+  return { [fixture.subset]: fixture.unicodeRange }
 }
 
 /** Exercise provider URL pinning and retries through actual browser requests. */
@@ -50,7 +61,7 @@ export async function mockFontsource(
       await route.fulfill({
         headers,
         contentType: `font/${supplied?.format ?? 'ttf'}`,
-        body: supplied?.data ?? (await readFile('public/Inter-Regular.ttf'))
+        body: supplied?.data ?? (await readFile(repoPath('packages/core/assets/Inter-Regular.ttf')))
       })
       return
     }
@@ -92,7 +103,7 @@ export async function mockFontsource(
         family,
         id,
         npmVersion: '1.2.3',
-        unicodeRange: typeof fixture === 'string' ? { latin: 'U+0000-00FF' } : {},
+        unicodeRange: fixtureUnicodeRange(fixture),
         variants: {
           400: {
             normal: {

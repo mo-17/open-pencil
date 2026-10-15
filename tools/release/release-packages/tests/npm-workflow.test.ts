@@ -1,25 +1,22 @@
 import { describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-import { DEFAULT_PACKAGES } from '../src/publish-dirs'
+import { DEFAULT_PACKAGES } from '#release/publish-dirs'
+import * as v from 'valibot'
 
-const WORKFLOW_PATH = new URL('../../../../.github/workflows/build.yml', import.meta.url)
-const UNSIGNED_TAURI_CONFIG_PATH = new URL(
-  '../../../../desktop/tauri.unsigned.conf.json',
-  import.meta.url
-)
-const APP_WORKFLOW_PATH = new URL('../../../../.github/workflows/app.yml', import.meta.url)
-const DOCS_WORKFLOW_PATH = new URL('../../../../.github/workflows/docs.yml', import.meta.url)
-const SETUP_BUN_ACTION_PATH = new URL(
-  '../../../../.github/actions/setup-bun/action.yml',
-  import.meta.url
-)
-const PACKAGE_ROOT_PATH = new URL(
-  '../../../checks/package-quality/src/packages.ts',
-  import.meta.url
-)
-const PACKAGE_SMOKE_PATH = new URL('../../../checks/package-quality/src/smoke.ts', import.meta.url)
+import { parsePackageManifest, resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
+
+const WORKSPACE_ROOT = await resolveWorkspaceRoot(import.meta.dir)
+
+const WORKFLOW_PATH = join(WORKSPACE_ROOT, '.github/workflows/build.yml')
+const UNSIGNED_TAURI_CONFIG_PATH = join(WORKSPACE_ROOT, 'desktop/tauri.unsigned.conf.json')
+const APP_WORKFLOW_PATH = join(WORKSPACE_ROOT, '.github/workflows/app.yml')
+const DOCS_WORKFLOW_PATH = join(WORKSPACE_ROOT, '.github/workflows/docs.yml')
+const SETUP_BUN_ACTION_PATH = join(WORKSPACE_ROOT, '.github/actions/setup-bun/action.yml')
+const PACKAGE_ROOT_PATH = join(WORKSPACE_ROOT, 'tools/checks/package-quality/src/packages.ts')
+const PACKAGE_SMOKE_PATH = join(WORKSPACE_ROOT, 'tools/checks/package-quality/src/smoke.ts')
 const NON_NPM_JOB_GATE =
   "if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'"
 const CHECKOUT_ACTION = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
@@ -80,8 +77,13 @@ describe('npm release workflow', () => {
       const deployWorkflow = readFileSync(path, 'utf8')
       const deploy = job(deployWorkflow, 'deploy')
       expect(deployWorkflow).toContain('workflow_dispatch:')
-      expect(deployWorkflow).toMatch(/- ['"]v\*['"]/)
-      expect(deploy).toContain(NON_NPM_JOB_GATE)
+      if (path === APP_WORKFLOW_PATH) expect(deployWorkflow).toMatch(/- ['"]v\*['"]/)
+      else expect(deployWorkflow).toContain('types: [published]')
+      expect(deploy).toContain(
+        "github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'"
+      )
+      if (path === APP_WORKFLOW_PATH) expect(deploy).toContain("contains(github.ref_name, '-')")
+      else expect(deploy).toContain('!github.event.release.prerelease')
     }
 
     const prepare = job(buildWorkflow, 'prepare-npm', 'publish-npm')
@@ -143,13 +145,20 @@ describe('npm release workflow', () => {
     expect(build).not.toContain('contents: write')
     expect(build).not.toContain('tagName:')
 
-    const unsignedConfig = JSON.parse(readFileSync(UNSIGNED_TAURI_CONFIG_PATH, 'utf8')) as {
-      bundle: {
-        createUpdaterArtifacts: boolean
-        macOS: { signingIdentity: string | null }
-      }
-      plugins: { updater: { endpoints: string[] } }
-    }
+    const unsignedConfig = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          bundle: v.looseObject({
+            createUpdaterArtifacts: v.boolean(),
+            macOS: v.looseObject({ signingIdentity: v.nullable(v.string()) })
+          }),
+          plugins: v.looseObject({ updater: v.looseObject({ endpoints: v.array(v.string()) }) })
+        })
+      ),
+      readFileSync(UNSIGNED_TAURI_CONFIG_PATH, 'utf8')
+    )
     expect(unsignedConfig.bundle.createUpdaterArtifacts).toBe(false)
     expect(unsignedConfig.bundle.macOS.signingIdentity).toBeNull()
     expect(unsignedConfig.plugins.updater.endpoints).toEqual([])
@@ -284,16 +293,11 @@ describe('npm release workflow', () => {
   })
 
   test('keeps the prepared release plan in dependency order with MCP before CLI', () => {
-    const manifests = DEFAULT_PACKAGES.map(
-      (pkg) =>
-        JSON.parse(
-          readFileSync(new URL(`../../../../${pkg.dir}/package.json`, import.meta.url), 'utf8')
-        ) as {
-          name: string
-          dependencies?: Record<string, string>
-          optionalDependencies?: Record<string, string>
-          peerDependencies?: Record<string, string>
-        }
+    const manifests = DEFAULT_PACKAGES.map((pkg) =>
+      parsePackageManifest(
+        readFileSync(join(WORKSPACE_ROOT, pkg.dir, 'package.json'), 'utf8'),
+        pkg.dir
+      )
     )
     const positions = new Map(manifests.map((manifest, index) => [manifest.name, index]))
 

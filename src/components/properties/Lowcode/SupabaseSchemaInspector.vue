@@ -547,7 +547,7 @@ onScopeDispose(() => {
     </div>
     <p
       data-test-id="lowcode-supabase-schema-credential-status"
-      :class="['text-[10px]', inspector.credentialError.value ? 'text-red-500' : 'text-muted']"
+      :class="['text-[10px]', inspector.credentialError.value ? 'text-error' : 'text-muted']"
     >
       {{
         inspector.credentialError.value
@@ -575,8 +575,8 @@ onScopeDispose(() => {
       data-test-id="lowcode-supabase-schema-message"
       :class="[
         'rounded border px-2 py-1 text-[10px]',
-        messageTone === 'error' && 'border-red-500/40 bg-red-500/10 text-red-500',
-        messageTone === 'warning' && 'border-amber-500/40 bg-amber-500/10 text-amber-500',
+        messageTone === 'error' && 'border-error/40 bg-error/10 text-error',
+        messageTone === 'warning' && 'border-warning/40 bg-warning/10 text-warning',
         messageTone === 'muted' && 'border-border bg-input text-muted'
       ]"
     >
@@ -585,7 +585,7 @@ onScopeDispose(() => {
     <p
       v-if="copyFailed"
       data-test-id="lowcode-supabase-schema-copy-error"
-      class="text-[10px] text-red-500"
+      class="text-[10px] text-error"
     >
       {{ panels.lowcodeSupabaseSchemaCopyFailed }}
     </p>
@@ -702,7 +702,7 @@ onScopeDispose(() => {
         <p class="mt-0.5 text-[10px] text-muted">
           {{ panels.lowcodeSupabaseBackendReviewDescription }}
         </p>
-        <p class="mt-0.5 text-[10px] text-amber-500">
+        <p class="mt-0.5 text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendReviewOnly }}
         </p>
       </div>
@@ -786,14 +786,14 @@ onScopeDispose(() => {
         </dl>
         <p
           v-if="stagedMigrationPlan.plan.value?.requiresHumanApproval"
-          class="mt-1 text-[9px] text-red-500"
+          class="mt-1 text-[9px] text-error"
         >
           {{ panels.lowcodeSupabaseBackendStagedPlanApprovalRequired }}
         </p>
         <p
           v-if="stagedPlanErrorMessage"
           data-test-id="lowcode-supabase-backend-staged-plan-error"
-          class="mt-1 text-[9px] text-red-500"
+          class="mt-1 text-[9px] text-error"
         >
           {{ stagedPlanErrorMessage }}
         </p>
@@ -817,7 +817,7 @@ onScopeDispose(() => {
       <p
         v-if="backendReviewErrorMessage"
         data-test-id="lowcode-supabase-backend-review-error"
-        class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+        class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
       >
         {{ backendReviewErrorMessage }}
       </p>
@@ -831,7 +831,7 @@ onScopeDispose(() => {
           <span
             :class="[
               'text-[10px]',
-              backendReview.result.value.reviewReady ? 'text-green-500' : 'text-amber-500'
+              backendReview.result.value.reviewReady ? 'text-success' : 'text-warning'
             ]"
           >
             {{
@@ -842,7 +842,7 @@ onScopeDispose(() => {
           </span>
           <span class="text-[9px] uppercase text-muted">staging</span>
         </div>
-        <p class="text-[10px] text-amber-500">
+        <p class="text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendReviewApplyUnavailable }}
         </p>
         <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
@@ -865,7 +865,7 @@ onScopeDispose(() => {
           </dd>
         </dl>
         <div v-if="backendReview.result.value.blockerCount > 0">
-          <p class="text-[10px] text-amber-500">
+          <p class="text-[10px] text-warning">
             {{ panels.lowcodeSupabaseBackendReviewBlockers }}
           </p>
           <ul class="mt-0.5 flex list-disc flex-col gap-0.5 pl-4 text-[9px] text-muted">
@@ -899,7 +899,7 @@ onScopeDispose(() => {
           <p
             v-if="reviewSqlCopyState === 'error'"
             data-test-id="lowcode-supabase-backend-review-copy-error"
-            class="mt-1 text-[10px] text-red-500"
+            class="mt-1 text-[10px] text-error"
           >
             {{ panels.lowcodeSupabaseBackendReviewCopyFailed }}
           </p>
@@ -928,17 +928,17 @@ onScopeDispose(() => {
           <label class="text-[11px] text-muted">
             {{ panels.lowcodeSupabaseBackendStagingTitle }}
           </label>
-          <span class="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase text-amber-500">
+          <span class="rounded bg-warning/10 px-1.5 py-0.5 text-[9px] uppercase text-warning">
             {{ panels.lowcodeSupabaseBackendStagingBadge }}
           </span>
         </div>
         <p class="mt-0.5 text-[10px] text-muted">
           {{ panels.lowcodeSupabaseBackendStagingDescription }}
         </p>
-        <p class="mt-0.5 text-[10px] text-amber-500">
+        <p class="mt-0.5 text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendStagingProductionBlocked }}
         </p>
-        <p class="mt-0.5 text-[10px] text-amber-500">
+        <p class="mt-0.5 text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendStagingRlsManual }}
         </p>
       </div>
@@ -955,7 +955,7 @@ onScopeDispose(() => {
         <label for="supabase-management-write-pat" class="text-[10px] text-muted">
           {{ panels.lowcodeSupabaseBackendStagingWriteCredential }}
         </label>
-        <p class="text-[10px] text-amber-500">
+        <p class="text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendStagingWriteCredentialIndependent }}
         </p>
         <div class="flex gap-1">
@@ -999,7 +999,7 @@ onScopeDispose(() => {
           data-test-id="lowcode-supabase-backend-staging-write-credential-status"
           :class="[
             'text-[10px]',
-            stagingAuthority.credentialError.value ? 'text-red-500' : 'text-muted'
+            stagingAuthority.credentialError.value ? 'text-error' : 'text-muted'
           ]"
         >
           {{
@@ -1062,7 +1062,7 @@ onScopeDispose(() => {
         </div>
         <p
           data-test-id="lowcode-supabase-backend-staging-target-status"
-          :class="['text-[10px]', stagingTargetMatches ? 'text-green-500' : 'text-amber-500']"
+          :class="['text-[10px]', stagingTargetMatches ? 'text-success' : 'text-warning']"
         >
           {{ stagingTargetStatusLabel }}
         </p>
@@ -1071,7 +1071,7 @@ onScopeDispose(() => {
           type="button"
           data-test-id="lowcode-supabase-backend-staging-apply"
           :disabled="!stagingCanApply"
-          class="rounded border border-amber-500/50 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded border border-warning/50 px-2 py-1 text-[11px] text-warning hover:bg-warning/10 disabled:cursor-not-allowed disabled:opacity-50"
           @click="runStagingRelease"
         >
           {{
@@ -1095,14 +1095,14 @@ onScopeDispose(() => {
       <p
         v-if="stagingRelease.state.value === 'loading'"
         data-test-id="lowcode-supabase-backend-staging-settling"
-        class="text-[10px] text-amber-500"
+        class="text-[10px] text-warning"
       >
         {{ panels.lowcodeSupabaseBackendStagingApplying }}
       </p>
       <p
         v-if="stagingRelease.state.value === 'outcome-unknown'"
         data-test-id="lowcode-supabase-backend-staging-no-retry"
-        class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
+        class="rounded border border-warning/40 bg-warning/10 px-2 py-1 text-[10px] text-warning"
       >
         {{ panels.lowcodeSupabaseBackendStagingNoRetry }}
       </p>
@@ -1110,7 +1110,7 @@ onScopeDispose(() => {
       <p
         v-if="stagingReleaseErrorMessage"
         data-test-id="lowcode-supabase-backend-staging-error"
-        class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+        class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
       >
         {{ stagingReleaseErrorMessage }}
       </p>
@@ -1123,14 +1123,12 @@ onScopeDispose(() => {
         <p
           :class="[
             'text-[10px]',
-            stagingRelease.result.value.outcome === 'succeeded'
-              ? 'text-green-500'
-              : 'text-amber-500'
+            stagingRelease.result.value.outcome === 'succeeded' ? 'text-success' : 'text-warning'
           ]"
         >
           {{ stagingOutcomeLabel }}
         </p>
-        <p class="text-[10px] text-amber-500">
+        <p class="text-[10px] text-warning">
           {{ panels.lowcodeSupabaseBackendStagingProductionBlocked }}
         </p>
         <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
@@ -1151,7 +1149,7 @@ onScopeDispose(() => {
           </dd>
           <template v-if="stagingRelease.result.value.receipt.failure">
             <dt>{{ panels.lowcodeSupabaseBackendStagingFailure }}</dt>
-            <dd class="min-w-0 break-all font-mono text-red-500">
+            <dd class="min-w-0 break-all font-mono text-error">
               {{ stagingRelease.result.value.receipt.failure.code }}
             </dd>
           </template>
@@ -1171,10 +1169,10 @@ onScopeDispose(() => {
                 :class="[
                   'shrink-0',
                   gate.status === 'passed'
-                    ? 'text-green-500'
+                    ? 'text-success'
                     : gate.status === 'failed'
-                      ? 'text-red-500'
-                      : 'text-amber-500'
+                      ? 'text-error'
+                      : 'text-warning'
                 ]"
               >
                 {{ stagingGateStatusLabel(gate.status) }}

@@ -1,8 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
-import type { NestedBindingCapture } from '#core-tests/helpers/fig/captures'
-import { readFixtureJSON } from '#core-tests/helpers/fig/fixtures'
+import { CapturedFigRecords, readFixture } from '#core-tests/helpers/fig/fixtures'
 import { inheritedNestedBindingRecords } from '#core-tests/helpers/fig/nested-binding'
 
 import { createEditor } from '@open-pencil/core/editor'
@@ -11,7 +10,7 @@ import { exportFigFile } from '@open-pencil/core/io'
 import { initCodec } from '@open-pencil/core/kiwi'
 import { materializeDocument, parseFigBuffer } from '@open-pencil/fig'
 
-const fixture = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const fixture = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 test('a placed binding does not freeze an unrelated inherited binding', async () => {
   const { graph, sources } = materializeDocument(
@@ -79,7 +78,7 @@ test('definition rescale preserves an explicit placed binding in its declaring u
     derivedBounds: true
   }).graph
   const restored = expectDefined(
-    Array.from(reopened.getAllNodes()).find((node) => node.name === 'Protected rescale acceptance')
+    [...reopened.getAllNodes()].find((node) => node.name === 'Protected rescale acceptance')
   )
   const child = reopened.getChildren(restored.id)[0]
   expect([
@@ -142,7 +141,7 @@ test('definition rescale propagates occurrence units through editor sync and exp
     derivedBounds: true
   }).graph
   const restored = expectDefined(
-    Array.from(reopened.getAllNodes()).find((node) => node.name === 'Definition rescale acceptance')
+    [...reopened.getAllNodes()].find((node) => node.name === 'Definition rescale acceptance')
   )
   const child = reopened.getChildren(restored.id)[0]
   expect([

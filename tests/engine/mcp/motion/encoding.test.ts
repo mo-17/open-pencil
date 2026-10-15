@@ -148,14 +148,16 @@ setInterval(() => undefined, 1_000)`
     expect(encoder).toBeDefined()
     const controller = new AbortController()
     const started = Date.now()
-    const abort = setTimeout(() => controller.abort(), 25)
-    try {
-      await expect(
-        encoder?.encode({ ...renderedPNGSequence(), signal: controller.signal })
-      ).rejects.toBeInstanceOf(MotionExportCancelledError)
-    } finally {
-      clearTimeout(abort)
-    }
+    await expect(
+      encoder?.encode({
+        ...renderedPNGSequence(),
+        signal: controller.signal,
+        // The first frame proves the child installed its SIGTERM handler and wrote its PID.
+        onProgress: (progress) => {
+          if (progress.phase === 'encode' && progress.completed >= 1) controller.abort()
+        }
+      })
+    ).rejects.toBeInstanceOf(MotionExportCancelledError)
 
     expect(Date.now() - started).toBeLessThan(2_000)
     expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
@@ -391,7 +393,7 @@ process.exit(1)`
     })
     let rpcArgs: Record<string, unknown> | undefined
     registerTools(server, {
-      policy: { allowEval: false, disabledTools: [] },
+      policy: { allowEval: false, disabledTools: [], scope: 'document' },
       mcpRoot: root,
       async sendRPC(body: Record<string, unknown>) {
         rpcArgs = body
@@ -440,7 +442,7 @@ process.exit(1)`
     let rpcSignal: AbortSignal | undefined
     const notifications: Record<string, unknown>[] = []
     registerTools(server, {
-      policy: { allowEval: false, disabledTools: [] },
+      policy: { allowEval: false, disabledTools: [], scope: 'document' },
       mcpRoot: root,
       async sendRPC(_body, options) {
         rpcSignal = options?.signal
@@ -498,7 +500,7 @@ process.exit(1)`
     cancellation.name = 'AbortError'
     let forwardedSignal: AbortSignal | undefined
     registerTools(server, {
-      policy: { allowEval: false, disabledTools: [] },
+      policy: { allowEval: false, disabledTools: [], scope: 'document' },
       async sendRPC(_body, options) {
         forwardedSignal = options?.signal
         throw cancellation

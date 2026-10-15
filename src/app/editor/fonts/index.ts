@@ -175,6 +175,7 @@ async function getTauriFonts(): Promise<TauriFontFamily[]> {
       .then(({ invoke }) => invoke<TauriFontFamily[]>('list_system_fonts'))
       .then((fonts) => {
         tauriFontsCache = Array.isArray(fonts) ? fonts : []
+        fontManager.setHostFontCatalog(tauriFontsCache)
         return tauriFontsCache
       })
       .catch(() => [])

@@ -888,8 +888,12 @@ async function installReducedMotionController(page: Page): Promise<void> {
       if (type === 'change') listeners.delete(listener)
       nativeRemoveEventListener(type, listener)
     }) as MediaQueryList['removeEventListener']
-    query.addListener = (listener) => query.addEventListener('change', listener)
-    query.removeListener = (listener) => query.removeEventListener('change', listener)
+    query.addListener = (listener) => {
+      if (listener) query.addEventListener('change', listener as EventListener)
+    }
+    query.removeListener = (listener) => {
+      if (listener) query.removeEventListener('change', listener as EventListener)
+    }
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (value: string) => (value === media ? query : nativeMatchMedia(value))

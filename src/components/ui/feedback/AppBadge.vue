@@ -12,11 +12,11 @@ const { ui, tone = 'accent' } = defineProps<{
 }>()
 
 const toneClasses: Record<AppBadgeTone, string> = {
-  accent: 'bg-accent/10 text-accent',
+  accent: 'bg-accent/10 text-surface',
   neutral: 'border border-border bg-input text-muted',
   success: 'border border-success/30 bg-panel text-success',
   warning:
-    'border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]',
+    'border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning)]',
   error: 'border border-error/30 bg-panel text-error'
 }
 

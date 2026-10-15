@@ -368,6 +368,7 @@ describe('Vue compiler adapter safety and state', () => {
       ]
     }
     const page = minimalIr({
+      usesRouteParams: false,
       pageId: 'reserved',
       pageName: 'Reserved',
       states: [

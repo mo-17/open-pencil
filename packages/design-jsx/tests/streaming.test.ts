@@ -14,7 +14,7 @@ function withoutPositions(tree: JSXPreviewNode | null): TreeNode | null {
   return {
     type: tree.type,
     props: tree.props,
-    children: tree.children.flatMap((child) => {
+    children: tree.children.flatMap<string | TreeNode>((child) => {
       if (typeof child === 'string') return [child]
       const result = withoutPositions(child)
       return result ? [result] : []
@@ -89,7 +89,8 @@ describe('streaming Design JSX', () => {
     '<Frame name="hello &quot;world&quot;" />',
     '<><Text>One</Text><Text>Two</Text></>',
     '<Frame><><Text>One</Text><Text>Two</Text></></Frame>',
-    '<svg viewBox="0 0 24 24"><path d="M0 0L2 2" /></svg>'
+    '<svg viewBox="0 0 24 24"><path d="M0 0L2 2" /></svg>',
+    '<Text><Paragraph list="ordered">Hello <Span weight={700}>bold</Span> world</Paragraph></Text>'
   ]
 
   it.each(fixtures)('matches complete JSX semantics: %s', (source) => {

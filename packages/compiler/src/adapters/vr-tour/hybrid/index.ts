@@ -1,7 +1,7 @@
 import { walkNativeNodes } from '#compiler/adapters/native-shared'
 import type { ComponentDef, IRTree } from '#compiler/ir/types'
-import { sha256 } from '@noble/hashes/sha2'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 
 import {
   VR_TOUR_MODULE_TYPE,

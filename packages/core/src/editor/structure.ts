@@ -1,6 +1,9 @@
-import type { SceneNode } from '@open-pencil/scene-graph'
+import { pick } from 'es-toolkit'
 
-import { DEFAULT_FRAME_FILL } from '#core/constants'
+import { createsComponentCycle, TRANSFORM_FIELDS, type SceneNode } from '@open-pencil/scene-graph'
+
+import { acceptingParent, acceptsChildren, prepareSlotEdits } from '#core/editor/components/slots'
+import { fitEnclosingGroupsWithUndo } from '#core/editor/structure/group-bounds'
 
 import { isInContentEditScope } from './content-edit'
 import { wrapInAutoLayout as wrapInAutoLayoutImpl } from './structure/auto-layout-wrap'
@@ -14,6 +17,7 @@ import {
   outlineStrokeSelected as outlineStrokeSelectedImpl
 } from './structure/flatten'
 import { ungroupSelected as ungroupImpl } from './structure/group'
+import { createLayerTypeActions } from './structure/layer-type'
 import {
   defaultNodeName,
   previewRenamedNodes,
@@ -26,6 +30,7 @@ import type { EditorContext } from './types'
 export function createStructureActions(ctx: EditorContext) {
   const reorderActions = createStructureReorderActions(ctx)
   const stateActions = createStructureStateActions(ctx)
+  const layerTypeActions = createLayerTypeActions(ctx)
 
   function isTopLevel(parentId: string | null): boolean {
     return (
@@ -36,20 +41,28 @@ export function createStructureActions(ctx: EditorContext) {
     )
   }
 
-  function reparentNodes(nodeIds: string[], newParentId: string) {
-    if (!isInContentEditScope(ctx, newParentId)) return
+  /** Moves layers while preserving content scope and refusing locked slots or component cycles. */
+  function reparentNodes(nodeIds: string[], newParentId: string): boolean {
+    if (!isInContentEditScope(ctx, newParentId)) return false
     const parent = ctx.graph.getNode(newParentId)
-    for (const id of nodeIds) {
-      const node = ctx.graph.getNode(id)
-      if (
-        node?.type === 'SECTION' &&
-        parent &&
-        parent.type !== 'CANVAS' &&
-        parent.type !== 'SECTION'
-      )
-        continue
-      ctx.graph.reparentNode(id, newParentId)
+    // Sections only go into pages and other sections.
+    const movable = nodeIds.filter(
+      (id) =>
+        (ctx.graph.getNode(id)?.type !== 'SECTION' ||
+          !parent ||
+          parent.type === 'CANVAS' ||
+          parent.type === 'SECTION') &&
+        !createsComponentCycle(ctx.graph, id, newParentId)
+    )
+    if (movable.length === 0) return true
+    const parents = new Set([newParentId])
+    for (const id of movable) {
+      const current = ctx.graph.getNode(id)?.parentId
+      if (current && current !== newParentId) parents.add(current)
     }
+    if (!prepareSlotEdits(ctx, parents)) return false
+    for (const id of movable) ctx.graph.reparentNode(id, newParentId)
+    return true
   }
 
   function wrapSelectionInContainer(
@@ -61,35 +74,16 @@ export function createStructureActions(ctx: EditorContext) {
   }
 
   function wrapInAutoLayout(selectedNodes: SceneNode[]) {
-    wrapInAutoLayoutImpl(ctx, selectedNodes)
+    return wrapInAutoLayoutImpl(ctx, selectedNodes)
   }
 
   function groupSelected(selectedNodes: SceneNode[]) {
     return wrapSelectionInContainer('GROUP', selectedNodes)
   }
 
+  /** Figma frames a selection without a fill or clipping, unlike a drawn frame. */
   function frameSelection(selectedNodes: SceneNode[]) {
-    return wrapSelectionInContainer('FRAME', selectedNodes, {
-      fills: [structuredClone(DEFAULT_FRAME_FILL)]
-    })
-  }
-
-  /**
-   * Turns a group into a frame in place. The layer keeps its id, children, bounds and look: a
-   * group has no fill and does not clip, and the frame starts the same way.
-   */
-  function convertGroupToFrame(nodeId: string) {
-    if (ctx.graph.getNode(nodeId)?.type !== 'GROUP') return
-    const apply = (type: 'GROUP' | 'FRAME') => {
-      ctx.graph.updateNode(nodeId, { type })
-      ctx.runLayoutForNode(nodeId)
-    }
-    apply('FRAME')
-    ctx.undo.push({
-      label: 'Convert to frame',
-      forward: () => apply('FRAME'),
-      inverse: () => apply('GROUP')
-    })
+    return wrapSelectionInContainer('FRAME', selectedNodes)
   }
 
   function booleanOperationSelected(selectedNodes: SceneNode[], operation: BooleanOperation) {
@@ -117,11 +111,43 @@ export function createStructureActions(ctx: EditorContext) {
   function moveToPage(pageId: string) {
     const targetPage = ctx.graph.getNode(pageId)
     if (targetPage?.type !== 'CANVAS') return
-    const ids = [...ctx.state.selectedIds]
-    for (const id of ids) {
-      ctx.graph.reparentNode(id, pageId)
+    // Where each layer was, read before any of them moves: put back in this order, each lands at
+    // its own index again.
+    const origins = [...ctx.state.selectedIds]
+      .flatMap((id) => {
+        const node = ctx.graph.getNode(id)
+        const parent = node?.parentId ? ctx.graph.getNode(node.parentId) : undefined
+        if (!node || !parent || parent.id === pageId) return []
+        const index = parent.childIds.indexOf(id)
+        return [
+          {
+            id,
+            parentId: parent.id,
+            index,
+            place: pick(node, TRANSFORM_FIELDS)
+          }
+        ]
+      })
+      .sort((a, b) => a.index - b.index)
+    if (origins.length === 0) return
+    const parentIds = new Set(origins.map((origin) => origin.parentId))
+    const move = () => {
+      for (const { id } of origins) ctx.graph.reparentNode(id, pageId)
+      for (const parentId of parentIds) ctx.runLayoutForNode(parentId)
     }
+    move()
     ctx.setSelectedIds(new Set())
+    ctx.undo.push({
+      label: 'Move to page',
+      forward: move,
+      inverse: () => {
+        for (const { id, parentId, index, place } of origins) {
+          ctx.graph.reorderChild(id, parentId, index)
+          ctx.graph.updateNode(id, place)
+        }
+        for (const parentId of parentIds) ctx.runLayoutForNode(parentId)
+      }
+    })
   }
 
   function selectedNodes(): SceneNode[] {
@@ -155,19 +181,29 @@ export function createStructureActions(ctx: EditorContext) {
   function renameNode(id: string, name: string) {
     const node = ctx.graph.getNode(id)
     if (!node) return
-    const trimmedName = name.trim()
-    ctx.graph.updateNode(id, { name: trimmedName || defaultNodeName(node.type) })
+    const previous = node.name
+    const next = name.trim() || defaultNodeName(node.type)
+    if (next === previous) return
+    ctx.graph.updateNode(id, { name: next })
+    ctx.undo.push({
+      label: 'Rename',
+      forward: () => ctx.graph.updateNode(id, { name: next }),
+      inverse: () => ctx.graph.updateNode(id, { name: previous })
+    })
   }
 
   return {
     isTopLevel,
+    acceptsChildren: (parentId: string) => acceptsChildren(ctx, parentId),
+    acceptingParent: (parentId: string) => acceptingParent(ctx, parentId),
+    fitEnclosingGroups: (parentIds: Iterable<string>) => fitEnclosingGroupsWithUndo(ctx, parentIds),
     ...reorderActions,
     reparentNodes,
     wrapSelectionInContainer,
     wrapInAutoLayout,
     groupSelected,
     frameSelection,
-    convertGroupToFrame,
+    ...layerTypeActions,
     booleanOperationSelected,
     ungroupSelected,
     flattenSelected,

@@ -5,9 +5,9 @@ import {
   canonicalBackendSourceLedgerSignedReceiptSigningV1Bytes,
   canonicalBackendSourceLedgerSignedReceiptV1Bytes,
   parseBackendSourceLedgerSignedReceiptV1,
-  parseBackendSourceLedgerSignedReceiptV1Bytes,
-  type BackendSourceLedgerSignedReceiptV1
+  parseBackendSourceLedgerSignedReceiptV1Bytes
 } from '#lowcode/backend/release/source-ledger-signed-receipt'
+import * as v from 'valibot'
 
 import {
   createSignedManifestIntegrity,
@@ -17,26 +17,37 @@ import {
   verifyEd25519
 } from '@open-pencil/scene-graph'
 
-interface CrossLanguageFixtureV1 {
-  readonly fixtureFormat: 'openpencil.test.source-ledger-signed-receipt-cross-language'
-  readonly fixtureVersion: 1
-  readonly evaluatedAt: string
-  readonly publicKeyBase64url: string
-  readonly payloadDigest: string
-  readonly envelope: BackendSourceLedgerSignedReceiptV1
-  readonly canonicalEnvelopeSha256: string
-  readonly signingBytesSha256: string
+import { repoPath } from '#tests/helpers/paths'
+
+const fixtureMetadataSchema = v.object({
+  fixtureFormat: v.literal('openpencil.test.source-ledger-signed-receipt-cross-language'),
+  fixtureVersion: v.literal(1),
+  evaluatedAt: v.string(),
+  publicKeyBase64url: v.string(),
+  payloadDigest: v.string(),
+  envelope: v.unknown(),
+  canonicalEnvelopeSha256: v.string(),
+  signingBytesSha256: v.string()
+})
+
+const rawFixture = v.parse(
+  fixtureMetadataSchema,
+  JSON.parse(
+    readFileSync(
+      repoPath('packages/lowcode/tests/fixtures/backend-source-ledger-signed-receipt-v1.json'),
+      'utf8'
+    )
+  )
+)
+const fixture = {
+  ...rawFixture,
+  envelope: (await parseBackendSourceLedgerSignedReceiptV1(rawFixture.envelope)).signedReceipt
 }
 
-const fixture = JSON.parse(
-  readFileSync(
-    new URL('../../fixtures/backend-source-ledger-signed-receipt-v1.json', import.meta.url),
-    'utf8'
-  )
-) as CrossLanguageFixtureV1
-
 async function bytesDigest(value: Uint8Array): Promise<string> {
-  return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', value)))
+  return encodeBase64URL(
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(value)))
+  )
 }
 
 describe('native source-ledger signed receipt interoperability fixture', () => {
@@ -63,7 +74,7 @@ describe('native source-ledger signed receipt interoperability fixture', () => {
 
     const publicKey = await crypto.subtle.importKey(
       'raw',
-      decodeBase64URL(fixture.publicKeyBase64url),
+      new Uint8Array(decodeBase64URL(fixture.publicKeyBase64url)),
       'Ed25519',
       false,
       ['verify']
@@ -82,10 +93,7 @@ describe('native source-ledger signed receipt interoperability fixture', () => {
       version: fixture.envelope.version,
       receipt: fixture.envelope.receipt
     }
-    const keyPair = (await crypto.subtle.generateKey('Ed25519', false, [
-      'sign',
-      'verify'
-    ])) as CryptoKeyPair
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])
     const integrity = await createSignedManifestIntegrity(
       payload,
       'openpencil.source-ledger.ci-test-ephemeral',

@@ -122,7 +122,8 @@ function importBrowserFile(event: Event): void {
             <span class="truncate">{{ role.id }}</span>
           </Tip>
           <input
-            :data-test-id="`motion-recipe-role-${role.id}`"
+            data-slot="motion-recipe-role"
+            :data-role-id="role.id"
             class="rounded border border-border bg-input px-1.5 py-1 font-mono"
             :value="recipe.roleMapping.value[role.id]?.join(', ') ?? ''"
             :placeholder="labels.mappingTargetPlaceholder"
@@ -136,7 +137,7 @@ function importBrowserFile(event: Event): void {
         :class="
           recipe.compatibility.value.compatible
             ? 'bg-success/10 text-success'
-            : 'bg-danger/10 text-danger'
+            : 'bg-error/10 text-error'
         "
       >
         {{
@@ -165,7 +166,7 @@ function importBrowserFile(event: Event): void {
         <button
           type="button"
           data-test-id="motion-recipe-apply"
-          class="rounded bg-accent px-2 py-1 text-[10px] text-accent-foreground disabled:opacity-50"
+          class="rounded bg-accent px-2 py-1 text-[10px] text-on-accent disabled:opacity-50"
           :disabled="!recipe.compatibility.value.compatible"
           @click="recipe.apply(labels.apply)"
         >
@@ -173,7 +174,7 @@ function importBrowserFile(event: Event): void {
         </button>
         <button
           type="button"
-          class="rounded border border-danger/40 px-2 py-1 text-[10px] text-danger hover:bg-danger/10"
+          class="rounded border border-error/40 px-2 py-1 text-[10px] text-error hover:bg-error/10"
           @click="recipe.removeSelected"
         >
           {{ labels.delete }}
@@ -241,7 +242,7 @@ function importBrowserFile(event: Event): void {
       />
     </div>
 
-    <p v-if="recipe.error.value" class="text-[10px] text-danger" role="alert">
+    <p v-if="recipe.error.value" class="text-[10px] text-error" role="alert">
       {{ recipe.error.value }}
     </p>
   </section>

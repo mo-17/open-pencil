@@ -11,7 +11,13 @@ import {
   lint,
   lintFix
 } from './analyze'
-import { designToComponentMap, designToTokens, getFigmaMotionAdapter } from './codegen'
+import {
+  designToComponentMap,
+  designToTokens,
+  importDesignTokens,
+  getFigmaMotionAdapter
+} from './codegen'
+import { addComment, getComments, replyToComment, resolveComment } from './comments'
 import {
   createComponent,
   createInstance,
@@ -21,10 +27,13 @@ import {
   createVector,
   exposeInstanceSwap,
   combineAsVariants,
+  createSlot,
   fetchIconsTool,
+  getBehaviour,
   importSVG,
   insertIcon,
-  searchIconsTool
+  searchIconsTool,
+  setBehaviour
 } from './create'
 import {
   setBlend,
@@ -123,6 +132,10 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   insertLibraryComponent,
   switchPage,
   pageBounds,
+  getComments,
+  addComment,
+  replyToComment,
+  resolveComment,
   getFontStatus,
   listFonts,
   listAvailableFonts,
@@ -137,6 +150,9 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   createComponent,
   createInstance,
   exposeInstanceSwap,
+  createSlot,
+  getBehaviour,
+  setBehaviour,
   createPage,
   createVector,
   createSlice,
@@ -213,6 +229,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   diffApply,
   // Codegen
   designToTokens,
+  importDesignTokens,
   designToComponentMap,
   getFigmaMotionAdapter
 ]

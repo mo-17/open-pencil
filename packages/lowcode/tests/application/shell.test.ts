@@ -42,7 +42,11 @@ function fixture() {
 describe('shared application shell contract', () => {
   test('old policies stay valid; nested shell is detached and closed', () => {
     expect(validateLowcodeApplication({ version: 1, enabled: false }).ok).toBe(true)
-    const value = { version: 1, enabled: true, shell: { frameNodeId: 'frame', slotNodeId: 'slot' } }
+    const value = {
+      version: 1 as const,
+      enabled: true,
+      shell: { frameNodeId: 'frame', slotNodeId: 'slot' }
+    }
     const result = validateLowcodeApplication(value)
     expect(result).toEqual({ ok: true, value })
     if (result.ok) {

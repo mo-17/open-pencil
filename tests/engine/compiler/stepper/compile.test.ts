@@ -201,6 +201,7 @@ test('a clean component Stepper joins its enclosing FORM reset without a native 
   const master = graph.createNode('COMPONENT', library.id, { name: 'Reusable stepper' })
   graph.reparentNode(doc.id, master.id)
   const instance = graph.createInstance(master.id, form.id)
+  if (!instance) throw new Error('Expected an instance')
   const tree = collectTree(graph, page.id, buildComponentRegistry(graph))
   const owner = tree.children[0] as IRElement
   expect(owner.formResetFields?.map((field) => field.write.name)).toContain('docStep')

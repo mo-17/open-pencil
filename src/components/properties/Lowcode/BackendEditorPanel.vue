@@ -182,8 +182,8 @@ function tabLabel(tab: BackendTab): string {
         :class="[
           'rounded border px-1.5 py-0.5 text-[9px]',
           draftValidation.ok && selectedDescriptor
-            ? 'border-green-500/40 text-green-500'
-            : 'border-red-500/40 text-red-500'
+            ? 'border-success/40 text-success'
+            : 'border-error/40 text-error'
         ]"
       >
         {{
@@ -284,10 +284,10 @@ function tabLabel(tab: BackendTab): string {
           <p v-if="providersLoading" class="text-[10px] text-muted">
             {{ panels.lowcodeBackendProviderLoading }}
           </p>
-          <p v-else-if="providerDescriptors.length === 0" class="text-[10px] text-red-500">
+          <p v-else-if="providerDescriptors.length === 0" class="text-[10px] text-error">
             {{ panels.lowcodeBackendProviderMissing }}
           </p>
-          <p v-else-if="committedProviderUnavailable" class="text-[10px] text-red-500">
+          <p v-else-if="committedProviderUnavailable" class="text-[10px] text-error">
             {{ panels.lowcodeBackendProviderUnavailable }}
           </p>
           <p
@@ -391,7 +391,7 @@ function tabLabel(tab: BackendTab): string {
     <div
       v-if="readError || operationError"
       data-test-id="lowcode-backend-operation-error"
-      class="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-2 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ readError || operationError }}
     </div>
@@ -401,13 +401,13 @@ function tabLabel(tab: BackendTab): string {
         <li
           v-for="(diagnostic, index) in diagnostics.slice(0, 12)"
           :key="`${diagnostic.path}:${diagnostic.code}:${index}`"
-          class="rounded border border-red-500/30 bg-red-500/5 px-2 py-1 text-[9px] text-red-500"
+          class="rounded border border-error/30 bg-error/5 px-2 py-1 text-[9px] text-error"
         >
           <span class="font-mono">{{ diagnostic.path }}</span> · {{ diagnostic.message }}
         </li>
       </ul>
     </div>
-    <p v-if="outcome" class="mt-2 text-[10px] text-green-500">{{ outcome }}</p>
+    <p v-if="outcome" class="mt-2 text-[10px] text-success">{{ outcome }}</p>
 
     <div class="mt-2 flex gap-1 border-t border-border pt-2">
       <button
@@ -425,7 +425,7 @@ function tabLabel(tab: BackendTab): string {
         :disabled="busy || !hasBackendDeclaration"
         :class="[
           'rounded border px-2 py-1 text-[10px] disabled:opacity-50',
-          clearArmed ? 'border-red-500 text-red-500' : 'border-border text-muted hover:bg-hover'
+          clearArmed ? 'border-error text-error' : 'border-border text-muted hover:bg-hover'
         ]"
         @click="clearDeclaration"
       >

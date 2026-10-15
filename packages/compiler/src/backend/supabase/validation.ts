@@ -1,4 +1,5 @@
 import { isValid, decode } from 'js-base64'
+import * as v from 'valibot'
 
 import type {
   AuthAccessOperation,
@@ -418,6 +419,8 @@ function validateConditionalDeny(
   )
 }
 
+const JWTClaims = v.looseObject({ role: v.optional(v.unknown()) })
+
 const JWT_CANDIDATE = /[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/gu
 
 function serviceRoleJWT(value: string): boolean {
@@ -427,7 +430,7 @@ function serviceRoleJWT(value: string): boolean {
     const payload = parts[1].replaceAll('-', '+').replaceAll('_', '/')
     if (!isValid(payload)) return false
     const decoded = decode(payload)
-    const parsed = JSON.parse(decoded) as { role?: unknown }
+    const parsed = v.parse(v.pipe(v.string(), v.parseJson(), JWTClaims), decoded)
     return parsed.role === 'service_role'
   } catch {
     return false

@@ -1,3 +1,6 @@
+import * as v from 'valibot'
+
+import { nodeIdInput } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
 export const bindVariable = defineTool({
@@ -6,23 +9,23 @@ export const bindVariable = defineTool({
   description:
     'Bind a variable to a node property. For fills/strokes color bindings use indexed format like "fills/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color".',
   execution: { kind: 'sync', mutation: 'properties' },
-  params: {
-    node_id: { type: 'string', description: 'Node ID', required: true },
-    field: {
-      type: 'string',
-      description:
+  input: v.strictObject({
+    node_id: nodeIdInput,
+    field: v.pipe(
+      v.string(),
+      v.description(
         'Property field path. For fills/strokes use indexed format: "fills/0/color", "strokes/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color". ' +
-        'For FLOAT scalars: "opacity", "width", "height", "cornerRadius", "fontSize", "letterSpacing", ' +
-        '"lineHeight", "itemSpacing", "strokeWeight", "paddingLeft/Right/Top/Bottom", "counterAxisSpacing", ' +
-        '"rotation", "x", "y", "minWidth", "maxWidth", "minHeight", "maxHeight", ' +
-        '"topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", ' +
-        '"borderTopWeight", "borderBottomWeight", "borderLeftWeight", "borderRightWeight", ' +
-        '"gridRowGap", "gridColumnGap". ' +
-        'For STRING: "fontFamily". For BOOLEAN: "visible".',
-      required: true
-    },
-    variable_id: { type: 'string', description: 'Variable ID', required: true }
-  },
+          'For FLOAT scalars: "opacity", "width", "height", "cornerRadius", "fontSize", "letterSpacing", ' +
+          '"lineHeight", "itemSpacing", "strokeWeight", "paddingLeft/Right/Top/Bottom", "counterAxisSpacing", ' +
+          '"rotation", "x", "y", "minWidth", "maxWidth", "minHeight", "maxHeight", ' +
+          '"topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", ' +
+          '"borderTopWeight", "borderBottomWeight", "borderLeftWeight", "borderRightWeight", ' +
+          '"gridRowGap", "gridColumnGap". ' +
+          'For STRING: "fontFamily". For BOOLEAN: "visible".'
+      )
+    ),
+    variable_id: v.pipe(v.string(), v.description('Variable ID'))
+  }),
   execute: (figma, args) => {
     const node = figma.getNodeById(args.node_id)
     if (!node) return { error: `Node "${args.node_id}" not found` }
@@ -33,6 +36,10 @@ export const bindVariable = defineTool({
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
-    return { node_id: args.node_id, field: args.field, variable_id: args.variable_id }
+    return {
+      node_id: args.node_id,
+      field: args.field,
+      variable_id: args.variable_id
+    }
   }
 })

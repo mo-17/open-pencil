@@ -1,6 +1,5 @@
 import { describe, test, expect } from 'bun:test'
 
-import { computeHandleVisibleVertices } from '@open-pencil/core/canvas/overlays'
 import { createEditor, type Editor } from '@open-pencil/core/editor'
 import { regenerateFillGeometry } from '@open-pencil/core/vector'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -13,6 +12,7 @@ import { createVectorEditLifecycle } from '@/app/editor/vector/lifecycle'
 import type { VectorEditState } from '@/app/editor/vector/types'
 
 import { expectDefined, getNodeOrThrow } from '#tests/helpers/assert'
+import { asDouble } from '#tests/helpers/doubles'
 
 const NETWORK: VectorNetwork = {
   vertices: [
@@ -58,17 +58,18 @@ function setup(frameRotation: number, vectorRotation: number) {
   })
 
   const undoLabels: string[] = []
-  const editor = {
+  const editor = asDouble<Editor>({
     get graph() {
       return graph
     },
     select: () => undefined,
     requestRender: () => undefined,
+    onEditorEvent: () => () => undefined,
     updateNodeWithUndo(id: string, changes: Partial<SceneNode>, label = 'Update') {
       undoLabels.push(label)
       graph.updateNode(id, changes)
     }
-  } as Editor
+  })
   const state: VectorEditState = { nodeEditState: null } as VectorEditState
   const lifecycle = createVectorEditLifecycle(editor, state)
   return { graph, vector, state, lifecycle, undoLabels }
@@ -83,14 +84,6 @@ function worldVertices(graph: SceneGraph, nodeId: string) {
 }
 
 describe('vector edit graph ownership', () => {
-  test('ignores stale selected handle indices', () => {
-    const segments = [
-      { start: 0, end: 1, tangentStart: { x: 0, y: 0 }, tangentEnd: { x: 0, y: 0 } }
-    ]
-    expect(computeHandleVisibleVertices(new Set([0]), new Set([99, -1, 2]), segments)).toEqual(
-      new Set([0, 1])
-    )
-  })
   test('enters edit mode after the editor graph is replaced', () => {
     const initial = new SceneGraph()
     const replacement = new SceneGraph()

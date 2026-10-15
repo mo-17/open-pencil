@@ -37,6 +37,8 @@ test('layer reorder exposes a visible drop indicator before dropping', async ({ 
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -65,6 +67,8 @@ test('layer child drop exposes a visible container highlight before dropping', a
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId

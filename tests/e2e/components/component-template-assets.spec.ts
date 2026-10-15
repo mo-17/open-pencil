@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+
+import { getComponentTemplates } from '@/app/lowcode/component-templates/catalog'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
@@ -8,6 +10,18 @@ async function openTemplates(page: Page) {
   await panel.getByRole('combobox', { name: 'Asset source', exact: true }).click()
   await page.getByRole('option', { name: 'Component templates', exact: true }).click()
   return panel
+}
+
+async function expectTemplateIds(panel: Locator, ids: readonly string[]) {
+  await expect
+    .poll(() =>
+      panel
+        .locator('[data-component-template]')
+        .evaluateAll((cards) =>
+          cards.map((card) => card.getAttribute('data-component-template')).sort()
+        )
+    )
+    .toEqual([...ids].sort())
 }
 
 test('finds both template kinds, retains favorites and inserts an independently undoable copy', async ({
@@ -20,12 +34,23 @@ test('finds both template kinds, retains favorites and inserts an independently 
   await canvas.waitForInit()
   let panel = await openTemplates(page)
   await expect(panel.getByText('Editable local examples.', { exact: false })).toBeVisible()
+  const catalog = getComponentTemplates()
+  await expectTemplateIds(
+    panel,
+    catalog.map((item) => item.id)
+  )
   await panel.getByRole('combobox', { name: 'Template kind' }).click()
   await page.getByRole('option', { name: 'Basic components', exact: true }).click()
-  await expect(panel.locator('[data-component-template]')).toHaveCount(54)
+  await expectTemplateIds(
+    panel,
+    catalog.filter((item) => item.kind === 'basic').map((item) => item.id)
+  )
   await panel.getByRole('combobox', { name: 'Template kind' }).click()
   await page.getByRole('option', { name: 'Common combinations', exact: true }).click()
-  await expect(panel.locator('[data-component-template]')).toHaveCount(8)
+  await expectTemplateIds(
+    panel,
+    catalog.filter((item) => item.kind === 'combination').map((item) => item.id)
+  )
   await panel.getByRole('searchbox').fill('settings-card')
   let card = panel.locator('[data-component-template="settings-card"]')
   await expect(panel.locator('[data-component-template]')).toHaveCount(1)
@@ -37,26 +62,47 @@ test('finds both template kinds, retains favorites and inserts an independently 
   card = panel.locator('[data-component-template="settings-card"]')
   await expect(panel.locator('[data-component-template]')).toHaveCount(1)
   await expect(card.getByRole('button', { name: 'Remove from favorites' })).toBeVisible()
-  const before = await page.evaluate(() => window.openPencil.getStore().graph.nodes.size)
+  const before = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().graph.nodes.size
+  })
   const insert = card.getByRole('button', { name: 'Insert template', exact: true })
   await insert.focus()
   await insert.press('Enter')
   await expect(panel.getByRole('status')).toContainText('Inserted and selected')
   const first = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     return { id: [...editor.state.selectedIds][0], count: editor.graph.nodes.size }
   })
   expect(first.count).toBeGreaterThan(before)
   await canvas.undo()
-  expect(await page.evaluate(() => window.openPencil.getStore().graph.nodes.size)).toBe(before)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.nodes.size
+    })
+  ).toBe(before)
   await canvas.redo()
-  expect(await page.evaluate(() => window.openPencil.getStore().graph.nodes.size)).toBe(first.count)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.nodes.size
+    })
+  ).toBe(first.count)
   await insert.click()
-  const second = await page.evaluate(() => [...window.openPencil.getStore().state.selectedIds][0])
+  const second = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return [...window.openPencil.getStore().state.selectedIds][0]
+  })
   expect(second).not.toBe(first.id)
   await canvas.undo()
   expect(
-    await page.evaluate((id) => window.openPencil.getStore().graph.getNode(id)?.id, first.id)
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.id
+    }, first.id)
   ).toBe(first.id)
   canvas.assertNoErrors()
 })
@@ -117,9 +163,17 @@ test('shows Chinese guidance, template filters and meaningful no-result recovery
   await panel.getByRole('combobox', { name: '资源来源', exact: true }).click()
   await page.getByRole('option', { name: '组件模板', exact: true }).click()
   await expect(panel.getByText('可编辑的本地示例，尚未连接后端、账号或文件上传。')).toBeVisible()
+  const catalog = getComponentTemplates('zh-CN')
+  await expectTemplateIds(
+    panel,
+    catalog.map((item) => item.id)
+  )
   await panel.getByRole('combobox', { name: '模板类型' }).click()
   await page.getByRole('option', { name: '基础组件', exact: true }).click()
-  await expect(panel.locator('[data-component-template]')).toHaveCount(54)
+  await expectTemplateIds(
+    panel,
+    catalog.filter((item) => item.kind === 'basic').map((item) => item.id)
+  )
   await panel.getByRole('searchbox').fill('textarea')
   const card = panel.locator('[data-component-template="textarea"]')
   await expect(card.getByRole('button', { name: '插入模板', exact: true })).toBeVisible()
@@ -129,7 +183,11 @@ test('shows Chinese guidance, template filters and meaningful no-result recovery
   await panel.getByRole('searchbox').fill('no such template')
   await expect(panel.getByTestId('assets-empty')).toBeVisible()
   await panel.getByRole('button', { name: '清除筛选', exact: true }).click()
-  await expect(panel.locator('[data-component-template]')).toHaveCount(62)
+  await expect(panel.getByRole('searchbox')).toHaveValue('')
+  await expectTemplateIds(
+    panel,
+    catalog.map((item) => item.id)
+  )
   canvas.assertNoErrors()
 })
 
@@ -143,6 +201,8 @@ test('rejects a locked insertion target without partial changes and allows retry
   await panel.getByRole('searchbox').fill('button')
   const card = panel.locator('[data-component-template="button"]')
   const before = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const locked = editor.graph.createNode('FRAME', editor.state.currentPageId, {
       name: 'Locked destination',
@@ -158,14 +218,24 @@ test('rejects a locked insertion target without partial changes and allows retry
   await expect(
     panel.getByRole('alert').filter({ hasText: 'Choose an unlocked page or frame' })
   ).toBeVisible()
-  expect(await page.evaluate(() => window.openPencil.getStore().graph.nodes.size)).toBe(before)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.nodes.size
+    })
+  ).toBe(before)
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     window.openPencil.getStore().state.enteredContainerId = null
   })
   await card.getByRole('button', { name: 'Insert template', exact: true }).click()
   await expect(panel.getByRole('status')).toContainText('Inserted and selected')
-  expect(await page.evaluate(() => window.openPencil.getStore().graph.nodes.size)).toBeGreaterThan(
-    before
-  )
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.nodes.size
+    })
+  ).toBeGreaterThan(before)
   canvas.assertNoErrors()
 })

@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { collectTailwindClasses } from '@open-pencil/core/io/formats/jsx'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { Fill } from '@open-pencil/scene-graph'
+
+import { collectTailwindClasses } from '#core/io/formats/jsx/index'
 
 /**
  * Phase 4 §24.2/§24 follow-up — a gradient fill (GRADIENT_LINEAR /

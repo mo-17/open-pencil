@@ -12,6 +12,8 @@ test('dragging selected nested instance content reorders its auto-layout item', 
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -66,16 +68,19 @@ test('dragging selected nested instance content reorders its auto-layout item', 
       height: 24
     })
 
+    store.runLayoutForNode(frame.id)
     store.select([secondText.id])
     store.requestRender()
     return { frame: frame.id, first: first.id, second: second.id, secondText: secondText.id }
   })
   await canvas.waitForRender()
 
-  await canvas.drag(370, 228, 230, 228, 12)
+  await canvas.drag(310, 130, 170, 130, 12)
   await canvas.waitForRender()
 
   const childIds = await page.evaluate((frameId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(frameId)?.childIds ?? []
@@ -95,6 +100,8 @@ test('auto-layout drag does not show an insert indicator before order changes', 
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -135,6 +142,7 @@ test('auto-layout drag does not show an insert indicator before order changes', 
       height: 24
     })
 
+    store.runLayoutForNode(frame.id)
     store.select([secondText.id])
     store.requestRender()
     return { frame: frame.id, first: first.id, second: second.id }
@@ -143,12 +151,14 @@ test('auto-layout drag does not show an insert indicator before order changes', 
 
   const box = await canvas.canvas.boundingBox()
   if (!box) throw new Error('Canvas has no bounding box')
-  await page.mouse.move(box.x + 370, box.y + 228)
+  await page.mouse.move(box.x + 310, box.y + 130)
   await page.mouse.down()
-  await page.mouse.move(box.x + 365, box.y + 228, { steps: 3 })
+  await page.mouse.move(box.x + 305, box.y + 130, { steps: 3 })
   await canvas.waitForRender()
 
   const indicator = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.layoutInsertIndicator
@@ -158,6 +168,8 @@ test('auto-layout drag does not show an insert indicator before order changes', 
   expect(indicator).toBeNull()
 
   const childIds = await page.evaluate((frameId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(frameId)?.childIds ?? []

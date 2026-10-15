@@ -1,6 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
-
-import type { Canvas } from 'canvaskit-wasm'
+import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -9,7 +7,12 @@ import { htmlPreviewText, renderHTMLModulePreview } from '#core/canvas/modules'
 import { renderShapeUncached } from '#core/canvas/scene'
 import { createHTMLModuleFrameOverrides } from '#core/plugins/html'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 function htmlFrame(overrides: Partial<SceneNode> = {}): SceneNode {
   return createDefaultNode(() => 'html-1', 'FRAME', {
@@ -40,10 +43,10 @@ describe('HTML module canvas preview', () => {
   })
 
   test('draws the module badge and summary through the registered preview', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const renderer = rendererWithFont()
 
-    expect(renderHTMLModulePreview(renderer, canvas as Canvas, htmlFrame())).toBe(true)
+    expect(renderHTMLModulePreview(renderer, asCanvas(canvas), htmlFrame())).toBe(true)
     expect(canvas.drawText.mock.calls.map((call) => call[0])).toEqual([
       '</> HTML',
       'Guide · Safe & visible'
@@ -55,11 +58,11 @@ describe('HTML module canvas preview', () => {
 
   test('regular FRAME dispatches HTML while an unknown identity fails closed', () => {
     const renderer = rendererWithFont()
-    const validCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
-    renderShapeUncached(renderer, validCanvas as Canvas, htmlFrame(), new SceneGraph())
+    const validCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
+    renderShapeUncached(renderer, asCanvas(validCanvas), htmlFrame(), new SceneGraph())
     expect(validCanvas.drawText).toHaveBeenCalled()
 
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const invalid = htmlFrame({
       interactiveProps: {
         module: {
@@ -71,7 +74,7 @@ describe('HTML module canvas preview', () => {
         }
       }
     })
-    expect(renderHTMLModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderHTMLModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawText).not.toHaveBeenCalled()
   })
 })

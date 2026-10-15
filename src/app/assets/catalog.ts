@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import {
   EFFECT_PICK_CATALOG,
   EFFECT_PICK_MODULE_TYPE,
@@ -118,7 +120,7 @@ export function matchesAssetQuery(
   query: string,
   ...values: (string | null | undefined)[]
 ): boolean {
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean)
-  const haystack = values.filter(Boolean).join(' ').toLocaleLowerCase()
+  const terms = compact(query.trim().toLocaleLowerCase().split(/\s+/u))
+  const haystack = compact(values).join(' ').toLocaleLowerCase()
   return terms.every((term) => haystack.includes(term))
 }

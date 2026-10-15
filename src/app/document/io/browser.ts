@@ -93,12 +93,17 @@ export function createDocumentViewportActions(editor: ViewportEditor, viewportSi
     viewportSize.height = height
   }
 
+  /** The canvas size in screen pixels, as the canvas last reported it. */
+  function getViewportSize(): ViewportSize {
+    return { ...viewportSize }
+  }
+
   async function fitCurrentPageToViewport() {
     await yieldToUI()
     editor.zoomToFit()
   }
 
-  return { setViewportSize, fitCurrentPageToViewport }
+  return { setViewportSize, getViewportSize, fitCurrentPageToViewport }
 }
 
 export function createBrowserDownloadBlob(data: Uint8Array, mime: string): Blob {

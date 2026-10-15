@@ -195,7 +195,7 @@ test.each([false, true])(
       setValue('')
       renderer.invalidateNodePicture(graph.rootId)
       expect(paint()).not.toEqual(changedLabel)
-      expect(node.interactiveProps.value).toBe('ignored')
+      expect(node.interactiveProps?.value).toBe('ignored')
     } finally {
       renderer.destroy()
     }

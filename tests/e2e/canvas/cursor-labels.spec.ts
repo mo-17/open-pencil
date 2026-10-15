@@ -6,6 +6,8 @@ const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
 
 test('collaborator cursor names are shaped and long names end with an ellipsis', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const red = { r: 0.92, g: 0.34, b: 0.29, a: 1 }

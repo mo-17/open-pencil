@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import type {
   AuthAccessOperation,
   BackendApplicationSpecV1,
@@ -373,7 +375,7 @@ function createPrivilegeGrantPlan(
   )
   const operations: SupabasePrivilegeReviewOperationV1[] = []
   const statements: string[] = []
-  const roles = [...new Set(desired.map((entry) => entry.grantee))].sort()
+  const roles = uniq(desired.map((entry) => entry.grantee)).sort()
   for (const role of roles) {
     if (existingKeys.has(`schema:public:public:${role}:USAGE`)) continue
     operations.push({

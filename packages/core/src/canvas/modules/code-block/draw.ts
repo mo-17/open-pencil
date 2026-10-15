@@ -74,7 +74,12 @@ export function drawCodeBlockLines(renderer: SkiaRenderer, canvas: Canvas, frame
   withModulePreviewRectClip(
     renderer,
     canvas,
-    { x: 0, y: L.headerHeight, width, height: Math.max(0, height - L.headerHeight) },
+    {
+      x: 0,
+      y: L.headerHeight,
+      width,
+      height: Math.max(0, height - L.headerHeight)
+    },
     () => {
       for (const [index, source] of lines.entries()) {
         if (y >= height) break
@@ -105,7 +110,7 @@ export function drawCodeBlockLines(renderer: SkiaRenderer, canvas: Canvas, frame
             renderer,
             canvas,
             { x, y, width: contentWidth, height: Math.max(0, height - y) },
-            () => canvas.drawParagraph(paragraph, x, rowY)
+            () => paragraph.draw(canvas, x, rowY)
           )
           y += Math.max(lineHeight, paragraph.getHeight())
         } finally {

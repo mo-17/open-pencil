@@ -12,6 +12,8 @@ for (const flipX of [false, true]) {
     test(`nested rotation, labels and cancellation (flipX=${flipX}, flipY=${flipY})`, async () => {
       const data = nestedGeometryData(flipX, flipY)
       const id = await editor.page.evaluate((fixture) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         const s = fixture.section
@@ -42,6 +44,8 @@ for (const flipX of [false, true]) {
         'canvas bounds'
       )
       const viewport = await editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const state = window.openPencil?.getStore?.().state
         if (!state) throw new Error('Editor unavailable')
         return { zoom: state.zoom, panX: state.panX, panY: state.panY }
@@ -76,6 +80,8 @@ for (const flipX of [false, true]) {
         await move(end, 8)
         await editor.canvas.waitForRender()
         const held = await editor.page.evaluate((nodeId) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const store = window.openPencil?.getStore?.()
           return {
             rotation: store?.graph.getNode(nodeId)?.rotation,
@@ -93,12 +99,16 @@ for (const flipX of [false, true]) {
         await editor.page.keyboard.press('Escape')
         await editor.canvas.waitForRender()
         expect(
-          await editor.page.evaluate(() => window.openPencil?.getStore?.().state.rotationPreview)
+          await editor.page.evaluate(() => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().state.rotationPreview
+          })
         ).toBeNull()
         expect(
-          await editor.page.evaluate(() => [
-            ...(window.openPencil?.getStore?.().state.selectedIds ?? [])
-          ])
+          await editor.page.evaluate(() => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+          })
         ).toEqual([id])
         await editor.page.mouse.up()
         // Compare the restored scene with the pointer (and therefore hover) back in the same place.
@@ -108,32 +118,39 @@ for (const flipX of [false, true]) {
         await editor.page.mouse.down()
         await move(end, 8)
         const committedAngle = expectDefined(
-          await editor.page.evaluate(
-            () => window.openPencil?.getStore?.().state.rotationPreview?.angle
-          ),
+          await editor.page.evaluate(() => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().state.rotationPreview?.angle
+          }),
           'preview angle'
         )
         await editor.page.mouse.up()
         await editor.canvas.waitForRender()
         expect(
-          await editor.page.evaluate(
-            (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation,
-            id
-          )
+          await editor.page.evaluate((nodeId) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation
+          }, id)
         ).toBe(committedAngle)
-        await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+        await editor.page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().undoAction()
+        })
         expect(
-          await editor.page.evaluate(
-            (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation,
-            id
-          )
+          await editor.page.evaluate((nodeId) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation
+          }, id)
         ).toBe(data.frame.rotation)
-        await editor.page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+        await editor.page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().redoAction()
+        })
         expect(
-          await editor.page.evaluate(
-            (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation,
-            id
-          )
+          await editor.page.evaluate((nodeId) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().graph.getNode(nodeId)?.rotation
+          }, id)
         ).toBe(committedAngle)
         editor.canvas.assertNoErrors()
       } finally {

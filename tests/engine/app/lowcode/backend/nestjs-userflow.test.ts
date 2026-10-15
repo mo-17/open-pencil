@@ -35,6 +35,8 @@ import {
   listAppBackendProviderDescriptors
 } from '@/app/plugins/host/backend-provider'
 
+import { expectRecord } from '#tests/helpers/assert'
+
 async function fixture() {
   const entry = createBundledPluginCatalog().find(
     ({ manifest }) => manifest.plugin.id === 'open-pencil.nestjs-backend'
@@ -67,7 +69,7 @@ function eachAction(actions: readonly ActionDef[], visit: (action: ActionDef) =>
 }
 
 describe('NestJS visual user flow', () => {
-  test.each(['react', 'vue'] as const)(
+  test.each([...(['react', 'vue'] as const)])(
     '%s export keeps repeated notes at their full height in a scrollable grid viewport',
     async (target) => {
       const { application, descriptor, editor, store } = await fixture()
@@ -394,7 +396,9 @@ describe('NestJS visual user flow', () => {
     expect(validateBackendApplicationDraft(application, descriptor).ok).toBe(true)
     enableNestJSBrowserClient(application)
     expect(application.dataModel).toEqual(fields)
-    expect(application.httpApi.browserClient?.authentication.clientId).toBe('')
+    expect(
+      expectRecord(expectRecord(application.httpApi).browserClient).authentication
+    ).toMatchObject({ clientId: '' })
     expect(validateBackendApplicationDraft(application, descriptor).ok).toBe(false)
   })
 })

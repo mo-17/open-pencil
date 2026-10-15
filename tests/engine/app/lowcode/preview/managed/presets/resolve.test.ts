@@ -62,24 +62,27 @@ describe('managed backend preset suggestions', () => {
     expect(withResource.missing).toEqual(['jwksURL'])
   })
 
-  test.each(MANAGED_BACKEND_PRESET_IDS)('%s preserves every already entered field', (presetId) => {
-    const draft = Object.freeze({
-      audience: 'my-api',
-      jwksURL: 'https://jwks.example.test/keys',
-      caFile: '/operator/selected-ca.pem'
-    })
-    const authentication = presetAuthentication({
-      ...(presetId === 'https-keycloak'
-        ? { issuer: 'https://identity.example.test/realms/team' }
-        : {}),
-      resource: 'https://different.example.test/notes'
-    })
-    const result = resolveManagedBackendPreset({ presetId, authentication, draft })
-    expect(result.patch).toEqual({})
-    expect(result.ready).toBe(true)
-    expect(result.issues).toEqual([])
-    expect(draft.audience).toBe('my-api')
-  })
+  test.each([...MANAGED_BACKEND_PRESET_IDS])(
+    '%s preserves every already entered field',
+    (presetId) => {
+      const draft = Object.freeze({
+        audience: 'my-api',
+        jwksURL: 'https://jwks.example.test/keys',
+        caFile: '/operator/selected-ca.pem'
+      })
+      const authentication = presetAuthentication({
+        ...(presetId === 'https-keycloak'
+          ? { issuer: 'https://identity.example.test/realms/team' }
+          : {}),
+        resource: 'https://different.example.test/notes'
+      })
+      const result = resolveManagedBackendPreset({ presetId, authentication, draft })
+      expect(result.patch).toEqual({})
+      expect(result.ready).toBe(true)
+      expect(result.issues).toEqual([])
+      expect(draft.audience).toBe('my-api')
+    }
+  )
 
   test.each([
     'https://identity.example.test/tenant',

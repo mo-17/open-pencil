@@ -1,6 +1,4 @@
-import { describe, expect, mock, spyOn, test } from 'bun:test'
-
-import type { Canvas } from 'canvaskit-wasm'
+import { describe, expect, spyOn, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -15,8 +13,10 @@ import {
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGlyphCharacters } from '#core/text/resolver'
 
+import { canvasMock, createMockCanvas } from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
+
 import { carouselPixelHarness } from './carousel/helpers'
-import { createMockCanvas } from './effects/helpers'
 import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 function text(value: string, marks: Record<string, unknown>[] = []) {
@@ -77,10 +77,10 @@ describe('rich text module canvas preview', () => {
   })
 
   test('draws bounded lines through the registered module preview', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = moduleTextRenderer()
 
-    expect(renderRichTextModulePreview(renderer, canvas as Canvas, richTextFrame())).toBe(true)
+    expect(renderRichTextModulePreview(renderer, asCanvas(canvas), richTextFrame())).toBe(true)
     expect(canvas.save).toHaveBeenCalledTimes(1)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
@@ -96,14 +96,14 @@ describe('rich text module canvas preview', () => {
   })
 
   test('regular FRAME rendering dispatches rich text and invalid identities fail closed', () => {
-    const validCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const validCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = moduleTextRenderer()
 
-    renderShapeUncached(renderer, validCanvas as Canvas, richTextFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(validCanvas), richTextFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(validCanvas.drawParagraph).toHaveBeenCalled()
 
-    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const invalid = richTextFrame({
       interactiveProps: {
         module: {
@@ -115,7 +115,7 @@ describe('rich text module canvas preview', () => {
         }
       }
     })
-    expect(renderRichTextModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderRichTextModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
   })
 })

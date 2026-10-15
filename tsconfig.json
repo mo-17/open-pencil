@@ -1,5 +1,11 @@
 {
   "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
     "target": "ES2022",
     "useDefineForClassFields": true,
     "lib": [
@@ -21,6 +27,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "#vite-config/*": [
+        "./vite/*"
+      ],
       "@/*": [
         "./src/*"
       ],
@@ -28,14 +37,86 @@
         "./packages/vue/src/*",
         "./packages/vue/src/*.vue"
       ],
-      "#core-assets/*": [
-        "./packages/core/assets/*"
-      ],
       "#core/*": [
         "./packages/core/src/*"
       ],
+      "#fig/*": [
+        "./packages/fig/src/*"
+      ],
       "#cli/*": [
         "./packages/cli/src/*"
+      ],
+      "#mcp/*": [
+        "./packages/mcp/src/*"
+      ],
+      "@open-pencil/harness": [
+        "./packages/harness/src/index.ts"
+      ],
+      "#feedback/*": [
+        "./packages/feedback/src/*"
+      ],
+      "#dom-css/*": [
+        "./packages/dom-css/src/*"
+      ],
+      "#tests/*": [
+        "./tests/*"
+      ],
+      "#docs-config/*": [
+        "./packages/docs/.vitepress/*"
+      ],
+      "#docs/*": [
+        "./packages/docs/.vitepress/*"
+      ],
+      "tinykeys": [
+        "./node_modules/tinykeys/dist/tinykeys.d.ts"
+      ],
+      "@open-pencil/cli/library": [
+        "./packages/cli/src/library/index.ts"
+      ],
+      "@open-pencil/dom-css": [
+        "./packages/dom-css/src/index.ts"
+      ],
+      "@open-pencil/dom-css/scene-graph": [
+        "./packages/dom-css/src/import/scene-graph.ts"
+      ],
+      "@open-pencil/dom-css/export": [
+        "./packages/dom-css/src/export/index.ts"
+      ],
+      "@open-pencil/dom-css/*": [
+        "./packages/dom-css/src/*"
+      ],
+      "#scene-graph/*": [
+        "./packages/scene-graph/src/*"
+      ],
+      "@open-pencil/scene-graph": [
+        "./packages/scene-graph/src/index.ts"
+      ],
+      "@open-pencil/scene-graph/*": [
+        "./packages/scene-graph/src/*"
+      ],
+      "#emit/*": [
+        "./packages/emit/src/*"
+      ],
+      "@open-pencil/emit": [
+        "./packages/emit/src/index.ts"
+      ],
+      "#design-jsx/*": [
+        "./packages/design-jsx/src/*"
+      ],
+      "@open-pencil/design-jsx": [
+        "./packages/design-jsx/src/index.ts"
+      ],
+      "#pen/*": [
+        "./packages/pen/src/*"
+      ],
+      "@open-pencil/pen": [
+        "./packages/pen/src/index.ts"
+      ],
+      "@open-pencil/pen/*": [
+        "./packages/pen/src/*"
+      ],
+      "#core-assets/*": [
+        "./packages/core/assets/*"
       ],
       "#compiler/*": [
         "./packages/compiler/src/*"
@@ -46,35 +127,11 @@
       "#codepen-sidecar/*": [
         "./packages/codepen-sidecar/*"
       ],
-      "#mcp/*": [
-        "./packages/mcp/src/*"
-      ],
-      "#dom-css/*": [
-        "./packages/dom-css/src/*"
-      ],
-      "#tests/*": [
-        "./tests/*"
-      ],
       "#tools/*": [
         "./tools/*"
       ],
       "#vite/*": [
         "./vite/*"
-      ],
-      "#docs-config/*": [
-        "./packages/docs/.vitepress/*"
-      ],
-      "tinykeys": [
-        "./node_modules/tinykeys/dist/tinykeys.d.ts"
-      ],
-      "@open-pencil/vue": [
-        "./packages/vue/src/index.ts"
-      ],
-      "@open-pencil/core": [
-        "./packages/core/src/index.ts"
-      ],
-      "@open-pencil/core/*": [
-        "./packages/core/src/*"
       ],
       "@open-pencil/compiler": [
         "./packages/compiler/src/index.ts"
@@ -87,9 +144,6 @@
       ],
       "@open-pencil/compiler/*": [
         "./packages/compiler/src/*"
-      ],
-      "@open-pencil/dom-css": [
-        "./packages/dom-css/src/index.ts"
       ],
       "@open-pencil/lowcode": [
         "./packages/lowcode/src/index.ts"
@@ -105,48 +159,6 @@
       ],
       "@open-pencil/plugin-contracts/adapter-helpers": [
         "./packages/plugin-contracts/src/adapter-helpers.ts"
-      ],
-      "@open-pencil/cli/library": [
-        "./packages/cli/src/library/index.ts"
-      ],
-      "@open-pencil/harness": [
-        "./packages/harness/src/index.ts"
-      ],
-      "#scene-graph/*": [
-        "./packages/scene-graph/src/*"
-      ],
-      "@open-pencil/scene-graph": [
-        "./packages/scene-graph/src/index.ts"
-      ],
-      "@open-pencil/scene-graph/*": [
-        "./packages/scene-graph/src/*"
-      ],
-      "#pen/*": [
-        "./packages/pen/src/*"
-      ],
-      "@open-pencil/pen": [
-        "./packages/pen/src/index.ts"
-      ],
-      "@open-pencil/pen/*": [
-        "./packages/pen/src/*"
-      ],
-      "#vite-config/*": [
-        "./vite/*"
-      ],
-      "#fig/*": [
-        "./packages/fig/src/*"
-      ],
-      "#emit/*": [
-        "./packages/emit/src/*"
-      ],
-      "@open-pencil/emit": [
-        "./packages/emit/src/index.ts"
-      ],
-      "#design-jsx/*": [
-        "./packages/design-jsx/src/*"
-      ],
-      "@open-pencil/design-jsx": [
-        "./packages/design-jsx/src/index.ts"
       ],
       "#authoring-reference/*": [
         "./tools/generate/authoring-reference/src/*"
@@ -169,7 +181,9 @@
     "packages/vue/src/global.d.ts",
     "packages/dom-css/src/cssom.d.ts",
     "packages/dom-css/src/postcss-value-parser.d.ts",
-    "packages/design-jsx/src/global.d.ts"
+    "packages/design-jsx/src/global.d.ts",
+    "packages/docs/.vitepress/theme/landing/**/*.ts",
+    "packages/docs/.vitepress/theme/landing/**/*.vue"
   ],
   "references": [
     {

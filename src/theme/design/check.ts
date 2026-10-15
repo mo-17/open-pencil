@@ -1,5 +1,8 @@
 import { tv } from 'tailwind-variants'
 
+import { motionStyles } from '@/theme/motion/styles'
+import { floatingSurface } from '@/theme/overlay'
+
 export const designCheck = tv({
   slots: {
     root: 'flex min-h-0 flex-1 flex-col',
@@ -31,22 +34,11 @@ export const designCheck = tv({
     rowDetail: 'flex max-w-[50%] min-w-0 shrink items-center gap-1.5 text-muted tabular-nums',
     rowDetailText: 'truncate',
     rowAction:
-      'absolute top-1/2 right-1.5 hidden h-5 -translate-y-1/2 cursor-pointer items-center rounded bg-panel px-1.5 text-accent shadow-[0_0_0_1px_var(--color-border)] outline-none group-focus-within/row:flex group-hover/row:flex hover:bg-hover focus-visible:ring-1 focus-visible:ring-panel-focus',
+      'absolute top-1/2 right-1.5 hidden h-5 -translate-y-1/2 cursor-pointer items-center rounded bg-panel px-1.5 text-primary shadow-[0_0_0_1px_var(--color-border)] outline-none group-focus-within/row:flex group-hover/row:flex hover:bg-hover focus-visible:ring-1 focus-visible:ring-panel-focus',
     contrastSwatch:
       'flex h-3.5 shrink-0 items-center rounded-[3px] px-[3px] text-[9px] leading-none font-semibold shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)]',
     swatch: 'size-2.5 shrink-0 rounded-[3px] shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)]',
     more: 'mb-1 ml-6'
-  }
-})
-
-export const severityIcon = tv({
-  base: 'size-3 shrink-0',
-  variants: {
-    severity: {
-      error: 'text-issue-error',
-      warning: 'text-issue-warning',
-      info: 'text-issue-info'
-    }
   }
 })
 
@@ -58,9 +50,9 @@ export const layerIssueMark = tv({
   },
   variants: {
     severity: {
-      error: { dot: 'bg-issue-error' },
-      warning: { dot: 'bg-issue-warning' },
-      info: { dot: 'bg-issue-info' }
+      error: { dot: 'bg-error' },
+      warning: { dot: 'bg-warning' },
+      info: { dot: 'bg-muted' }
     }
   }
 })
@@ -70,16 +62,19 @@ export const pageIssueBadge = tv({
   base: 'flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded-full px-1 text-[9px] leading-none font-semibold tabular-nums',
   variants: {
     severity: {
-      error: 'bg-issue-error text-white',
-      warning: 'bg-issue-warning text-black'
+      error: 'bg-error-fill text-white',
+      warning: 'bg-warning text-panel'
     }
   }
 })
 
 export const issueTooltip = tv({
   slots: {
-    content:
-      'pointer-events-none z-50 w-64 rounded-lg bg-panel py-1.5 text-[11px] text-surface shadow-[0_0_0_1px_var(--color-border),0_8px_30px_rgb(0_0_0/0.35)]',
+    content: [
+      'pointer-events-none z-50 w-64 py-1.5 text-[11px]',
+      floatingSurface,
+      motionStyles.popup
+    ],
     header: 'flex items-center gap-1.5 px-2.5 pt-0.5 pb-1 font-semibold',
     headerIcon: 'size-3 shrink-0 text-muted',
     headerText: 'min-w-0 truncate',

@@ -5,6 +5,7 @@ import {
 } from '#compiler/adapters/effect-pick/source'
 import type { ComponentDef, IRModule, IRNode } from '#compiler/ir/types'
 import type { CompilerModuleRegistry } from '#compiler/modules/registry'
+import { uniq } from 'es-toolkit'
 
 import { BUILTIN_VUE_MODULE_REGISTRY } from './builtin'
 import { buildVueLayerRuntime, VUE_LAYER_RUNTIME_PATH } from './layer-runtime'
@@ -116,16 +117,14 @@ export function collectVueModuleProject(
 }
 
 export function vueModuleOptimizeDepsForFiles(files: ReadonlyMap<string, unknown>): string[] {
-  return [
-    ...new Set(
-      BUILTIN_VUE_MODULE_REGISTRY.listBundles().flatMap((entry) => {
-        const adapter = entry.targets.vue
-        return isVueModuleAdapter(adapter) && files.has(adapter.runtimePath)
-          ? [...(adapter.optimizeDeps ?? [])]
-          : []
-      })
-    )
-  ].sort()
+  return uniq(
+    BUILTIN_VUE_MODULE_REGISTRY.listBundles().flatMap((entry) => {
+      const adapter = entry.targets.vue
+      return isVueModuleAdapter(adapter) && files.has(adapter.runtimePath)
+        ? [...(adapter.optimizeDeps ?? [])]
+        : []
+    })
+  ).sort()
 }
 
 export function emitVueModuleRuntimes(

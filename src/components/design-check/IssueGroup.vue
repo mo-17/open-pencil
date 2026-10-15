@@ -13,12 +13,13 @@ import { useDesignCheckMessages } from '@open-pencil/vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import AppCollapsible from '@/components/ui/collapsible/AppCollapsible.vue'
+import SeverityIcon from '@/components/ui/feedback/SeverityIcon.vue'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
+import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 import { designCheck } from '@/theme/design/check'
 
 import IssueRow from './IssueRow.vue'
-import SeverityIcon from './SeverityIcon.vue'
 import type { IssueGroupView, IssueRowView } from './types'
 
 /** Rows rendered before a group asks to show the rest. */
@@ -82,10 +83,12 @@ const hiddenCount = computed(() => group.rows.length - visibleRows.value.length)
         </DropdownMenuTrigger>
         <DropdownMenuPortal>
           <DropdownMenuContent side="bottom" align="end" :side-offset="4" :class="menuCls.content">
-            <DropdownMenuItem :class="itemCls" @select="emit('turnOff')">
-              <icon-lucide-eye-off class="size-3.5 text-muted" aria-hidden="true" />
-              {{ messages.turnOffRule }}
-            </DropdownMenuItem>
+            <MenuScrollArea>
+              <DropdownMenuItem :class="itemCls" @select="emit('turnOff')">
+                <icon-lucide-eye-off class="size-3.5 text-muted" aria-hidden="true" />
+                {{ messages.turnOffRule }}
+              </DropdownMenuItem>
+            </MenuScrollArea>
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>

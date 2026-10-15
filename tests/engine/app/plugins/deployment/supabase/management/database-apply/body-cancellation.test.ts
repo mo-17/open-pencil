@@ -125,7 +125,7 @@ function observeUnhandledRejections() {
 
 describe('Supabase Management database Apply body lifetime', () => {
   for (const phase of ['prepare', 'authority recheck', 'POST'] as const) {
-    test.each(FAILURES)(
+    test.each([...FAILURES])(
       `${phase}: %s preserves its error and releases the reader`,
       async (failure) => {
         const context = await captureBrandedApplyContext()
@@ -182,7 +182,7 @@ describe('Supabase Management database Apply body lifetime', () => {
     )
   }
 
-  test.each(FAILURES)('POST %s remains a journaled unknown with no retry', async (failure) => {
+  test.each([...FAILURES])('POST %s remains a journaled unknown with no retry', async (failure) => {
     const caller = new AbortController()
     const body = failingBody(failure, 201, caller)
     const unhandled = observeUnhandledRejections()

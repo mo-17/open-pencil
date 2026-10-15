@@ -14,7 +14,7 @@ test('completion waits for fallback discovered after an authored face loads', as
     text: '惊悚乐园',
     fontFamily: family
   })
-  const fontData = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+  const fontData = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
   const faceLoad = Promise.withResolvers<ArrayBuffer>()
   const fallbackLoad =
     Promise.withResolvers<Awaited<ReturnType<typeof fontManager.ensureFallbackPack>>>()

@@ -42,7 +42,10 @@ test('SELECT multiple defaults, conversion to single and undo stay atomic in the
       multiple: false,
       value: 'a'
     })
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   await expect(multiple).toBeChecked()
   await expect(panel.getByRole('checkbox', { name: 'Alpha', exact: true })).toBeChecked()
   await expect(panel.getByRole('checkbox', { name: 'Beta', exact: true })).not.toBeChecked()
@@ -52,7 +55,10 @@ test('SELECT multiple defaults, conversion to single and undo stay atomic in the
       multiple: true,
       value: ['a']
     })
-  await page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   await expect(panel.getByRole('checkbox', { name: 'Beta', exact: true })).toBeChecked()
   await expect
     .poll(() => readSelectProperties(page, first))
@@ -94,10 +100,10 @@ test('SELECT prevents bound mode edits and rejects a delayed option commit after
   await multiple.dispatchEvent('click')
   await expect.poll(() => readSelectProperties(page, ids.bound)).toEqual(beforeBound)
   expect(
-    await page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.bindings,
-      ids.bound
-    )
-  ).toEqual({ value: { kind: 'ref', ref: 'selected_topics' } })
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.bindings
+    }, ids.bound)
+  ).toEqual({ value: { kind: 'ref', stateId: 'selected_topics' } })
   canvas.assertNoErrors()
 })

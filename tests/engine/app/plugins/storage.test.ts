@@ -4,6 +4,8 @@ import { indexedDB as fakeIndexedDB } from 'fake-indexeddb'
 
 import { createIdbAppPluginStateStorage } from '@/app/plugins/storage'
 
+import { expectRecord } from '#tests/helpers/assert'
+
 function record(pluginId: string) {
   return {
     schemaVersion: 3,
@@ -27,12 +29,12 @@ test('app plugin IDB storage increments one shared atomic revision per mutation'
   await Promise.all([first.put(record('plugin.a')), second.put(record('plugin.b'))])
   expect(await first.revision()).toBe(2)
   expect(await second.revision()).toBe(2)
-  expect((await first.list()).map((value) => Reflect.get(value, 'pluginId')).sort()).toEqual([
+  expect((await first.list()).map((value) => expectRecord(value).pluginId).sort()).toEqual([
     'plugin.a',
     'plugin.b'
   ])
 
   await second.delete('plugin.a')
   expect(await first.revision()).toBe(3)
-  expect((await first.list()).map((value) => Reflect.get(value, 'pluginId'))).toEqual(['plugin.b'])
+  expect((await first.list()).map((value) => expectRecord(value).pluginId)).toEqual(['plugin.b'])
 })

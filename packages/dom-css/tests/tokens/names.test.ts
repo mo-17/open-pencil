@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   deriveCSSName,
   parseCSSName,
+  tokenSlug,
   tokenNumberToCSS,
   variableCSSNames,
   variableUnit
@@ -43,10 +44,23 @@ describe('token CSS names', () => {
     expect(deriveCSSName(token('Mixed', { scopes: ['GAP', 'CORNER_RADIUS'] }))).toBe('mixed')
   })
 
-  test('keep characters outside ASCII, which custom properties allow, and fall back for none', () => {
+  test('keep letters outside ASCII, which custom properties allow, and fall back for none', () => {
     expect(deriveCSSName(token('Цвет/фон', { type: 'COLOR' }))).toBe('color-цвет-фон')
-    expect(deriveCSSName(token('🎨', { type: 'COLOR' }))).toBe('color-🎨')
-    expect(deriveCSSName(token('!!!', { type: 'COLOR' }))).toBe('color-token')
+    expect(deriveCSSName(token('🎨', { type: 'COLOR' }))).toBe('color-token')
+  })
+
+  test('keep digits on their word, as Tailwind keys do', () => {
+    expect(deriveCSSName(token('Text/2xl', { scopes: ['FONT_SIZE'] }))).toBe('text-2xl')
+    expect(deriveCSSName(token('Heading/H1', { scopes: ['FONT_SIZE'] }))).toBe('text-heading-h1')
+    expect(deriveCSSName(token('brandPrimary', { type: 'COLOR' }))).toBe('color-brand-primary')
+    expect(tokenSlug('M3')).toBe('m3')
+  })
+
+  test('say a group once when the next segment repeats it, as Tailwind-class names do', () => {
+    expect(deriveCSSName(token('Gap/gap-1'))).toBe('gap-1')
+    expect(deriveCSSName(token('Gap/gap-1', { scopes: ['GAP'] }))).toBe('spacing-gap-1')
+    expect(deriveCSSName(token('Blue/Blue', { type: 'COLOR' }))).toBe('color-blue')
+    expect(deriveCSSName(token('Gap/gapless'))).toBe('gap-gapless')
   })
 
   test('read custom property names from code snippets only', () => {

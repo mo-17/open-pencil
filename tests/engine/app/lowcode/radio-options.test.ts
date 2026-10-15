@@ -5,12 +5,18 @@ import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { editRadioOptions, selectRadioDefault } from '@/app/lowcode/controls/radio-options'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 test('renaming the selected option moves its default in the same undo entry', () => {
   const editor = createEditor()
   const node = editor.graph.createNode('RADIO', editor.state.currentPageId, {
     interactiveProps: { options: ['个人', '团队'], value: '团队', groupName: 'plan' }
   })
-  const next = editRadioOptions(node.interactiveProps, { kind: 'rename', index: 1, value: '企业' })
+  const next = editRadioOptions(expectDefined(node.interactiveProps), {
+    kind: 'rename',
+    index: 1,
+    value: '企业'
+  })
   editor.updateNodeWithUndo(node.id, { interactiveProps: next as JSONObject }, 'Rename option')
   expect(node.interactiveProps).toEqual({
     options: ['个人', '企业'],
@@ -24,7 +30,7 @@ test('renaming the selected option moves its default in the same undo entry', ()
     groupName: 'plan'
   })
   editor.undo.redo()
-  expect(node.interactiveProps.value).toBe('企业')
+  expect(expectDefined(node.interactiveProps).value).toBe('企业')
 })
 
 test('removing or clearing the selected option leaves no dangling default', () => {
@@ -75,7 +81,7 @@ test('option edits do not change bound state, bindings, events or validation', (
       validation: { required: true }
     }
   })
-  const next = editRadioOptions(node.interactiveProps, { kind: 'remove', index: 1 })
+  const next = editRadioOptions(expectDefined(node.interactiveProps), { kind: 'remove', index: 1 })
   editor.updateNodeWithUndo(node.id, { interactiveProps: next as JSONObject }, 'Remove option')
   expect(node.interactiveProps).toEqual({ options: ['Personal'], validation: { required: true } })
   expect(node.bindings).toEqual({ value: { kind: 'ref', stateId: 'plan' } })

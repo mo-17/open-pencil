@@ -1309,7 +1309,7 @@ export const dialogMessageDefaults = {
   roomLink: 'Room link',
   joinCollaboration: 'Join collaboration',
   orJoinRoom: 'or join a room',
-  pasteRoomLinkOrId: 'Paste room link or ID',
+  pasteRoomLinkOrId: 'Paste complete invitation link',
   connected: 'Connected',
   search: 'Search…',
   noResults: 'No results',

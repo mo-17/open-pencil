@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import { useI18n } from '@open-pencil/vue'
+import { vTestId, useI18n } from '@open-pencil/vue'
 
 import {
   appConnectorAuthorization,
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
       v-for="connector in connectors"
       :key="connector.connectorId"
       class="rounded border border-border/70 bg-panel p-2 text-[9px] text-muted"
-      :data-test-id="`plugin-connector-${connector.connectorId}`"
+      v-test-id="`plugin-connector-${connector.connectorId}`"
     >
       <div class="flex items-start gap-2">
         <div class="min-w-0 flex-1">
@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
 
       <aside
         v-if="connector.manualSetup"
-        class="mt-1.5 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-1.5 py-1 text-[var(--color-warning-text)]"
+        class="mt-1.5 rounded border border-warning-border bg-warning-bg px-1.5 py-1 text-warning"
       >
         <p class="font-medium">{{ copy.manualSetup }}</p>
         <p>{{ connector.manualSetup.note }}</p>
@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
 
       <p
         v-if="connector.hasMutation"
-        class="mt-1.5 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-1.5 py-1 text-[var(--color-warning-text)]"
+        class="mt-1.5 rounded border border-warning-border bg-warning-bg px-1.5 py-1 text-warning"
         role="alert"
       >
         {{ copy.mutationWarning }}

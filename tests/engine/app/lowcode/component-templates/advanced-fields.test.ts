@@ -6,6 +6,7 @@ import { validateInteractiveProps } from '@open-pencil/lowcode'
 
 import { getComponentTemplates } from '@/app/lowcode/component-templates'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { componentTemplateFixture } from '#tests/helpers/compiler/components/templates/fixture'
 
 const IDS = ['date-time-picker', 'number-input', 'password-input'] as const
@@ -33,12 +34,12 @@ for (const locale of ['en', 'zh-CN']) {
         if (binding?.kind !== 'ref') throw new Error('Expected page-state binding')
         const state = fixture.graph.getPages()[0].state?.find((item) => item.id === binding.stateId)
         expect(state?.type).toBe('string')
-        if (input.interactiveProps.inputType === 'password') {
+        if (expectDefined(input.interactiveProps).inputType === 'password') {
           expect(state?.defaultValue).toBe('')
-          expect(input.interactiveProps.value).toBeUndefined()
-          expect(input.interactiveProps.showPasswordToggle).toBe(true)
+          expect(expectDefined(input.interactiveProps).value).toBeUndefined()
+          expect(expectDefined(input.interactiveProps).showPasswordToggle).toBe(true)
           const summaries = [...fixture.graph.getAllNodes()].filter((node) =>
-            JSON.stringify(node.bindings?.text ?? {}).includes(binding.stateId)
+            JSON.stringify(node.bindings?.text ?? {}).includes(expectDefined(binding.stateId))
           )
           expect(summaries).toEqual([])
         }

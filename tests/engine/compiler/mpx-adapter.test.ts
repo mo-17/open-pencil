@@ -9,6 +9,7 @@ import {
   VUE_CLI_SERVICE_VERSION
 } from '#compiler/adapters/mpx'
 import type { ComponentDef, IRElement, IREventHandler, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { withDefaults } from '@open-pencil/compiler'
 
@@ -67,11 +68,6 @@ function firstScript(source: string): string {
   const match = /<script>\s*([\s\S]*?)\s*<\/script>/.exec(source)
   if (!match) throw new Error('Missing script block')
   return match[1]
-}
-
-interface MpxProjectConfig {
-  appid?: string
-  miniprogramRoot: string
 }
 
 describe('Mpx mini-program adapter', () => {
@@ -144,11 +140,25 @@ describe('Mpx mini-program adapter', () => {
     )
 
     const page = textFile(output.files, 'src/pages/home/index.mpx')
-    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
-      dependencies: Record<string, string>
-      devDependencies: Record<string, string>
-    }
-    const project = JSON.parse(textFile(output.files, 'project.config.json')) as MpxProjectConfig
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.record(v.string(), v.string()),
+          devDependencies: v.record(v.string(), v.string())
+        })
+      ),
+      textFile(output.files, 'package.json')
+    )
+    const project = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ appid: v.optional(v.string()), miniprogramRoot: v.string() })
+      ),
+      textFile(output.files, 'project.config.json')
+    )
 
     expect(output.files.has('src/app.mpx')).toBe(true)
     expect(output.files.has('vue.config.js')).toBe(true)

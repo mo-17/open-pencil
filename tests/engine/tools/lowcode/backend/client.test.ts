@@ -24,7 +24,7 @@ describe('Backend client authoring tool', () => {
       ]
     }
     expect(update(figma, button.id, { events })).toMatchObject({ ok: true })
-    expect(graph.getNode(button.id)?.events).toEqual(events)
+    expect<unknown>(graph.getNode(button.id)?.events).toEqual(events)
   })
 
   test('rejects an invalid nested action atomically and leaves previous document fields intact', () => {

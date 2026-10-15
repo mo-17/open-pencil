@@ -57,7 +57,7 @@ describe('generated-effect tools', () => {
       { nodeId: node.id },
       { editor }
     ) as Result<{ cleared: boolean }>
-    expect(cleared).toEqual({ ok: true, data: { nodeId: node.id, cleared: true } })
+    expect<unknown>(cleared).toEqual({ ok: true, data: { nodeId: node.id, cleared: true } })
     expect(graph.getNode(node.id)?.generatedEffect).toBeUndefined()
     expect(editor.undo.undo()).toBe('AI: clear_generated_effect')
     expect(graph.getNode(node.id)?.generatedEffect).toEqual(spec)

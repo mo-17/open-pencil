@@ -7,11 +7,16 @@ const width = () => editor.page.getByRole('spinbutton', { name: 'Width', exact: 
 const widthValue = () => width().locator('[data-slot="value"]')
 
 async function setTool(tool: 'FRAME' | 'SELECT') {
-  await editor.page.evaluate((tool) => window.openPencil?.getStore?.().setTool(tool), tool)
+  await editor.page.evaluate((tool) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().setTool(tool)
+  }, tool)
 }
 
 test.beforeEach(async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const id = store.createShape('FRAME', 100, 100, 320, 120)
@@ -48,6 +53,8 @@ test('reuses one panel without updating its detached fields', async () => {
     )
     await probe.evaluate((probe) => probe.reset())
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       const node = store?.selectedNode.value
       if (!store || !node) throw new Error('Selected frame unavailable')
@@ -113,6 +120,8 @@ test('discards an unfinished text edit and restores normal editing on activation
 
 test('restores a bound width when a live text edit is deactivated', async () => {
   const variableId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const node = store?.selectedNode.value
     if (!store || !node) throw new Error('Selected frame unavailable')
@@ -130,6 +139,8 @@ test('restores a bound width when a live text edit is deactivated', async () => 
   await expect(width()).toHaveAttribute('aria-valuenow', '320')
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return {
         binding: store?.selectedNode.value?.boundVariables.width,
@@ -165,6 +176,8 @@ test('cancels a held scrub before retaining the panel', async () => {
     await expect(width()).toHaveCount(0)
     expect(
       await editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return { width: store?.selectedNode.value?.width, preview: store?.isInteractiveEditing() }
       })
@@ -179,6 +192,9 @@ test('cancels a held scrub before retaining the panel', async () => {
   await editor.page.keyboard.type('400')
   await editor.page.keyboard.press('Enter')
   await expect(width()).toHaveAttribute('aria-valuenow', '400')
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   await expect(width()).toHaveAttribute('aria-valuenow', '320')
 })

@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onScopeDispose, useTemplateRef, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
 import { useACPContextUsage } from '@/app/ai/acp/context-usage'
+import { MAX_VISUAL_ATTACHMENTS } from '@/app/ai/chat/attachments'
 import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { useChatRunLocation } from '@/app/ai/chat/run-location'
+import { saveChatTrace } from '@/app/ai/chat/trace/export'
 import { useAIChat } from '@/app/ai/chat/use'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { toast } from '@/app/shell/ui'
+import { activeTab } from '@/app/tabs'
 import ACPContextUsage from '@/components/chat/AcpContextUsage.vue'
 import ACPPermissionDialog from '@/components/chat/ACPPermissionDialog.vue'
 import ACPSessionControl from '@/components/chat/AcpSessionControl.vue'
@@ -19,6 +22,8 @@ import ChatInput from '@/components/chat/ChatInput.vue'
 import ChatRunLocation from '@/components/chat/ChatRunLocation.vue'
 import ChatTranscript from '@/components/chat/ChatTranscript.vue'
 import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
+import FollowAgentsToggle from '@/components/chat/FollowAgentsToggle.vue'
+import { useImageDrop } from '@/components/chat/input/useImageDrop'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 
@@ -55,10 +60,43 @@ const {
   handleRestoreACPSession,
   handleToolApproval
 } = chatPanelController
-const { chatFailure, clearChatFailure } = useAIChat()
+const { chatFailure, clearChatFailure, providerID, sessionRevision } = useAIChat()
 const { ai, common, dialogs } = useI18n()
 const acpUsage = useACPContextUsage(() => acpSessionStatus.value.sessionId)
 const runLocation = useChatRunLocation()
+const panel = useTemplateRef<HTMLElement>('panel')
+const dropRefusal = computed(() => {
+  if (
+    submissionPending.value ||
+    attachmentBusy.value ||
+    history.busy.value ||
+    status.value === 'submitted' ||
+    status.value === 'streaming'
+  )
+    return ai.value.dropImagesAfterReply
+  if (attachments.value.length >= MAX_VISUAL_ATTACHMENTS)
+    return ai.value.dropImagesLimit({ count: MAX_VISUAL_ATTACHMENTS })
+  return null
+})
+const { dragging } = useImageDrop(panel, {
+  enabled: () => !historyReadOnly.value && isConfigured.value,
+  onImages: (files) => {
+    if (dropRefusal.value) {
+      toast.error(dropRefusal.value)
+      return
+    }
+    void addVisualAttachments(files)
+  }
+})
+async function saveTrace(id: string) {
+  const conversation = history.current.value
+  if (!conversation || conversation.id !== id) return
+  try {
+    await saveChatTrace(conversation, messages.value)
+  } catch {
+    toast.error(ai.value.chatTraceFailed)
+  }
+}
 
 const historyOptions = computed(() => {
   const current = history.current.value
@@ -102,17 +140,55 @@ watch(
     }
   }
 )
+let failureToast: number | null = null
+function clearFailureToast(): void {
+  if (failureToast !== null) toast.remove(failureToast)
+  failureToast = null
+}
+onScopeDispose(clearFailureToast)
 watch(
-  () => chatFailure.value?.reason,
-  (reason) => {
-    if (!reason) return
-    toast.error(
+  [
+    () => activeTab.value?.id,
+    () => activeTab.value?.store,
+    () => history.current.value?.id,
+    providerID,
+    sessionRevision
+  ],
+  clearFailureToast,
+  { flush: 'sync' }
+)
+watch(
+  chatFailure,
+  (failure) => {
+    clearFailureToast()
+    if (!failure) return
+    const reason = failure.reason
+    const failedId = messages.value.at(-1)?.id
+    const conversationId = history.current.value?.id
+    const tabId = activeTab.value?.id
+    const failedProvider = providerID.value
+    const failedRevision = sessionRevision.value
+    failureToast = toast.error(
       failureMessage.value ?? ai.value.chatRequestFailed,
       ['authentication', 'forbidden', 'model-not-found'].includes(reason)
         ? { label: ai.value.openProviderSettingsAction, run: () => openSettingsDialog('ai') }
-        : undefined
+        : {
+            label: ai.value.retryRequest,
+            run: () => {
+              if (
+                failedId &&
+                messages.value.at(-1)?.id === failedId &&
+                history.current.value?.id === conversationId &&
+                activeTab.value?.id === tabId &&
+                providerID.value === failedProvider &&
+                sessionRevision.value === failedRevision
+              )
+                void chatPanelController.handleRegenerate(failedId)
+            }
+          }
     )
-  }
+  },
+  { flush: 'sync' }
 )
 
 async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
@@ -128,7 +204,11 @@ async function handleClearChat(): Promise<void> {
 </script>
 
 <template>
-  <div data-test-id="chat-panel" class="flex min-w-0 flex-1 flex-col overflow-hidden select-text">
+  <div
+    ref="panel"
+    data-test-id="chat-panel"
+    class="flex min-w-0 flex-1 flex-col overflow-hidden select-text"
+  >
     <ChatHistory
       v-if="!isACPProvider"
       :conversations="historyOptions"
@@ -139,8 +219,11 @@ async function handleClearChat(): Promise<void> {
       @create="handleHistoryAction(() => history.newChat())"
       @rename="(id, title) => handleHistoryAction(() => history.rename(id, title))"
       @delete="(id) => handleHistoryAction(() => history.remove(id))"
-    />
-    <p v-if="history.storageError.value" role="alert" class="px-3 py-2 text-xs text-danger">
+      @save-trace="saveTrace"
+    >
+      <template #actions><FollowAgentsToggle /></template>
+    </ChatHistory>
+    <p v-if="history.storageError.value" role="alert" class="px-3 py-2 text-xs text-error">
       {{ ai.chatStorageFailed }}
     </p>
     <p v-if="historyReadOnly" role="status" class="px-3 py-2 text-xs text-muted">
@@ -154,6 +237,11 @@ async function handleClearChat(): Promise<void> {
         :status="status"
         :show-continue="showContinue"
         :nodes-live="!historyReadOnly"
+        :interactive="!historyReadOnly && !submissionPending && !stopRequested"
+        @regenerate="chatPanelController.handleRegenerate()"
+        @revert="chatPanelController.handleRevert"
+        @restore="chatPanelController.handleRestore"
+        @edit="chatPanelController.handleEdit"
         :pending-approval-ids="pendingApprovalIds"
         :actionable-approval-message-id="actionableApprovalMessageId"
         @tool-approval="handleToolApproval"
@@ -212,7 +300,9 @@ async function handleClearChat(): Promise<void> {
       <ChatInput
         v-if="!historyReadOnly && isConfigured"
         :status="status"
-        :initializing="submissionPending"
+        :dragging="dragging"
+        :drop-refusal="dropRefusal"
+        :initializing="submissionPending || history.busy.value"
         :stopping="stopRequested"
         :stop-retry-available="stopRetryAvailable"
         visual-attachments-enabled

@@ -4,10 +4,8 @@ import { emitNestJSProject } from '#compiler/backend/nestjs/project'
 import { nestJSUsageGuide } from '#compiler/backend/nestjs/usage'
 
 import { composeBusinessModules } from '@/app/lowcode/backend/business/composition'
-import {
-  createBusinessApplication,
-  type BusinessTemplateId
-} from '@/app/lowcode/backend/business/model'
+import { createBusinessApplication } from '@/app/lowcode/backend/business/model'
+import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
 
 import { nestJSApplication } from '../helpers'
 import { modelFiles, modelRequired } from '../model-capabilities/helpers'

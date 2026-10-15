@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 
 import { vueAdapter } from '#compiler/adapters/vue'
 import type { IRElement, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 import { compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
@@ -84,7 +85,9 @@ describe('Vue local low-code runtimes', () => {
         id: 'complete-task',
         name: 'Complete task',
         params: ['taskId'],
-        actions: [{ kind: 'return', status: 200, valueAst: { kind: 'string', value: 'ok' } }]
+        actions: [
+          { kind: 'return', references: [], status: 200, valueAst: { kind: 'string', value: 'ok' } }
+        ]
       }
     ]
     const currentUserId = {
@@ -227,9 +230,14 @@ describe('Vue local low-code runtimes', () => {
     const page = textFile(output.files, 'src/pages/index.vue')
     const runtime = textFile(output.files, 'src/lowcode-supabase.ts')
     const serverClient = textFile(output.files, 'src/lowcode-server.ts')
-    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
-      dependencies: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      textFile(output.files, 'package.json')
+    )
 
     expect(packageJSON.dependencies['@supabase/supabase-js']).toBe('^2.100.0')
     expect(runtime).toContain("from './lowcode-state'")
@@ -311,7 +319,7 @@ describe('Vue local low-code runtimes', () => {
           id: 'server-action',
           name: 'Server action',
           params: [],
-          actions: [{ kind: 'return', status: 200 }]
+          actions: [{ kind: 'return', references: [], status: 200 }]
         }
       ],
       children: [

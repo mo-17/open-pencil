@@ -6,6 +6,7 @@ import { validateInteractiveProps } from '@open-pencil/lowcode'
 
 import { getComponentTemplates } from '@/app/lowcode/component-templates'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { componentTemplateFixture } from '#tests/helpers/compiler/components/templates/fixture'
 
 for (const locale of ['en', 'zh-CN'])
@@ -31,7 +32,7 @@ for (const locale of ['en', 'zh-CN'])
           fixture.graph.getPages()[0].state?.find((state) => state.id === binding.stateId)?.type
         ).toBe('string')
       }
-      expect(inputs[0].interactiveProps.suggestions).toEqual(
+      expect(expectDefined(inputs[0].interactiveProps).suggestions).toEqual(
         locale === 'en' ? ['Xiamen', 'Quanzhou', 'Fuzhou'] : ['厦门', '泉州', '福州']
       )
       expect(inputs[1].interactiveProps).toMatchObject({

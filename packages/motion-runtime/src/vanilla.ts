@@ -81,7 +81,7 @@ export function createVanillaMotion(options: VanillaMotionOptions): VanillaMotio
       : ''
     )
       .split(' ')
-      .filter(Boolean)
+      .filter((token) => token.length > 0)
   )
   const automaticTriggerSuppressed = selectionContainsSuppressedTrack(
     selection,

@@ -1,7 +1,5 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { controlDesignDependencies } from '#core/canvas/control-state'
@@ -9,6 +7,8 @@ import { renderShapeUncached } from '#core/canvas/scene'
 import { selectDesignContent } from '#core/canvas/select-state'
 import { lowcodeTextProjection } from '#core/text/lowcode'
 import { collectGraphFontRequirements } from '#core/text/requirements'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer, mockCalls } from './effects/helpers'
 
@@ -31,7 +31,7 @@ function fixture(overrides: Partial<SceneNode> = {}) {
   })
   const canvas = createMockCanvas()
   const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
-  const render = () => renderShapeUncached(renderer, canvas as Canvas, node, graph)
+  const render = () => renderShapeUncached(renderer, asCanvas(canvas), node, graph)
   const labels = () =>
     mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
   return { graph, node, canvas, renderer, render, labels }
@@ -94,7 +94,7 @@ test.each([
   })
   expect(lowcodeTextProjection(node)?.node.text).toBe(text)
   render()
-  expect(labels()).toEqual(text === '' ? [] : [expect.objectContaining({ text })])
+  expect(labels()).toEqual([expect.objectContaining({ text })])
 })
 
 test('an explicit empty option owns its display label and may be deliberately selected', () => {
@@ -135,7 +135,7 @@ test('bound page and document defaults take precedence, including an explicitly 
       render()
       expect(labels().at(-1)).toMatchObject({ text: defaultValue || '请选择' })
     }
-    expect(node.interactiveProps.value).toBe('团队')
+    expect(node.interactiveProps?.value).toBe('团队')
     expect(controlDesignDependencies(graph, node)).toContain(owner)
   }
 })

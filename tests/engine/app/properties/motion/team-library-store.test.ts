@@ -17,6 +17,8 @@ import {
   reconcileTeamMotionTokenValues
 } from '@/app/motion-presets/team-store'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 class MemoryStorage implements MotionPresetKeyValueStorage {
   readonly values = new Map<string, string>()
   writes = 0
@@ -283,10 +285,10 @@ describe('app signed team Motion library store', () => {
     const insecureStore = createTeamMotionLibraryStore({
       storage: new MemoryStorage(),
       engineVersion: '0.8.4',
-      fetchImpl: (async () => {
+      fetchImpl: fetchStub(async () => {
         insecureFetchCalls += 1
         throw new Error('HTTP source must be rejected before fetch')
-      }) as typeof globalThis.fetch
+      })
     })
     await insecureStore.load()
     await insecureStore.stageManifest(
@@ -303,7 +305,7 @@ describe('app signed team Motion library store', () => {
     const redirectStore = createTeamMotionLibraryStore({
       storage: new MemoryStorage(),
       engineVersion: '0.8.4',
-      fetchImpl: (async (_input, init) => {
+      fetchImpl: fetchStub(async (_input, init) => {
         redirectFetchCalls += 1
         if (init?.redirect === 'error') throw new TypeError('Redirect mode rejected the downgrade')
         followedDowngrade += 1
@@ -311,7 +313,7 @@ describe('app signed team Motion library store', () => {
           headers: { 'content-type': 'application/json' },
           status: 200
         })
-      }) as typeof globalThis.fetch
+      })
     })
     await redirectStore.load()
     await stage(redirectStore, accepted, keys)

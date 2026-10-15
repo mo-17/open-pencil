@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
+import { uniq } from 'es-toolkit'
+
 import type { CompilerTarget } from '@open-pencil/compiler'
 import {
   createBackendProviderPlan,
@@ -286,20 +288,16 @@ function requiredReferences(emission: BackendProviderEmission): {
   environmentNames: string[]
   credentialRefs: string[]
 } {
-  const environmentNames = [
-    ...new Set(
-      emission.manifest.requiredSecrets
-        .filter((secret) => secret.kind === 'environment')
-        .map((secret) => secret.name)
-    )
-  ].sort()
-  const credentialRefs = [
-    ...new Set(
-      emission.manifest.requiredSecrets
-        .filter((secret) => secret.kind === 'credential')
-        .map((secret) => secret.credentialRef)
-    )
-  ].sort()
+  const environmentNames = uniq(
+    emission.manifest.requiredSecrets
+      .filter((secret) => secret.kind === 'environment')
+      .map((secret) => secret.name)
+  ).sort()
+  const credentialRefs = uniq(
+    emission.manifest.requiredSecrets
+      .filter((secret) => secret.kind === 'credential')
+      .map((secret) => secret.credentialRef)
+  ).sort()
   return { environmentNames, credentialRefs }
 }
 

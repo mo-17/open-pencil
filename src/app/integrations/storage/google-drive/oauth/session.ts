@@ -1,5 +1,5 @@
 import { IS_TAURI } from '@open-pencil/core/constants'
-import { randomHex } from '@open-pencil/core/random'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import { credentialRef } from '@/app/settings/credentials/reference'
 import {

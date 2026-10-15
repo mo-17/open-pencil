@@ -13,7 +13,7 @@ const panelGridTheme = {
     },
     distribution: {
       equal: '',
-      'wide-first': '[&>[data-slot=fields]]:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]'
+      'wide-first': '[&>[data-slot=fields]]:grid-cols-[minmax(0,7fr)_minmax(5.5rem,5fr)]'
     }
   },
   defaultVariants: {

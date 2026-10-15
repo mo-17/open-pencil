@@ -75,7 +75,7 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
     const dirty = graph.createInstance(masterId, pageId)
     if (dirty) {
       const child = graph.getChildren(dirty.id)[0]
-      graph.updateNode(child.id, { strokes: [BLUE] })
+      graph.updateNode(child.id, { strokes: [{ ...BLUE, weight: 1, align: 'INSIDE' }] })
       dirty.overrides = { [`${child.id}:strokes`]: true }
     }
 

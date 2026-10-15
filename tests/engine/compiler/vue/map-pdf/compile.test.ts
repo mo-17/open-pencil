@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 
 import { MAP_VUE_MODULE_ADAPTER } from '#compiler/adapters/vue/modules/map'
 import { buildOpenPencilVuePDFViewer } from '#compiler/adapters/vue/modules/pdf-viewer'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import {
@@ -71,12 +72,22 @@ test('PDF unsafe source validation stays at the reviewed module boundary', () =>
 test('Vue Map/PDF retain authored children and appear only when their validated modules are reachable', () => {
   const map = mapPDFFixture('map'),
     pdf = mapPDFFixture('pdf')
-  const mapPackage = JSON.parse(String(map.files.get('package.json'))) as {
-    dependencies: Record<string, string>
-  }
-  const pdfPackage = JSON.parse(String(pdf.files.get('package.json'))) as {
-    dependencies: Record<string, string>
-  }
+  const mapPackage = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+    ),
+    String(map.files.get('package.json'))
+  )
+  const pdfPackage = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+    ),
+    String(pdf.files.get('package.json'))
+  )
   expect(mapPackage.dependencies['maplibre-gl']).toBe('6.4.1')
   expect(pdfPackage.dependencies['maplibre-gl']).toBeUndefined()
   expect(map.files.has('src/__openpencil_map.vue')).toBe(true)

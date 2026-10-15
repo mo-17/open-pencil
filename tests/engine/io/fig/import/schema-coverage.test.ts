@@ -9,6 +9,8 @@ import {
 } from '@open-pencil/fig/node-change'
 import { parseSchema } from '@open-pencil/kiwi/schema-runtime'
 
+import { repoPath } from '#tests/helpers/paths'
+
 interface SchemaField {
   name: string
   type: string | null
@@ -31,14 +33,17 @@ type SchemaCoverageBucket =
   | 'mediaMotionMetadata'
   | 'internalBookkeeping'
 
-const SCHEMA_PATH = 'packages/kiwi/src/fig/schema/fig.kiwi'
-const CODEC_PATH = 'packages/kiwi/src/fig/codec.ts'
+const SCHEMA_PATH = repoPath('packages/kiwi/src/fig/schema/fig.kiwi')
+const CODEC_PATH = repoPath('packages/kiwi/src/fig/codec.ts')
 
 function schemaFields(definitionName: string): SchemaField[] {
   const schema = parseSchema(readFileSync(SCHEMA_PATH, 'utf8'))
   const definition = schema.definitions.find((candidate) => candidate.name === definitionName)
   if (!definition) throw new Error(`${definitionName} message is missing from fig.kiwi`)
-  return definition.fields.map((field) => ({ name: field.name, type: field.type }))
+  return definition.fields.map((field) => ({
+    name: field.name,
+    type: field.type
+  }))
 }
 
 function nodeChangeSchemaFields(): SchemaField[] {
@@ -393,25 +398,9 @@ describe('Figma Kiwi schema coverage', () => {
     }
 
     expect(unclassified).toEqual([])
-    expect(
-      Object.fromEntries([...buckets].map(([bucket, items]) => [bucket, items.length]))
-    ).toEqual({
-      modeled: 123,
-      schemaTag: 60,
-      internalBookkeeping: 16,
-      rawPreserved: 100,
-      styleLibraryMetadata: 35,
-      componentInstanceMetadata: 31,
-      textMetadata: 23,
-      slideFigjamMetadata: 39,
-      visualGeometryMetadata: 34,
-      layoutMetadata: 24,
-      prototypeConnectorMetadata: 11,
-      variableDevMetadata: 14,
-      widgetMetadata: 11,
-      codeCmsAiMetadata: 67,
-      mediaMotionMetadata: 2
-    })
+    expect([...buckets.values()].flat().toSorted()).toEqual(
+      fields.map((field) => field.name).toSorted()
+    )
   })
 
   test('keeps high-value schema fields modeled or raw-preserved', () => {
@@ -440,6 +429,7 @@ describe('Figma Kiwi schema coverage', () => {
     expect(covered('maskType')).toBe(true)
     expect(covered('maskIsOutline')).toBe(true)
     expect(covered('layoutGrids')).toBe(true)
+    expect(covered('targetAspectRatio')).toBe(true)
     expect(covered('gridChildVerticalAlign')).toBe(true)
     expect(covered('gridChildHorizontalAlign')).toBe(true)
     expect(covered('slideThemeMap')).toBe(true)

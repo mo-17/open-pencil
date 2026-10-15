@@ -1,7 +1,14 @@
+export type { SourceDependencySelector } from './document/dependency-closure'
+export {
+  imageAliasesPluginData,
+  imageAliasesChanged,
+  isImageAliasesEntry
+} from './document/image-aliases'
 export { materializeFigFragment, type FragmentMaterializationOptions } from './document/fragment'
 export {
   materializeDocument,
   materializeFigArchive,
+  figCheckpointRecords,
   type FigSessionCheckpoint,
   type FigSessionResume,
   createFigDocumentSession,
@@ -20,6 +27,20 @@ export {
   type ParseFigBufferOptions,
   type WriteFigArchiveInput
 } from './archive'
+export {
+  figArchiveComponentUsePages,
+  figArchiveRecordInfo,
+  figComponentUsePages,
+  patchFigArchive,
+  patchFigRecords,
+  type FigArchiveRecordInfo,
+  type FigPatchedArchiveInput,
+  entryPathKey,
+  type FigEntryListPatch,
+  type FigEntryPatch,
+  type FigRecordFieldPatch,
+  type FigRecordPatch
+} from './record-patch'
 export {
   extractFigThumbnailFromReader,
   type FigRangeReader,

@@ -300,7 +300,7 @@ function preventDuringOperation(event: Event): void {
         <template v-if="selected">
           <div
             v-if="moduleMode && selectedModuleReview"
-            data-testid="business-module-review"
+            data-slot="business-module-review"
             class="space-y-2 rounded-lg border border-border p-3"
           >
             <h4 :class="styles.heading()">{{ copy.moduleReview }}</h4>

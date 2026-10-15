@@ -28,7 +28,7 @@ function ids(items: readonly BackendLibraryItem[]): string[] {
 }
 
 describe('inert backend library catalog', () => {
-  test.each(['asset-management', 'quote-contracts', 'recruitment-hr'] as const)(
+  test.each([...(['asset-management', 'quote-contracts', 'recruitment-hr'] as const)])(
     'describes %s using its exact exported entities, pages and identity-service roles',
     (kind) => {
       const application = createBusinessApplication(
@@ -344,7 +344,7 @@ describe('backend library search and categories', () => {
       query: '个人 笔记'
     })
     expect(ids(notes)).toEqual(['personal-notes'])
-    expect(notes[0]).toBe(catalog.find((item) => item.id === 'personal-notes'))
+    expect<unknown>(notes[0]).toBe(catalog.find((item) => item.id === 'personal-notes'))
     expect(Object.isFrozen(notes)).toBe(true)
     expect(
       filterBackendLibraryCatalog(catalog, { category: 'providers', query: '个人笔记' })

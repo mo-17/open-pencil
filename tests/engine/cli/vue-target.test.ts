@@ -4,6 +4,8 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -47,10 +49,17 @@ test('compile/build CLI emits Vue source and a deployable Vue static bundle', as
     await writeDocument(document)
     const compiled = await runCLI(['compile', document, '--target', 'vue', '--json', '-o', source])
     expect(compiled.exitCode).toBe(0)
-    const summary = JSON.parse(compiled.stdout) as {
-      target?: unknown
-      warnings?: Array<{ code?: unknown }>
-    }
+    const summary = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          target: v.optional(v.unknown()),
+          warnings: v.optional(v.array(v.looseObject({ code: v.optional(v.unknown()) })))
+        })
+      ),
+      compiled.stdout
+    )
     expect(summary.target).toBe('vue')
     expect(summary.warnings?.some((warning) => warning.code === 'vue-font-assets-omitted')).toBe(
       true
@@ -61,7 +70,12 @@ test('compile/build CLI emits Vue source and a deployable Vue static bundle', as
 
     const built = await runCLI(['build', document, '--target', 'vue', '--json', '-o', dist])
     expect(built.exitCode).toBe(0)
-    expect((JSON.parse(built.stdout) as { target?: unknown }).target).toBe('vue')
+    expect(
+      v.parse(
+        v.pipe(v.string(), v.parseJson(), v.looseObject({ target: v.optional(v.unknown()) })),
+        built.stdout
+      ).target
+    ).toBe('vue')
     expect(await Bun.file(join(dist, 'index.html')).exists()).toBe(true)
     expect(await Bun.file(join(dist, 'src/App.vue')).exists()).toBe(false)
     const assetNames = Array.fromAsync(new Bun.Glob('assets/*.js').scan({ cwd: dist }))

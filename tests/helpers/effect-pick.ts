@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import { createEffectPickModuleFrameOverrides } from '@open-pencil/core/plugins'
 import type * as EffectPickPlugin from '@open-pencil/core/plugins'
 import type { FontManager } from '@open-pencil/core/text'
+import type * as SceneGraphModule from '@open-pencil/scene-graph'
 
 import type * as EffectPickPreview from '@/app/effect-pick/preview'
 
@@ -51,27 +52,48 @@ export class EffectPickDriver {
   }
 
   async selectedConfig() {
-    return this.page.evaluate(() => {
+    return this.page.evaluate(async () => {
+      const moduleURL = new URL('/packages/scene-graph/src/module.ts', window.location.origin).href
+      const { readModuleInstance }: typeof SceneGraphModule = await import(
+        /* @vite-ignore */ moduleURL
+      )
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       const id = [...store.state.selectedIds][0]
-      const module = id ? store.graph.getNode(id)?.interactiveProps?.module : null
+      const module = id
+        ? readModuleInstance(store.graph.getNode(id)?.interactiveProps?.module)
+        : null
       return module?.pluginId === 'open-pencil.effect-pick' ? module.config : null
     })
   }
 
   async effectCount() {
-    return this.page.evaluate(() => {
+    return this.page.evaluate(async () => {
+      const moduleURL = new URL('/packages/scene-graph/src/module.ts', window.location.origin).href
+      const { readModuleInstance }: typeof SceneGraphModule = await import(
+        /* @vite-ignore */ moduleURL
+      )
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       return store.graph
         .getChildren(store.state.currentPageId)
-        .filter((node) => node.interactiveProps?.module?.pluginId === 'open-pencil.effect-pick')
-        .length
+        .filter(
+          (node) =>
+            readModuleInstance(node.interactiveProps?.module)?.pluginId ===
+            'open-pencil.effect-pick'
+        ).length
     })
   }
 
   async resizeSelected(width: number, height: number) {
     await this.page.evaluate(
       ({ width, height }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil.getStore()
         const id = [...store.state.selectedIds][0]
         if (!id) throw new Error('EffectPick resize target is missing')
@@ -85,6 +107,8 @@ export class EffectPickDriver {
 
   async selectedSize() {
     return this.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       const id = [...store.state.selectedIds][0]
       const node = id ? store.graph.getNode(id) : null
@@ -153,6 +177,8 @@ export class EffectPickDriver {
       ...bounds
     }))
     const ids = await this.page.evaluate(async (examples) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       const moduleURL = performance
         .getEntriesByType('resource')
@@ -184,26 +210,36 @@ export class EffectPickDriver {
       store.requestRender()
       return { root: root.id, modules }
     }, examples)
-    await this.page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+    await this.page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil.test?.navigation?.waitForSettlement()
+    })
     return ids
   }
 
   async canvasImage(rootId: string) {
     return this.page.evaluate(async (rootId) => {
+      const moduleURL = new URL('/packages/scene-graph/src/module.ts', window.location.origin).href
+      const { readModuleInstance }: typeof SceneGraphModule = await import(
+        /* @vite-ignore */ moduleURL
+      )
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       const root = store.graph.getNode(rootId)
       if (!root) throw new Error('EffectPick visual root disappeared')
       const before = store.graph.getChildren(root.id).map((node) => ({
         id: node.id,
         childIds: [...node.childIds],
-        module: structuredClone(node.interactiveProps?.module)
+        module: structuredClone(readModuleInstance(node.interactiveProps?.module))
       }))
       const png = await store.renderExportImage([rootId], 1, 'PNG')
       if (!png) throw new Error('EffectPick PNG export unavailable')
       const after = store.graph.getChildren(root.id).map((node) => ({
         id: node.id,
         childIds: [...node.childIds],
-        module: structuredClone(node.interactiveProps?.module)
+        module: structuredClone(readModuleInstance(node.interactiveProps?.module))
       }))
       return { image: Array.from(png), before, after }
     }, rootId)
@@ -217,6 +253,8 @@ export class EffectPickDriver {
     })
     await this.page.evaluate(
       async ({ ids, updated }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil.getStore()
         const id = ids.modules[1]
         if (!id) throw new Error('EffectPick update target is missing')
@@ -239,12 +277,21 @@ export class EffectPickDriver {
 
   async reopen(bytes: number[]) {
     await this.page.evaluate(async (data) => {
+      const moduleURL = new URL('/packages/scene-graph/src/module.ts', window.location.origin).href
+      const { readModuleInstance }: typeof SceneGraphModule = await import(
+        /* @vite-ignore */ moduleURL
+      )
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       await store.openFigFile(new File([new Uint8Array(data)], 'effectpick.fig'))
       const node = store.graph
         .getChildren(store.state.currentPageId)
         .find(
-          (candidate) => candidate.interactiveProps?.module?.pluginId === 'open-pencil.effect-pick'
+          (candidate) =>
+            readModuleInstance(candidate.interactiveProps?.module)?.pluginId ===
+            'open-pencil.effect-pick'
         )
       if (!node) throw new Error('Saved EffectPick module was not reopened')
       store.select([node.id])
@@ -292,11 +339,19 @@ export class EffectPickDriver {
   }
 
   async addBrowserStateAction(text = 'Run browser effect') {
-    await this.page.evaluate((text) => {
+    await this.page.evaluate(async (text) => {
+      const moduleURL = new URL('/packages/scene-graph/src/module.ts', window.location.origin).href
+      const { readModuleInstance }: typeof SceneGraphModule = await import(
+        /* @vite-ignore */ moduleURL
+      )
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil.getStore()
       const id = [...store.state.selectedIds][0]
       const node = id ? store.graph.getNode(id) : null
-      if (!node?.interactiveProps?.module) throw new Error('EffectPick action target is missing')
+      const module = readModuleInstance(node?.interactiveProps?.module)
+      if (!node || !module) throw new Error('EffectPick action target is missing')
       store.graph.updateNode(store.graph.rootId, {
         lowcodeDocumentState: [
           { id: 'effect-browser-clicks', name: 'effectClicks', type: 'number', defaultValue: 0 }
@@ -308,8 +363,8 @@ export class EffectPickDriver {
         interactiveProps: {
           ...node.interactiveProps,
           module: {
-            ...node.interactiveProps.module,
-            config: { ...node.interactiveProps.module.config, text }
+            ...module,
+            config: { ...module.config, text }
           }
         },
         events: {

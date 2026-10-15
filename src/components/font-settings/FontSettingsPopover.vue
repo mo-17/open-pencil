@@ -231,7 +231,8 @@ onMounted(() => {
                       !onlineFontsEnabled ||
                       !isOnlineFontProviderAvailable(provider)
                     "
-                    :data-test-id="`font-settings-provider-${provider}`"
+                    data-slot="font-provider-option"
+                    :data-provider-id="provider"
                     @change="onProviderToggle(provider, $event)"
                   />
                 </label>

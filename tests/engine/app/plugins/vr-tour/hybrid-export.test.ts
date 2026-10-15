@@ -36,6 +36,9 @@ import {
 } from '@/app/plugins/host/vue/archive/protocol'
 import { applyVRTourSamples } from '@/app/plugins/vr-tour/samples'
 
+import { fetchStub } from '#tests/helpers/fetch'
+import { parseVRTourArchiveManifest } from '#tests/helpers/plugins/vr-tour-manifest'
+
 const REQUEST_ID = 'vr-sample-export-20260915'
 const NODE = Bun.which('node')
 let archiveDirectory = ''
@@ -105,12 +108,6 @@ async function archiveUsingAppFunction(files: ReadonlyMap<string, string | Uint8
   const diagnostics = await new Response(compression.stderr).text()
   if (exitCode !== 0) throw new Error(`Node app archive failed: ${diagnostics}`)
   return new Uint8Array(readFileSync(outputPath))
-}
-
-interface HybridManifest {
-  target: string
-  tours: Array<{ key: string }>
-  assets: Array<{ url: string; byteLength: number; sha256: string; chunks: string[] }>
 }
 
 function savedSampleDocument() {
@@ -186,17 +183,19 @@ describe('saved 8K VR samples through mobile app source exporters', () => {
           return zip
         }
       }
-      const fetch = spyOn(globalThis, 'fetch').mockImplementation(() => {
-        throw new Error('Saved sample source export must not use the network')
-      })
+      const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+        fetchStub(async () => {
+          throw new Error('Saved sample source export must not use the network')
+        })
+      )
       try {
         const result = await exportProject(savedSampleDocument(), dependencies)
         const { zip, files } = capture
         if (!zip || !files) throw new Error('Expected the app exporter to produce a ZIP')
         const entries = unzipSync(zip)
-        const manifest = JSON.parse(
+        const manifest = parseVRTourArchiveManifest(
           new TextDecoder().decode(entries['vr-tour-web/manifest.json'])
-        ) as HybridManifest
+        )
 
         expect(result.saved).toBe(true)
         expect(result.fileCount).toBe(files.size)

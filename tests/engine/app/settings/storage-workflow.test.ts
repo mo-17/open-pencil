@@ -26,6 +26,7 @@ function fixture() {
   })
   const writes: string[] = []
   const tests: Record<string, string>[] = []
+  const changed: string[] = []
   const manager: CredentialManager = {
     backend: 'memory',
     availability: async () => 'available',
@@ -41,6 +42,7 @@ function fixture() {
     preferences,
     writes,
     tests,
+    changed,
     services: {
       readPreferences: () => ({ ...preferences.value }),
       writePreference: (_provider: string, field: string, value: string) => {
@@ -56,7 +58,10 @@ function fixture() {
         tests.push(values)
         return { ok: true, message: 'Connected' }
       },
-      resume: async () => undefined
+      resume: async () => undefined,
+      changed: (provider: string) => {
+        changed.push(provider)
+      }
     }
   }
 }
@@ -74,6 +79,7 @@ test('testing storage drafts and cancelling never persist settings', async () =>
     expect(await state.testConnection()).toEqual({ ok: true, message: 'Connected' })
     expect(f.tests[0]?.endpoint).toBe('https://draft.example.com')
     expect(f.writes).toEqual([])
+    expect(f.changed).toEqual([])
     expect(f.preferences.value.endpoint).toBe('https://old.example.com')
     state.cancel()
     expect(state.dirty.value).toBe(false)
@@ -95,6 +101,7 @@ test('credential clearing is staged until Save', async () => {
     expect(state.dirty.value).toBe(true)
     expect(await state.save()).toBe('saved')
     expect(f.writes).toContain('clear:secret-access-key')
+    expect(f.changed).toEqual(['s3-compatible'])
     expect(state.dirty.value).toBe(false)
   } finally {
     scope.stop()
@@ -113,6 +120,7 @@ test('failure before any storage write is not reported as a partial save', async
     expect(await state.save()).toBe('failed')
     expect(state.saveResult.value).toBe('failed')
     expect(f.writes).toEqual([])
+    expect(f.changed).toEqual([])
   } finally {
     scope.stop()
   }
@@ -132,6 +140,7 @@ test('failed storage saves retain replacement drafts and expose the failure', as
     expect(await state.save()).toBe('partial')
     expect(state.saveResult.value).toBe('partial')
     expect(state.error.value).toBe('Credential store locked')
+    expect(f.changed).toEqual(['s3-compatible'])
     expect(state.busy.value).toBe(false)
     expect(credentials.value['secret-access-key']).toBe('test-only-replacement')
     scope.stop()

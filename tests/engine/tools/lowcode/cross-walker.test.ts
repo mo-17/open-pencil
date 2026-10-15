@@ -7,6 +7,7 @@ import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { SceneGraph, type DocumentStateDef, type StateDef } from '@open-pencil/scene-graph'
 
+import { expectRecord } from '#tests/helpers/assert'
 import { ALL_TOOLS, getTool, setupToolTest } from '#tests/helpers/tools'
 
 type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
@@ -305,7 +306,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     // Touch a tool to keep `figma` in scope (so `setupToolTest` isn't dead-
     // code-eliminated by an over-eager linter) without changing graph state.
     const peek = getTool('read_lowcode_node').execute(figma, { id: btn.id })
-    expect(peek.ok).toBe(true)
+    expect(expectRecord(peek).ok).toBe(true)
 
     const out = compile({
       graph,
@@ -449,7 +450,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     )
     editor.undo.commitBatch()
     expect((res as Result).ok).toBe(true)
-    expect(editor.undo.canUndo).toBe(true)
+    expect<unknown>(editor.undo.canUndo).toBe(true)
     expect(editor.undo.undoLabel).toBe('AI: update_lowcode_node')
 
     // Patch must have actually applied across all four fields before undo.

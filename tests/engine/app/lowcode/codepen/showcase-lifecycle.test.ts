@@ -184,6 +184,9 @@ describe('CodePen showcase review lifecycle', () => {
   test('stays cancelling until the sidecar child settles', async () => {
     const child = deferred<CodePenSidecarSuccessResult>()
     let signal: AbortSignal | null = null
+    function currentSignal(): AbortSignal | null {
+      return signal
+    }
     const harness = controllerHarness({
       runSidecar: async (_options, _files, activeSignal) => {
         signal = activeSignal
@@ -196,7 +199,7 @@ describe('CodePen showcase review lifecycle', () => {
     expect(harness.controller.status.value.kind).toBe('compiling')
 
     harness.controller.cancel()
-    expect(signal?.aborted).toBe(true)
+    expect(currentSignal()?.aborted).toBe(true)
     expect(harness.controller.status.value.kind).toBe('cancelling')
 
     child.reject(createCodePenShowcaseAbortError())
@@ -220,7 +223,7 @@ describe('CodePen showcase review lifecycle', () => {
 
     await harness.controller.prepare(INPUT)
 
-    expect(receivedFiles).toBe(files)
+    expect<unknown>(receivedFiles).toBe(files)
     const status = harness.controller.status.value
     expect(status.kind).toBe('ready')
     if (status.kind !== 'ready') throw new Error('Expected a ready CodePen result.')

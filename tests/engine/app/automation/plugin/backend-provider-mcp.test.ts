@@ -9,7 +9,7 @@ import {
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createEditorStore } from '@/app/editor/session'
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
-import { runInstalledPluginCommand } from '@/app/plugins/host'
+import { runInstalledPluginCommand, runInstalledPluginExporter } from '@/app/plugins/host'
 import {
   APP_BACKEND_PROVIDER_DOCUMENT_KEY,
   APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
@@ -134,6 +134,8 @@ describe('Backend Provider MCP commands', () => {
     })
     const dependencies: AutomationPluginMCPDependencies = {
       store,
+      runExporter: (editor, plugin, contribution, signal, args) =>
+        runInstalledPluginExporter(editor, plugin, contribution, undefined, signal, args),
       runCommand: (editor, plugin, contribution, args, signal) =>
         runInstalledPluginCommand(editor, plugin, contribution, undefined, args, signal)
     }

@@ -5,6 +5,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await new CanvasHelper(page).waitForInit()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     store.createShape('RECTANGLE', 100, 100, 100, 100)
@@ -16,6 +18,8 @@ test.beforeEach(async ({ page }) => {
 
 test('Cancel retains the dirty document and recovery does not mark it saved', async ({ page }) => {
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     await window.openPencil?.getStore?.().persistRecoveryNow()
   })
   await page.getByTestId('tabbar-close').click()
@@ -25,7 +29,12 @@ test('Cancel retains the dirty document and recovery does not mark it saved', as
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   await expect(page.getByRole('img', { name: 'Unsaved changes' })).toBeVisible()
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().hasUnsavedChanges())).toBe(true)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasUnsavedChanges()
+    })
+  ).toBe(true)
 })
 
 test('Don’t Save closes the document', async ({ page }) => {

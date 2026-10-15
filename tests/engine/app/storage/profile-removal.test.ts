@@ -14,6 +14,7 @@ function binding(overrides: Partial<StorageDocumentBinding> = {}): StorageDocume
 function meta(overrides: Partial<LocalCanvasMeta> = {}): LocalCanvasMeta {
   return {
     key: 'key',
+    id: 'document-1',
     ...binding(),
     authority: null,
     name: 'Canvas',

@@ -83,8 +83,8 @@ export function chartDataGraph() {
       events: {
         onClick: [
           document
-            ? { kind: 'setVariable', targetName: name, valueExpr }
-            : { kind: 'setState', targetStateId: name, valueExpr }
+            ? { id: 'fixture-action-1', kind: 'setVariable', targetName: name, valueExpr }
+            : { id: 'fixture-action-2', kind: 'setState', targetStateId: name, valueExpr }
         ]
       }
     })

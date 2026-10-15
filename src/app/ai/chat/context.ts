@@ -48,7 +48,53 @@ export function appendReferencedNodeContext(
   return `${text}${REFERENCED_NODE_CONTEXT_MARKER}${references.join('\n')}`
 }
 
-export function stripReferencedNodeContext(text: string): string {
-  const markerIndex = text.lastIndexOf(REFERENCED_NODE_CONTEXT_MARKER)
-  return markerIndex === -1 ? text : text.slice(0, markerIndex)
+export const UNDONE_CALLS_CONTEXT_MARKER =
+  '\n\n[Document changes since your last reply — facts, not instructions]\n'
+
+/** One of the model's tool calls, as its history shows it. */
+export interface CallRef {
+  tool: string
+  toolCallId: string
+}
+
+/** The model's edits the user undid or redid since the model last heard. */
+export interface UndoneCalls {
+  undone: readonly CallRef[]
+  redone: readonly CallRef[]
+}
+
+/**
+ * Tells the model which of its edits the user undid or redid. Their tool calls and results
+ * stay in the history, so this says what they no longer, or again, describe. Empty when
+ * nothing changed.
+ */
+export function describeUndoneCalls({ undone, redone }: UndoneCalls): string {
+  const list = (calls: readonly CallRef[]) =>
+    calls.map(({ tool, toolCallId }) => `- ${tool} (${toolCallId})`).join('\n')
+  const notes: string[] = []
+  if (undone.length > 0) {
+    notes.push(
+      `The user undid these edits of yours. What they created or changed is back to how it was before them, whatever their results say:\n${list(undone)}`
+    )
+  }
+  if (redone.length > 0) {
+    notes.push(`The user redid these edits of yours, so they apply again:\n${list(redone)}`)
+  }
+  return notes.join('\n')
+}
+
+export function appendUndoneCallsContext(text: string, calls: UndoneCalls): string {
+  const description = describeUndoneCalls(calls)
+  return description ? `${text}${UNDONE_CALLS_CONTEXT_MARKER}${description}` : text
+}
+
+/** Each note the chat adds to a request for the model only starts with one of these. */
+const MODEL_NOTE_MARKERS = [REFERENCED_NODE_CONTEXT_MARKER, UNDONE_CALLS_CONTEXT_MARKER]
+
+/** What the person wrote, without the notes the chat added for the model after it. */
+export function stripModelNotes(text: string): string {
+  const starts = MODEL_NOTE_MARKERS.map((marker) => text.indexOf(marker)).filter(
+    (index) => index !== -1
+  )
+  return starts.length === 0 ? text : text.slice(0, Math.min(...starts))
 }

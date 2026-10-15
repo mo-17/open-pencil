@@ -1,16 +1,12 @@
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { Editor } from '@open-pencil/core/editor'
 
-export interface AssetLibraryOwner {
-  readonly graph: SceneGraph
-  readonly state: { readonly currentPageId: string; readonly sceneVersion: number }
+export type AssetLibraryOwner = Readonly<Pick<Editor, 'graph'>> & {
+  readonly state: Readonly<Pick<Editor['state'], 'currentPageId' | 'sceneVersion'>>
 }
 
-export interface AssetLibraryRequest {
-  readonly graph: SceneGraph
-  readonly pageId: string
-}
+export type AssetLibraryRequest = Readonly<Pick<Editor, 'graph'>> & { readonly pageId: string }
 
 const requests = new WeakMap<AssetLibraryOwner, ReturnType<typeof createChannel>>()
 

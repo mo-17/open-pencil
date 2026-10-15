@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import * as Y from 'yjs'
 
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { createYjsGraphSync, registerYjsObservers } from '@/app/collab/yjs-sync'
+import type { EditorStore } from '@/app/editor/active-store'
 
+import { asDouble } from '#tests/helpers/doubles'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 /**
@@ -25,16 +27,17 @@ type StoreStub = {
 
 const noop = (): void => undefined
 
-function stub(graph: SceneGraph): StoreStub {
+function stub(graph: SceneGraph): EditorStore {
   const state = { currentPageId: firstPageId(graph) }
-  return {
+  const value: StoreStub = {
     graph,
     state,
-    switchPage: (pageId) => {
+    switchPage: async (pageId) => {
       state.currentPageId = pageId
     },
     requestRender: noop
   }
+  return asDouble<EditorStore>(value)
 }
 
 describe('collab two-peer lowcode sync (Phase 3 §4.1)', () => {
@@ -87,11 +90,17 @@ describe('collab two-peer lowcode sync (Phase 3 §4.1)', () => {
       applyYjsToGraph: syncB.applyYjsToGraph
     })
 
+    syncA.syncAllNodesToYjs()
+
     // Peer A edits lowcode fields, then syncs the node into the shared doc →
     // B's observeDeep fires → applyYjsToGraph → graphB.updateNode.
-    const bindings = { value: { kind: 'docState', docStateName: 'emailInput' } }
-    const events = { onClick: [{ id: 'a1', kind: 'navigate', to: '/done' }] }
-    const lowcodeDocumentState = [{ id: 'd1', name: 'rows', type: 'array', defaultValue: [] }]
+    const bindings: SceneNode['bindings'] = {
+      value: { kind: 'docState', docStateName: 'emailInput' }
+    }
+    const events: SceneNode['events'] = { onClick: [{ id: 'a1', kind: 'navigate', to: '/done' }] }
+    const lowcodeDocumentState: SceneNode['lowcodeDocumentState'] = [
+      { id: 'd1', name: 'rows', type: 'array', defaultValue: [] }
+    ]
     graphA.updateNode(nodeA.id, { bindings, events, lowcodeDocumentState })
     syncA.syncNodeToYjs(nodeA.id)
 

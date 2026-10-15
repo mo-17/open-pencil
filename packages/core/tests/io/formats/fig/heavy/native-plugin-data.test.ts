@@ -2,11 +2,12 @@ import { expect, test } from 'bun:test'
 
 import { readFixtureArrayBuffer } from '#core-tests/helpers/fig/fixtures'
 
-import { exportFigFileWithOptions, parseFigFile } from '@open-pencil/core/io'
-import { populateAllFigPages } from '@open-pencil/core/io/formats/fig'
 import { parseFigBuffer } from '@open-pencil/fig'
 import { guidToString } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+
+import { exportFigFileWithOptions, parseFigFile } from '#core/io'
+import { populateAllFigPages } from '#core/io/formats/fig'
 
 function sourceId(record: NodeChange): string {
   if (!record.guid) throw new Error('Native record is missing its source GUID')

@@ -31,7 +31,7 @@ test('production comparator decodes PNG and WebP artifacts at all three fixed si
       height: number,
       mediaType: 'image/png' | 'image/webp',
       color: string
-    ): Promise<Uint8Array> => {
+    ): Promise<Uint8Array<ArrayBuffer>> => {
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
@@ -58,10 +58,33 @@ test('production comparator decodes PNG and WebP artifacts at all three fixed si
 
     const nativeCreateImageBitmap = globalThis.createImageBitmap.bind(globalThis)
     let createImageBitmapCalls = 0
-    globalThis.createImageBitmap = async (...args: Parameters<typeof createImageBitmap>) => {
+    function observeImageBitmap(
+      image: ImageBitmapSource,
+      options?: ImageBitmapOptions
+    ): Promise<ImageBitmap>
+    function observeImageBitmap(
+      image: ImageBitmapSource,
+      sx: number,
+      sy: number,
+      sw: number,
+      sh: number,
+      options?: ImageBitmapOptions
+    ): Promise<ImageBitmap>
+    function observeImageBitmap(
+      image: ImageBitmapSource,
+      optionsOrX?: ImageBitmapOptions | number,
+      sy?: number,
+      sw?: number,
+      sh?: number,
+      options?: ImageBitmapOptions
+    ): Promise<ImageBitmap> {
       createImageBitmapCalls++
-      return nativeCreateImageBitmap(...args)
+      if (typeof optionsOrX !== 'number') return nativeCreateImageBitmap(image, optionsOrX)
+      if (sy === undefined || sw === undefined || sh === undefined)
+        throw new Error('Incomplete bitmap crop')
+      return nativeCreateImageBitmap(image, optionsOrX, sy, sw, sh, options)
     }
+    globalThis.createImageBitmap = observeImageBitmap
 
     try {
       const callsBeforeMalformed = createImageBitmapCalls
@@ -194,6 +217,8 @@ test('CodePen AI review dialog is reachable without mutating the live graph', as
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const initial = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return { sceneVersion: store.state.sceneVersion, nodeCount: store.graph.getNodeCount() }
@@ -221,6 +246,8 @@ test('CodePen AI review dialog is reachable without mutating the live graph', as
   await expect(dialog.getByTestId('codepen-ai-commit')).toBeDisabled()
 
   const after = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return { sceneVersion: store.state.sceneVersion, nodeCount: store.graph.getNodeCount() }

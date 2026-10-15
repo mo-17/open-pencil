@@ -73,7 +73,7 @@ describe('automation module tool handler', () => {
       ok: true,
       config: { center: [116.4074, 39.9042], zoom: 10 }
     })
-    expect(store.undo.undoLabel).toBe('AI: create_module')
+    expect(store.undo.undoLabel).toBe('Agent: create_module')
 
     store.undo.undo()
     expect(store.graph.getNode(id)).toBeUndefined()
@@ -120,7 +120,7 @@ describe('automation module tool handler', () => {
       ok: true,
       config: { center: [1, 2], zoom: 9, style: 'dark' }
     })
-    expect(store.undo.undoLabel).toBe('AI: update_module')
+    expect(store.undo.undoLabel).toBe('Agent: update_module')
 
     store.undo.undo()
     expect(resolveMapModule(store.graph.getNode(node.id)?.interactiveProps?.module)).toMatchObject({

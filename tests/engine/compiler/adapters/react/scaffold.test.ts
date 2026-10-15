@@ -4,6 +4,7 @@ import { buildAppTsx } from '@open-pencil/compiler/adapters/react/scaffold'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 const empty: IRTree = {
+  usesRouteParams: false,
   pageId: 'p1',
   pageName: 'Test',
   children: [],
@@ -23,6 +24,7 @@ describe('buildAppTsx (React adapter scaffold)', () => {
 
   test('renders children inside a wrapping <div> with relative min-h-screen', () => {
     const tree: IRTree = {
+      usesRouteParams: false,
       pageId: 'p1',
       pageName: 'Test',
       states: [],

@@ -13,6 +13,8 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
       const canvas = new CanvasHelper(page)
       await canvas.waitForInit()
       await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         const id = store.createShape('SECTION', 140, 140, 500, 350)
@@ -22,16 +24,23 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
       for (const devicePan of [0, 1, 2, -1, -2, 0.3]) {
         await page.evaluate(
           ({ devicePan, dpr }) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
             const store = window.openPencil?.getStore?.()
             if (!store) throw new Error('Editor unavailable')
             store.pan(devicePan / dpr - store.state.panX, -devicePan / dpr - store.state.panY)
           },
           { devicePan, dpr }
         )
-        await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+        await page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.navigation?.waitForSettlement()
+        })
         await canvas.waitForRender()
         const retained = await canvas.screenshotCanvasRegion()
         const metadata = await page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const r = window.openPencil
             ?.getStore?.()
             .canvasRenderers.find((r) => r.tracksSceneSettlement)
@@ -46,6 +55,8 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
           }
         })
         const release = await page.evaluateHandle(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const store = window.openPencil?.getStore?.()
           if (!store) throw new Error('Editor unavailable')
           return store.beginInteractiveEdit()

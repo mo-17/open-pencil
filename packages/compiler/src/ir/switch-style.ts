@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { LOWCODE_SWITCH_APPEARANCE } from '@open-pencil/lowcode'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -60,5 +62,5 @@ export function switchClassName(baseClasses: readonly string[], node: SceneNode)
     node.stateOverrides?.disabled?.opacity === undefined
       ? `disabled:opacity-[${node.opacity * appearance.disabledOpacity}]`
       : ''
-  return [...base, SWITCH_APPEARANCE_CLASSES, disabled].filter(Boolean).join(' ')
+  return compact([...base, SWITCH_APPEARANCE_CLASSES, disabled]).join(' ')
 }

@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines -- One session owns restart-safe credential, metadata, refresh-rotation, and grant-replacement invariants. */
 
-import { randomHex } from '@open-pencil/core/random'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
 import { credentialRef } from '@/app/settings/credentials/reference'

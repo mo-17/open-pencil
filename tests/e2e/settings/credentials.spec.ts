@@ -9,7 +9,9 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
   const storagePanel = page.getByTestId('settings-storage-panel')
-  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
+  await storagePanel
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
   await storagePanel.getByLabel('Endpoint').fill('https://s3.example.com')
   await storagePanel.getByLabel('Bucket').fill('designs')
   await expect(page.getByRole('button', { name: 'Copy CORS JSON' })).toBeVisible()
@@ -26,19 +28,32 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
     })
   ).toBe(false)
 
-  await page.getByTestId('app-settings-done').click()
+  await storagePanel.locator('[data-command="save-storage-settings"]').click()
+  await expect(storagePanel.locator('[data-command="save-storage-settings"]')).toBeEnabled()
+  await page
+    .getByTestId('app-settings-dialog')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
-  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
+  await storagePanel
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
   await expect(secretField.locator('input')).toHaveValue('')
   await secretField.getByRole('button', { name: 'Clear' }).click()
-  await page.getByTestId('app-settings-done').click()
+  await expect(secretField.locator('input')).not.toHaveAttribute('placeholder', /Key saved/)
+  await page
+    .getByTestId('app-settings-dialog')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click()
 
   await page.reload()
   await canvas.waitForInit()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
-  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
+  await storagePanel
+    .locator('[data-slot="storage-provider-option"][data-provider-id="s3-compatible"]')
+    .click()
   await expect(storagePanel.getByLabel('Endpoint')).toHaveValue('https://s3.example.com')
   await expect(secretField.locator('input')).not.toHaveAttribute('placeholder', /Key saved/)
 })
@@ -134,7 +149,7 @@ test('MCP automation settings filter and persist tool availability', async ({ pa
   await expect(authentication).toHaveAttribute('data-state', 'unchecked')
   await authentication.click()
 
-  await page.getByRole('button', { name: 'Tool access', exact: true }).click()
+  await page.getByTestId('settings-mcp-tool-access').click()
   const search = page.getByRole('searchbox', { name: 'Search tools' })
   await search.fill('create_shape')
   await expect(search).toHaveValue('create_shape')
@@ -147,7 +162,7 @@ test('MCP automation settings filter and persist tool availability', async ({ pa
   await canvas.waitForInit()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-mcp').click()
-  await page.getByRole('button', { name: 'Tool access', exact: true }).click()
+  await page.getByTestId('settings-mcp-tool-access').click()
   await expect(createShape).toHaveAttribute('data-state', 'unchecked')
 
   await page.getByRole('button', { name: 'Restore defaults' }).click()
@@ -242,7 +257,8 @@ test('remembered browser credentials survive reload and clear centrally', async 
 })
 
 test('browser credential preferences live in General, not the footer', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/?test')
+  await new CanvasHelper(page).waitForInit()
   await page.keyboard.press('ControlOrMeta+,')
   const panel = page.getByTestId('settings-general-panel')
   const remember = panel.getByRole('switch', { name: 'Remember API keys on this device' })

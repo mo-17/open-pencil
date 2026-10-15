@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const application = () =>
   createInventoryApplication('inventory-pages', {
     kind: 'oidc-pkce',
@@ -51,7 +53,7 @@ describe('procurement and inventory pages', () => {
       '/inventory/ledger'
     ])
     expect(definition.pages.some((entry) => entry.public)).toBe(false)
-    expect(
+    expect<unknown>(
       definition.pages
         .flatMap((entry) => entry.actions)
         .map((entry) => entry.commandId)
@@ -134,7 +136,7 @@ describe('procurement and inventory pages', () => {
       const nodes = [...editor.graph.getAllNodes()]
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind !== 'backendResource') continue
         for (const expression of [
           source.afterExpr,

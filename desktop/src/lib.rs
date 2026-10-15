@@ -1,4 +1,5 @@
 mod acp_environment;
+mod agents;
 mod ai_window;
 mod aliyun_drive;
 #[cfg(test)]
@@ -61,7 +62,7 @@ use google_drive::{
     google_drive_oauth_authorize, google_drive_oauth_cancel, google_drive_oauth_refresh,
     google_drive_oauth_revoke, google_drive_transfer, GoogleDriveOAuthOperations,
 };
-use http::proxy_http_request;
+use http::{cancel_http_request, proxy_http_request, ProxyHttpRequests};
 use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
@@ -103,6 +104,18 @@ struct PendingOpenFile {
 
 struct PendingOpen(Mutex<Vec<PendingOpenFile>>);
 
+/// Complete keyed room invitations, held only in memory until the frontend drains them.
+struct PendingRooms(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_rooms(state: tauri::State<PendingRooms>) -> Vec<String> {
+    state
+        .0
+        .lock()
+        .map(|mut pending| pending.drain(..).collect())
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 fn take_pending_open(state: tauri::State<PendingOpen>) -> Vec<PendingOpenFile> {
     state
@@ -119,6 +132,26 @@ fn take_pending_open(state: tauri::State<PendingOpen>) -> Vec<PendingOpenFile> {
 #[tauri::command]
 fn webview_version() -> Option<String> {
     tauri::webview_version().ok()
+}
+
+/// Whether the environment turns off pings and usage stats: `OPENPENCIL_TELEMETRY` set to
+/// `0`, `false`, or `no`, or `DO_NOT_TRACK` set to anything but `0` or `false`.
+#[tauri::command]
+fn sharing_disabled_by_env() -> bool {
+    let is_off = |name: &str, off: &[&str]| {
+        std::env::var(name)
+            .map(|value| off.contains(&value.trim().to_ascii_lowercase().as_str()))
+            .unwrap_or(false)
+    };
+    let do_not_track = std::env::var("DO_NOT_TRACK")
+        .map(|value| {
+            !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "" | "0" | "false"
+            )
+        })
+        .unwrap_or(false);
+    is_off("OPENPENCIL_TELEMETRY", &["0", "false", "no"]) || do_not_track
 }
 
 #[tauri::command]
@@ -139,7 +172,14 @@ const MAX_REPORTED_SEARCH_DIRS: usize = 12;
 /// cover managers that only modify an interactive rc file.
 fn mcp_candidate_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+    // Bun, Volta, and npm keep their Windows folders under USERPROFILE, which a HOME set by
+    // Unix-style tools does not always match; HOME remains the fallback there.
+    let home = if cfg!(windows) {
+        std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))
+    } else {
+        std::env::var_os("HOME")
+    };
+    if let Some(home) = home.map(PathBuf::from) {
         dirs.push(home.join(".bun/bin"));
         dirs.push(home.join(".local/bin"));
         dirs.push(home.join(".npm-global/bin"));
@@ -311,23 +351,53 @@ fn queue_open_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<Pat
 /// `fs_scope().allow_file`: the frontend resolves them against open tabs or the
 /// file picker and allows the resolved absolute path there.
 fn queue_deep_links<R: tauri::Runtime>(app: &tauri::AppHandle<R>, urls: Vec<url::Url>) {
-    let files: Vec<PendingOpenFile> = urls
-        .iter()
-        .filter(|url| url.scheme() == "openpencil")
-        .filter_map(|url| match deep_link::parse_open_url(url) {
-            Ok(open) => Some(PendingOpenFile {
+    let mut files = Vec::new();
+    let mut rooms = Vec::new();
+    for url in urls.iter().filter(|url| url.scheme() == "openpencil") {
+        match deep_link::parse_deep_link(url) {
+            Ok(deep_link::DeepLink::Open(open)) => files.push(PendingOpenFile {
                 path: open.file,
                 node: open.node,
                 deep_link: true,
             }),
-            Err(error) => {
-                eprintln!("[deep-link] refused {url}: {error:?}");
-                None
+            Ok(deep_link::DeepLink::Join(join)) => rooms.push(join.into_room_input()),
+            // The sign-in that opened the browser is waiting; it checks the state itself.
+            Ok(deep_link::DeepLink::OAuth(callback)) => {
+                let _ = app.emit("oauth-callback", callback);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_focus();
+                }
             }
-        })
-        .collect();
+            Err(error) => eprintln!("[deep-link] refused link: {error:?}"),
+        }
+    }
 
     queue_pending(app, files);
+    queue_rooms(app, rooms);
+}
+
+fn queue_rooms<R: tauri::Runtime>(app: &tauri::AppHandle<R>, rooms: Vec<String>) {
+    if rooms.is_empty() {
+        return;
+    }
+
+    if let Ok(mut pending) = app.state::<PendingRooms>().0.lock() {
+        pending.extend(rooms);
+    }
+
+    let _ = app.emit("open-room-links", ());
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_focus();
+    }
+}
+
+/// `openpencil://` URLs among a second launch's arguments: Windows and Linux start a new
+/// process for a link, and the single-instance plugin hands its arguments to this one.
+fn deep_links_from_args(args: &[String]) -> Vec<url::Url> {
+    args.iter()
+        .filter(|arg| arg.starts_with("openpencil://"))
+        .filter_map(|arg| url::Url::parse(arg).ok())
+        .collect()
 }
 
 fn startup_open_paths() -> Vec<PathBuf> {
@@ -356,6 +426,7 @@ pub fn run() {
     ))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            queue_deep_links(app, deep_links_from_args(&args));
             queue_open_paths(app, open_paths_from_args(args, Path::new(&cwd)));
         }));
     }
@@ -379,7 +450,10 @@ pub fn run() {
         .manage(OneDriveTransferAuthorizations::default())
         .manage(AIWindowState::default())
         .manage(PreviewWindowState::default())
+        .manage(ProxyHttpRequests::default())
+        .manage(PendingRooms(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
+            agents::agent_lookup,
             acp_process_environment,
             aliyun_drive_oauth_authorize,
             aliyun_drive_oauth_cancel,
@@ -418,9 +492,10 @@ pub fn run() {
             path_matches_suffix,
             list_system_fonts,
             load_system_font,
+            proxy_http_request,
+            cancel_http_request,
             set_recent_files,
             native_menu_checked,
-            proxy_http_request,
             open_ai_window,
             open_codepen_prefill,
             open_preview_window,
@@ -436,8 +511,9 @@ pub fn run() {
             update_ai_window,
             update_preview_window,
             write_motion_export_noclobber,
-            set_native_menu_checked
-,
+            set_native_menu_checked,
+            take_pending_rooms,
+            sharing_disabled_by_env,
             webview_version
         ])
         .plugin(tauri_plugin_opener::init())
@@ -546,6 +622,23 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn second_launch_arguments_preserve_the_room_fragment() {
+        const ROOM: &str = "abcdefghijklmnopqrstuvwxyz012345";
+        const KEY: &str = "0123456789abcdefghijklmnopqrstuvwxyz0123456789ab";
+        let args = vec![
+            "open-pencil".to_string(),
+            "untitled.fig".to_string(),
+            format!("openpencil://join?room={ROOM}#k={KEY}"),
+        ];
+        let links = deep_links_from_args(&args);
+        assert_eq!(links.len(), 1);
+        let deep_link::DeepLink::Join(join) = deep_link::parse_deep_link(&links[0]).unwrap() else {
+            panic!("Expected a room invitation");
+        };
+        assert_eq!(join.into_room_input(), format!("{ROOM}#k={KEY}"));
+    }
 
     #[test]
     fn augment_path_appends_missing_candidates_once() {

@@ -79,7 +79,7 @@ test('invalid numeric reads remain present and warn instead of selecting authore
     bindings: {
       ...main.bindings,
       total: { kind: 'expr', expr: 'missingCount' },
-      pageSize: { kind: 'literal', value: 10 }
+      pageSize: { kind: 'literal', literalValue: 10 }
     }
   })
   const tree = collectTree(graph, page.id),

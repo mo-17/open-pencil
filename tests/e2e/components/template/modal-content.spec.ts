@@ -12,6 +12,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
     test.setTimeout(90_000)
     const { canvas, path, bytes: original } = await openComponentGallery(page, info, renderer)
     const ids = await page.evaluate(async () => {
+      const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const root = editor.graph
         .getChildren(editor.state.currentPageId)
@@ -20,7 +24,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
         root &&
         editor.graph
           .getChildren(root.id)
-          .find((node) => node.interactiveProps?.module?.pluginId === 'open-pencil.modal')
+          .find(
+            (node) =>
+              readModuleInstance(node.interactiveProps?.module)?.pluginId === 'open-pencil.modal'
+          )
       const body = modal && editor.graph.getChildren(modal.id).find((node) => node.type === 'FORM')
       if (!root || !modal || !body) throw new Error('Modal form fixture unavailable')
       await editor.loadFontsForNodes([root.id])
@@ -42,6 +49,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
       })
     })
     const controls = await page.evaluate(({ body }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const nodes = [...editor.graph.getAllNodes()].filter((node) => {
         if (node.type !== 'INPUT' && node.type !== 'BUTTON') return false
@@ -110,6 +119,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await page.getByTestId('modal-finish-content').click()
     expect(
       await page.evaluate(({ modal }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const node = window.openPencil.getStore().graph.getNode(modal)
         return [node?.width, node?.height]
       }, ids)

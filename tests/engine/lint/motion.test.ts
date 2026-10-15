@@ -162,6 +162,7 @@ describe('Motion lint rules', () => {
     const page = graph.getPages()[0]
     const riskyEffect = generatedEffect('noise')
     riskyEffect.opacity = 1
+    if (riskyEffect.params.preset !== 'noise') throw new Error('Expected noise params')
     riskyEffect.params.intensity = 0.8
     riskyEffect.uniforms.time.frequencyHz = 2
     riskyEffect.uniforms.time.scale = 2
@@ -185,10 +186,12 @@ describe('Motion lint rules', () => {
 
     const boundedRate = generatedEffect('noise')
     boundedRate.opacity = 1
+    if (boundedRate.params.preset !== 'noise') throw new Error('Expected noise params')
     boundedRate.params.intensity = 1
     boundedRate.uniforms.time.frequencyHz = 3
     const lowContrast = generatedEffect('noise')
     lowContrast.opacity = 0.4
+    if (lowContrast.params.preset !== 'noise') throw new Error('Expected noise params')
     lowContrast.params.intensity = 1
     lowContrast.uniforms.time.frequencyHz = 12
     graph.updateNode(risky.id, { generatedEffect: boundedRate })

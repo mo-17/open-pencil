@@ -7,6 +7,7 @@ import type {
   IRStateDecl,
   IRTree
 } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { emitExpression } from '@open-pencil/lowcode'
 
@@ -55,9 +56,11 @@ export function emitUniAppPage(ir: IRTree, environment: UniAppEmitEnvironment): 
     .filter((value): value is UniAppComponentPlan => value !== undefined)
     .map((component) => `import ${component.symbol} from '../../${component.filePath}'`)
   const states = emitStateDeclarations(ir, environment)
-  const script = [...(states ? [`import { ref } from 'vue'`] : []), ...imports, states]
-    .filter(Boolean)
-    .join('\n')
+  const script = compact([
+    ...(states ? [`import { ref } from 'vue'`] : []),
+    ...imports,
+    states
+  ]).join('\n')
   return `<template>
   <view class="op-page">
 ${body}

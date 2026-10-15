@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
@@ -7,10 +9,11 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import {
   LOWCODE_GRID_LAYOUT_KEY,
-  serializeGridLayout,
-  type GridLayoutOverride
+  serializeGridLayout
 } from '#core/kiwi/fig/node-change/grid-layout-plugin-data'
 import { extractImportedLowcodeProps } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 
 function fixture() {
   const graph = new SceneGraph()
@@ -52,7 +55,7 @@ describe('Grid container .fig persistence', () => {
   test('keeps native geometry, clipping and explicit child placement with Grid tracks, gaps and padding', async () => {
     const { graph, grid } = fixture()
     const bytes = await exportFigFile(graph)
-    const imported = await parseFigFile(bytes.buffer)
+    const imported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const restored = [...imported.getAllNodes()].find((node) => node.name === grid.name)
     if (!restored) throw new Error('Missing restored grid')
     for (const field of [
@@ -89,16 +92,16 @@ describe('Grid container .fig persistence', () => {
 
   test('saving an edited imported Grid updates its tracks and does not resurrect a removed Grid mode', async () => {
     const { graph } = fixture()
-    let imported = await parseFigFile((await exportFigFile(graph)).buffer)
+    let imported = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const grid = [...imported.getAllNodes()].find((node) => node.name === 'Mixed grid')
     if (!grid) throw new Error('Missing imported grid')
     imported.updateNode(grid.id, { gridTemplateRows: [{ sizing: 'FIXED', value: 180 }] })
-    imported = await parseFigFile((await exportFigFile(imported)).buffer)
+    imported = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(imported)))
     const edited = [...imported.getAllNodes()].find((node) => node.name === 'Mixed grid')
     if (!edited) throw new Error('Missing edited grid')
     expect(edited.gridTemplateRows).toEqual([{ sizing: 'FIXED', value: 180 }])
     imported.updateNode(edited.id, { layoutMode: 'NONE' })
-    const final = await parseFigFile((await exportFigFile(imported)).buffer)
+    const final = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(imported)))
     expect([...final.getAllNodes()].find((node) => node.name === 'Mixed grid')?.layoutMode).toBe(
       'NONE'
     )
@@ -116,10 +119,10 @@ describe('Grid container .fig persistence', () => {
     { unknown: 'ignored' }
   ])('preserves unsupported Grid metadata inertly', (override) => {
     const { grid } = fixture()
-    const original = JSON.parse(serializeGridLayout(grid)[0].value) as Omit<
-      GridLayoutOverride,
-      'layoutMode'
-    > & { version: 1 }
+    const original = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      serializeGridLayout(grid)[0].value
+    )
     const value = JSON.stringify({ ...original, ...override })
     const extracted = extractImportedLowcodeProps({
       pluginData: [{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: LOWCODE_GRID_LAYOUT_KEY, value }]

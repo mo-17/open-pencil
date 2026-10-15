@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { computed, effectScope } from 'vue'
+import { computed, createApp, effectScope } from 'vue'
 
-import { createEditor } from '@open-pencil/core/editor'
+import { createEditor, type Editor } from '@open-pencil/core/editor'
 
 import { createLayoutActions } from '#vue/controls/layout/helpers'
 import { usePropScrub } from '#vue/controls/prop-scrub/use'
+import { useSelectionLayout } from '#vue/controls/selection-layout/use'
+import { EDITOR_KEY } from '#vue/editor/context'
 
 describe('property previews', () => {
   test('sizing menu undoes the mode and layout geometry together', () => {
@@ -23,8 +25,7 @@ describe('property previews', () => {
       editor.runLayoutForNode(frame.id)
       const actions = createLayoutActions({
         editor,
-        node: computed(() => frame),
-        isInAutoLayout: computed(() => false)
+        node: computed(() => frame)
       })
       expect(child.x).toBe(40)
       actions.setAxisSizing('width', 'HUG')
@@ -79,8 +80,7 @@ describe('property previews', () => {
       const original = frame.width
       const actions = createLayoutActions({
         editor,
-        node: computed(() => frame),
-        isInAutoLayout: computed(() => false)
+        node: computed(() => frame)
       })
       actions.updateAxisSize('width', 200)
       expect(frame.primaryAxisSizing).toBe('FIXED')
@@ -164,6 +164,149 @@ describe('property previews', () => {
       editor.redoAction()
       expect(nodes.map((n) => n.x)).toEqual([60, 60])
     } finally {
+      editor.dispose()
+    }
+  })
+})
+
+function selectedLayoutControls(editor: Editor) {
+  const scope = effectScope()
+  const app = createApp({ render: () => null })
+  app.provide(EDITOR_KEY, editor)
+  const layout = scope.run(() => app.runWithContext(() => useSelectionLayout()))
+  if (!layout) {
+    scope.stop()
+    throw new Error('Selection layout scope unavailable')
+  }
+  return { layout, dispose: () => scope.stop() }
+}
+
+describe('fork containers in selection layout controls', () => {
+  test('sets FORM and LIST flow together and restores both geometry and modes in one undo', () => {
+    const editor = createEditor()
+    const page = editor.state.currentPageId
+    const form = editor.graph.createNode('FORM', page, {
+      name: 'Form',
+      width: 200,
+      height: 100,
+      layoutMode: 'NONE',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED'
+    })
+    const list = editor.graph.createNode('LIST', page, {
+      name: 'List',
+      x: 250,
+      width: 200,
+      height: 100,
+      layoutMode: 'FREE',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED'
+    })
+    const formChild = editor.graph.createNode('RECTANGLE', form.id, {
+      x: 20,
+      y: 30,
+      width: 40,
+      height: 20
+    })
+    const listChild = editor.graph.createNode('RECTANGLE', list.id, {
+      x: 30,
+      y: 40,
+      width: 50,
+      height: 30
+    })
+    editor.select([form.id, list.id])
+    const { layout, dispose } = selectedLayoutControls(editor)
+    const geometry = () =>
+      [form, list, formChild, listChild].map((node) => [node.x, node.y, node.width, node.height])
+    const before = geometry()
+    try {
+      expect(layout.containers.value.map((node) => node.id)).toEqual([form.id, list.id])
+      expect(layout.layoutMode.value).not.toBeUndefined()
+      layout.setLayoutMode('HORIZONTAL')
+      expect([form.layoutMode, list.layoutMode]).toEqual(['HORIZONTAL', 'HORIZONTAL'])
+      expect(layout.layoutMode.value).toBe('HORIZONTAL')
+      expect(editor.undo.canUndo).toBe(true)
+      editor.undoAction()
+      expect([form.layoutMode, list.layoutMode]).toEqual(['NONE', 'FREE'])
+      expect(geometry()).toEqual(before)
+      expect(editor.undo.canUndo).toBe(false)
+      expect([...editor.state.selectedIds]).toEqual([form.id, list.id])
+      editor.redoAction()
+      expect([form.layoutMode, list.layoutMode]).toEqual(['HORIZONTAL', 'HORIZONTAL'])
+    } finally {
+      dispose()
+      editor.dispose()
+    }
+  })
+
+  test('filters unsupported layers while applying flow and clipping to selected FORM LIST and FRAME', () => {
+    const editor = createEditor()
+    const page = editor.state.currentPageId
+    const form = editor.graph.createNode('FORM', page, { layoutMode: 'NONE', clipsContent: false })
+    const list = editor.graph.createNode('LIST', page, { layoutMode: 'FREE', clipsContent: true })
+    const frame = editor.graph.createNode('FRAME', page, {
+      layoutMode: 'HORIZONTAL',
+      clipsContent: false
+    })
+    const rectangle = editor.graph.createNode('RECTANGLE', page, {
+      layoutMode: 'NONE',
+      clipsContent: false,
+      width: 73,
+      height: 41
+    })
+    const ids = [form.id, list.id, frame.id, rectangle.id]
+    editor.select(ids)
+    const { layout, dispose } = selectedLayoutControls(editor)
+    try {
+      expect(layout.containers.value.map((node) => node.id)).toEqual(ids.slice(0, 3))
+      // Flow is not presented as a common selection value when an unsupported layer is present.
+      expect(layout.layoutMode.value).toBeUndefined()
+      layout.setLayoutMode('VERTICAL')
+      expect([form.layoutMode, list.layoutMode, frame.layoutMode, rectangle.layoutMode]).toEqual([
+        'VERTICAL',
+        'VERTICAL',
+        'VERTICAL',
+        'NONE'
+      ])
+      expect([rectangle.width, rectangle.height]).toEqual([73, 41])
+      editor.undoAction()
+      expect([form.layoutMode, list.layoutMode, frame.layoutMode, rectangle.layoutMode]).toEqual([
+        'NONE',
+        'FREE',
+        'HORIZONTAL',
+        'NONE'
+      ])
+      expect(editor.undo.canUndo).toBe(false)
+      layout.toggleClipsContent()
+      expect([
+        form.clipsContent,
+        list.clipsContent,
+        frame.clipsContent,
+        rectangle.clipsContent
+      ]).toEqual([true, true, true, false])
+      editor.undoAction()
+      expect([
+        form.clipsContent,
+        list.clipsContent,
+        frame.clipsContent,
+        rectangle.clipsContent
+      ]).toEqual([false, true, false, false])
+      expect(editor.undo.canUndo).toBe(false)
+      editor.select([rectangle.id])
+      expect(layout.containers.value).toEqual([])
+      expect(layout.layoutMode.value).toBeUndefined()
+      expect(layout.clipsContent.value).toBeUndefined()
+      layout.setLayoutMode('GRID')
+      layout.toggleClipsContent()
+      expect([
+        rectangle.layoutMode,
+        rectangle.clipsContent,
+        rectangle.width,
+        rectangle.height
+      ]).toEqual(['NONE', false, 73, 41])
+      expect(editor.undo.canUndo).toBe(false)
+    } finally {
+      dispose()
       editor.dispose()
     }
   })

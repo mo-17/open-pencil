@@ -18,7 +18,14 @@ import {
   type UploadButtonModuleConfig
 } from '#core/plugins/upload-button'
 
-import { createMockCanvas, createMockRenderer, type MockCanvasPath } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer,
+  type MockCanvasPath
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asDouble, asCanvas } from '#tests/engine/render/canvas/helpers'
+
 import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 const CONFIG: UploadButtonModuleConfig = {
@@ -53,18 +60,19 @@ function rendererWithFont() {
 }
 
 function uploadPath(canvas: ReturnType<typeof createMockCanvas>): MockCanvasPath | undefined {
-  return canvas.drawPath.mock.calls[0]?.[0] as MockCanvasPath | undefined
+  const path = canvas.drawPath.mock.calls[0]?.[0]
+  return path ? asDouble<MockCanvasPath>(path) : undefined
 }
 
 describe('upload button module canvas preview', () => {
   test('draws an offline inert centered local-file trigger and disposable vector icon', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas preview must stay offline')))
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = asDouble<typeof fetch>(fetchMock)
     try {
-      expect(renderUploadButtonModulePreview(renderer, canvas as Canvas, uploadButtonFrame())).toBe(
+      expect(renderUploadButtonModulePreview(renderer, asCanvas(canvas), uploadButtonFrame())).toBe(
         true
       )
     } finally {
@@ -126,11 +134,11 @@ describe('upload button module canvas preview', () => {
     ] as const
 
     for (const visibility of cases) {
-      const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+      const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
       expect(
         renderUploadButtonModulePreview(
           rendererWithFont(),
-          canvas as Canvas,
+          asCanvas(canvas),
           uploadButtonFrame(
             {},
             {
@@ -142,7 +150,7 @@ describe('upload button module canvas preview', () => {
         ),
         visibility.name
       ).toBe(true)
-      expect(
+      expect<unknown>(
         canvas.drawParagraph.mock.calls.map((call) => [paragraphText(call[0]), call[1], call[2]]),
         visibility.name
       ).toEqual(visibility.expectedText)
@@ -157,12 +165,12 @@ describe('upload button module canvas preview', () => {
   })
 
   test('uses configured button colors without drawing helper or file state', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
     expect(
       renderUploadButtonModulePreview(
         renderer,
-        canvas as Canvas,
+        asCanvas(canvas),
         uploadButtonFrame(
           {},
           {
@@ -183,11 +191,11 @@ describe('upload button module canvas preview', () => {
   })
 
   test('lets authored children replace the intrinsic trigger preview', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        canvas as Canvas,
+        asCanvas(canvas),
         uploadButtonFrame({ childIds: ['authored-trigger'] })
       )
     ).toBe(true)
@@ -198,11 +206,11 @@ describe('upload button module canvas preview', () => {
   })
 
   test('keeps fontless, tiny, and empty frames inert and balanced', () => {
-    const fontlessCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const fontlessCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderUploadButtonModulePreview(
         createMockRenderer({ zoom: 1, labelFont: null }),
-        fontlessCanvas as Canvas,
+        asCanvas(fontlessCanvas),
         uploadButtonFrame()
       )
     ).toBe(true)
@@ -210,11 +218,11 @@ describe('upload button module canvas preview', () => {
     expect(fontlessCanvas.drawPath).toHaveBeenCalledTimes(1)
     expect(fontlessCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const tinyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const tinyCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        tinyCanvas as Canvas,
+        asCanvas(tinyCanvas),
         uploadButtonFrame({ width: 12, height: 10 })
       )
     ).toBe(true)
@@ -223,11 +231,11 @@ describe('upload button module canvas preview', () => {
     expect(tinyCanvas.drawPath).not.toHaveBeenCalled()
     expect(tinyCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const emptyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const emptyCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        emptyCanvas as Canvas,
+        asCanvas(emptyCanvas),
         uploadButtonFrame({ width: 0 })
       )
     ).toBe(true)
@@ -236,12 +244,12 @@ describe('upload button module canvas preview', () => {
   })
 
   test('ellipsizes a long trigger label while keeping the group centered', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const triggerLabel = 'Choose a local file from this device without transferring it'
     expect(
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        canvas as Canvas,
+        asCanvas(canvas),
         uploadButtonFrame({}, { ...CONFIG, triggerLabel })
       )
     ).toBe(true)
@@ -261,19 +269,21 @@ describe('upload button module canvas preview', () => {
   test('cleans vector resources and restores the save stack when drawing fails', () => {
     const pathFailureCanvas = {
       ...createMockCanvas(),
-      drawParagraph: mock(() => undefined),
-      drawPath: mock(() => {
+      drawParagraph: canvasMock('drawParagraph'),
+      drawPath: mock<Canvas['drawPath']>(() => {
         throw new Error('path failed')
       })
     }
     expect(() =>
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        pathFailureCanvas as Canvas,
+        asCanvas(pathFailureCanvas),
         uploadButtonFrame()
       )
     ).toThrow('path failed')
-    const failedPath = pathFailureCanvas.drawPath.mock.calls[0]?.[0] as MockCanvasPath
+    const path = pathFailureCanvas.drawPath.mock.calls[0]?.[0]
+    if (!path) throw new Error('Expected failed path')
+    const failedPath = asDouble<MockCanvasPath>(path)
     expect(failedPath.delete).toHaveBeenCalledTimes(1)
     expect(pathFailureCanvas.restore).toHaveBeenCalledTimes(1)
 
@@ -286,7 +296,7 @@ describe('upload button module canvas preview', () => {
     expect(() =>
       renderUploadButtonModulePreview(
         rendererWithFont(),
-        textFailureCanvas as Canvas,
+        asCanvas(textFailureCanvas),
         uploadButtonFrame()
       )
     ).toThrow('text failed')
@@ -298,9 +308,9 @@ describe('upload button module canvas preview', () => {
     expect(
       BUILTIN_MODULE_CANVAS_ADAPTERS.get(UPLOAD_BUTTON_PLUGIN_ID, UPLOAD_BUTTON_MODULE_TYPE)
     ).toBeDefined()
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
-    renderShapeUncached(renderer, canvas as Canvas, uploadButtonFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), uploadButtonFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
       'Choose file'
@@ -311,8 +321,8 @@ describe('upload button module canvas preview', () => {
         module: { ...createUploadButtonModuleInstance(), pluginId: 'unknown.plugin' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
-    expect(renderUploadButtonModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
+    expect(renderUploadButtonModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawRect).not.toHaveBeenCalled()
     expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
     expect(invalidCanvas.drawPath).not.toHaveBeenCalled()
@@ -322,7 +332,7 @@ describe('upload button module canvas preview', () => {
         module: { ...createUploadButtonModuleInstance(), configVersion: 2 }
       }
     })
-    expect(renderUploadButtonModulePreview(renderer, invalidCanvas as Canvas, invalidVersion)).toBe(
+    expect(renderUploadButtonModulePreview(renderer, asCanvas(invalidCanvas), invalidVersion)).toBe(
       false
     )
   })

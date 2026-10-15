@@ -5,6 +5,8 @@ import { propertyItems, propertySection } from '#tests/helpers/properties'
 
 async function selectedStroke(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -36,7 +38,7 @@ test('a stroke can be made a gradient and taken back to solid', async ({ page })
   expect(gradient?.type).toBe('GRADIENT_LINEAR')
   expect(gradient?.gradientStops?.length).toBeGreaterThan(1)
   // The stroke keeps its geometry across the paint change.
-  expect(gradient).toMatchObject({ weight: 1, align: 'CENTER' })
+  expect(gradient).toMatchObject({ weight: 1, align: 'INSIDE' })
 
   await page.getByTestId('fill-picker-tab-solid').click()
   await canvas.waitForRender()
@@ -44,6 +46,6 @@ test('a stroke can be made a gradient and taken back to solid', async ({ page })
   // Switching back keeps the stops, as it does for a fill, so the gradient returns on re-pick.
   const solid = await selectedStroke(page)
   expect(solid?.type).toBe('SOLID')
-  expect(solid).toMatchObject({ weight: 1, align: 'CENTER' })
+  expect(solid).toMatchObject({ weight: 1, align: 'INSIDE' })
   canvas.assertNoErrors()
 })

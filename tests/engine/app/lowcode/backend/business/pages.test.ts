@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { readModuleInstance } from '@open-pencil/scene-graph'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
@@ -11,6 +12,9 @@ import type {
   BusinessTemplateDefinition
 } from '@/app/lowcode/backend/business/types'
 import { readBackendProviderDocumentRequest } from '@/app/lowcode/backend/document'
+
+import { expectRecord } from '#tests/helpers/assert'
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
 
 import { businessBrowserFixture } from './browser/helpers'
 
@@ -54,7 +58,7 @@ function replaceFirstAction(
 }
 
 describe('business template generated pages', () => {
-  test.each(['personal-blog', 'automotive-news'] as const)(
+  test.each([...(['personal-blog', 'automotive-news'] as const)])(
     '%s reads bookmark content through the current public article and rejects unavailable selection fields',
     async (kind) => {
       const fixture = await businessBrowserFixture(kind, 'react')
@@ -70,7 +74,7 @@ describe('business template generated pages', () => {
       )
       expect(
         lists.some((node) => {
-          const source = node.interactiveProps?.dataSourceRef
+          const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
           return (
             source?.kind === 'backendResource' &&
             source.filterEntries?.some(
@@ -83,8 +87,8 @@ describe('business template generated pages', () => {
         [...fixture.graph.getAllNodes()].some(
           (node) =>
             node.bindings?.text?.kind === 'expr' &&
-            node.bindings.text.expr.includes('item.body') &&
-            node.interactiveProps?.layout?.overflowY === 'auto'
+            node.bindings.text.expr?.includes('item.body') &&
+            expectRecord(node.interactiveProps?.layout).overflowY === 'auto'
         )
       ).toBe(true)
       const invalid = {
@@ -104,11 +108,12 @@ describe('business template generated pages', () => {
     }
   )
 
-  test('video players follow selected records without exposing playback URLs through favorites', async () => {
-    for (const target of ['react', 'vue'] as const) {
+  test.each([...(['react', 'vue'] as const)])(
+    'video players follow selected records without exposing playback URLs through favorites (%s)',
+    async (target) => {
       const value = await businessBrowserFixture('video-live', target)
       const players = [...value.graph.getAllNodes()].filter(
-        (node) => node.interactiveProps?.module?.moduleType === 'video'
+        (node) => readModuleInstance(node.interactiveProps?.module)?.moduleType === 'video'
       )
       expect(players).toHaveLength(4)
       for (const player of players) {
@@ -120,7 +125,7 @@ describe('business template generated pages', () => {
           kind: 'expr',
           expr: expect.stringMatching(/SelectedRecord\.poster_url$/u)
         })
-        expect(player.interactiveProps?.module?.config.autoplay).toBe(false)
+        expect(readModuleInstance(player.interactiveProps?.module)?.config.autoplay).toBe(false)
         expect(player.renderCondition).toContain('SelectionReady')
         expect(player.renderCondition).toContain('$currentUser.generation')
       }
@@ -137,7 +142,7 @@ describe('business template generated pages', () => {
       expect(sources).toContain('.poster_url')
       expect(sources).toMatch(/\.active === ![01]/u)
     }
-  })
+  )
 
   test('video metadata rejects unreadable or non-text media fields before creating pages', async () => {
     const value = await businessBrowserFixture('video-live', 'react')
@@ -197,15 +202,20 @@ describe('business template generated pages', () => {
         const sources = [...value.graph.getAllNodes()].filter((node) => node.type === 'LIST')
         expect(sources.length).toBeGreaterThan(0)
         expect(
-          sources.every((node) => node.interactiveProps?.dataSourceRef?.kind === 'backendResource')
+          sources.every(
+            (node) =>
+              readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)?.kind ===
+              'backendResource'
+          )
         ).toBe(true)
       })
 
-  test('rental panoramas use the explicitly selected record and its session-bound visibility', async () => {
-    for (const target of ['react', 'vue'] as const) {
+  test.each([...(['react', 'vue'] as const)])(
+    'rental panoramas use the explicitly selected record and its session-bound visibility in %s',
+    async (target) => {
       const value = await businessBrowserFixture('rental-viewing', target)
       const tours = [...value.graph.getAllNodes()].filter(
-        (node) => node.interactiveProps?.module?.moduleType === 'vr-tour'
+        (node) => readModuleInstance(node.interactiveProps?.module)?.moduleType === 'vr-tour'
       )
       expect(tours).toHaveLength(2)
       for (const tour of tours) {
@@ -217,15 +227,18 @@ describe('business template generated pages', () => {
         expect(tour.renderCondition).toContain('SelectionReady')
       }
       expect(
-        [...value.output.files.values()].some(
-          (source) => source.includes('<OpenPencilVRTour') && source.includes('.panorama_url')
-        )
+        [...value.output.files.values()]
+          .filter((source): source is string => typeof source === 'string')
+          .some(
+            (source) => source.includes('<OpenPencilVRTour') && source.includes('.panorama_url')
+          )
       ).toBe(true)
     }
-  })
+  )
 
-  test('reads complete article bodies in a scrollable detail and coerces numeric fields in both targets', async () => {
-    for (const target of ['react', 'vue'] as const) {
+  test.each([...(['react', 'vue'] as const)])(
+    'reads complete article bodies in a scrollable detail in %s',
+    async (target) => {
       const content = await businessBrowserFixture('content-knowledge-base', target)
       const body = [...content.graph.getAllNodes()].filter(
         (node) =>
@@ -237,16 +250,24 @@ describe('business template generated pages', () => {
         body.every(
           (node) =>
             node.height >= 144 &&
-            node.interactiveProps?.layout?.overflowY === 'auto' &&
-            node.interactiveProps.layout.whiteSpace === 'pre-wrap'
+            expectRecord(node.interactiveProps?.layout).overflowY === 'auto' &&
+            expectRecord(node.interactiveProps?.layout).whiteSpace === 'pre-wrap'
         )
       ).toBe(true)
       expect(
-        [...content.output.files.values()].some((source) => source.includes('whitespace-pre-wrap'))
+        [...content.output.files.values()]
+          .filter((source): source is string => typeof source === 'string')
+          .some((source) => source.includes('whitespace-pre-wrap'))
       ).toBe(true)
+    }
+  )
+
+  test.each([...(['react', 'vue'] as const)])(
+    'coerces numeric booking fields in %s',
+    async (target) => {
       const booking = await businessBrowserFixture('booking-registration', target)
       const inputLine = [...booking.output.files.values()]
-        .flatMap((source) => source.split('\n'))
+        .flatMap((source) => (typeof source === 'string' ? source.split('\n') : []))
         .find(
           (line) =>
             line.includes(target === 'react' ? '<__OpenPencilNumberInput' : '<OpNumberInput') &&
@@ -255,7 +276,7 @@ describe('business template generated pages', () => {
         )
       expect(inputLine).toContain('type="number"')
     }
-  })
+  )
 
   test('preflight rejects unknown commands, missing parameters and unsupported relation identities', async () => {
     const { application } = await businessBrowserFixture('customer-crm', 'react')

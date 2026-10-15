@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { encode } from 'js-base64'
+import * as v from 'valibot'
 
 import { deployFiles, type DeployProgress } from '@open-pencil/compiler/deploy'
 
@@ -78,7 +79,14 @@ describe('deployFiles — Netlify (Phase 3 §5)', () => {
     let manifest: Record<string, string> = {}
     const calls = mockFetch((call) => {
       if (call.url.endsWith('/deploys') && call.method === 'POST') {
-        const parsed = JSON.parse(call.body as string) as { files: Record<string, string> }
+        const parsed = v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({ files: v.record(v.string(), v.string()) })
+          ),
+          call.body as string
+        )
         manifest = parsed.files
         return jsonResponse({ id: 'dep_1', required: [] })
       }
@@ -154,7 +162,14 @@ describe('deployFiles — Netlify (Phase 3 §5)', () => {
     let manifest: Record<string, string> = {}
     mockFetch((call) => {
       if (call.url.endsWith('/deploys') && call.method === 'POST') {
-        manifest = (JSON.parse(call.body as string) as { files: Record<string, string> }).files
+        manifest = v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({ files: v.record(v.string(), v.string()) })
+          ),
+          call.body as string
+        ).files
         return jsonResponse({ id: 'dep_4', required: [] })
       }
       return jsonResponse({})
@@ -234,7 +249,17 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
     }
     mockFetch((call) => {
       if (call.url.endsWith('/v13/deployments')) {
-        body = JSON.parse(call.body as string) as typeof body
+        body = v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({
+              name: v.string(),
+              files: v.array(v.looseObject({ file: v.string(), sha: v.string(), size: v.number() }))
+            })
+          ),
+          call.body as string
+        )
         return jsonResponse({ id: 'dpl_2', url: 'app-y.vercel.app' })
       }
       return jsonResponse({})
@@ -257,7 +282,14 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
     let body: { files: { file: string; sha: string }[] } = { files: [] }
     mockFetch((call) => {
       if (call.url.endsWith('/v13/deployments')) {
-        body = JSON.parse(call.body as string) as typeof body
+        body = v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({ files: v.array(v.looseObject({ file: v.string(), sha: v.string() })) })
+          ),
+          call.body as string
+        )
         return jsonResponse({ id: 'dpl_3', url: 'app-z.vercel.app' })
       }
       return jsonResponse({})
@@ -350,19 +382,39 @@ describe('deployFiles — Cloudflare Pages (Phase 4 §5)', () => {
     const calls = mockFetch((call) => {
       if (call.url.endsWith('/upload-token')) return jsonResponse({ result: { jwt: 'jwt_1' } })
       if (call.url.endsWith('/pages/assets/check-missing')) {
-        const body = JSON.parse(call.body as string) as { hashes: string[] }
+        const body = v.parse(
+          v.pipe(v.string(), v.parseJson(), v.looseObject({ hashes: v.array(v.string()) })),
+          call.body as string
+        )
         expect(body.hashes).toContain(HTML_CF_HASH)
         expect(body.hashes).toContain(CSS_CF_HASH)
         return jsonResponse({ result: [CSS_CF_HASH] })
       }
       if (call.url.endsWith('/pages/assets/upload')) {
-        uploadPayload = JSON.parse(call.body as string) as typeof uploadPayload
+        uploadPayload = v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.array(
+              v.looseObject({
+                key: v.string(),
+                value: v.string(),
+                metadata: v.looseObject({ contentType: v.string() }),
+                base64: v.boolean()
+              })
+            )
+          ),
+          call.body as string
+        )
         return jsonResponse({ result: {} })
       }
       if (call.url.endsWith('/pages/assets/upsert-hashes')) return jsonResponse({ result: {} })
       if (call.url.endsWith('/deployments')) {
         const form = call.body as FormData
-        manifest = JSON.parse(String(form.get('manifest'))) as Record<string, string>
+        manifest = v.parse(
+          v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+          String(form.get('manifest'))
+        )
         return jsonResponse({ result: { id: 'cf_dep_1', url: 'https://app.pages.dev' } })
       }
       return jsonResponse({ result: {} })

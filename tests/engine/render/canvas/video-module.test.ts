@@ -1,6 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
-
-import type { Canvas } from 'canvaskit-wasm'
+import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -13,7 +11,12 @@ import {
   type VideoModuleConfigV1
 } from '#core/plugins/video'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 function videoFrame(overrides: Partial<SceneNode> = {}): SceneNode {
   return createDefaultNode(() => 'video-1', 'FRAME', {
@@ -51,10 +54,10 @@ describe('video module canvas preview', () => {
   })
 
   test('draws a deterministic placeholder without a media loader', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const renderer = rendererWithFont()
 
-    expect(renderVideoModulePreview(renderer, canvas as Canvas, videoFrame())).toBe(true)
+    expect(renderVideoModulePreview(renderer, asCanvas(canvas), videoFrame())).toBe(true)
     expect(canvas.save).toHaveBeenCalledTimes(1)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawPath).toHaveBeenCalledTimes(1)
@@ -64,9 +67,9 @@ describe('video module canvas preview', () => {
   })
 
   test('regular FRAME rendering dispatches video and invalid identities fail closed', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const renderer = rendererWithFont()
-    renderShapeUncached(renderer, canvas as Canvas, videoFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), videoFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawPath).toHaveBeenCalledTimes(1)
 
@@ -75,8 +78,8 @@ describe('video module canvas preview', () => {
         module: { ...createVideoModuleInstance(), pluginId: 'unknown.plugin' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
-    expect(renderVideoModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    const invalidCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
+    expect(renderVideoModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawPath).not.toHaveBeenCalled()
   })
 })

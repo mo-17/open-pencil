@@ -8,7 +8,7 @@ import {
 } from '@/app/settings/preview-toolbar-layout'
 
 describe('preview toolbar layout setting', () => {
-  test.each(PREVIEW_TOOLBAR_LAYOUTS)('accepts and preserves %s', (value) => {
+  test.each([...PREVIEW_TOOLBAR_LAYOUTS])('accepts and preserves %s', (value) => {
     const writes: string[] = []
 
     expect(repairStoredPreviewToolbarLayout(value, (layout) => writes.push(layout))).toBe(value)

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, sceneNodeToJSX, selectionToJSX } from '@open-pencil/core'
+import { SceneGraph, sceneNodeToJSX, selectionToJSX } from '#core/index'
 import {
   collectResponsiveTailwindClasses,
   collectTailwindClasses
-} from '@open-pencil/core/io/formats/jsx'
+} from '#core/io/formats/jsx/index'
 
 function makeGraph() {
   const graph = new SceneGraph()

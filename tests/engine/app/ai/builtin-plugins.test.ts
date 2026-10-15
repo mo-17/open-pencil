@@ -529,8 +529,7 @@ describe('built-in plugin AI tools', () => {
     const use = executable(tools, BUILTIN_PLUGIN_AI_TOOL_NAMES.use)
 
     await execute(search, { query: 'map' })
-    const replacement = structuredClone(map)
-    replacement.package.digest = 'sha256-replaced-package'
+    const replacement = { ...map, package: { ...map.package, digest: 'sha256-replaced-package' } }
     currentSnapshot = snapshot([replacement], [installedPlugin(replacement, true)])
     await expect(execute(use, pluginUseInput(mapTool, 'revision-ready'))).rejects.toThrow(
       'authority changed'

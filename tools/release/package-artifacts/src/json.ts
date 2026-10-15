@@ -1,6 +1,10 @@
 import * as v from 'valibot'
 
-const jsonObjectSchema = v.record(v.string(), v.unknown())
+const jsonObjectSchema = v.pipe(
+  v.unknown(),
+  v.check((value) => value !== null && typeof value === 'object' && !Array.isArray(value)),
+  v.record(v.string(), v.unknown())
+)
 
 export function parseJSON(text: string, context: string): unknown {
   try {

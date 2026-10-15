@@ -8,6 +8,8 @@ async function setup(page: Page) {
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const graph = editor.graph
     graph.updateNode(editor.state.currentPageId, {
@@ -41,7 +43,10 @@ async function setup(page: Page) {
 }
 
 async function properties(page: Page, id: string) {
-  return page.evaluate((id) => window.openPencil.getStore().graph.getNode(id)?.interactiveProps, id)
+  return page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().graph.getNode(id)?.interactiveProps
+  }, id)
 }
 
 test('select option edits, ordering and defaults form undoable changes in the primary panel', async ({
@@ -54,7 +59,10 @@ test('select option edits, ordering and defaults form undoable changes in the pr
   await expect(section.getByRole('combobox', { name: 'Default selected', exact: true })).toHaveText(
     'Team (company)'
   )
-  await page.evaluate(() => window.openPencil.getStore().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().undo.undo()
+  })
   await expect(
     section.getByRole('textbox', { name: 'Submitted value 2', exact: true })
   ).toHaveValue('team')
@@ -67,7 +75,7 @@ test('select option edits, ordering and defaults form undoable changes in the pr
   expect((await properties(page, first))?.value).toBeUndefined()
   await section.getByRole('button', { name: 'Add option', exact: true }).click()
   await expect(section.locator('[data-property="lowcode-select-option"]')).toHaveCount(2)
-  await page.getByTestId('design-panel-workspace-focused').click()
+  await page.locator('[data-slot="inspector-workspace"][data-workspace="focused"]').click()
   await expect(section.getByRole('textbox', { name: 'Display label 1', exact: true })).toBeVisible()
   canvas.assertNoErrors()
 })
@@ -87,6 +95,8 @@ test('clear, binding and dynamic-source feedback preserve options and business s
   ).toBeDisabled()
   await expect(section).toContainText('bound value takes priority')
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const node = editor.graph.getNode(id)
     if (!node) throw new Error('Missing select')
@@ -107,11 +117,12 @@ test('clear, binding and dynamic-source feedback preserve options and business s
   await expect(section.locator('[data-property="lowcode-select-option"]')).toHaveCount(0)
   expect((await properties(page, first))?.options).toHaveLength(2)
   expect(
-    await page.evaluate(
-      () =>
-        window.openPencil.getStore().graph.getNode(window.openPencil.getStore().state.currentPageId)
-          ?.state?.[0].defaultValue
-    )
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil
+        .getStore()
+        .graph.getNode(window.openPencil.getStore().state.currentPageId)?.state?.[0].defaultValue
+    })
   ).toBe('team')
   canvas.assertNoErrors()
 })
@@ -136,22 +147,36 @@ test('search and virtual scrolling are independent opt-ins with undo and FIG per
   expect(await properties(page, first)).toEqual({ ...original, showSearch: true })
   await virtual.click()
   expect(await properties(page, first)).toEqual({ ...original, showSearch: true, virtual: true })
-  await page.evaluate(() => window.openPencil.getStore().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().undo.undo()
+  })
   await expect(search).toBeChecked()
   await expect(virtual).not.toBeChecked()
   expect(await properties(page, first)).toEqual({ ...original, showSearch: true })
-  await page.evaluate(() => window.openPencil.getStore().undo.redo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().undo.redo()
+  })
   await expect(virtual).toBeChecked()
 
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), second)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, second)
   await expect(search).not.toBeChecked()
   await expect(virtual).not.toBeChecked()
   expect(await properties(page, second)).toEqual({ options: ['Other'], value: 'Other' })
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), first)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, first)
   await expect(search).toBeChecked()
   await expect(virtual).toBeChecked()
 
   const restored = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const saved = await editor.buildFigFileSnapshot()
     await editor.openFigFile(new File([new Uint8Array(saved.data)], 'select-modes.fig'))
@@ -187,10 +212,15 @@ test('duplicate values are explained and stale input cannot write to a newly sel
   await value.fill('personal')
   await value.press('Enter')
   await expect(section.getByRole('alert')).toContainText('values must be unique')
-  await page.evaluate(() => window.openPencil.getStore().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().undo.undo()
+  })
   const input = section.getByRole('textbox', { name: 'Display label 1', exact: true })
   await input.fill('Old draft')
   await input.evaluate((element, id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     window.openPencil.getStore().select([id])
     element.dispatchEvent(new Event('change', { bubbles: true }))
   }, second)
@@ -221,6 +251,8 @@ test.describe('Chinese select settings', () => {
     await page.setViewportSize({ width: 1440, height: 1100 })
     const { first, section, canvas } = await setup(page)
     await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       editor.updateNode(id, {
         interactiveProps: {
@@ -263,6 +295,8 @@ test.describe('Chinese select settings', () => {
     expect(await properties(page, first)).toEqual({ ...original, virtual: true })
     expect(
       await page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         return {
           binding: editor.graph.getNode(id)?.bindings?.value,
@@ -277,6 +311,8 @@ test.describe('Chinese select settings', () => {
 test('form overview reveals the select binding in its new primary section', async ({ page }) => {
   const { first, section, canvas } = await setup(page)
   const formId = await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const form = editor.graph.createNode('FORM', editor.state.currentPageId, {
       width: 400,
@@ -285,10 +321,17 @@ test('form overview reveals the select binding in its new primary section', asyn
     editor.graph.reparentNode(id, form.id)
     return form.id
   }, first)
-  await page.getByTestId('design-panel-workspace-studio').click()
-  await page.getByTestId('inspector-section-hide-lowcode-control').click()
+  await page.locator('[data-slot="inspector-workspace"][data-workspace="studio"]').click()
+  await page
+    .locator(
+      '[data-slot="inspector-section-action"][data-command="hide-section"][data-section-id="lowcode-control"]'
+    )
+    .click()
   await expect(section).not.toBeVisible()
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), formId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, formId)
   await page.getByTestId('form-overview-bindings').click()
   await expect(section).toBeVisible()
   await expect(section.getByTestId('lowcode-value-binding-select')).toBeFocused()
@@ -299,21 +342,22 @@ test('external reorder discards a draft even when option labels are identical', 
   page
 }) => {
   const { first, section, canvas } = await setup(page)
-  await page.evaluate(
-    (id) =>
-      window.openPencil.getStore().updateNode(id, {
-        interactiveProps: {
-          options: [
-            { label: 'Same', value: 'first' },
-            { label: 'Same', value: 'second' }
-          ]
-        }
-      }),
-    first
-  )
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().updateNode(id, {
+      interactiveProps: {
+        options: [
+          { label: 'Same', value: 'first' },
+          { label: 'Same', value: 'second' }
+        ]
+      }
+    })
+  }, first)
   const label = section.getByRole('textbox', { name: 'Display label 1', exact: true })
   await label.fill('Old option draft')
   await label.evaluate((element, id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     window.openPencil.getStore().updateNode(id, {
       interactiveProps: {
         options: [

@@ -105,7 +105,7 @@ const {
     <p
       v-if="manifestError"
       data-test-id="lowcode-library-manifest-error"
-      class="text-red-400"
+      class="text-error"
       role="alert"
     >
       {{ manifestError }}
@@ -113,7 +113,7 @@ const {
     <p
       v-if="libraryError"
       data-test-id="lowcode-library-source-error"
-      class="text-red-400"
+      class="text-error"
       role="alert"
     >
       {{ libraryError }}
@@ -122,7 +122,7 @@ const {
       v-if="remoteURLInvalid || operationError"
       id="lowcode-library-url-error"
       data-test-id="lowcode-library-operation-error"
-      class="text-red-400"
+      class="text-error"
       role="alert"
     >
       {{ remoteURLInvalid ? panels.lowcodeLibrariesRemoteManifestUrlInvalid : operationError }}
@@ -130,7 +130,7 @@ const {
     <p
       v-if="statusMessage"
       data-test-id="lowcode-library-status-message"
-      class="text-emerald-400"
+      class="text-success"
       role="status"
       aria-live="polite"
     >

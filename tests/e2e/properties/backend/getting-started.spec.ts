@@ -8,6 +8,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function savedApplication(page: Page) {
   return page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const { readBackendProviderDocumentRequest } = (await import(
       /* @vite-ignore */ new URL('/src/app/lowcode/backend/document.ts', location.origin).href
     )) as typeof BackendDocumentModule
@@ -95,6 +97,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
 
       // Page links reflect edited routes, rather than the template's default entry path.
       const renamedPage = await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil?.getStore?.()
         const candidate = editor?.graph
           .getPages()
@@ -111,7 +115,12 @@ for (const locale of ['en', 'zh-CN'] as const) {
       await renamedLink.click()
       await expect(guide).toBeHidden()
       await expect
-        .poll(() => page.evaluate(() => window.openPencil?.getStore?.().state.currentPageId))
+        .poll(() =>
+          page.evaluate(() => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().state.currentPageId
+          })
+        )
         .toBe(renamedPage.id)
 
       const panel = page.getByTestId('lowcode-backend-editor')
@@ -147,6 +156,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
 
       // The guide recomputes from saved metadata after the last module is undone/redone.
       await page.evaluate(async () => {
+        if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
         await window.openPencil?.test?.navigation?.waitForSettlement()
       })
       await canvas.canvas.click({ position: { x: 10, y: 10 } })

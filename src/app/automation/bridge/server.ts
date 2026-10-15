@@ -4,12 +4,16 @@
  * Connects to the bridge via WebSocket, receives RPC requests,
  * executes them against the live EditorStore, and sends results back.
  */
-import { randomHex } from '@open-pencil/core/random'
+import * as v from 'valibot'
 
+import { randomHex } from '@open-pencil/scene-graph/random'
+
+import { endAgentSession, readAgentSession } from '@/app/automation/agents'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import { DEFAULT_APP_PLUGIN_MCP_OPTIONS } from '@/app/automation/bridge/plugin-mcp-handler'
 import { PluginMCPRequestRevocationRegistry } from '@/app/automation/bridge/plugin-mcp-request-revocation'
+import { isUnknownRecord } from '@/app/automation/bridge/target'
 import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginAIAuthorization, appPluginStore } from '@/app/plugins/app'
 import {
@@ -18,6 +22,28 @@ import {
   refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
 import { listAppPluginMCPTools } from '@/app/plugins/mcp'
+
+/** Requests from the MCP bridge; other message types (such as the register prompt) are ignored. */
+const AutomationRequestJSON = v.pipe(
+  v.string(),
+  v.parseJson(),
+  v.union([
+    v.object({
+      type: v.literal('request'),
+      id: v.pipe(v.string(), v.nonEmpty()),
+      command: v.string(),
+      args: v.optional(v.unknown())
+    }),
+    v.object({ type: v.literal('cancel'), id: v.pipe(v.string(), v.nonEmpty()) })
+  ])
+)
+
+/**
+ * The connections each MCP session's calls came over, across bridges: restarting MCP opens a new
+ * bridge while the old socket is still closing, and that close must not end a session the new
+ * connection carries, so a session ends only with its last connection.
+ */
+const sessionSockets = new Map<string, Set<WebSocket>>()
 
 export function connectAutomation(
   getStore: () => EditorStore,
@@ -137,18 +163,23 @@ export function connectAutomation(
 
     socket.onmessage = async (event) => {
       try {
-        const msg = JSON.parse(event.data) as {
-          type: string
-          id: string
-          command: string
-          args?: unknown
+        const parsed = v.safeParse(AutomationRequestJSON, event.data)
+        if (!parsed.success) {
+          if (parsed.issues.some((issue) => issue.type === 'parse_json'))
+            console.warn('Failed to parse WebSocket message:', v.summarize(parsed.issues))
+          return
         }
-        if (!msg.id) return
+        const msg = parsed.output
         if (msg.type === 'cancel') {
           activeRequests.cancel(msg.id)
           return
         }
-        if (msg.type !== 'request') return
+        const session = isUnknownRecord(msg.args) ? readAgentSession(msg.args.agent) : null
+        if (session) {
+          const sockets = sessionSockets.get(session.session) ?? new Set<WebSocket>()
+          sockets.add(socket)
+          sessionSockets.set(session.session, sockets)
+        }
         try {
           const result = await handleRequest(msg.id, msg.command, msg.args, socket)
           if (socket.readyState === WebSocket.OPEN) {
@@ -177,6 +208,11 @@ export function connectAutomation(
         lastPluginToolsRevision = null
       }
       activeRequests.abortAll()
+      for (const [id, sockets] of sessionSockets) {
+        if (!sockets.delete(socket) || sockets.size > 0) continue
+        sessionSockets.delete(id)
+        endAgentSession(id)
+      }
       if (intentionalDisconnect || event.code === 1000) return
       console.warn('[Automation] WebSocket closed:', `code=${event.code} reason=${event.reason}`)
       scheduleReconnect()

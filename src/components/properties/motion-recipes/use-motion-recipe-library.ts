@@ -1,3 +1,4 @@
+import { compact, uniq } from 'es-toolkit/array'
 import { computed, ref, watch } from 'vue'
 
 import type { MotionRecipe, MotionRecipeMergePolicy } from '@open-pencil/scene-graph'
@@ -106,14 +107,7 @@ export function useMotionRecipeLibrary() {
   function setRoleTargets(roleId: string, value: string): void {
     roleMapping.value = {
       ...roleMapping.value,
-      [roleId]: [
-        ...new Set(
-          value
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-        )
-      ]
+      [roleId]: uniq(compact(value.split(',').map((item) => item.trim())))
     }
   }
 

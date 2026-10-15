@@ -8,6 +8,8 @@ test('wrap clears automatic spacing and restores both properties with one Undo',
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const id = editor.createShape('FRAME', 100, 100, 320, 240)
@@ -21,6 +23,8 @@ test('wrap clears automatic spacing and restores both properties with one Undo',
   })
   const state = () =>
     page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const node = window.openPencil?.getStore?.().graph.getNode(id)
       return [node?.layoutWrap, node?.primaryAxisAlign]
     }, id)
@@ -34,6 +38,8 @@ test('layout guide live numeric edits form one Undo record', async ({ page }) =>
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const id = editor.createShape('FRAME', 100, 100, 320, 240)
@@ -53,10 +59,11 @@ test('layout guide live numeric edits form one Undo record', async ({ page }) =>
     return id
   })
   const value = () =>
-    page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.layoutGrids[0].count,
-      id
-    )
+    page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.layoutGrids[0].count
+    }, id)
+  await page.getByRole('button', { name: 'Layout guide settings', exact: true }).click()
   const field = page.getByRole('spinbutton', { name: 'Count', exact: true })
   await field.dblclick()
   await field.fill('12')

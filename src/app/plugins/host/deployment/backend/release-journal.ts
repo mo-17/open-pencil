@@ -1027,7 +1027,7 @@ export function createMemoryBackendHostReleaseDispatchJournal(
 }
 
 export function createIdbBackendHostReleaseDispatchJournal(
-  databaseName = APP_DATABASE_NAMES.backendReleaseJournal,
+  databaseName: string = APP_DATABASE_NAMES.backendReleaseJournal,
   idbFactory: IDBFactory | undefined = globalThis.indexedDB
 ): BackendHostReleaseDispatchJournal {
   let databasePromise: Promise<IDBDatabase> | null = null

@@ -26,6 +26,8 @@ function effectsSection() {
 
 function getNode(id: string) {
   return editor.page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const n = store.graph.getNode(nodeId)
@@ -50,6 +52,8 @@ function getNode(id: string) {
 
 function getSelectedId() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds][0] ?? null
@@ -58,6 +62,8 @@ function getSelectedId() {
 
 function getSelectedIds() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds]
@@ -182,7 +188,10 @@ test('paint effect and export rows share compact visual anatomy', async () => {
   await editor.canvas.waitForRender()
   await editor.page.mouse.move(0, 0)
 
-  await expect(designPanel()).toHaveScreenshot('design-panel-paint-effects-export.png')
+  await expect(fillSection()).toHaveScreenshot('design-panel-fill.png')
+  await expect(strokeSection()).toHaveScreenshot('design-panel-stroke.png')
+  await expect(effectsSection()).toHaveScreenshot('design-panel-effects.png')
+  await expect(exportSection).toHaveScreenshot('design-panel-export.png')
 })
 
 test('adding a second fill shows two fill items', async () => {
@@ -303,7 +312,7 @@ test('visibility toggle in appearance section works', async () => {
   expect(expectDefined(restored, 'restored node').visible).toBe(true)
 })
 
-test('fill stroke and effect visibility toggles update on repeated clicks and support undo redo', async () => {
+test('fill visibility updates on repeated clicks and supports undo redo', async () => {
   const id = await getSelectedId()
   expect(id).toBeTruthy()
 
@@ -341,6 +350,11 @@ test('fill stroke and effect visibility toggles update on repeated clicks and su
     expectDefined(await getNode(expectDefined(id, 'selected id')), 'selected node').fills[0]
       ?.visible
   ).toBe(true)
+})
+
+test('stroke visibility updates on repeated clicks and supports undo redo', async () => {
+  const id = await getSelectedId()
+  expect(id).toBeTruthy()
 
   const strokeAddButton = strokeSection().getByRole('button', { name: 'Add stroke' })
   await strokeAddButton.click()
@@ -381,6 +395,11 @@ test('fill stroke and effect visibility toggles update on repeated clicks and su
     expectDefined(await getNode(expectDefined(id, 'selected id')), 'selected node').strokes[0]
       ?.visible
   ).toBe(true)
+})
+
+test('effect visibility updates on repeated clicks and supports undo redo', async () => {
+  const id = await getSelectedId()
+  expect(id).toBeTruthy()
 
   const effectAddButton = effectsSection().getByRole('button', { name: 'Add effect' })
   await effectAddButton.click()
@@ -438,7 +457,7 @@ test('multi-select shows mixed header and boolean operations', async () => {
 
   const multiHeader = editor.page
     .getByTestId('design-panel-multi')
-    .getByRole('heading', { name: /layers/ })
+    .getByRole('heading', { name: /selected/ })
   await expect(multiHeader).toBeVisible()
 
   const booleanOperations = editor.page.getByTestId('boolean-operations-trigger')
@@ -488,6 +507,8 @@ test('inspector filter narrows sections and can be cleared', async () => {
   await expect(editor.page.getByTestId('inspector-section-appearance')).toBeVisible()
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('BUTTON', 140, 140, 120, 44)
@@ -507,6 +528,8 @@ test('inspector filter narrows sections and can be cleared', async () => {
 
 test('inspector filter groups lowcode controls and shows an empty result', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const storageName = 'localStorage'
     const storage = window[storageName]
     for (const key of Object.keys(storage)) {
@@ -545,6 +568,8 @@ test('inspector filter groups lowcode controls and shows an empty result', async
 
 test('inspector filter works in the empty design panel', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.clearSelection()
@@ -583,8 +608,18 @@ test('inspector sections collapse and remember state', async () => {
   await trigger.click()
   await expect(positionSection()).not.toBeVisible()
 
+  await editor.page.evaluate(async () => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    await store.persistRecoveryNow()
+  })
+  editor.page.once('dialog', (dialog) => dialog.accept())
   await editor.page.reload()
   await editor.canvas.waitForInit()
+  const recovery = editor.page.getByRole('alertdialog', { name: 'Recover unsaved work' })
+  await expect(recovery).toBeVisible()
+  await recovery.getByRole('button', { name: 'Discard', exact: true }).click()
+  await expect(recovery).not.toBeVisible()
   await editor.canvas.drawRect(120, 120, 100, 80)
   await editor.canvas.waitForRender()
 

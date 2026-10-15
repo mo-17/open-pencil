@@ -217,8 +217,11 @@ describe('Stripe Checkout and Billing reference connector', () => {
       ).rejects.toThrow()
     }
 
-    const widened = clonedContract()
-    widened.network.origins = ['https://evil.example']
+    const originalWidened = clonedContract()
+    const widened: typeof originalWidened = {
+      ...originalWidened,
+      network: { ...originalWidened.network, origins: ['https://evil.example'] }
+    }
     await expect(
       STRIPE_BILLING_CONNECTOR_ADAPTER.prepare({
         contract: widened,
@@ -392,8 +395,8 @@ describe('Stripe Checkout and Billing reference connector', () => {
     const audit = new RedactedConnectorAuditLog()
     let credentialCalls = 0
     let fetchCalls = 0
-    let capturedAuthorization: string | null = null
-    let capturedIdempotencyKey: string | null = null
+    const capturedAuthorization: { value: string | null } = { value: null }
+    const capturedIdempotencyKey: { value: string | null } = { value: null }
     const broker = createConnectorExecutionBroker({
       adapters,
       authorization,
@@ -407,8 +410,8 @@ describe('Stripe Checkout and Billing reference connector', () => {
       fetch: async (_input, init) => {
         fetchCalls += 1
         const headers = new Headers(init?.headers)
-        capturedAuthorization = headers.get('authorization')
-        capturedIdempotencyKey = headers.get('idempotency-key')
+        capturedAuthorization.value = headers.get('authorization')
+        capturedIdempotencyKey.value = headers.get('idempotency-key')
         return new Response(JSON.stringify(checkoutResponse()), { status: 200 })
       }
     })
@@ -446,8 +449,8 @@ describe('Stripe Checkout and Billing reference connector', () => {
     ).resolves.toMatchObject({ data: { id: SESSION_ID, mode: 'subscription' } })
     expect(credentialCalls).toBe(1)
     expect(fetchCalls).toBe(1)
-    expect(capturedAuthorization).toBe('Bearer sk_test_runtime_only')
-    expect(capturedIdempotencyKey).toBe(MUTATION_ATTEMPT_ID)
+    expect(capturedAuthorization.value).toBe('Bearer sk_test_runtime_only')
+    expect(capturedIdempotencyKey.value).toBe(MUTATION_ATTEMPT_ID)
     expect(JSON.stringify(audit.snapshot())).not.toContain('sk_test_runtime_only')
 
     expect(errorCode(await broker.execute(request).catch((error) => error))).toBe(

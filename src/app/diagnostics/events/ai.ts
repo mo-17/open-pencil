@@ -1,8 +1,15 @@
+import { pick } from 'es-toolkit'
 import * as v from 'valibot'
 
+import { describeDiagnosticError, diagnosticErrorDetails, isInternalError } from '../error'
 import { recordDiagnostic } from '../recorder'
 import { isUsageEnabled } from '../settings'
-import type { DiagnosticEvent, DiagnosticValue } from '../types'
+import type {
+  DiagnosticEvent,
+  DiagnosticEventInput,
+  DiagnosticLevel,
+  DiagnosticValue
+} from '../types'
 
 const modelStepSchema = v.object({
   provider: v.string(),
@@ -14,21 +21,36 @@ const modelStepSchema = v.object({
 })
 
 const chatCompletedSchema = v.object({ finishReason: v.nullable(v.string()) })
-const chatFailedSchema = v.object({ errorName: v.string() })
+const chatStoppedSchema = v.object({})
+const chatFailedSchema = v.object({
+  errorName: v.string(),
+  errorCode: v.optional(v.nullable(v.string())),
+  message: v.optional(v.nullable(v.string())),
+  stack: v.optional(v.nullable(v.string()))
+})
 const toolCompletedSchema = v.object({
   tool: v.string(),
   durationMs: v.number(),
   mutates: v.boolean(),
-  failed: v.boolean()
+  failed: v.boolean(),
+  errorName: v.optional(v.string()),
+  message: v.optional(v.nullable(v.string())),
+  stack: v.optional(v.nullable(v.string()))
 })
 
 export type AIDiagnosticContext = Pick<DiagnosticEvent, 'sessionId' | 'runId'>
 
 function recordAIEvent(
-  name: 'model.step.completed' | 'chat.completed' | 'chat.failed' | 'tool.completed',
+  name:
+    | 'model.step.completed'
+    | 'chat.completed'
+    | 'chat.stopped'
+    | 'chat.failed'
+    | 'tool.completed',
   attributes: Record<string, DiagnosticValue>,
   schema: v.GenericSchema,
-  context: AIDiagnosticContext = {}
+  context: AIDiagnosticContext = {},
+  level: DiagnosticLevel = name === 'chat.failed' ? 'error' : 'info'
 ): void {
   const parsed = v.safeParse(schema, attributes)
   if (!parsed.success) {
@@ -40,10 +62,10 @@ function recordAIEvent(
   recordDiagnostic({
     ...context,
     category: 'ai',
-    level: name === 'chat.failed' ? 'error' : 'info',
+    level,
     name,
     attributes: output
-  } satisfies Omit<DiagnosticEvent, 'id' | 'timestamp'>)
+  } satisfies DiagnosticEventInput)
 }
 
 export function recordModelStepCompleted(
@@ -60,6 +82,11 @@ export function recordChatCompleted(
   recordAIEvent('chat.completed', input, chatCompletedSchema, context)
 }
 
+/** The person stopped the reply before it finished. */
+export function recordChatStopped(context?: AIDiagnosticContext): void {
+  recordAIEvent('chat.stopped', {}, chatStoppedSchema, context)
+}
+
 export function recordChatFailed(
   input: v.InferOutput<typeof chatFailedSchema>,
   context?: AIDiagnosticContext
@@ -67,9 +94,31 @@ export function recordChatFailed(
   recordAIEvent('chat.failed', input, chatFailedSchema, context)
 }
 
+type ToolOutcome = { level: DiagnosticLevel; details: Record<string, DiagnosticValue> }
+
+/**
+ * A failed call is a warning, since models often call a tool wrongly, and keeps only the
+ * error's name: its message quotes the call's input. A bug in OpenPencil is an error and
+ * keeps its message and stack, which name code rather than content.
+ */
+function toolOutcome(failed: boolean, cause: unknown): ToolOutcome {
+  if (!failed) return { level: 'info', details: {} }
+  if (isInternalError(cause)) {
+    return {
+      level: 'error',
+      details: pick(diagnosticErrorDetails(cause), ['errorName', 'message', 'stack'])
+    }
+  }
+  // A tool that returned `{ error }` threw nothing.
+  const details = cause === undefined ? {} : pick(describeDiagnosticError(cause), ['errorName'])
+  return { level: 'warning', details }
+}
+
 export function recordToolCompleted(
-  input: v.InferOutput<typeof toolCompletedSchema>,
-  context?: AIDiagnosticContext
+  input: Omit<v.InferOutput<typeof toolCompletedSchema>, 'errorName' | 'message' | 'stack'>,
+  context?: AIDiagnosticContext,
+  cause?: unknown
 ): void {
-  recordAIEvent('tool.completed', input, toolCompletedSchema, context)
+  const { level, details } = toolOutcome(input.failed, cause)
+  recordAIEvent('tool.completed', { ...input, ...details }, toolCompletedSchema, context, level)
 }

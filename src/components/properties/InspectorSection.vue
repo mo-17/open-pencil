@@ -89,7 +89,9 @@ watch(open, (next) => {
       <Tip :label="hideLabel" side="left">
         <button
           type="button"
-          :data-test-id="`inspector-section-hide-${id}`"
+          data-slot="inspector-section-action"
+          data-command="hide-section"
+          :data-section-id="id"
           :aria-label="hideLabel"
           class="flex size-8 shrink-0 touch-manipulation items-center justify-center text-muted outline-none hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
           @click="emit('hide')"

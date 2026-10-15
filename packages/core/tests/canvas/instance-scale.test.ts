@@ -1,8 +1,6 @@
 import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 
-import type { NestedBindingCapture, NestedLayoutCapture } from '#core-tests/helpers/fig/captures'
-
 import { SkiaRenderer } from '@open-pencil/core'
 import { createEditor } from '@open-pencil/core/editor'
 import { initCanvasKit, renderNodesToImage } from '@open-pencil/core/io'
@@ -11,12 +9,17 @@ import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { rescaleNodeTree } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '../helpers/assert'
-import { FIXTURES, readFixtureJSON } from '../helpers/fig/fixtures'
+import {
+  CapturedFigRecords,
+  FIXTURES,
+  NestedLayoutScaleFixture,
+  readFixture
+} from '../helpers/fig/fixtures'
 import { inheritedNestedBindingRecords } from '../helpers/fig/nested-binding'
 
-const fixture = readFixtureJSON<NestedLayoutCapture>('nested-layout-scale.json')
+const fixture = readFixture('nested-layout-scale.json', NestedLayoutScaleFixture)
 
-const declared = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const declared = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 for (const edit of [
   'direct',

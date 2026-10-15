@@ -10,6 +10,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/?test&no-rulers')
   await new CanvasHelper(page).waitForInit()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     editor.state.zoom = 1
@@ -22,6 +24,8 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }, testInfo) => {
   await page.mouse.up()
   const state = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     return {
@@ -49,6 +53,8 @@ async function createStretchedInput(
   variant: 'stretch' | 'grow' | 'limits' | 'horizontal' = 'stretch'
 ) {
   return page.evaluate((variant) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const parent = editor.graph.createNode('FRAME', editor.state.currentPageId, {
@@ -80,6 +86,8 @@ async function createStretchedInput(
 
 async function nodeState(page: Page, id: string) {
   return page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const node = window.openPencil?.getStore?.().graph.getNode(id)
     if (!node) throw new Error('Node unavailable')
     return {
@@ -104,6 +112,8 @@ async function holdResize(page: Page, id: string, axis: 'width' | 'height', delt
   await new CanvasHelper(page).waitForRender()
   const handle = await page.evaluate(
     ({ id, axis }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil?.getStore?.()
       const node = editor?.graph.getNode(id)
       if (!editor || !node) throw new Error('Node unavailable')
@@ -170,9 +180,15 @@ test('stretched INPUT keeps its dragged width after release', async ({ page }, t
   expect(after.height).toBe(before.height)
   await expect(widthMode).toHaveText('Fixed')
   await layout.screenshot({ path: testInfo.outputPath('after-layout-panel.png') })
-  await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(before)
-  await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(after)
 })
 
@@ -188,9 +204,15 @@ test('vertical grow child keeps its dragged height and unchanged filled width', 
   const after = await nodeState(page, nodeId)
   expect(after).toMatchObject({ width: 300, height: 160, layoutGrow: 0 })
   expect(after.counterAxisSizing).toBe(before.counterAxisSizing)
-  await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(before)
-  await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(after)
 })
 
@@ -206,14 +228,22 @@ test('horizontal stretch height can resize without disabling its width growth', 
   const after = await nodeState(page, nodeId)
   expect(after).toMatchObject({ width: 300, height: 160, layoutGrow: 1 })
   expect(after.counterAxisSizing).toBe(before.counterAxisSizing)
-  await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(before)
-  await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(after)
 })
 
 test('horizontal edge resize fixes only the width of a Hug frame', async ({ page }, testInfo) => {
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const frame = editor.graph.createNode('FRAME', editor.state.currentPageId, {
@@ -247,9 +277,15 @@ test('horizontal edge resize fixes only the width of a Hug frame', async ({ page
     primaryAxisSizing: 'HUG',
     counterAxisSizing: 'FIXED'
   })
-  await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await nodeState(page, id)).toEqual(before)
-  await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   expect(await nodeState(page, id)).toEqual(after)
 })
 
@@ -268,9 +304,15 @@ test('minimum and maximum width clamp both the held preview and committed size',
   await page.mouse.up()
   const minimum = await nodeState(page, nodeId)
   expect(minimum).toMatchObject({ width: 180, minWidth: 180, maxWidth: 240 })
-  await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(maximum)
-  await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   expect(await nodeState(page, nodeId)).toEqual(minimum)
 })
 
@@ -279,30 +321,49 @@ test('Escape restores geometry and sizing without adding a resize history entry'
 }) => {
   const { nodeId } = await createStretchedInput(page)
   const before = await nodeState(page, nodeId)
-  const revision = await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)
+  const revision = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.revision
+  })
   await holdResize(page, nodeId, 'width', -100)
   expect((await nodeState(page, nodeId)).width).toBe(200)
   await page.keyboard.press('Escape')
   await page.mouse.up()
   expect(await nodeState(page, nodeId)).toEqual(before)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)).toBe(revision)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.revision
+    })
+  ).toBe(revision)
 })
 
 test('clicking a resize edge without moving preserves Fill and history', async ({ page }) => {
   const { nodeId } = await createStretchedInput(page)
   const before = await nodeState(page, nodeId)
-  const revision = await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)
+  const revision = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.revision
+  })
   await holdResize(page, nodeId, 'width', 0)
   await page.mouse.up()
   expect(await nodeState(page, nodeId)).toEqual(before)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)).toBe(revision)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.revision
+    })
+  ).toBe(revision)
 })
 
 for (const event of ['pointercancel', 'lostpointercapture', 'blur'] as const) {
   test(`synthetic ${event} cancels a real mouse resize without committing`, async ({ page }) => {
     const { nodeId } = await createStretchedInput(page)
     const before = await nodeState(page, nodeId)
-    const revision = await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)
+    const revision = await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.revision
+    })
     await holdResize(page, nodeId, 'width', -100)
     expect((await nodeState(page, nodeId)).width).toBe(200)
     await page.getByTestId('canvas-element').evaluate((element, event) => {
@@ -311,7 +372,12 @@ for (const event of ['pointercancel', 'lostpointercapture', 'blur'] as const) {
     }, event)
     await page.mouse.up()
     expect(await nodeState(page, nodeId)).toEqual(before)
-    expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)).toBe(revision)
+    expect(
+      await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().undo.revision
+      })
+    ).toBe(revision)
   })
 }
 
@@ -323,6 +389,8 @@ test('deactivating a split canvas cancels its mouse resize before release', asyn
   if (!nextPane) throw new Error('Other canvas pane unavailable')
   const { nodeId } = await createStretchedInput(page)
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     editor.state.zoom = 0.5
@@ -331,21 +399,37 @@ test('deactivating a split canvas cancels its mouse resize before release', asyn
     editor.requestRender()
   })
   const before = await nodeState(page, nodeId)
-  const revision = await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)
+  const revision = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.revision
+  })
   await holdResize(page, nodeId, 'width', -100)
   expect((await nodeState(page, nodeId)).width).toBe(200)
-  await page.evaluate((id) => window.openPencil?.getStore?.().setActivePane(id), nextPane)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().setActivePane(id)
+  }, nextPane)
   await page.mouse.up()
   expect(await nodeState(page, nodeId)).toEqual(before)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)).toBe(revision)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().activePaneId.value)).toBe(
-    nextPane
-  )
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.revision
+    })
+  ).toBe(revision)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().activePaneId.value
+    })
+  ).toBe(nextPane)
 })
 
 test('selection changes cancel the old resize before a late pointerup', async ({ page }) => {
   const { nodeId } = await createStretchedInput(page)
   const nextId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     return editor.graph.createNode('RECTANGLE', editor.state.currentPageId, {
@@ -357,16 +441,30 @@ test('selection changes cancel the old resize before a late pointerup', async ({
   })
   const before = await nodeState(page, nodeId)
   const nextBefore = await nodeState(page, nextId)
-  const revision = await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)
+  const revision = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.revision
+  })
   await holdResize(page, nodeId, 'width', -100)
   expect((await nodeState(page, nodeId)).width).toBe(200)
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), nextId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, nextId)
   await page.mouse.up()
   expect(await nodeState(page, nodeId)).toEqual(before)
   expect(await nodeState(page, nextId)).toEqual(nextBefore)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.revision)).toBe(revision)
   expect(
-    await page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.revision
+    })
+  ).toBe(revision)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([nextId])
 })
 
@@ -375,6 +473,8 @@ test('page changes cancel the old resize and preserve the newly selected page', 
 }) => {
   const { nodeId } = await createStretchedInput(page)
   const next = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const page = editor.graph.addPage('Other page')
@@ -386,6 +486,8 @@ test('page changes cancel the old resize and preserve the newly selected page', 
   await holdResize(page, nodeId, 'width', -100)
   expect((await nodeState(page, nodeId)).width).toBe(200)
   await page.evaluate(async ({ pageId, nodeId }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     await editor.switchPage(pageId)
@@ -394,11 +496,17 @@ test('page changes cancel the old resize and preserve the newly selected page', 
   await page.mouse.up()
   expect(await nodeState(page, nodeId)).toEqual(before)
   expect(await nodeState(page, next.nodeId)).toEqual(nextBefore)
-  expect(await page.evaluate(() => window.openPencil?.getStore?.().state.currentPageId)).toBe(
-    next.pageId
-  )
   expect(
-    await page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.currentPageId
+    })
+  ).toBe(next.pageId)
+  expect(
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([next.nodeId])
 })
 
@@ -407,14 +515,16 @@ test('document replacement does not commit a late resize into reused node identi
 }) => {
   const { nodeId } = await createStretchedInput(page)
   const before = await nodeState(page, nodeId)
-  const originalNode = await page.evaluateHandle(
-    (id) => window.openPencil?.getStore?.().graph.getNode(id),
-    nodeId
-  )
+  const originalNode = await page.evaluateHandle((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().graph.getNode(id)
+  }, nodeId)
   try {
     await holdResize(page, nodeId, 'width', -100)
     expect((await nodeState(page, nodeId)).width).toBe(200)
     const nextId = await page.evaluate((reusedId) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil?.getStore?.()
       if (!editor) throw new Error('Editor unavailable')
       const Graph = editor.graph.constructor as new () => typeof editor.graph

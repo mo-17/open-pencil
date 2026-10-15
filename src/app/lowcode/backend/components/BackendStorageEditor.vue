@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact, uniq } from 'es-toolkit/array'
 import { computed, ref, watch } from 'vue'
 
 import {
@@ -69,14 +70,9 @@ function mimeTypesText(bucket: BackendStorageBucketIR): string {
 
 function updateMimeTypes(bucket: BackendStorageBucketIR, value: string): void {
   run(() => {
-    const mimeTypes = [
-      ...new Set(
-        value
-          .split(/[\n,]/u)
-          .map((entry) => entry.trim().toLowerCase())
-          .filter(Boolean)
-      )
-    ]
+    const mimeTypes = uniq(
+      compact(value.split(/[\n,]/u).map((entry) => entry.trim().toLowerCase()))
+    )
     if (mimeTypes.length === 0 || mimeTypes.length > BACKEND_LIMITS.maxStorageMimeTypes) {
       throw new BackendDraftOperationError(
         `Storage MIME types require 1-${BACKEND_LIMITS.maxStorageMimeTypes} unique items.`
@@ -96,10 +92,7 @@ function updatePrefix(
   value: string
 ): void {
   run(() => {
-    const prefix = value
-      .split('/')
-      .map((entry) => entry.trim())
-      .filter(Boolean)
+    const prefix = compact(value.split('/').map((entry) => entry.trim()))
     if (prefix.length > BACKEND_LIMITS.maxStoragePrefixSegments) {
       throw new BackendDraftOperationError(
         `Storage prefixes are limited to ${BACKEND_LIMITS.maxStoragePrefixSegments} segments.`
@@ -277,7 +270,7 @@ function removePathRule(bucket: BackendStorageBucketIR, ruleId: string): void {
       <p
         v-if="bucket.access === 'public-read'"
         role="alert"
-        class="mt-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-1 text-[9px] leading-relaxed text-amber-500"
+        class="mt-1.5 rounded border border-warning/40 bg-warning/10 px-1.5 py-1 text-[9px] leading-relaxed text-warning"
       >
         {{ panels.lowcodeBackendStoragePublicReadWarning }}
       </p>
@@ -323,7 +316,7 @@ function removePathRule(bucket: BackendStorageBucketIR, ruleId: string): void {
             {{ panels.lowcodeBackendStorageAddPathRule }}
           </button>
         </div>
-        <p v-if="bucket.pathRules.length === 0" class="mt-1 text-[9px] text-red-500">
+        <p v-if="bucket.pathRules.length === 0" class="mt-1 text-[9px] text-error">
           {{ panels.lowcodeBackendStorageNoPathRules }}
         </p>
         <div
@@ -420,8 +413,8 @@ function removePathRule(bucket: BackendStorageBucketIR, ruleId: string): void {
               :class="[
                 'rounded border px-1.5 py-0.5 text-[9px]',
                 armedRemoval === `rule:${bucket.id}:${rule.id}`
-                  ? 'border-red-500 text-red-500'
-                  : 'border-border text-muted hover:bg-hover hover:text-red-500'
+                  ? 'border-error text-error'
+                  : 'border-border text-muted hover:bg-hover hover:text-error'
               ]"
               @click="removePathRule(bucket, rule.id)"
             >
@@ -442,8 +435,8 @@ function removePathRule(bucket: BackendStorageBucketIR, ruleId: string): void {
         :class="[
           'mt-2 w-full rounded border px-2 py-1 text-[10px]',
           armedRemoval === `bucket:${bucket.id}`
-            ? 'border-red-500 text-red-500'
-            : 'border-border text-muted hover:bg-hover hover:text-red-500'
+            ? 'border-error text-error'
+            : 'border-border text-muted hover:bg-hover hover:text-error'
         ]"
         @click="removeBucket(bucket.id)"
       >
@@ -459,7 +452,7 @@ function removePathRule(bucket: BackendStorageBucketIR, ruleId: string): void {
       v-if="operationError"
       role="alert"
       data-test-id="lowcode-backend-storage-operation-error"
-      class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[9px] text-red-500"
+      class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[9px] text-error"
     >
       {{ operationError }}
     </p>

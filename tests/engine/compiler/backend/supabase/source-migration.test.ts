@@ -38,6 +38,8 @@ import {
   type StagedMigrationExecutionPlanV1
 } from '@open-pencil/lowcode/backend'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 const NOW = '2026-09-03T12:34:56.000Z'
 const PACKAGE_DIGEST = `app-bundle-sha256:${'A'.repeat(43)}`
 const PROJECT_REF = 'abcdefghijklmnopqrst'
@@ -368,7 +370,9 @@ describe('Supabase source migration bundle', () => {
       stagedExecutionPlanDigest: bundle.manifest.executionPlanDigest,
       storagePolicyArtifactDigest: null
     })
-    expect(bundle.ledger.entries[0]?.executionPlanDigest).toBe(bundle.manifest.executionPlanDigest)
+    expect(bundle.ledger.entries[0]?.executionPlanDigest).toBe(
+      expectDefined(bundle.manifest.executionPlanDigest)
+    )
     expect(await verifySourceMigrationLedgerIntegrity(bundle.ledger)).toMatchObject({ ok: true })
     expect(
       verifySupabaseInspectedSourceMigrationLedgerIntegrity(bundle.sourceLedger)
@@ -383,7 +387,7 @@ describe('Supabase source migration bundle', () => {
     expect(fixture.reviewed.manifest.renderedStagedMigrationOperationIds).toEqual([
       'expand-add-title'
     ])
-    expect(fixture.reviewed.manifest.renderedMigrationOperationIds).toEqual([])
+    expect([...fixture.reviewed.manifest.renderedMigrationOperationIds]).toEqual([])
 
     const bundle = await createSupabaseSourceMigrationBundle({
       reviewed: fixture.reviewed,
@@ -512,9 +516,9 @@ describe('Supabase source migration bundle', () => {
     if (authority?.kind !== 'apply-reviewed-migration') {
       throw new Error('expected compiler-derived reviewed SQL authority')
     }
-    expect(authority.sourceOperationIds).toEqual(
-      fixture.reviewed.manifest.renderedMigrationOperationIds
-    )
+    expect(authority.sourceOperationIds).toEqual([
+      ...fixture.reviewed.manifest.renderedMigrationOperationIds
+    ])
     expect(authority.reviewManifestDigest).toBe(fixture.reviewed.manifestDigest)
     expect(authority.migrationPlanDigest).toBe(fixture.reviewed.manifest.migrationPlanDigest)
     expect(authority.sqlDigest).toBe(bundle.files[0]?.digest)
@@ -558,9 +562,9 @@ describe('Supabase source migration bundle', () => {
     const operation = bundle.ledger.entries[0]?.executionPlan.operations[0]?.operation
     expect(operation?.kind).toBe('apply-reviewed-migration')
     if (operation?.kind === 'apply-reviewed-migration') {
-      expect(operation.sourceOperationIds).toEqual(
-        fixture.reviewed.manifest.renderedMigrationOperationIds
-      )
+      expect(operation.sourceOperationIds).toEqual([
+        ...fixture.reviewed.manifest.renderedMigrationOperationIds
+      ])
       expect(operation.sqlDigest).toBe(bundle.files[0]?.digest)
     }
   })
@@ -701,8 +705,12 @@ describe('Supabase source migration bundle', () => {
     const second = await createSupabaseSourceMigrationBundle(input)
     expect(second).toEqual(first)
 
-    const tampered = structuredClone(first.sourceLedger)
-    tampered.entries[0].migrationPlanDigest = 'B'.repeat(43)
+    const tampered = {
+      ...first.sourceLedger,
+      entries: first.sourceLedger.entries.map((entry, index) =>
+        index === 0 ? { ...entry, migrationPlanDigest: 'B'.repeat(43) } : entry
+      )
+    }
     expect(verifySupabaseInspectedSourceMigrationLedgerIntegrity(tampered)).toMatchObject({
       ok: false
     })

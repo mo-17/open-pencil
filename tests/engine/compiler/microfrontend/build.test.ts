@@ -15,7 +15,7 @@ import {
 } from '@open-pencil/compiler/microfrontend'
 import type { PreviewFiles } from '@open-pencil/compiler/vfs'
 
-const reactFiles: PreviewFiles = new Map([
+const reactFiles: PreviewFiles = new Map<string, string | Uint8Array>([
   [
     'src/microfrontend.tsx',
     `import { createRoot, type Root } from 'react-dom/client'

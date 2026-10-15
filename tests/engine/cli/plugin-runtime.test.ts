@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import {
   PLUGIN_RUNTIME_COMPUTE_ABI,
@@ -157,7 +158,10 @@ async function signRuntime(
   ])
   expect(result).toMatchObject({ exitCode: 0, stderr: '' })
   return parsePluginRuntimePackage(
-    (JSON.parse(result.stdout) as { runtimePackage: unknown }).runtimePackage
+    v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ runtimePackage: v.unknown() })),
+      result.stdout
+    ).runtimePackage
   )
 }
 
@@ -289,10 +293,17 @@ describe('plugin runtime CLI', () => {
       '--json'
     ])
     expect(built).toMatchObject({ exitCode: 0, stderr: '' })
-    const builtReport = JSON.parse(built.stdout) as {
-      runtimeIndex: { integrity: { digest: string } }
-      output: string
-    }
+    const builtReport = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          runtimeIndex: v.looseObject({ integrity: v.looseObject({ digest: v.string() }) }),
+          output: v.string()
+        })
+      ),
+      built.stdout
+    )
     expect(builtReport.output).toBe(indexPath)
 
     const unpinned = await runOpenPencilCLI([
@@ -408,9 +419,16 @@ describe('plugin runtime CLI', () => {
       '--json'
     ])
     expect(built.exitCode).toBe(0)
-    const builtIndex = JSON.parse(built.stdout) as {
-      runtimeIndex: { integrity: { digest: string } }
-    }
+    const builtIndex = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          runtimeIndex: v.looseObject({ integrity: v.looseObject({ digest: v.string() }) })
+        })
+      ),
+      built.stdout
+    )
     const expired = await runOpenPencilCLI([
       'plugin',
       'runtime-index',

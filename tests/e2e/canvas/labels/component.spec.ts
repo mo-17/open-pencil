@@ -24,6 +24,8 @@ test.beforeEach(async () => {
 
 test('component labels in component sets are hit-tested above the component bounds', async () => {
   const componentId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const graph = store.graph
@@ -71,6 +73,8 @@ test('component labels in component sets are hit-tested above the component boun
   await canvas.waitForRender()
 
   const selected = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds]

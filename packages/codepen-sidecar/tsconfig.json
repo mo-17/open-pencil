@@ -3,7 +3,16 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "../..",
-    "types": ["node", "bun"]
+    "types": [
+      "node",
+      "bun"
+    ]
   },
-  "include": ["../core/src/global.d.ts", "src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "../core/src/global.d.ts",
+    "../dom-css/src/cssom.d.ts",
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

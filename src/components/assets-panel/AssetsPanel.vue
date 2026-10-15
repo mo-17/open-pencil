@@ -515,7 +515,7 @@ const hasNoResults = computed(
                     <span
                       v-if="assetView === 'list' && asset.hasConflicts"
                       data-test-id="asset-variant-conflict"
-                      class="mt-0.5 block truncate text-[10px] text-[var(--color-warning-text)]"
+                      class="mt-0.5 block truncate text-[10px] text-warning"
                     >
                       {{ panels.duplicateVariantValues }}
                     </span>

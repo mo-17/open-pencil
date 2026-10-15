@@ -53,9 +53,11 @@ const SDK_COMPOSABLE_PAGES = [
   { text: 'useFillControls', slug: 'use-fill-controls' },
   { text: 'useStrokeControls', slug: 'use-stroke-controls' },
   { text: 'useEffectsControls', slug: 'use-effects-controls' },
+  { text: 'useSelectionLayout', slug: 'use-selection-layout', canonical: true },
+  { text: 'useSelectionColors', slug: 'use-selection-colors', canonical: true },
   { text: 'useMask', slug: 'use-mask', canonical: true },
+  { text: 'useVariableModes', slug: 'use-variable-modes', canonical: true },
   { text: 'useDocumentWorkspace', slug: 'use-document-workspace', canonical: true },
-  { text: 'useVariablesEditor', slug: 'use-variables-editor' },
   { text: 'usePageList', slug: 'use-page-list' },
   { text: 'useI18n', slug: 'use-i18n' },
 ] as const
@@ -82,8 +84,6 @@ const SDK_ADVANCED_PAGES = [
   { text: 'useNumberField', slug: 'use-number-field', canonical: true },
   { text: 'useOkHCL', slug: 'use-okhcl' },
   { text: 'useVariables', slug: 'use-variables' },
-  { text: 'useVariablesDialogState', slug: 'use-variables-dialog-state' },
-  { text: 'useVariablesTable', slug: 'use-variables-table' },
   { text: 'Locale APIs', slug: 'locale-apis' },
   { text: 'useViewportKind', slug: 'use-viewport-kind' },
 ] as const

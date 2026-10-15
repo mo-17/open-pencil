@@ -1,9 +1,11 @@
-import { expect, mock, test } from 'bun:test'
+import { expect, mock, spyOn, test } from 'bun:test'
 
 import { LoaderContextType, type LoaderContext, type LoaderStats } from 'hls.js'
 
 import { createVideoModuleInstance } from '@open-pencil/core/plugins'
 import type { VideoModuleConfigV1 } from '@open-pencil/core/plugins'
+
+import { asDouble } from '#tests/helpers/doubles'
 
 import { loaderConfig, MediaElement, mediaResponse, runtime } from './helpers'
 
@@ -130,7 +132,7 @@ test('HLS loader validates each playlist, segment and key URL and rejects redire
     expect(init?.referrerPolicy).toBe('no-referrer')
     return mediaResponse('#EXTM3U', 'https://media.example.com/live.m3u8')
   })
-  const { PublicVideoLoader } = runtime(request as typeof fetch)
+  const { PublicVideoLoader } = runtime(asDouble<typeof fetch>(request))
   for (const [url, type] of [
     ['https://media.example.com/live.m3u8', LoaderContextType.MANIFEST],
     ['http://media.example.com/segment.ts', LoaderContextType.MEDIA_FRAGMENT],
@@ -159,7 +161,7 @@ test('HLS loader reports bounded response stats and byte ranges without forwardi
     expect(headers.has('authorization')).toBe(false)
     return mediaResponse(new Uint8Array([1, 2, 3, 4]), url, { 'content-length': '4' })
   })
-  const { PublicVideoLoader } = runtime(request as typeof fetch)
+  const { PublicVideoLoader } = runtime(asDouble<typeof fetch>(request))
   const loader = new PublicVideoLoader()
   // FragmentLoader captures this reference and sets retries before invoking load().
   const fragmentStats = loader.stats
@@ -201,7 +203,7 @@ test('real HLS fragment 0/0 ranges mean the entire segment, while invalid ranges
     expect(new Headers(init?.headers).has('range')).toBe(false)
     return mediaResponse(new Uint8Array([1, 2]), url)
   })
-  const { PublicVideoLoader } = runtime(request as typeof fetch)
+  const { PublicVideoLoader } = runtime(asDouble<typeof fetch>(request))
   for (const [rangeStart, rangeEnd] of [
     [0, 0],
     [-1, 4],
@@ -241,7 +243,7 @@ test('HLS loader suppresses late results after abort/destroy and enforces timeou
       complete = resolve
     })
   })
-  const { PublicVideoLoader } = runtime(pending as typeof fetch)
+  const { PublicVideoLoader } = runtime(asDouble<typeof fetch>(pending))
   const loader = new PublicVideoLoader()
   const success = mock(() => undefined)
   const error = mock(() => undefined)
@@ -275,10 +277,13 @@ test('HLS loader suppresses late results after abort/destroy and enforces timeou
     )
   })
   expect(signal?.aborted).toBe(true)
-  const big = runtime((async () =>
-    mediaResponse('short body', context.url, {
-      'content-length': String(1024 * 1024 + 1)
-    })) as typeof fetch)
+  const big = runtime(
+    asDouble<typeof fetch>(async () =>
+      mediaResponse('short body', context.url, {
+        'content-length': String(1024 * 1024 + 1)
+      })
+    )
+  )
   const oversized = new big.PublicVideoLoader()
   const result = await new Promise<string>((resolve) => {
     oversized.load(context, loaderConfig, {
@@ -292,25 +297,23 @@ test('HLS loader suppresses late results after abort/destroy and enforces timeou
 
 test('an aborted response stream cannot mutate retained stats or report success for the next load', async () => {
   const url = 'https://media.example.com/segment.ts'
-  let deliver: (() => void) | undefined
-  let reading: (() => void) | undefined
-  const started = new Promise<void>((resolve) => {
-    reading = resolve
-  })
+  const started = Promise.withResolvers<undefined>()
+  const delayedRead = Promise.withResolvers<{ done: false; value: Uint8Array }>()
   const canceled = mock(() => undefined)
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      deliver = () => controller.enqueue(new Uint8Array([9, 9, 9]))
-    },
-    pull() {
-      reading?.()
-    },
-    cancel: canceled
+  const body = new ReadableStream<Uint8Array>({ cancel: canceled })
+  const firstResponse = mediaResponse(body, url)
+  const reader = body.getReader()
+  // A pending transport read may settle after cancellation; enqueuing on a
+  // canceled native stream instead throws before the loader can observe it.
+  const readSpy = spyOn(reader, 'read').mockImplementationOnce(() => {
+    started.resolve(undefined)
+    return delayedRead.promise
   })
-  const request = mock(async () => mediaResponse(body, url))
-  request.mockImplementationOnce(async () => mediaResponse(body, url))
+  const readerSpy = spyOn(body, 'getReader').mockReturnValue(reader)
+  const request = mock(async () => firstResponse)
+  request.mockImplementationOnce(async () => firstResponse)
   request.mockImplementation(async () => mediaResponse(new Uint8Array([1, 2]), url))
-  const { PublicVideoLoader } = runtime(request as typeof fetch)
+  const { PublicVideoLoader } = runtime(asDouble<typeof fetch>(request))
   const loader = new PublicVideoLoader()
   const context: LoaderContext = {
     url,
@@ -326,7 +329,7 @@ test('an aborted response stream cannot mutate retained stats or report success 
     onTimeout: oldError,
     onAbort: aborted
   })
-  await started
+  await started.promise
   loader.abort()
   const result = new Promise<number>((resolve, reject) => {
     loader.load(context, loaderConfig, {
@@ -335,8 +338,13 @@ test('an aborted response stream cannot mutate retained stats or report success 
       onTimeout: reject
     })
   })
-  deliver?.()
-  expect(await result).toBe(2)
+  delayedRead.resolve({ done: false, value: new Uint8Array([9, 9, 9]) })
+  try {
+    expect(await result).toBe(2)
+  } finally {
+    readSpy.mockRestore()
+    readerSpy.mockRestore()
+  }
   expect(loader.stats.loaded).toBe(2)
   expect(canceled).toHaveBeenCalledTimes(1)
   expect(aborted).toHaveBeenCalledTimes(1)

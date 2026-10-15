@@ -3,7 +3,9 @@ import { expect, test } from 'bun:test'
 import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 import { resolveOrgChartModule } from '@open-pencil/core/plugins'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 
+import { expectDefined } from '#tests/helpers/assert'
 import {
   componentTemplateFixture,
   compileComponentTemplates
@@ -13,9 +15,11 @@ test('org chart recipe is local editable text with no FORM, business state or bi
   const f = componentTemplateFixture(['org-chart'], 'zh-CN')
   try {
     const nodes = [...f.graph.getAllNodes()]
-    const chart = nodes.find((node) => node.interactiveProps?.module?.moduleType === 'org-chart')
+    const chart = nodes.find(
+      (node) => readModuleInstance(node.interactiveProps?.module)?.moduleType === 'org-chart'
+    )
     if (!chart) throw new Error('Missing chart node')
-    const module = resolveOrgChartModule(chart.interactiveProps.module)
+    const module = resolveOrgChartModule(expectDefined(chart.interactiveProps).module)
     expect(module?.ok).toBe(true)
     if (!module?.ok) throw new Error('Missing chart')
     expect(module.config.items).toHaveLength(5)
@@ -32,7 +36,9 @@ test('org chart recipe is local editable text with no FORM, business state or bi
     await initCodec()
     const restored = await parseFigFile((await exportFigFile(f.graph)).slice().buffer)
     const reopened = [...restored.getAllNodes()].find((node) => node.name === chart.name)
-    expect(reopened?.interactiveProps.module).toEqual(chart.interactiveProps.module)
+    expect(expectDefined(reopened?.interactiveProps).module).toEqual(
+      expectDefined(chart.interactiveProps).module
+    )
   } finally {
     f.editor.dispose()
   }

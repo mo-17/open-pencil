@@ -92,7 +92,8 @@ function onAutoRotate(event: Event): void {
           v-for="(point, pointIndex) in polylinePath.points"
           :key="pointIndex"
           class="grid grid-cols-[20px_1fr_1fr_auto] items-center gap-1"
-          :data-test-id="`motion-path-point-${pointIndex}`"
+          data-slot="motion-path-point"
+          :data-point-index="pointIndex"
         >
           <span class="text-[9px] tabular-nums text-muted">{{ pointIndex + 1 }}</span>
           <NumberField
@@ -159,7 +160,8 @@ function onAutoRotate(event: Event): void {
           v-for="(_segment, segmentIndex) in cubicPath.segments"
           :key="segmentIndex"
           class="flex h-6 items-center justify-between gap-2 rounded border border-border px-2"
-          :data-test-id="`motion-path-segment-${segmentIndex}`"
+          data-slot="motion-path-segment"
+          :data-segment-index="segmentIndex"
         >
           <span class="text-[9px] tabular-nums text-muted">
             {{ panels.motionPathSegment({ segment: segmentIndex + 1 }) }}

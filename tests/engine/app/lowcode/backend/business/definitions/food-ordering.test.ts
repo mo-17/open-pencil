@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { uniq } from 'es-toolkit'
+
 import { createEditor } from '@open-pencil/core/editor'
 import { parseExpression } from '@open-pencil/lowcode'
 
@@ -13,6 +15,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 import { createBusinessScreen } from '@/app/lowcode/backend/business/pages/screen'
+
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
 
 const application = () =>
   createFoodOrderingApplication('food-definition-test', {
@@ -48,12 +52,10 @@ describe('restaurant ordering business definition', () => {
     ])
     const model = application()
     expect(() => preflightBusinessPages(model, definition)).not.toThrow()
-    expect(
-      [
-        ...new Set(
-          definition.pages.flatMap((entry) => entry.actions.map((action) => action.commandId))
-        )
-      ].sort()
+    expect<unknown>(
+      uniq(
+        definition.pages.flatMap((entry) => entry.actions.map((action) => action.commandId))
+      ).sort()
     ).toEqual(model.commands?.commands.map((command) => command.id).sort())
   })
 
@@ -149,7 +151,7 @@ describe('restaurant ordering business definition', () => {
         )
       }
       for (const node of nodes) {
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource' && source.afterExpr)
           expect(parseExpression(source.afterExpr).ok).toBe(true)
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)

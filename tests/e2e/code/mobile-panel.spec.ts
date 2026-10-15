@@ -7,6 +7,8 @@ test.use({ viewport: { width: 390, height: 844 } })
 
 test('mobile Code drawer mounts one live editor only while open', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const frameId = store.createShape('FRAME', 0, 0, 100, 100)

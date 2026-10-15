@@ -8,6 +8,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { useModuleTextDraft } from '@/app/lowcode/module-editor/multiline'
 import type { ModuleScalarCommit } from '@/app/lowcode/module-editor/scalar'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 test('multiline drafts expire on node/configuration changes, retention and disposal before late blur', () => {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
@@ -26,14 +28,16 @@ test('multiline drafts expire on node/configuration changes, retention and dispo
   const active = ref(true)
   const requests: ModuleScalarCommit[] = []
   const scope = effectScope()
-  const draft = scope.run(() =>
-    useModuleTextDraft(
-      () => owner.value,
-      () => config.value,
-      () => config.value.code,
-      () => 40,
-      active,
-      (request) => requests.push(request)
+  const draft = expectDefined(
+    scope.run(() =>
+      useModuleTextDraft(
+        () => owner.value,
+        () => config.value,
+        () => config.value.code,
+        () => 40,
+        active,
+        (request) => requests.push(request)
+      )
     )
   )
   if (!draft) throw new Error('Missing multiline draft')
@@ -96,14 +100,16 @@ test('multiline source editing also works outside a retained panel provider', ()
   const config = { code: 'before' }
   const requests: ModuleScalarCommit[] = []
   const scope = effectScope()
-  const draft = scope.run(() =>
-    useModuleTextDraft(
-      () => owner,
-      () => config,
-      () => config.code,
-      () => 40,
-      undefined,
-      (request) => requests.push(request)
+  const draft = expectDefined(
+    scope.run(() =>
+      useModuleTextDraft(
+        () => owner,
+        () => config,
+        () => config.code,
+        () => 40,
+        undefined,
+        (request) => requests.push(request)
+      )
     )
   )
   if (!draft) throw new Error('Missing multiline draft')

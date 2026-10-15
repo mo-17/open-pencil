@@ -1,8 +1,19 @@
+import { uniq } from 'es-toolkit/array'
+
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { extractPageContext } from '#core/io/subgraph'
 
+import { applyDocumentChange, type DocumentChange } from './document-change'
 import { pageSnapshotPageId, type PageSnapshot } from './snapshot'
+
+function pageContext(source: SceneGraph, pageId: string, nodeIds: string[]): SceneGraph {
+  const graph = extractPageContext(source, pageId, nodeIds)
+  graph.images = new Map(source.images)
+  graph.variables = structuredClone(source.variables)
+  graph.variableCollections = structuredClone(source.variableCollections)
+  return graph
+}
 
 /**
  * A standalone copy of the document whose snapshot page is as it was when taken, so a past
@@ -20,6 +31,28 @@ export function graphFromPageSnapshot(
   graph.variableCollections = structuredClone(source.variableCollections)
   for (const node of snapshot.values()) graph.nodes.set(node.id, structuredClone(node))
   graph.rebuildInstanceIndex()
+  graph.clearAbsPosCache()
+  return graph
+}
+
+/**
+ * A standalone copy of the document with the pages a change touched, and the page it ran on, on
+ * one side of the change. The source must be as the change left it, as it is right after the
+ * edit. Other pages are left empty.
+ */
+export function graphFromDocumentChange(
+  source: SceneGraph,
+  change: DocumentChange,
+  side: 'before' | 'after'
+): SceneGraph | null {
+  // A page's own id brings its whole subtree; a layer moved between pages can then move back.
+  const pageIds = uniq([change.pageId, ...change.pageIds]).filter((id) => source.getNode(id))
+  // A change that removed every page it touched still needs one to build on; the past side
+  // brings the removed ones back.
+  const host = pageIds[0] ?? source.getPages()[0]?.id
+  if (!host) return null
+  const graph = pageContext(source, host, pageIds)
+  if (side === 'before') applyDocumentChange(graph, change, 'before')
   graph.clearAbsPosCache()
   return graph
 }

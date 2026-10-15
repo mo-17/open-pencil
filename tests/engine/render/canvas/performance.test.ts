@@ -8,6 +8,8 @@ import {
   normalizeCanvasPerformanceMode
 } from '#core/canvas'
 
+import { asRenderer } from '#tests/engine/render/canvas/helpers'
+
 test('canvas performance modes normalize untrusted preferences to balanced', () => {
   expect(CANVAS_PERFORMANCE_MODES).toEqual(['resource-saving', 'balanced', 'smooth'])
   expect(DEFAULT_CANVAS_PERFORMANCE_MODE).toBe('balanced')
@@ -84,7 +86,7 @@ test('hot mode changes update the renderer decoded-image budget without recreati
   }
 
   expect(
-    SkiaRenderer.prototype.setPerformanceMode.call(renderer as SkiaRenderer, 'resource-saving')
+    SkiaRenderer.prototype.setPerformanceMode.call(asRenderer(renderer), 'resource-saving')
   ).toBe(true)
   expect(renderer.performanceMode).toBe('resource-saving')
   expect(renderer.imageCacheByteBudget).toBe(64 * 1024 * 1024)

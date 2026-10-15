@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import {
@@ -137,9 +139,14 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     expect(a.files.has('src/__motion-runtime.ts')).toBe(false)
     expect(a.files.get('src/main.tsx') as string).not.toContain('__motion')
     expect(a.files.get('src/App.tsx') as string).not.toContain('data-op-motion')
-    const pkg = JSON.parse(a.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      a.files.get('package.json') as string
+    )
     expect(Object.keys(pkg.dependencies).some((name) => name.includes('motion'))).toBe(false)
   })
 
@@ -263,9 +270,14 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     expect(runtime).not.toContain('new Function')
     expect(runtime).not.toContain('innerHTML')
     expect(count(main, "import './__motion-runtime'")).toBe(1)
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
     expect(Object.keys(pkg.dependencies).some((name) => name.includes('motion'))).toBe(false)
   })
 

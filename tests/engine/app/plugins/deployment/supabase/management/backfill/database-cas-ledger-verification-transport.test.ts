@@ -1,6 +1,5 @@
-/* oxlint-disable eslint(max-lines) -- One transport threat matrix stays auditable in one fixture. */
-
 import { describe, expect, test } from 'bun:test'
+/* oxlint-disable eslint(max-lines) -- One transport threat matrix stays auditable in one fixture. */
 
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
@@ -22,10 +21,8 @@ import {
   type SupabaseManagementBackfillDatabaseCASLedgerVerificationFetch
 } from '@/app/plugins/host/deployment/supabase/management/backfill/database-cas-ledger-verification-transport'
 
-import type {
-  QueryBody,
-  RecordedRequest
-} from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
+import { parseQueryBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
+import type { RecordedRequest } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 const PROJECT_REF = 'abcdefghijklmnopqrst'
 const ACCOUNT_ID = 'account-1'
@@ -215,7 +212,7 @@ describe('Supabase Management database CAS ledger verification transport', () =>
 
     const serializedBody = requests[1]?.init.body
     if (typeof serializedBody !== 'string') throw new TypeError('Expected fixed JSON body')
-    const body = JSON.parse(serializedBody) as QueryBody
+    const body = parseQueryBody(serializedBody)
     expect(Object.keys(body)).toEqual(['query', 'parameters'])
     expect(body.query).toBe(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL)
     expect(body.parameters).toEqual(

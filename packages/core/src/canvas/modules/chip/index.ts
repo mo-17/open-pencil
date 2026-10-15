@@ -80,11 +80,7 @@ export function renderChipModulePreview(
         renderer.color4f(color.r, color.g, color.b, opacity),
         { halfLeading: true },
         (paragraph) => {
-          canvas.drawParagraph(
-            paragraph,
-            x,
-            (height - config.fontSize * CHIP_LAYOUT.lineHeight) / 2
-          )
+          paragraph.draw(canvas, x, (height - config.fontSize * CHIP_LAYOUT.lineHeight) / 2)
         }
       )
     })

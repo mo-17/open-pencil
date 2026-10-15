@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
+import * as v from 'valibot'
+
 import { saveExportedFile } from '@/app/document/export/files'
 import { watchTauriFile } from '@/app/document/io/watch-targets'
 import {
@@ -11,10 +13,6 @@ import {
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
-interface DesktopCapabilityConfig {
-  permissions: unknown[]
-}
-
 afterEach(async () => {
   await clearTauriMocks()
   Reflect.deleteProperty(globalThis, 'window')
@@ -22,9 +20,10 @@ afterEach(async () => {
 
 describe('Tauri file actions', () => {
   test('permits metadata reads for restored recent local files', () => {
-    const capability = JSON.parse(
+    const capability = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.object({ permissions: v.array(v.unknown()) })),
       readFileSync('desktop/capabilities/default.json', 'utf8')
-    ) as DesktopCapabilityConfig
+    )
 
     expect(capability.permissions).toContainEqual({
       identifier: 'fs:allow-stat',
@@ -115,7 +114,7 @@ describe('Tauri file actions', () => {
   })
 
   test('watches Tauri files and ignores recent local writes', async () => {
-    let onEvent: ((event: unknown) => void) | null = null
+    const watcher: { onEvent: ((event: unknown) => void) | null } = { onEvent: null }
     const calls: string[] = []
     await mockTauriIPC((cmd, args) => {
       if (cmd === 'plugin:fs|watch') {
@@ -123,7 +122,9 @@ describe('Tauri file actions', () => {
           paths: ['/tmp/design.fig'],
           options: { delayMs: 500 }
         })
-        onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
+        watcher.onEvent = (
+          args as { onEvent: { onmessage: (event: unknown) => void } }
+        ).onEvent.onmessage
         return 7
       }
       calls.push(cmd)
@@ -135,13 +136,15 @@ describe('Tauri file actions', () => {
       () => 0,
       () => calls.push('reload')
     )
-    onEvent?.({ type: { modify: { kind: 'data' } } })
+    watcher.onEvent?.({ type: { modify: { kind: 'data' } } })
     expect(calls).toEqual(['reload'])
 
     await clearTauriMocks()
     await mockTauriIPC((cmd, args) => {
       if (cmd === 'plugin:fs|watch') {
-        onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
+        watcher.onEvent = (
+          args as { onEvent: { onmessage: (event: unknown) => void } }
+        ).onEvent.onmessage
         return 8
       }
       calls.push(cmd)
@@ -153,7 +156,7 @@ describe('Tauri file actions', () => {
       () => Date.now(),
       () => calls.push('reload')
     )
-    onEvent?.({ type: { modify: { kind: 'data' } } })
+    watcher.onEvent?.({ type: { modify: { kind: 'data' } } })
     expect(calls).toEqual([])
 
     unwatch()

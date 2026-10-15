@@ -5,9 +5,9 @@ import {
   createBackendProviderPlanV2,
   createBackendProviderRegistryV2,
   createSupabaseBackfillInspectionSubjectV1,
-  SUPABASE_BACKEND_PROVIDER_BUNDLE_V2,
-  type BackendApplicationSpecV2
+  SUPABASE_BACKEND_PROVIDER_BUNDLE_V2
 } from '@open-pencil/compiler/backend'
+import type { BackendApplicationSpecV2 } from '@open-pencil/lowcode/backend'
 
 import {
   type SupabaseBackfillLiveCatalogAuthorityV1,

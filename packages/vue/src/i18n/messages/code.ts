@@ -3,10 +3,28 @@ import { params } from '@nanostores/i18n'
 import { i18n } from '#vue/i18n/create'
 
 export const codeMessageDefaults = {
+  previewFramework: 'Compiler preview framework',
+  previewDiagnostics: 'Inspect compiler diagnostics',
+  previewClose: 'Close compiler preview',
+  previewComponents: 'Preview UI components',
+  previewTheme: 'Preview theme',
+  previewI18n: 'Preview i18n',
+  previewMotionDebug: 'Inspect Motion runtime tracks',
+  previewRecompile: 'Recompile preview',
+  previewCompiling: 'Preview is compiling',
+  previewReloadLabel: params<{ status: string }>('Reload ({status})'),
+  previewFocusWindow: 'Focus compiler preview window',
+  previewOpenWindow: 'Open compiler preview in a separate window',
+  microfrontendBuild: 'Build a compose-ready microfrontend',
+  codePenDraft: 'Create a reviewed CodePen showcase draft',
   source: 'Code source',
   sourceDesignJSX: 'Design JSX',
-  sourceTailwindJSX: 'Tailwind JSX',
-  sourceHTMLCSS: 'HTML/CSS',
+  sourceHTML: 'HTML',
+  sourceVue: 'Vue',
+  sourceReact: 'React',
+  styling: 'Styling',
+  stylingCSS: 'CSS',
+  stylingTailwind: 'Tailwind',
   editorDesignLabel: 'Design JSX',
   editorHTMLCSSLabel: 'HTML and CSS',
   updating: 'Updating…',
@@ -119,7 +137,7 @@ export const codeMessageDefaults = {
   canvasChangedOrder: 'The canvas now orders these layers differently; the code stays as written.',
   noSelection: 'Select a layer to see its code',
   noSelectionDesignJSX: 'Or write Design JSX to add new layers to the page.',
-  noSelectionTailwindJSX: 'Tailwind JSX is generated for the selected layers.',
+  noSelectionComponents: params('{framework} components are generated for the selected layers.'),
   writeJSX: 'Write JSX'
 } as const
 

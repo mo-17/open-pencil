@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const propertyRoot = resolve(import.meta.dir, '../../../../../src/components/properties/Lowcode')
+import { repoPath } from '#tests/helpers/paths'
+
+const propertyRoot = repoPath('src/components/properties/Lowcode')
 const readPropertySource = (file: string): string =>
   readFileSync(resolve(propertyRoot, file), 'utf8')
 

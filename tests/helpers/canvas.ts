@@ -47,9 +47,39 @@ export class CanvasHelper {
       .waitFor({ timeout: 30000 })
     await this.page.getByTestId('canvas-loading').waitFor({ state: 'hidden', timeout: 30000 })
     await this.page.locator('#loader').waitFor({ state: 'detached', timeout: 30000 })
+    await this.useLightPage()
+  }
+
+  /**
+   * Canvas specs draw on Figma's light page. Playwright runs the app in its dark theme, where a new
+   * document starts on Figma's dark page, so a fresh document (one empty page on that exact
+   * background) is switched back; any other document keeps its own. The switch is setup, not an
+   * edit, so the document stays saved and closing it asks nothing.
+   * `tests/e2e/pages/theme-background.spec.ts` covers the theme.
+   */
+  async useLightPage() {
+    await this.page.evaluate(() => {
+      const store = window.openPencil?.getStore?.()
+      if (!store) return
+      const pages = store.graph.getPages()
+      const [first] = pages
+      const darkDefault = 0x1e / 255
+      const { r, g, b } = store.state.pageColor
+      const fresh =
+        pages.length === 1 &&
+        first.childIds.length === 0 &&
+        [r, g, b].every((c) => c === darkDefault)
+      if (!fresh) return
+      store.graph.applyImportedStateDuring(() => {
+        store.setPageColor({ r: 0.96, g: 0.96, b: 0.96, a: 1 })
+      })
+      store.markDocumentSaved()
+    })
   }
 
   async clearCanvas() {
+    // Inside path editing, Select All and Backspace act on the path's points, not the layers.
+    await this.pressKey('Escape')
     await this.selectAll()
     await this.pressKey('Backspace')
     await this.waitForRender()
@@ -110,7 +140,7 @@ export class CanvasHelper {
   }
 
   async drawSection(x: number, y: number, width: number, height: number) {
-    await this.pressKey('s')
+    await this.pressKey('Shift+KeyS')
     await this.drag(x, y, x + width, y + height)
     await this.waitForRender()
   }
@@ -121,7 +151,7 @@ export class CanvasHelper {
     const keys: Record<string, string> = {
       select: 'v',
       frame: 'f',
-      section: 's',
+      section: 'Shift+KeyS',
       rectangle: 'r',
       ellipse: 'o',
       text: 't',

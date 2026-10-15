@@ -38,9 +38,10 @@ describe('CLI web codegen target', () => {
     ).not.toThrow()
   })
 
-  test('exposes the same target flag on source, static build, and deploy commands', () => {
-    expect(compileCommand.args?.target).toBeDefined()
-    expect(buildCommand.args?.target).toBeDefined()
-    expect(deployCommand.args?.target).toBeDefined()
+  test('exposes the same target flag on source, static build, and deploy commands', async () => {
+    for (const command of [compileCommand, buildCommand, deployCommand]) {
+      const args = await (typeof command.args === 'function' ? command.args() : command.args)
+      expect(args && 'target' in args ? args.target : undefined).toBeDefined()
+    }
   })
 })

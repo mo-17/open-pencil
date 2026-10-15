@@ -1,8 +1,11 @@
+import { readFile } from 'node:fs/promises'
+
 import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 import { mockFontsource } from '#tests/helpers/fonts/fontsource'
 import { mockGoogleFonts } from '#tests/helpers/fonts/google'
+import { repoPath } from '#tests/helpers/paths'
 
 async function openTypographyForText(page: Page) {
   await page.goto('/')
@@ -10,6 +13,8 @@ async function openTypographyForText(page: Page) {
   await canvas.waitForInit()
 
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 120, 120, 240, 40)
@@ -31,7 +36,8 @@ test('font picker selects local fonts without requiring Google metadata access',
   page
 }) => {
   const fonts = await mockGoogleFonts(page)
-  await page.addInitScript(() => {
+  const fontBytes = Array.from(await readFile(repoPath('packages/core/assets/Inter-Regular.ttf')))
+  await page.addInitScript((fontBytes) => {
     Object.defineProperty(window, 'queryLocalFonts', {
       configurable: true,
       value: async () => [
@@ -47,13 +53,12 @@ test('font picker selects local fonts without requiring Google metadata access',
           postscriptName: 'OpenPencilLocalFont-Regular',
           style: 'Regular',
           blob: async () => {
-            const response = await fetch('/Inter-Regular.ttf')
-            return new Blob([await response.arrayBuffer()], { type: 'font/ttf' })
+            return new Blob([Uint8Array.from(fontBytes).buffer], { type: 'font/ttf' })
           }
         }
       ]
     })
-  })
+  }, fontBytes)
 
   const textId = await openTypographyForText(page)
   expect(fonts.counts.metadata).toBe(0)
@@ -75,6 +80,8 @@ test('font picker selects local fonts without requiring Google metadata access',
   await expect
     .poll(async () =>
       page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         const node = store?.graph.getNode(id)
         return node?.type === 'TEXT' ? node.fontFamily : null
@@ -114,6 +121,8 @@ test('font picker downloads an approved Fontsource face from a pinned CDN URL', 
   await expect
     .poll(async () =>
       page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         const node = store?.graph.getNode(id)
         return node?.type === 'TEXT' ? node.fontFamily : null

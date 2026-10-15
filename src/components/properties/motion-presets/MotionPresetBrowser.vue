@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed, ref } from 'vue'
 
 import type { MotionPresetCategory } from '@open-pencil/scene-graph'
@@ -109,7 +110,7 @@ const matchingItems = computed(() => {
     }
     if (!needle) return true
     return normalizeSearch(
-      [
+      compact([
         item.name,
         item.description,
         categoryLabel(item),
@@ -117,9 +118,7 @@ const matchingItems = computed(() => {
         triggerLabel(item.trigger),
         item.trigger,
         ...(item.keywords ?? [])
-      ]
-        .filter(Boolean)
-        .join(' ')
+      ]).join(' ')
     ).includes(needle)
   })
 })
@@ -215,7 +214,8 @@ function sharedGroups(values: readonly MotionPresetLibraryItem[]): MotionPresetG
     <section
       v-for="group in groups"
       :key="group.id"
-      :data-test-id="`motion-preset-group-${group.id}`"
+      data-slot="motion-preset-group"
+      :data-group-id="group.id"
       :aria-label="group.label"
     >
       <h3 class="mb-1 text-[10px] font-semibold tracking-wide text-muted uppercase">

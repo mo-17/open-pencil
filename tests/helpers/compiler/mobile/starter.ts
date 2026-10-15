@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -34,7 +35,16 @@ export async function withMobileStarter(
   }) => Promise<void>,
   locale = 'en'
 ): Promise<void> {
-  const fixture = JSON.parse(
+  const fixture = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        files: v.array(v.tuple([v.string(), v.string()])),
+        paths: v.record(v.string(), v.string()),
+        apiBasePath: v.string()
+      })
+    ),
     execFileSync(
       'bun',
       [
@@ -43,11 +53,7 @@ export async function withMobileStarter(
       ],
       { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as {
-    files: [string, string][]
-    paths: Record<string, string>
-    apiBasePath: string
-  }
+  )
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

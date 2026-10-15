@@ -41,7 +41,7 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('persists a signOut action with no credentials', () => {
@@ -50,7 +50,7 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     const action = { id: 'a-1', kind: 'supabaseAuth', operation: 'signOut' }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('persists a signUp action with email/password exprs (Phase 3 §2.v3)', () => {
@@ -65,7 +65,7 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects a malformed signUp password expression (decision g, Phase 3 §2.v3)', () => {
@@ -102,7 +102,7 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('persists an updatePassword action with password only (Phase 3 §2.v4)', () => {
@@ -116,7 +116,7 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     }
     const result = update(btn.id, { onClick: [action] }, figma)
     expect(result.ok).toBe(true)
-    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+    expect<unknown>(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
   })
 
   test('rejects a malformed updatePassword password expression (Phase 3 §2.v4)', () => {

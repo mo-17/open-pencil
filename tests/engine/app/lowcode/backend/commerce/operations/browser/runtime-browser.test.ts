@@ -5,6 +5,7 @@ import { chromium, expect as browserExpect, type Page } from '@playwright/test'
 import { createPreviewServer } from '@open-pencil/compiler/dev-server'
 
 import { commerceBrowserFixture } from './helpers'
+import type { BrowserCommandStep } from './transport/helpers'
 import { cartReply, cartRows, ids, installCommerceTransport } from './transport/helpers'
 
 async function confirm(page: Page, label: string) {
@@ -27,7 +28,7 @@ async function acknowledge(page: Page) {
 }
 
 describe('compiled commerce pages with a test session and scripted API', () => {
-  test.each(['react', 'vue'] as const)(
+  test.each([...(['react', 'vue'] as const)])(
     '%s cart, payment, shipment and settlement controls execute the reviewed commands',
     async (target) => {
       const fixture = await commerceBrowserFixture(target)
@@ -133,7 +134,7 @@ describe('compiled commerce pages with a test session and scripted API', () => {
           currency: 'CNY',
           order_count: 2
         }
-        const orders = [
+        const orders: BrowserCommandStep['result'][] = [
           {
             id: ids.order,
             payment_group_id: ids.purchase,

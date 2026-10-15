@@ -7,6 +7,8 @@ test('rulers follow the active theme', async () => {
 
   const readState = () =>
     page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       const style = getComputedStyle(document.documentElement)
       return {

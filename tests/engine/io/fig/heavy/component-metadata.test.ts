@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 
-import { importNodeChanges } from '@open-pencil/core/kiwi/fig/import'
 import { parseFigBuffer } from '@open-pencil/fig'
+
+import { importNodeChanges } from '#core/kiwi/fig/import'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { readFixtureArrayBuffer } from '#tests/helpers/fig/fixtures'
@@ -10,7 +11,9 @@ import { heavy } from '#tests/helpers/test-utils'
 function importFixture(name: string) {
   const { nodeChanges, blobs, images } = parseFigBuffer(readFixtureArrayBuffer(name))
   // These assertions inspect authored metadata, not the expanded instance trees.
-  return importNodeChanges(nodeChanges, blobs, new Map(images), { populate: 'none' })
+  return importNodeChanges(nodeChanges, blobs, new Map(images), {
+    populate: 'none'
+  })
 }
 
 const METADATA_TEST_TIMEOUT_MS = 60_000
@@ -76,7 +79,9 @@ test(
   async () => {
     const { parseFigFile } = await import('@open-pencil/core')
     const { populateFigPage } = await import('@open-pencil/core/io/formats/fig')
-    const graph = await parseFigFile(readFixtureArrayBuffer('material3.fig'), { populate: 'none' })
+    const graph = await parseFigFile(readFixtureArrayBuffer('material3.fig'), {
+      populate: 'none'
+    })
     const page = graph.getPages().find((page) => page.name === 'Buttons')
     if (!page) throw new Error('Missing visible Buttons page')
     populateFigPage(graph, page.id)

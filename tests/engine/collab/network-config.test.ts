@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { buildCollabNetworkConfig, describeCollabSignaling } from '@/app/collab/network-config'
-import { TRYSTERO_APP_ID } from '@/constants'
+import { COLLAB_APP_ID } from '@/constants'
 
 /**
  * Phase 3 §4.3 — collab signaling relays + TURN are configurable via the
@@ -13,7 +13,7 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
   test('empty env → public defaults (no custom relays, openrelay TURN, default appId)', () => {
     const c = buildCollabNetworkConfig({})
     expect(c.strategy).toBe('mqtt')
-    expect(c.appId).toBe(TRYSTERO_APP_ID)
+    expect(c.appId).toBe(COLLAB_APP_ID)
     expect(c.relayUrls).toBeUndefined()
     // 2 STUN + 2 openrelay TURN entries.
     expect(c.iceServers).toHaveLength(4)
@@ -60,7 +60,7 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
   })
 
   test('blank app id → falls back to the default', () => {
-    expect(buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: '  ' }).appId).toBe(TRYSTERO_APP_ID)
+    expect(buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: '  ' }).appId).toBe(COLLAB_APP_ID)
   })
 
   test('§4.3-S: strategy=supabase with URL+key → supabase, appId=URL, key carried, TURN kept', () => {
@@ -84,7 +84,7 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
       VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co'
     })
     expect(c.strategy).toBe('mqtt')
-    expect(c.appId).toBe(TRYSTERO_APP_ID)
+    expect(c.appId).toBe(COLLAB_APP_ID)
     expect(c.supabaseKey).toBeUndefined()
   })
 

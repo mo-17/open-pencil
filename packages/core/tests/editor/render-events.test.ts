@@ -1,8 +1,11 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 
-import { createRendererProbe, disposeRendererProbes } from '#core-tests/helpers/renderer'
+import {
+  createRendererProbe,
+  createRendererTestEditor as createEditor,
+  disposeRendererProbes
+} from '#core-tests/helpers/renderer'
 
-import { createEditor } from '@open-pencil/core/editor'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 afterEach(disposeRendererProbes)

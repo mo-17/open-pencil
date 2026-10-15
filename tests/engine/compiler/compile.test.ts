@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -31,11 +33,18 @@ describe('compile (public API, end-to-end)', () => {
       ].sort()
     )
 
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      name: string
-      dependencies: Record<string, string>
-      devDependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          name: v.string(),
+          dependencies: v.record(v.string(), v.string()),
+          devDependencies: v.record(v.string(), v.string())
+        })
+      ),
+      out.files.get('package.json') as string
+    )
     expect(pkg.name).toBe('demo-app')
     expect(pkg.dependencies.react).toBeDefined()
     expect(pkg.dependencies['react-dom']).toBeDefined()

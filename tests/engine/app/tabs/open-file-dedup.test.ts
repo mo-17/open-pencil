@@ -30,27 +30,48 @@ import {
 } from '@/app/tabs'
 import { fileIdentitiesMatch, findTabByFileIdentity } from '@/app/tabs/open/identity'
 
-import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
+import { expectDefined } from '#tests/helpers/assert'
 
-import { createOwnershipWorker } from '#tests/helpers/worker'
+function storageAdapter(
+  overrides: Partial<storageModule.StorageAdapter>
+): storageModule.StorageAdapter {
+  const unexpected = () => {
+    throw new TypeError('Unexpected storage adapter operation in the open-document fixture.')
+  }
+  return {
+    testConnection: async () => unexpected(),
+    listDocuments: async () => unexpected(),
+    getDocument: async () => unexpected(),
+    putDocument: async () => unexpected(),
+    deleteDocument: async () => unexpected(),
+    getUsage: async () => unexpected(),
+    ...overrides
+  }
+}
 
 function setupGlobals() {
-  globalThis.window = {
-    innerWidth: 1024,
-    innerHeight: 768,
-    requestAnimationFrame: (callback: FrameRequestCallback) => {
-      callback(0)
-      return 0
+  Reflect.defineProperty(globalThis, 'window', {
+    value: {
+      innerWidth: 1024,
+      innerHeight: 768,
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0)
+        return 0
+      },
+      cancelAnimationFrame: vi.fn(),
+      openPencil: {},
+      location: { href: 'http://localhost/' },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
     },
-    cancelAnimationFrame: vi.fn(),
-    openPencil: {},
-    location: { href: 'http://localhost/' } as Location,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn()
-  } as Window & typeof globalThis
-  globalThis.document = {
-    fonts: { add: vi.fn(), ready: Promise.resolve() }
-  } as Document
+    configurable: true,
+    writable: true
+  })
+  Reflect.defineProperty(globalThis, 'document', {
+    value: { fonts: { add: vi.fn(), ready: Promise.resolve() } },
+    configurable: true,
+    writable: true
+  })
   globalThis.requestAnimationFrame = window.requestAnimationFrame
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame
 }
@@ -90,12 +111,6 @@ function makeHandle(
   isSameEntry: (other: FileSystemFileHandle) => Promise<boolean>
 ): FileSystemFileHandle {
   return { kind: 'file', name, isSameEntry } as FileSystemFileHandle
-}
-
-function trackGraphResource(graph: SceneGraph) {
-  const terminate = vi.fn(() => undefined)
-  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
-  return terminate
 }
 
 describe('file identity', () => {
@@ -227,7 +242,7 @@ describe('tab opening deduplication', () => {
     const document = createDocumentInCurrentTab()
 
     expect(tabCount()).toBe(count)
-    expect(document.id).toBe(home?.id)
+    expect(document.id).toBe(expectDefined(home, 'home tab').id)
     expect(document.kind).toBe('document')
   })
 
@@ -296,17 +311,28 @@ describe('tab opening deduplication', () => {
 
   test('releases a parsed tab graph when preparation throws before apply', async () => {
     const imported = new SceneGraph()
-    const terminate = trackGraphResource(imported)
+    const store = getActiveStore()
+    const previousGraph = store.graph
+    const releaseGraphResources = vi.spyOn(store, 'releaseGraphResources')
     ;(figModule.readFigFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(imported)
     ;(layoutModule.computeAllLayouts as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
       throw new Error('layout failed')
     })
 
-    await expect(
-      settleFileOpen(openFileInNewTab(new File([], 'broken.fig'), undefined, '/tmp/broken.fig'))
-    ).rejects.toThrow('layout failed')
+    try {
+      await expect(
+        settleFileOpen(openFileInNewTab(new File([], 'broken.fig'), undefined, '/tmp/broken.fig'))
+      ).rejects.toThrow('layout failed')
 
-    expect(terminate).toHaveBeenCalledTimes(1)
+      expect(store.graph).toBe(previousGraph)
+      expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+      expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(imported)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === previousGraph)).toBe(
+        false
+      )
+    } finally {
+      releaseGraphResources.mockRestore()
+    }
   })
 
   test('allows different files to load concurrently', async () => {
@@ -365,9 +391,11 @@ describe('tab opening deduplication', () => {
       started.resolve(undefined)
       return download.promise
     })
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     const document = {
       id: 'storage-concurrent',
       name: 'Storage concurrent',
@@ -399,15 +427,17 @@ describe('tab opening deduplication', () => {
   test('does not reuse a storage tab after the same account receives a new grant', async () => {
     const grantOne = { accountId: 'account-1', authorizationVersion: 'grant-1' }
     const grantTwo = { accountId: 'account-1', authorizationVersion: 'grant-2' }
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([1, 2, 3]),
       metadata: { name: 'Reauthorized', updatedAt: '2026-08-09T00:00:00.000Z' },
       remoteRevision: null
     }))
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getAuthority: vi.fn(async () => grantOne),
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getAuthority: vi.fn(async () => grantOne),
+        getDocument
+      })
+    )
     const document = {
       id: 'storage-reauthorized-existing',
       name: 'Reauthorized',
@@ -448,10 +478,12 @@ describe('tab opening deduplication', () => {
       if (getDocument.mock.calls.length === 2) bothStarted.resolve(undefined)
       return downloads[index]?.promise ?? Promise.reject(new Error('Unexpected storage download'))
     })
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getAuthority,
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getAuthority,
+        getDocument
+      })
+    )
     const document = {
       id: 'storage-reauthorized-pending',
       name: 'Reauthorized pending',
@@ -502,10 +534,12 @@ describe('tab opening deduplication', () => {
       const getDocument = vi.fn(async () => {
         throw new Error('The adapter rejected a replaced authorization')
       })
-      vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-        getAuthority,
-        getDocument
-      } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+      vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+        storageAdapter({
+          getAuthority,
+          getDocument
+        })
+      )
       const document = {
         id: `${providerId}-authority-race`,
         name: 'Authority race',
@@ -556,15 +590,17 @@ describe('tab opening deduplication', () => {
       figBytes: new Uint8Array([1]),
       syncStatus: 'synced'
     })
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([2]),
       metadata: { name: 'Remote.fig', updatedAt: '2026-08-10T00:00:00.000Z' },
       remoteRevision: null
     }))
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getAuthority: vi.fn(async () => authority),
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getAuthority: vi.fn(async () => authority),
+        getDocument
+      })
+    )
 
     await settleFileOpen(
       openStorageDocumentInNewTab(
@@ -608,15 +644,17 @@ describe('tab opening deduplication', () => {
       figBytes: new Uint8Array([1]),
       syncStatus: 'synced'
     })
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([2]),
       metadata: { name: 'Remote.fig', updatedAt: new Date(0).toISOString() },
       remoteRevision: null
     }))
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getAuthority: vi.fn(async () => authority),
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getAuthority: vi.fn(async () => authority),
+        getDocument
+      })
+    )
 
     await settleFileOpen(
       openStorageDocumentInNewTab(
@@ -652,9 +690,11 @@ describe('tab opening deduplication', () => {
       figBytes: new Uint8Array([1]),
       syncStatus: 'synced'
     })
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getAuthority: vi.fn(async () => authority)
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getAuthority: vi.fn(async () => authority)
+      })
+    )
     const parsing = Promise.withResolvers<SceneGraph>()
     const parsingStarted = Promise.withResolvers<undefined>()
     ;(figModule.readFigSource as ReturnType<typeof vi.fn>).mockImplementationOnce(
@@ -692,14 +732,16 @@ describe('tab opening deduplication', () => {
   })
 
   test('removes a failed storage open and retries from the local cache', async () => {
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([1, 2, 3]),
       metadata: { name: 'Storage retry', updatedAt: '2026-07-31T00:00:00.000Z' },
       remoteRevision: null
     }))
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     ;(figModule.readFigSource as ReturnType<typeof vi.fn>)
       .mockImplementationOnce(async (source) => {
         await source.read()
@@ -801,13 +843,15 @@ describe('tab opening deduplication', () => {
         vi.spyOn(previous.store, 'persistRecoveryNow').mockReturnValue(persistence.promise)
         closing = closeTab(previous.id)
       }
-      vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-        getDocument: vi.fn(async () => ({
-          bytes: new Uint8Array([1, 2, 3]),
-          metadata: { name: 'Next cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
-          remoteRevision: null
-        }))
-      } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+      vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+        storageAdapter({
+          getDocument: vi.fn(async () => ({
+            bytes: new Uint8Array([1, 2, 3]),
+            metadata: { name: 'Next cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
+            remoteRevision: null
+          }))
+        })
+      )
       try {
         await settleFileOpen(
           openStorageDocumentInNewTab({
@@ -832,9 +876,11 @@ describe('tab opening deduplication', () => {
   test('does not reuse an Untitled tab while another cloud document is still loading', async () => {
     createTab().store.state.documentName = 'Existing document'
     const downloaded = Promise.withResolvers<storageModule.StorageGetDocumentResult>()
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument: vi.fn(() => downloaded.promise)
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument: vi.fn(() => downloaded.promise)
+      })
+    )
     const firstActivated = Promise.withResolvers<undefined>()
     const secondActivated = Promise.withResolvers<undefined>()
     const first = openStorageDocumentInNewTab(
@@ -877,7 +923,7 @@ describe('tab opening deduplication', () => {
     createTab().store.state.documentName = 'Existing document'
     const firstRequested = Promise.withResolvers<undefined>()
     const firstDownload = Promise.withResolvers<storageModule.StorageGetDocumentResult>()
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([1, 2, 3]),
       metadata: { name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
       remoteRevision: null
@@ -886,9 +932,11 @@ describe('tab opening deduplication', () => {
       firstRequested.resolve(undefined)
       return firstDownload.promise
     })
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     const controller = new AbortController()
     const first = openStorageDocumentInNewTab(
       { id: 'cancelled-untitled', name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
@@ -920,14 +968,16 @@ describe('tab opening deduplication', () => {
   })
 
   test('activates the cloud editor before download and still waits for presentation', async () => {
-    const getDocument = vi.fn(async () => ({
+    const getDocument = vi.fn(async (): Promise<storageModule.StorageGetDocumentResult> => ({
       bytes: new Uint8Array([1, 2, 3]),
       metadata: { name: 'Presented cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
       remoteRevision: null
     }))
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     const activated = Promise.withResolvers<undefined>()
     const mounted = Promise.withResolvers<undefined>()
     const ready = Promise.withResolvers<undefined>()
@@ -980,9 +1030,11 @@ describe('tab opening deduplication', () => {
     switchTab(previous.id)
     const count = tabCount()
     const getDocument = vi.fn()
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     const controller = new AbortController()
 
     await expect(
@@ -1011,13 +1063,15 @@ describe('tab opening deduplication', () => {
   })
 
   test('failed navigation to an existing cloud tab restores focus without closing the shared tab', async () => {
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument: vi.fn(async () => ({
-        bytes: new Uint8Array([1, 2, 3]),
-        metadata: { name: 'Existing cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
-        remoteRevision: null
-      }))
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument: vi.fn(async () => ({
+          bytes: new Uint8Array([1, 2, 3]),
+          metadata: { name: 'Existing cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
+          remoteRevision: null
+        }))
+      })
+    )
     const document = {
       id: 'existing-navigation-failed',
       name: 'Existing cloud',
@@ -1046,9 +1100,11 @@ describe('tab opening deduplication', () => {
       requested.resolve(undefined)
       return downloaded.promise
     })
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument
+      })
+    )
     const document = {
       id: 'pending-navigation-failed',
       name: 'Pending cloud',
@@ -1079,18 +1135,20 @@ describe('tab opening deduplication', () => {
 
   test('closing a cloud tab does not steal focus selected while recovery persistence is pending', async () => {
     const requested = Promise.withResolvers<undefined>()
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument: vi.fn((_id: string, options?: storageModule.StorageTransferOptions) => {
-        const signal = options?.signal
-        if (!signal) throw new Error('Expected an abortable storage request')
-        requested.resolve(undefined)
-        return new Promise<storageModule.StorageGetDocumentResult>((_resolve, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason), {
-            once: true
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument: vi.fn((_id: string, options?: storageModule.StorageTransferOptions) => {
+          const signal = options?.signal
+          if (!signal) throw new Error('Expected an abortable storage request')
+          requested.resolve(undefined)
+          return new Promise<storageModule.StorageGetDocumentResult>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), {
+              once: true
+            })
           })
         })
       })
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    )
     const previous = createTab()
     const selected = createTab()
     switchTab(previous.id)
@@ -1131,7 +1189,9 @@ describe('tab opening deduplication', () => {
 
   test('releases a parsed storage graph when cancellation wins before preparation', async () => {
     const imported = new SceneGraph()
-    const terminate = trackGraphResource(imported)
+    const store = getActiveStore()
+    const previousGraph = store.graph
+    const releaseGraphResources = vi.spyOn(store, 'releaseGraphResources')
     const parsing = Promise.withResolvers<SceneGraph>()
     const parsingStarted = Promise.withResolvers<undefined>()
     ;(figModule.readFigSource as ReturnType<typeof vi.fn>).mockImplementationOnce(
@@ -1141,13 +1201,15 @@ describe('tab opening deduplication', () => {
         return parsing.promise
       }
     )
-    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
-      getDocument: vi.fn(async () => ({
-        bytes: new Uint8Array([1, 2, 3]),
-        metadata: { name: 'Cancelled.fig', updatedAt: '2026-08-10T00:00:00.000Z' },
-        remoteRevision: null
-      }))
-    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue(
+      storageAdapter({
+        getDocument: vi.fn(async () => ({
+          bytes: new Uint8Array([1, 2, 3]),
+          metadata: { name: 'Cancelled.fig', updatedAt: '2026-08-10T00:00:00.000Z' },
+          remoteRevision: null
+        }))
+      })
+    )
     const controller = new AbortController()
     const opening = openStorageDocumentInNewTab(
       {
@@ -1160,11 +1222,23 @@ describe('tab opening deduplication', () => {
       { signal: controller.signal }
     )
 
-    await parsingStarted.promise
-    controller.abort()
-    parsing.resolve(imported)
+    try {
+      await parsingStarted.promise
+      controller.abort()
+      parsing.resolve(imported)
 
-    await expect(opening).rejects.toHaveProperty('name', 'AbortError')
-    expect(terminate).toHaveBeenCalledTimes(1)
+      await expect(opening).rejects.toHaveProperty('name', 'AbortError')
+      expect(store.graph).toBe(previousGraph)
+      expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+      expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(imported)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === previousGraph)).toBe(
+        false
+      )
+    } finally {
+      controller.abort()
+      parsing.resolve(imported)
+      await Promise.allSettled([opening])
+      releaseGraphResources.mockRestore()
+    }
   })
 })

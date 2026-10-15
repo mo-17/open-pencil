@@ -100,6 +100,8 @@ export type ToolCapability =
   | 'filesystem:write'
   | 'network:access'
   | 'code:execute'
+  | 'settings:read'
+  | 'settings:write'
 
 export type ToolExecution =
   | { kind: 'sync'; mutation: 'none' | 'view' | 'properties' | 'document' }
@@ -119,8 +121,10 @@ interface ToolMetadata {
 }
 
 export interface ToolDef extends ToolMetadata {
-  input: v.ObjectSchema<v.ObjectEntries, undefined>
-  /** Legacy declaration compatibility; adapters consume input exclusively. */
+  input:
+    | v.ObjectSchema<v.ObjectEntries, undefined>
+    | v.StrictObjectSchema<v.ObjectEntries, undefined>
+  /** Retained fork declarations are normalized once into the native input contract. */
   params: Record<string, ParamDef>
   readonly changesDocument: boolean
   /** Derived from execution metadata, never declared independently by a tool. */
@@ -132,9 +136,13 @@ type ToolDefinitionMetadata = Omit<ToolMetadata, 'exposure' | 'capabilities' | '
   Partial<Pick<ToolMetadata, 'exposure' | 'capabilities' | 'availability'>>
 
 type NativeToolDefinition<P extends v.ObjectEntries, R> = ToolDefinitionMetadata & {
-  input: v.ObjectSchema<P, undefined>
+  input: v.ObjectSchema<P, undefined> | v.StrictObjectSchema<P, undefined>
   execution: ToolExecution & (R extends PromiseLike<unknown> ? { kind: 'async' } : unknown)
-  execute: (figma: FigmaAPI, args: v.InferOutput<v.ObjectSchema<P, undefined>>, ctx?: ToolCtx) => R
+  execute: (
+    figma: FigmaAPI,
+    args: v.InferOutput<v.ObjectSchema<P, undefined> | v.StrictObjectSchema<P, undefined>>,
+    ctx?: ToolCtx
+  ) => R
 }
 type LegacyToolDefinition<P extends Record<string, ParamDef>> = {
   name: string
@@ -181,8 +189,24 @@ export function defineTool(
       return execution.mutation !== 'none'
     },
     execute: (figma, args, ctx) =>
-      (def.execute as ToolDef['execute'])(figma, v.parse(input, args), ctx)
+      (def.execute as ToolDef['execute'])(figma, parseToolArgs(def.name, input, args), ctx)
   }
+}
+
+/**
+ * Every tool run goes through here, so a wrong call from AI chat, the CLI, or WebMCP names the
+ * tool and lists each problem with its argument, as `v.summarize` formats them. MCP clients get
+ * the MCP SDK's own report, which validates the same schema before the handler runs. Inputs are
+ * strict objects, so a misspelled or mis-nested argument fails here instead of being dropped.
+ */
+export function parseToolArgs<S extends v.GenericSchema>(
+  name: string,
+  schema: S,
+  args: unknown
+): v.InferOutput<S> {
+  const result = v.safeParse(schema, args)
+  if (result.success) return result.output
+  throw new Error(`Invalid arguments for ${name}:\n${v.summarize(result.issues)}`)
 }
 
 export function toolChangesDocument(def: Pick<ToolDef, 'execution'>): boolean {
@@ -220,6 +244,11 @@ export function requireNodes(figma: FigmaAPI, ids: ReadonlyArray<string>): Figma
   return nodes
 }
 
+/** A tool's answer when the operation it wraps throws: the error's message for the caller. */
+export function toolFailure(error: unknown): { error: string } {
+  return { error: error instanceof Error ? error.message : String(error) }
+}
+
 export function nodeNotFound(id: string): { error: string } {
   return { error: `Node "${id}" not found` }
 }
@@ -236,6 +265,10 @@ export function nodeToResult(node: FigmaNodeProxy, maxDepth?: number): Record<st
   return node.toJSON(maxDepth)
 }
 
-export function nodeSummary(node: FigmaNodeProxy): { id: string; name: string; type: string } {
+export function nodeSummary(node: FigmaNodeProxy): {
+  id: string
+  name: string
+  type: string
+} {
   return { id: node.id, name: node.name, type: node.type }
 }

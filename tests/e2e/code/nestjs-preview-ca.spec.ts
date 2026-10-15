@@ -5,7 +5,8 @@ import {
   createNotes,
   managedCommands,
   mockDesktopPreview,
-  type PreviewFixtureWindow
+  readPreviewFixtureState,
+  resolvePreviewCA
 } from '#tests/helpers/nestjs-preview'
 
 async function installPreview(page: Page) {
@@ -45,14 +46,8 @@ test('CA paths survive panel and app reopening, stay local to the computer, and 
   await expect(certificate).toHaveValue('/tmp/typed-local-ca.pem')
 
   await page.getByRole('button', { name: 'Choose file', exact: true }).click()
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.caDialogs)
-    )
-    .toBe(1)
-  await page.evaluate(() =>
-    (window as PreviewFixtureWindow).__OP_NESTJS_RESOLVE_CA__('/tmp/chosen-local-ca.pem')
-  )
+  await expect.poll(() => readPreviewFixtureState(page).then((state) => state.caDialogs)).toBe(1)
+  await resolvePreviewCA(page, '/tmp/chosen-local-ca.pem')
   await expect(certificate).toHaveValue('/tmp/chosen-local-ca.pem')
   await expect(panel).toContainText('remembered only on this computer')
   expect(await managedCommands(page)).toEqual([])

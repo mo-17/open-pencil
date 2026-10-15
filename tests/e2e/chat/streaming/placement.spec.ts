@@ -33,6 +33,8 @@ for (const scenario of scenarios) {
       await expect(chat.assistantMessage()).toContainText('Rendered.')
       await expect.poll(() => previewKey(chat.page)).toBe('')
       await chat.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         store.clearSelection()
@@ -42,7 +44,10 @@ for (const scenario of scenarios) {
       await canvas.waitForRender()
       // Both speculative and authoritative output must match the same visual baseline.
       expect(await canvas.screenshotCanvasRegion(640, 400)).toMatchSnapshot(snapshot)
-      await chat.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+      await chat.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().undoAction()
+      })
       expect(await documentSnapshot(chat.page)).toEqual(before)
     } finally {
       await stream.evaluate((s) => s.dispose())

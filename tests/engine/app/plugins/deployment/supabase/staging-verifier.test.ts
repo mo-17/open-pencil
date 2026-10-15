@@ -535,14 +535,16 @@ describe('Supabase staging catalog verifier', () => {
       requiredSecretNames: ['SUPABASE_URL'],
       health: {
         status: 200,
-        authenticated: false,
+        authenticated: true,
         healthy: true,
         healthIdentity: EDGE_HEALTH_IDENTITY,
         evidenceDigest: EVIDENCE_DIGEST,
         operationId: 'health-1',
         checkedAt: NOW
       }
-    } as Partial<SupabaseEdgeFunctionReleaseReceipt>)
+    })
+    if (!staleEdge.health) throw new TypeError('Expected edge health fixture.')
+    Reflect.set(staleEdge.health, 'authenticated', false)
     const result = await verifySupabaseStagingRelease(
       await verificationInputFor(app, {
         backendProvider: provider,

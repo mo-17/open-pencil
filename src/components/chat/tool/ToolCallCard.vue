@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getToolName } from 'ai'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
@@ -21,20 +21,21 @@ import { remoteMCPToolServerDisplayInfo } from '@/app/ai/mcp'
 import { readToolChange } from '@/app/ai/tools/changes/store'
 import ToolChangeView from '@/components/chat/tool/ToolChangeView.vue'
 import ToolNodeChips from '@/components/chat/tool/ToolNodeChips.vue'
+import { loadCodeViewer } from '@/components/code-editor/lazy'
+import CodeViewer from '@/components/code-editor/LazyCodeViewer.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import { chatToolTheme } from '@/theme/chat/tool'
 import { collapsibleContentMotion } from '@/theme/collapsible/collapsible'
 
-// CodeMirror loads with the first expanded call, not with the chat panel.
-const CodeViewer = defineAsyncComponent(() => import('@/components/code-editor/CodeViewer.vue'))
-
 const {
   part,
+  undone = false,
   pendingApprovalIds = [],
   approvalEnabled = false
 } = defineProps<{
   part: ToolCallPart
+  undone?: boolean
   pendingApprovalIds?: readonly string[]
   approvalEnabled?: boolean
 }>()
@@ -106,10 +107,16 @@ function json(value: unknown): string {
   <CollapsibleRoot
     :class="ui.root()"
     :data-tool-state="state"
+    :data-undone="undone"
     data-slot="chat-tool-call"
-    data-test-id="chat-tool-call"
   >
-    <CollapsibleTrigger :class="ui.trigger()" :disabled="!expandable">
+    <!-- Start loading CodeMirror on hover, so it is ready by the time the call opens. -->
+    <CollapsibleTrigger
+      :class="ui.trigger()"
+      :disabled="!expandable"
+      @pointerenter="loadCodeViewer"
+      @focus="loadCodeViewer"
+    >
       <span :class="ui.status()" :data-state="state" :aria-label="stateLabel" role="img">
         <icon-lucide-loader-circle
           v-if="state === 'pending'"
@@ -120,12 +127,16 @@ function json(value: unknown): string {
       </span>
       <span :class="ui.name()">{{ name }}</span>
       <span :class="ui.summary()">{{ summary }}</span>
+      <span v-if="undone" :class="ui.undone()" data-slot="chat-tool-undone">
+        <icon-lucide-undo-2 :class="ui.undoneIcon()" aria-hidden="true" />
+        {{ ai.toolUndone }}
+      </span>
       <icon-lucide-chevron-down v-if="expandable" :class="ui.chevron()" aria-hidden="true" />
     </CollapsibleTrigger>
     <div
       v-if="state === 'approval'"
       data-test-id="chat-tool-approval"
-      class="rounded border border-amber-500/30 bg-amber-500/5 p-2"
+      class="rounded border border-warning/30 bg-warning/5 p-2"
     >
       <p v-if="remoteServer" class="mb-1 text-[9px] text-muted">
         MCP · {{ remoteServer.name }} · {{ remoteServer.origin }}

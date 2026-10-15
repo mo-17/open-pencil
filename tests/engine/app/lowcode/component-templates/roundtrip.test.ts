@@ -58,7 +58,7 @@ describe('portable editable component templates', () => {
     }
   )
 
-  test.each(getComponentTemplates('en'))(
+  test.each([...getComponentTemplates('en')])(
     '$id retains authored behavior after FIG export and compiles to both web targets',
     async ({ id }) => {
       const { editor, graph, results } = componentTemplateFixture([id])

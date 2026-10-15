@@ -11,6 +11,8 @@ export {
   Switch,
   Frame,
   Text,
+  Span,
+  Paragraph,
   Rectangle,
   Ellipse,
   Line,
@@ -27,6 +29,20 @@ export {
   Page,
   INTRINSIC_ELEMENTS
 } from './components'
+export {
+  Accordion,
+  Collapsible,
+  NumberField,
+  Progress,
+  RadioGroup,
+  Slider,
+  Tabs,
+  TextField,
+  Toggle,
+  ToggleGroup,
+  type RekaElement,
+  type RekaProps
+} from './behaviours/elements'
 
 export {
   type TreeNode,
@@ -34,6 +50,8 @@ export {
   type ComponentProps,
   type InstanceProps,
   type TextProps,
+  type SpanProps,
+  type ParagraphProps,
   type StyleProps,
   type PaintProp,
   isTreeNode,
@@ -62,10 +80,12 @@ export {
   gradient,
   linearGradient,
   radialGradient,
+  shader,
   solid,
   type GradientPaintOptions,
   type PaintColor,
   type PaintStop,
+  type ShaderFill,
   type SolidPaintOptions
 } from './paints'
 
@@ -83,7 +103,10 @@ export {
   DESIGN_JSX_SUPPORTED_PROPERTIES,
   DESIGN_JSX_SUPPORTED_PROPERTY_NAMES,
   DESIGN_JSX_PROPERTY_ALIASES,
+  DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES,
+  DESIGN_JSX_SPAN_PROPERTY_NAMES,
   DESIGN_JSX_STYLE_KEYS,
+  DESIGN_JSX_TEXT_PARAGRAPH_PROPERTY_NAMES,
   type DesignJSXStyleKey,
   designJSXProp,
   designJSXPropertyNames,

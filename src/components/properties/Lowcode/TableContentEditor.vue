@@ -219,7 +219,7 @@ function deleteRow(index: number): void {
     <div class="text-right text-[9px] text-muted" data-test-id="table-text-length">
       {{ panels.lowcodeTableTextLength({ count: textLength, max: TABLE_MODULE_LIMITS.totalText }) }}
     </div>
-    <p v-if="errorMessage" data-test-id="table-content-error" class="text-[10px] text-red-400">
+    <p v-if="errorMessage" data-test-id="table-content-error" class="text-[10px] text-error">
       {{ errorMessage }}
     </p>
   </div>

@@ -10,16 +10,20 @@ export interface AdaptationDiagnosticViewItem extends PreviewAdaptationDiagnosti
 }
 
 type CodeMessages = ReturnType<typeof useCodeMessages>['value']
-export type AdaptationDiagnosticMessages = Pick<
-  CodeMessages,
-  | 'previewAdaptationDiagnosticsDisabled'
-  | 'previewAdaptationDiagnosticsWaiting'
-  | 'previewAdaptationDiagnosticsEmpty'
-  | 'previewAdaptationDiagnosticsTruncated'
-  | 'previewAdaptationHorizontalOverflow'
-  | 'previewAdaptationTextClipping'
-  | 'previewAdaptationFixedHeightRisk'
->
+export type AdaptationDiagnosticMessages = {
+  [
+    Key in keyof Pick<
+      CodeMessages,
+      | 'previewAdaptationDiagnosticsDisabled'
+      | 'previewAdaptationDiagnosticsWaiting'
+      | 'previewAdaptationDiagnosticsEmpty'
+      | 'previewAdaptationDiagnosticsTruncated'
+      | 'previewAdaptationHorizontalOverflow'
+      | 'previewAdaptationTextClipping'
+      | 'previewAdaptationFixedHeightRisk'
+    >
+  ]: string
+}
 
 export function adaptationDiagnosticMessage(
   messages: AdaptationDiagnosticMessages,

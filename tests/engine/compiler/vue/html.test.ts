@@ -4,6 +4,7 @@ import { htmlSandboxSource } from '#compiler/adapters/html/source'
 import { vueAdapter } from '#compiler/adapters/vue'
 import { buildOpenPencilVueHTML } from '#compiler/adapters/vue/modules/html'
 import type { IRElement, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
 import { withDefaults } from '@open-pencil/compiler'
@@ -39,9 +40,14 @@ describe('Vue HTML module isolation contract', () => {
     expect(output.warnings).toEqual([])
     expect(output.files.get('src/__openpencil_html.vue')).toBe(source)
     expect(output.files.get('src/pages/index.vue')).toContain('Host overlay')
-    const pkg = JSON.parse(output.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      output.files.get('package.json') as string
+    )
     expect(Object.keys(pkg.dependencies)).toEqual(['vue'])
   })
 

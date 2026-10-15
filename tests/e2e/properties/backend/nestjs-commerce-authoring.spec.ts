@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import type * as BackendDocument from '@/app/lowcode/backend/document'
+
 import { closeBackendPreviewIfOpen, useBackendTemplate } from '#tests/helpers/backend-library'
 import { CanvasHelper } from '#tests/helpers/canvas'
 
@@ -61,9 +63,12 @@ test('authors NestJS public access and declared queries, then binds LIST and req
     await expect(publicRule.getByLabel(operation, { exact: true })).not.toBeChecked()
     await expect(publicRule.getByLabel(operation, { exact: true })).toBeDisabled()
   }
-  await expect(security).toContainText('Published-only conditions are not supported')
+  await expect(publicRule.getByLabel('Principal', { exact: true })).toHaveValue('anonymous')
+  await expect(publicRule.getByLabel('Effect', { exact: true })).toHaveValue('allow')
   await panel.getByTestId('lowcode-backend-save').click()
   const ids = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const list = [...editor.graph.getAllNodes()].find((node) => node.type === 'LIST')
@@ -74,7 +79,11 @@ test('authors NestJS public access and declared queries, then binds LIST and req
     if (!list || !button || !notes) throw new Error('Missing generated controls')
     await editor.switchPage(notes.id)
     editor.select([list.id])
-    return { listId: list.id, buttonId: button.id }
+    return {
+      listId: list.id,
+      buttonId: button.id,
+      clickActions: structuredClone(button.events?.onClick ?? [])
+    }
   })
   const listPanel = page.getByTestId('lowcode-list-section')
   await listPanel.getByLabel('title · Filter value expression', { exact: true }).fill('"Tea"')
@@ -85,7 +94,10 @@ test('authors NestJS public access and declared queries, then binds LIST and req
   await listPanel
     .getByRole('combobox', { name: 'Sort direction', exact: true })
     .selectOption('desc')
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids.buttonId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, ids.buttonId)
   const events = page.getByTestId('lowcode-events-section')
   await events.getByRole('combobox', { name: 'Operation', exact: true }).selectOption('list')
   await events.getByLabel('title · Filter value expression', { exact: true }).fill('"Coffee"')
@@ -94,24 +106,68 @@ test('authors NestJS public access and declared queries, then binds LIST and req
   await events.getByLabel('Search expression', { exact: true }).blur()
   await events.getByRole('combobox', { name: 'Sort field', exact: true }).selectOption('field')
   await events.getByRole('combobox', { name: 'Sort direction', exact: true }).selectOption('asc')
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids.listId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, ids.listId)
   await expect(listPanel.getByLabel('Search expression', { exact: true })).toHaveValue('"Tea"')
   await expect(
     listPanel.getByRole('combobox', { name: 'Sort direction', exact: true })
   ).toHaveValue('desc')
-  const authored = await page.evaluate((controls) => {
-    const graph = window.openPencil?.getStore?.().graph
+  const authored = await page.evaluate(async (controls) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+    const graph = window.openPencil.getStore().graph
+    const documentPath = '/src/app/lowcode/backend/document.ts'
+    const { readBackendProviderDocumentRequest }: typeof BackendDocument = await import(
+      documentPath
+    )
+    const backend = readBackendProviderDocumentRequest(graph)
+    const actions = structuredClone(graph.getNode(controls.buttonId)?.events?.onClick ?? [])
+    const guard = actions[0]
+    const originalGuard = controls.clickActions[0]
+    if (guard?.kind !== 'condition' || originalGuard?.kind !== 'condition')
+      throw new Error('Missing protected request condition')
+    const confirmation = guard.consequent.find((action) => action.kind === 'confirm')
+    const originalConfirmation = originalGuard.consequent.find(
+      (action) => action.kind === 'confirm'
+    )
+    if (!confirmation || !originalConfirmation)
+      throw new Error('Missing protected request confirmation')
+    const requests = confirmation.consequent.filter((action) => action.kind === 'backendRequest')
+    const request = requests[0]
+    if (requests.length !== 1 || !request) throw new Error('Missing unique request action')
+    const originalRequest = originalConfirmation.consequent.find(
+      (action) => action.kind === 'backendRequest' && action.id === request.id
+    )
+    if (!originalRequest) throw new Error('Request action identity changed')
+    const authoredRequest = structuredClone(request)
+    confirmation.consequent = confirmation.consequent.map((action) =>
+      action.id === request.id ? originalRequest : action
+    )
     return {
-      list: graph?.getNode(controls.listId)?.interactiveProps?.dataSourceRef,
-      action: graph?.getNode(controls.buttonId)?.events?.onClick?.[0]
+      list: graph.getNode(controls.listId)?.interactiveProps?.dataSourceRef,
+      action: authoredRequest,
+      protectedActions: actions,
+      publicReadPolicies: backend?.application.auth.rowAccess.filter(
+        (policy) => policy.principal.kind === 'anonymous'
+      )
     }
   }, ids)
+  expect(authored.publicReadPolicies).toContainEqual(
+    expect.objectContaining({
+      effect: 'allow',
+      principal: { kind: 'anonymous' },
+      operations: ['select']
+    })
+  )
   expect(authored.list).toMatchObject({
     filterEntries: [{ key: 'title', valueExpr: '"Tea"' }],
     searchExpr: '"Tea"',
     sortField: 'field',
     sortDirection: 'desc'
   })
+  expect(authored.protectedActions).toEqual(ids.clickActions)
   expect(authored.action).toMatchObject({
     kind: 'backendRequest',
     operation: 'list',

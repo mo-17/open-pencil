@@ -7,6 +7,8 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/?test')
     await new CanvasHelper(page).waitForInit()
     const ids = await page.evaluate(async (mode) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const path = '/src/app/shell/theme.ts'
       const module = await import(path)
       module.useAppTheme().setTheme(mode)
@@ -42,10 +44,10 @@ for (const theme of ['light', 'dark']) {
     await dash.press('Enter')
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id)?.strokes[0].dashPattern?.[0],
-          ids.id
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.strokes[0].dashPattern?.[0]
+        }, ids.id)
       )
       .toBe(10)
     await expect(dialog).toHaveScreenshot(`stroke-dashed-${theme}.png`)
@@ -53,19 +55,25 @@ for (const theme of ['light', 'dark']) {
     await expect(dialog).toHaveCount(0)
     await expect(trigger).toBeFocused()
     await trigger.click()
-    await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids.line)
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().select([id])
+    }, ids.line)
     await dialog.getByRole('button', { name: 'Round cap', exact: true }).click()
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id)?.strokeCap,
-          ids.line
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.strokeCap
+        }, ids.line)
       )
       .toBe('ROUND')
     await expect
       .poll(() =>
-        page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.strokeCap, ids.id)
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.strokeCap
+        }, ids.id)
       )
       .toBe('NONE')
     await expect(dialog).toHaveScreenshot(`stroke-line-${theme}.png`)

@@ -1,3 +1,4 @@
+import { uniq } from 'es-toolkit/array'
 import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines) -- One review artifact keeps its contract, fixed DDL, and provenance checks co-located. */
 
@@ -616,7 +617,7 @@ async function requireReceiptReview(
 }
 
 function blockers(receiptReview: SupabaseBackfillReceiptV2ReviewEnvelopeV1): readonly string[] {
-  return Object.freeze([...new Set([...receiptReview.review.blockers, ...LEDGER_BLOCKERS])])
+  return Object.freeze(uniq([...receiptReview.review.blockers, ...LEDGER_BLOCKERS]))
 }
 
 /**

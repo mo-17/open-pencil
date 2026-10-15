@@ -1,5 +1,7 @@
+import { isEqual } from 'es-toolkit'
 import { toUint8Array } from 'js-base64'
 
+import { slotPropertyId } from '@open-pencil/scene-graph'
 import type { SceneNode, SceneGraph, Fill, Stroke } from '@open-pencil/scene-graph'
 import type { RenderColorSpace, ResolvedRenderColor } from '@open-pencil/scene-graph/color'
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
@@ -7,8 +9,9 @@ import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
 /* eslint-disable max-lines -- SkiaRenderer facade owns CanvasKit state and delegates domain drawing */
 import {
-  SELECTION_COLOR,
+  DEFAULT_SELECTION_THEME,
   COMPONENT_COLOR,
+  SLOT_COLOR,
   CANVAS_BG_COLOR,
   DEFAULT_FONT_SIZE,
   COMPONENT_SET_DASH,
@@ -21,6 +24,7 @@ import { RenderProfiler } from '#core/profiler'
 import type { TextEditor } from '#core/text/editor'
 import type { FontResolutionSnapshot } from '#core/text/resolver'
 
+import { ImagePreviewCache } from './images/previews'
 import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
 import { LabelParagraphCache } from './labels/paragraph-cache'
@@ -35,18 +39,30 @@ import * as RenderColors from './renderer/colors'
 import * as RendererFonts from './renderer/fonts'
 import {
   DEFAULT_DECODED_IMAGE_CACHE_BUDGET_BYTES,
+  removeDecodedImageCacheEntry,
   type DecodedImageCacheEntry
 } from './renderer/image-cache'
-import { destroyRenderer } from './renderer/lifecycle'
+import { destroyRenderer, releaseLiveImages } from './renderer/lifecycle'
 import { installRendererDomainMethods } from './renderer/methods'
-import { initializeRendererPaints } from './renderer/paints'
+import { initializeRendererPaints, initializeSelectionPaintColors } from './renderer/paints'
 import * as RenderPipeline from './renderer/pipeline'
-import type { SceneBacking, SceneBackingBuild } from './renderer/retained-backing/types'
+import type {
+  RenderContentVersion,
+  SceneBacking,
+  SceneBackingBuild
+} from './renderer/retained-backing/types'
 import * as RendererState from './renderer/state'
 import * as RenderText from './text'
-import { createGlyphSilhouetteCache } from './text/derived'
-import { TextPreparationCache } from './text/preparation-cache'
-export type { MeasurementMode, PresenceCursor, RenderOverlays, RulerTheme } from './renderer/types'
+import type { SavedDecorationCache } from './text/decorations'
+import { createDerivedGlyphPathCache, createGlyphSilhouetteCache } from './text/derived'
+import { TextPreparationCache } from './text/preparation/cache'
+export type {
+  MeasurementMode,
+  PresenceCursor,
+  RenderOverlays,
+  RulerTheme,
+  SelectionTheme
+} from './renderer/types'
 import type {
   Path,
   CanvasKit,
@@ -60,7 +76,8 @@ import type {
   ImageFilter,
   MaskFilter,
   RuntimeEffect,
-  Paragraph
+  Image,
+  TextureSource
 } from 'canvaskit-wasm'
 
 export interface SubtreePictureCacheEntry {
@@ -80,13 +97,25 @@ import type { PlacedIssueMarker } from './issues/types'
 import { EffectRasterCache } from './renderer/effect-raster-cache'
 import { TiledSceneController } from './renderer/tiles'
 import type { TransientCanvasPreview } from './renderer/transient-previews'
-import type { PresenceCursor, RenderOverlays, RulerTheme } from './renderer/types'
+import type { PresenceCursor, RenderOverlays, RulerTheme, SelectionTheme } from './renderer/types'
+
+/**
+ * A picture uploaded as a texture that knows its size: an `ImageBitmap`, or a canvas, which
+ * WebGL uploads as it does an image though CanvasKit's types leave it out. A canvas is uploaded
+ * as it is when this is called, so a WebGPU canvas is passed in the task that drew it.
+ */
+export type LiveImageSource =
+  | Extract<TextureSource, { width: number; height: number }>
+  | HTMLCanvasElement
+
+const textureSource = (source: LiveImageSource) => source as TextureSource
 
 export class SkiaRenderer {
   ck: CanvasKit
   surface: Surface
   declare fillPaint: Paint
   diamondGradientEffect: RuntimeEffect | null = null
+  pixelGridEffect: RuntimeEffect | null = null
   declare strokePaint: Paint
   declare selectionPaint: Paint
   declare parentOutlinePaint: Paint
@@ -103,6 +132,8 @@ export class SkiaRenderer {
   textFont: Font | null = null
   labelFont: Font | null = null
   sizeFont: Font | null = null
+  /** Inter SemiBold at 11 px, which Figma sets the padding and gap values on the canvas in. */
+  valueFont: Font | null = null
   sectionTitleFont: Font | null = null
   componentLabelFont: Font | null = null
   fontMgr: FontMgr | null = null
@@ -122,6 +153,18 @@ export class SkiaRenderer {
   imageCacheFrameUsed = new Set<string>()
   renderCacheGraph: SceneGraph | null = null
   renderCachePageId: string | null = null
+  /**
+   * Images drawn in place of stored ones while they play, such as a shader's live frames, each
+   * with the surface whose GL context holds its texture.
+   */
+  readonly liveImages = new Map<string, { image: Image; surface: Surface }>()
+  viewportImageRendering = false
+  /** Static document exports always draw stored image bytes, even during live preview. */
+  renderingStaticExport = false
+  imageMemoryGraph: SceneGraph | null = null
+  imageMemoryPage: string | null = null
+  onImagePreviewReady: (() => void) | null = null
+  readonly imagePreviews = new ImagePreviewCache(() => this.onImagePreviewReady?.())
   vectorPathCache = new Map<string, Path[]>()
   vectorStrokePathCache = new Map<string, Path[]>()
   vectorStrokeOutlineCache = new Map<string, Path[]>()
@@ -129,12 +172,16 @@ export class SkiaRenderer {
   strokeGeometryCache = new Map<string, Path[]>()
   /** Path-text glyph silhouettes (stroke-and-union, font units) keyed by blob hash + relative weight. */
   glyphSilhouetteCache = createGlyphSilhouetteCache()
+  derivedGlyphPathCache = createDerivedGlyphPathCache()
+  derivedDecorationCache: SavedDecorationCache = new WeakMap()
   renderingSceneBacking = false
   scenePicture: SkPicture | null = null
   scenePictureVersion = -1
   scenePictureFontGeneration = -1
   scenePicturePositionPreviewVersion = -1
   scenePicturePageId: string | null = null
+  /** The last successfully flushed live scene; cached presentation must not move behind it. */
+  lastLiveSceneContent: RenderContentVersion | null = null
   sceneBacking: SceneBacking | null = null
   sceneBackingPreviewUntil = 0
   sceneBackingNeedsCrispRender = false
@@ -178,6 +225,8 @@ export class SkiaRenderer {
   declare rulerLabelPaint: Paint
   declare penPathPaint: Paint
   declare penLiveStrokePaint: Paint
+  /** The pencil stroke being drawn; its colour and width are set per frame. */
+  declare pencilStrokePaint: Paint
   declare penHandlePaint: Paint
   declare penVertexFill: Paint
   declare penVertexStroke: Paint
@@ -191,6 +240,8 @@ export class SkiaRenderer {
   showRulers = true
   pageColor = CANVAS_BG_COLOR
   rulerTheme: RulerTheme | null = null
+  /** Selection chrome, set from editor state each frame through {@link setSelectionTheme}. */
+  selectionTheme: SelectionTheme = DEFAULT_SELECTION_THEME
   pageId: string | null = null
   /** Issue markers placed in the last overlay pass; hit testing reads the same layout. */
   issueMarkers: PlacedIssueMarker[] = []
@@ -288,6 +339,7 @@ export class SkiaRenderer {
     editState?: RenderOverlays['nodeEditState']
   ) => void
   declare drawPenOverlay: (canvas: Canvas, penState: RenderOverlays['penState']) => void
+  declare drawPencilOverlay: (canvas: Canvas, pencilState: RenderOverlays['pencilState']) => void
   declare drawPresenceCursors: (
     canvas: Canvas,
     graph: SceneGraph,
@@ -298,6 +350,12 @@ export class SkiaRenderer {
     graph: SceneGraph,
     selectedIds: Set<string>,
     guides?: RenderOverlays['guides']
+  ) => void
+  declare drawFrameTitles: (
+    canvas: Canvas,
+    graph: SceneGraph,
+    selectedIds: ReadonlySet<string>,
+    overlays?: RenderOverlays
   ) => void
   declare drawSectionTitles: (canvas: Canvas, graph: SceneGraph, overlays?: RenderOverlays) => void
   declare drawComponentLabels: (
@@ -424,11 +482,55 @@ export class SkiaRenderer {
   }
 
   selColor(alpha = 1) {
-    return this.ck.Color4f(SELECTION_COLOR.r, SELECTION_COLOR.g, SELECTION_COLOR.b, alpha)
+    const { r, g, b } = this.selectionTheme.color
+    return this.ck.Color4f(r, g, b, alpha)
+  }
+
+  selForegroundColor() {
+    const { r, g, b } = this.selectionTheme.foreground
+    return this.ck.Color4f(r, g, b, 1)
+  }
+
+  /** Switches selection chrome to `theme`, repainting the paints that keep it between frames. */
+  setSelectionTheme(theme: SelectionTheme = DEFAULT_SELECTION_THEME): void {
+    if (isEqual(theme, this.selectionTheme)) return
+    this.selectionTheme = {
+      color: { ...theme.color },
+      foreground: { ...theme.foreground }
+    }
+    initializeSelectionPaintColors(this)
   }
 
   compColor(alpha = 1) {
     return this.ck.Color4f(COMPONENT_COLOR.r, COMPONENT_COLOR.g, COMPONENT_COLOR.b, alpha)
+  }
+
+  slotColor(alpha = 1) {
+    return this.ck.Color4f(SLOT_COLOR.r, SLOT_COLOR.g, SLOT_COLOR.b, alpha)
+  }
+
+  /**
+   * The outline colour for a node: pink for slots, purple for components, instances and every
+   * layer inside them, as in Figma, blue otherwise.
+   */
+  outlineColor(node: SceneNode, graph: SceneGraph) {
+    if (slotPropertyId(node)) return this.slotColor()
+    return this.isInComponent(node, graph) ? this.compColor() : this.selColor()
+  }
+
+  /** Text drawn on {@link outlineColor}: white on slot and component colors, else the selection foreground. */
+  outlineForegroundColor(node: SceneNode, graph: SceneGraph) {
+    if (slotPropertyId(node) || this.isInComponent(node, graph)) return this.ck.WHITE
+    return this.selForegroundColor()
+  }
+
+  /** A component, instance or set, or a layer inside one; content placed in a slot is not. */
+  isInComponent(node: SceneNode, graph: SceneGraph): boolean {
+    const owner = graph.closest(
+      node.id,
+      (layer) => this.isComponentType(layer.type) || slotPropertyId(layer) !== undefined
+    )
+    return owner !== undefined && !slotPropertyId(owner)
   }
 
   isComponentType(type: string): boolean {
@@ -508,6 +610,7 @@ export class SkiaRenderer {
   replaceSurface(surface: Surface): void {
     const previousSurface = this.surface
     RendererState.prepareSurfaceReplacement(this)
+    releaseLiveImages(this)
     this.surface = surface
     this.sceneBackingAllocationFailed = false
     try {
@@ -541,8 +644,51 @@ export class SkiaRenderer {
     RendererState.clearDocumentCaches(this)
   }
 
-  invalidateNodePicture(nodeId: string): void {
-    RendererState.invalidateNodePicture(this, nodeId)
+  /**
+   * Draws `source` wherever the image `hash` is painted, until it is set to null, and redraws
+   * `nodeIds`, the layers that paint it. Frames of the same size reuse one texture. Returns
+   * whether a live image is shown, which a browser that cannot upload `source` leaves false.
+   */
+  setLiveImage(
+    hash: string,
+    source: LiveImageSource | null,
+    nodeIds: Iterable<string> = []
+  ): boolean {
+    const live = this.liveImages.get(hash)
+    // A texture made on a surface since replaced has no context left to update or free it in.
+    const current = live?.surface === this.surface ? live.image : null
+    if (
+      source &&
+      current &&
+      current.width() === source.width &&
+      current.height() === source.height
+    ) {
+      this.surface.updateTextureFromSource(current, textureSource(source))
+    } else {
+      current?.delete()
+      this.liveImages.delete(hash)
+      const image = source && this.surface.makeImageFromTextureSource(textureSource(source))
+      if (image) this.liveImages.set(hash, { image, surface: this.surface })
+    }
+    for (const id of nodeIds) this.invalidateNodePicture(id)
+    return this.liveImages.has(hash)
+  }
+
+  /**
+   * Forgets the decoded image `hash` after its bytes were replaced, such as a shader's frame
+   * rendered again, and redraws whatever showed it. Previews notice new bytes themselves.
+   */
+  forgetImage(hash: string): void {
+    const keys = Array.from(this.imageCache.entries(), ([key]) => key)
+    for (const key of keys) {
+      if (key === hash || key.startsWith(`${hash}:`)) removeDecodedImageCacheEntry(this, key)
+    }
+    this.invalidateAllPictures()
+  }
+
+  /** Drops `nodeId`'s cached drawing; `changedKeys`, when known, lets text keep its glyph coverage. */
+  invalidateNodePicture(nodeId: string, changedKeys?: readonly (keyof SceneNode)[]): void {
+    RendererState.invalidateNodePicture(this, nodeId, changedKeys)
   }
 
   flashNode(nodeId: string): void {
@@ -613,7 +759,6 @@ export class SkiaRenderer {
     graph: SceneGraph,
     canvasX: number,
     canvasY: number,
-    selectedIds: Set<string>,
     preview?: RenderOverlays['rotationPreview']
   ): SceneNode | null {
     return LabelHitTest.hitTestFrameTitle(
@@ -621,8 +766,9 @@ export class SkiaRenderer {
       canvasX,
       canvasY,
       this.zoom,
-      selectedIds,
+      this.pageId ?? graph.rootId,
       this.labelFont,
+      this.labelCache,
       labelHitOptions(this, graph, preview)
     )
   }
@@ -728,7 +874,7 @@ export class SkiaRenderer {
     node: SceneNode,
     color?: Float32Array,
     opts?: RenderText.ParagraphBuildOptions
-  ): Paragraph {
+  ): RenderText.TextLayout {
     return RenderText.buildParagraph(this, node, color, opts)
   }
 

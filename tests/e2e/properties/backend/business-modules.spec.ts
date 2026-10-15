@@ -12,6 +12,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function applicationSnapshot(page: Page) {
   return page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const url = new URL('/src/app/lowcode/backend/document.ts', location.origin).href
     const { readBackendProviderDocumentRequest } = (await import(
       /* @vite-ignore */ url

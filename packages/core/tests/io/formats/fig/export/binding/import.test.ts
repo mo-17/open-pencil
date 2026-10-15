@@ -1,18 +1,16 @@
 import { expect, test } from 'bun:test'
 
-import type { NestedBindingCapture } from '#core-tests/helpers/fig/captures'
-import { readFixtureJSON } from '#core-tests/helpers/fig/fixtures'
+import { CapturedFigRecords, readFixture } from '#core-tests/helpers/fig/fixtures'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { exportFigFile } from '@open-pencil/core/io'
 import { initCodec } from '@open-pencil/core/kiwi'
 import { materializeDocument, parseFigBuffer } from '@open-pencil/fig'
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 
-const fixture = readFixtureJSON<NestedBindingCapture>('nested-binding-ownership-records.json')
+const fixture = readFixture('nested-binding-ownership-records.json', CapturedFigRecords)
 
 test('binding patches keep unrelated inherited fields in their original units', () => {
-  const changes = structuredClone(fixture.nodeChanges) as NodeChange[]
+  const changes = structuredClone(fixture.nodeChanges)
   const inner = changes.find((node) => node.guid?.sessionID === 1 && node.guid.localID === 2)
   if (!inner) throw new Error('Missing component')
   inner.variableConsumptionMap = {
@@ -37,12 +35,15 @@ test('binding patches keep unrelated inherited fields in their original units', 
   expect(nested.boundVariables.itemSpacing).toBe(nested.boundVariables.paddingLeft)
   expect(nested.itemSpacing).toBe(3)
   expect(nested.paddingLeft).toBe(6)
-  expect(nested.variableBindingScales).toMatchObject({ itemSpacing: 0.25, paddingLeft: 0.5 })
+  expect(nested.variableBindingScales).toMatchObject({
+    itemSpacing: 0.25,
+    paddingLeft: 0.5
+  })
 })
 
 test('a direct nested binding retains its alias and declaring-owner units', async () => {
   const { graph, sources } = materializeDocument(
-    fixture.nodeChanges as NodeChange[],
+    fixture.nodeChanges,
     fixture.blobs.map((value) => Uint8Array.fromBase64(value)),
     { derivedBounds: true }
   )
@@ -71,7 +72,9 @@ test('a direct nested binding retains its alias and declaring-owner units', asyn
   expect(inherited?.paddingLeft).toBe(10)
   editor.undo.undo()
   expect(nested.paddingLeft).toBe(6)
-  editor.updateNodeWithUndo(rootId, { name: 'Direct binding round-trip target' })
+  editor.updateNodeWithUndo(rootId, {
+    name: 'Direct binding round-trip target'
+  })
   await initCodec()
   const bytes = await exportFigFile(graph)
   const parsed = parseFigBuffer(bytes.slice().buffer as ArrayBuffer)

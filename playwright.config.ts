@@ -36,6 +36,21 @@ const appDefaults = {
   },
   use: {
     baseURL: origin,
+    // Tests start past the first-run AI setup offer; its own spec clears this.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin,
+          localStorage: [
+            {
+              name: 'open-pencil:preferences:v1',
+              value: JSON.stringify({ version: 1, onboarding: { aiSetup: 'done' } })
+            }
+          ]
+        }
+      ]
+    },
     testIdAttribute: 'data-test-id',
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 2,
@@ -48,6 +63,7 @@ const appDefaults = {
 
 export default defineConfig({
   testDir: './tests',
+  tsconfig: './tests/e2e/tsconfig.json',
   timeout: 15_000,
   workers: 1,
   projects: [

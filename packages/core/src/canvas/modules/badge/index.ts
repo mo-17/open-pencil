@@ -74,11 +74,7 @@ function drawBadgeText(
     { halfLeading: true },
     (paragraph) => {
       withModulePreviewRectClip(renderer, canvas, box, () =>
-        canvas.drawParagraph(
-          paragraph,
-          box.x,
-          box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2)
-        )
+        paragraph.draw(canvas, box.x, box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2))
       )
     }
   )
@@ -128,7 +124,11 @@ function paintBadge(
     renderer.auxStroke
   )
   if (config.mode === 'dot') return
-  const textBox = { ...badge, x: badge.x + 6, width: Math.max(0, badge.width - 12) }
+  const textBox = {
+    ...badge,
+    x: badge.x + 6,
+    width: Math.max(0, badge.width - 12)
+  }
   const label = {
     ...moduleLabelTextNode(
       node,

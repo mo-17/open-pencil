@@ -1,13 +1,15 @@
 import type { Chat } from '@ai-sdk/vue'
 import { getToolName, isTextUIPart, isToolUIPart } from 'ai'
 import type { UIMessage } from 'ai'
+import { uniq } from 'es-toolkit/array'
 /* oxlint-disable eslint/max-lines -- The singleton chat lifecycle and its popout projection must share one race-safe owner. */
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
 
-import { randomHex } from '@open-pencil/core/random'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import { currentPermission, permissionQueue } from '@/app/ai/acp/permission'
+import { isSVGFile, rasterizeSVGAttachment } from '@/app/ai/attachment/image/prepare'
 import { snapshotNode } from '@/app/ai/attachment/node/snapshot'
 import { setMessageAttachments } from '@/app/ai/attachment/presentation/store'
 import { visualAttachmentPresentation } from '@/app/ai/attachment/presentation/visual'
@@ -37,10 +39,13 @@ import {
   useChatNodeIds,
   useChatSubmissionPending
 } from '@/app/ai/chat/drafts'
+import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
 import { setVisibleMessageText } from '@/app/ai/chat/presentation'
 import { captureSelectionVisualAttachment } from '@/app/ai/chat/selection-attachment'
+import { useUndoRecords } from '@/app/ai/chat/submission/undone'
 import { toolState, type ToolPresentationState } from '@/app/ai/chat/tool-presentation'
+import { restoreTurn, revertTurn } from '@/app/ai/chat/turns'
 import { useAIChat } from '@/app/ai/chat/use'
 import { resolveAIModelRole } from '@/app/ai/models'
 import {
@@ -88,6 +93,15 @@ const {
 } = useAIChat()
 
 const chat = shallowRef<Chat<UIMessage> | null>(null)
+const undoRecords = useUndoRecords({
+  chat,
+  flush: history.flush,
+  getEditor: () => {
+    const store = activeTab.value?.store
+    if (!store) throw new Error('No active document')
+    return store
+  }
+})
 const submissionPending = useChatSubmissionPending(() => activeTab.value?.store)
 const attachments = useChatAttachments(() => activeTab.value?.store)
 const draft = useChatDraft(() => activeTab.value?.store)
@@ -99,6 +113,51 @@ const initializationFailed = ref(false)
 const projectionListeners = new Set<() => void>()
 
 let refreshGeneration = 0
+let attachmentDraftGeneration = 0
+const documentLifecycleRevision = ref(0)
+interface InitializedHistoryOwner {
+  tabId: string
+  store: WeakRef<EditorStore>
+  graph: WeakRef<EditorStore['graph']>
+  documentId: string
+}
+let initializedHistoryOwner: InitializedHistoryOwner | null = null
+
+// Share one serialized history detach across graph/source observers and reconnects.
+// If saving the old conversation fails, no newer owner may reuse its live SDK session.
+let documentSuspensionRequired = false
+let documentSuspension: Promise<void> | null = null
+
+function beginDocumentSuspension(): Promise<void> {
+  documentSuspensionRequired = false
+  const pending = history.suspend().catch((error: unknown) => {
+    documentSuspensionRequired = true
+    throw error
+  })
+  documentSuspension = pending
+  void pending
+    .finally(() => {
+      if (documentSuspension === pending) documentSuspension = null
+    })
+    .catch(() => undefined)
+  return pending
+}
+
+async function suspendReplacedDocument(): Promise<void> {
+  while (documentSuspensionRequired || documentSuspension) {
+    await (documentSuspension ?? beginDocumentSuspension())
+  }
+}
+
+function historyOwnerIsInitialized(): boolean {
+  const tab = activeTab.value
+  const owner = initializedHistoryOwner
+  if (!tab || !owner) return false
+  if (owner.tabId !== tab.id) return false
+  if (owner.store.deref() !== tab.store) return false
+  if (owner.graph.deref() !== tab.store.graph) return false
+  return owner.documentId === chatDocumentId(tab.store)
+}
 let stopRetryTimer: ReturnType<typeof setTimeout> | undefined
 let publishedChatContext: ToolApprovalContext<Chat<UIMessage>> | null = null
 let contextKey = ''
@@ -145,38 +204,73 @@ function currentChatTabId(): string | null {
   return activeTab.value?.id ?? null
 }
 
-async function refreshChat(connect = false): Promise<void> {
+async function initializeChatHistoryOwner(): Promise<void> {
+  const expectedTab = activeTab.value
+  const expectedGraph = expectedTab?.store.graph
+  const expectedProviderID = providerID.value
+  await history.initialize()
+  const currentTab = activeTab.value
+  if (!expectedTab) return
+  if (
+    currentTab?.id === expectedTab.id &&
+    currentTab.store === expectedTab.store &&
+    currentTab.store.graph === expectedGraph &&
+    providerID.value === expectedProviderID &&
+    history.current.value?.documentId === chatDocumentId(currentTab.store)
+  ) {
+    initializedHistoryOwner = {
+      tabId: currentTab.id,
+      store: new WeakRef(currentTab.store),
+      graph: new WeakRef(currentTab.store.graph),
+      documentId: chatDocumentId(currentTab.store)
+    }
+  }
+}
+
+async function connectRefreshedChat(generation: number): Promise<void> {
+  const expectedTabId = currentChatTabId()
+  const expectedProviderID = providerID.value
+  const expectedSessionRevision = sessionRevision.value
+  const expectedStore = activeTab.value?.store
+  const expectedGraph = expectedStore?.graph
+  const expectedDocument = expectedStore ? chatDocumentId(expectedStore) : null
+  const nextChat = await ensureChat()
+  if (
+    !nextChat ||
+    generation !== refreshGeneration ||
+    expectedTabId !== currentChatTabId() ||
+    expectedProviderID !== providerID.value ||
+    expectedSessionRevision !== sessionRevision.value ||
+    activeTab.value?.store !== expectedStore ||
+    expectedStore?.graph !== expectedGraph ||
+    (expectedStore ? chatDocumentId(expectedStore) : null) !== expectedDocument
+  )
+    return
+  const published = markRaw(nextChat)
+  chat.value = published
+  publishedChatContext = {
+    chat: published,
+    generation,
+    sessionRevision: expectedSessionRevision,
+    tabId: expectedTabId,
+    providerID: expectedProviderID
+  }
+}
+
+async function refreshChat(connect = false, initializeHistory = true): Promise<void> {
   const generation = ++refreshGeneration
   initializationFailed.value = false
   unpublishChat()
-  if (!activeTab.value?.id || activeTab.value.store.state.preparation) {
-    scheduleProjectionNotification()
-    return
-  }
   try {
-    await history.initialize()
-    if (!connect || generation !== refreshGeneration) return
-    const expectedTabId = currentChatTabId()
-    const expectedProviderID = providerID.value
-    const expectedSessionRevision = sessionRevision.value
-    const nextChat = await ensureChat()
-    if (
-      !nextChat ||
-      generation !== refreshGeneration ||
-      expectedTabId !== currentChatTabId() ||
-      expectedProviderID !== providerID.value ||
-      expectedSessionRevision !== sessionRevision.value
-    )
+    await suspendReplacedDocument()
+    if (generation !== refreshGeneration) return
+    if (!activeTab.value?.id || activeTab.value.store.state.preparation) {
+      scheduleProjectionNotification()
       return
-    const published = markRaw(nextChat)
-    chat.value = published
-    publishedChatContext = {
-      chat: published,
-      generation,
-      sessionRevision: expectedSessionRevision,
-      tabId: expectedTabId,
-      providerID: expectedProviderID
     }
+    if (initializeHistory || !historyOwnerIsInitialized()) await initializeChatHistoryOwner()
+    if (!connect || generation !== refreshGeneration) return
+    await connectRefreshedChat(generation)
   } catch (error) {
     if (generation !== refreshGeneration) return
     initializationFailed.value = true
@@ -216,7 +310,7 @@ const acpSessionInteractionBusy = computed(
 const canAttachSelection = computed(() =>
   Boolean(activeTab.value?.store.renderer && activeTab.value.store.state.selectedIds.size > 0)
 )
-const acceptedImageTypes = SUPPORTED_VISUAL_ATTACHMENT_TYPES.join(',')
+const acceptedImageTypes = [...SUPPORTED_VISUAL_ATTACHMENT_TYPES, 'image/svg+xml'].join(',')
 const attachmentTargetLabel = computed(() => {
   const design = resolveAIModelRole('design')
   if (!design) return 'AI model setup required'
@@ -260,12 +354,114 @@ watch(
     if (error && !chatFailure.value) toast.error(error.message)
   }
 )
+// Source identity and the graph getter are not reactive; subscribe to their public events.
 watch(
-  [() => activeTab.value?.id, () => activeTab.value?.store.state.preparation, providerID],
-  () => void refreshChat(),
-  { immediate: true }
+  () => activeTab.value?.store,
+  (store, _previous, onCleanup) => {
+    if (!store) return
+    const changed = () => documentLifecycleRevision.value++
+    const stopSource = store.onSourceChanged(changed)
+    const stopGraph = store.onEditorEvent('graph:replaced', changed)
+    onCleanup(() => {
+      stopSource()
+      stopGraph()
+    })
+  },
+  { immediate: true, flush: 'sync' }
 )
-watch(sessionRevision, () => void refreshChat(), { flush: 'sync' })
+function readChatLifecycleOwner() {
+  const tab = activeTab.value
+  return [
+    tab?.id,
+    tab?.store,
+    tab?.store.graph,
+    tab ? chatDocumentId(tab.store) : null,
+    tab?.store.state.preparation,
+    providerID.value,
+    documentLifecycleRevision.value
+  ] as const
+}
+
+type ChatLifecycleOwner = ReturnType<typeof readChatLifecycleOwner>
+
+function classifyChatOwnerChange(next: ChatLifecycleOwner, previous?: ChatLifecycleOwner) {
+  if (!previous) {
+    return { sameDocumentOwner: false, sameOwner: false, replacesDocument: false }
+  }
+  const sameDocumentOwner =
+    next[0] === previous[0] &&
+    next[1] === previous[1] &&
+    next[2] === previous[2] &&
+    next[3] === previous[3]
+  const sameOwner = sameDocumentOwner && next[5] === previous[5]
+  const sameStore = next[0] === previous[0] && next[1] === previous[1]
+  // Saving an untitled document promotes its recovery identity without replacing its graph.
+  const recoveryPromotion = Boolean(
+    sameStore && next[2] === previous[2] && previous[3] === `recovery:${next[1]?.getRecoveryId()}`
+  )
+  const replacedGraph = sameStore && next[2] !== previous[2]
+  const replacedSource = sameStore && next[3] !== previous[3] && !recoveryPromotion
+  const sameIdentityNewEditor =
+    !sameStore && next[1] && history.current.value?.documentId === next[3]
+  return {
+    sameDocumentOwner,
+    sameOwner,
+    replacesDocument: Boolean(replacedGraph || replacedSource || sameIdentityNewEditor)
+  }
+}
+
+function presentationOnly(preparation: ChatLifecycleOwner[4]): boolean {
+  return (
+    preparation == null || preparation.kind === 'page-switch' || preparation.kind === 'font-retry'
+  )
+}
+
+function handleChatOwnerChanged(next: ChatLifecycleOwner, previous?: ChatLifecycleOwner): void {
+  const change = classifyChatOwnerChange(next, previous)
+  if (change.replacesDocument) documentSuspensionRequired = true
+  if (!change.sameOwner) {
+    contextKey = ''
+    clearChatFailure()
+  }
+  // A page or font preparation keeps the document and live run; replacements invalidate it.
+  if (
+    change.sameDocumentOwner &&
+    historyOwnerIsInitialized() &&
+    presentationOnly(next[4]) &&
+    presentationOnly(previous?.[4])
+  ) {
+    if (change.sameOwner) scheduleProjectionNotification()
+    else void refreshChat(false, false)
+    return
+  }
+  void refreshChat()
+}
+
+watch(readChatLifecycleOwner, handleChatOwnerChanged, { immediate: true, flush: 'sync' })
+// A reset or changed key invalidates transport, never the user's selected transcript.
+watch(sessionRevision, () => void refreshChat(false, false), { flush: 'sync' })
+// Page preparation and transcript metadata refresh keep an in-flight attachment draft valid.
+watch(
+  () => {
+    const tab = activeTab.value
+    return [
+      tab?.id,
+      tab?.store,
+      tab?.store.graph,
+      tab ? chatDocumentId(tab.store) : null,
+      history.current.value?.id,
+      providerID.value,
+      sessionRevision.value,
+      documentLifecycleRevision.value
+    ] as const
+  },
+  (next, previous) => {
+    if (next.slice(0, 7).some((value, index) => value !== previous[index])) {
+      attachmentDraftGeneration++
+    }
+  },
+  { flush: 'sync' }
+)
 watch(
   [
     messages,
@@ -273,6 +469,7 @@ watch(
     draft,
     submissionPending,
     attachmentBusy,
+    history.busy,
     currentPermission,
     isConfigured,
     () => activeTab.value?.store.state.documentName,
@@ -318,8 +515,24 @@ async function sendPreparedSubmission(
   targetChat.messages = finalizePendingToolApprovals(targetChat.messages)
   const previousMessages = [...targetChat.messages]
   attachmentDraft.value = []
-  const modelText = appendReferencedNodeContext(text, nodes)
+  const note = undoRecords.note(appendReferencedNodeContext(text, nodes), targetChat.messages)
+  const modelText = note.text
   const messageId = crypto.randomUUID()
+  const acceptance = { accepted: false }
+  const stopAcceptanceWatch = watch(
+    () => targetChat.status,
+    (nextStatus) => {
+      if (nextStatus === 'submitted' || nextStatus === 'streaming') acceptance.accepted = true
+    },
+    { flush: 'sync' }
+  )
+  const requestIsPresent = () =>
+    targetChat.messages.some(
+      (message) =>
+        message.id === messageId &&
+        message.role === 'user' &&
+        message.parts.some((part) => isTextUIPart(part) && part.text === modelText)
+    )
   try {
     const presentations = [
       ...nodes.map((node) => snapshotNode(store, messageId, node)).filter((node) => node !== null),
@@ -333,28 +546,62 @@ async function sendPreparedSubmission(
       ...targetChat.messages,
       { id: messageId, role: 'user', parts: [{ type: 'text', text: modelText }] }
     ]
-    await targetChat.sendMessage(
-      submittedAttachments.length > 0
-        ? {
-            messageId,
-            text: modelText,
-            files: submittedAttachments.map(toFileUIPart),
-            metadata: createVisualChatMessageMetadata(submittedAttachments)
-          }
-        : { messageId, text: modelText }
-    )
-    if (targetChat.status !== 'error') return true
-
-    const message = targetChat.error?.message || 'The visual reference could not be sent.'
-    rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
-    if (!chatFailure.value) toast.error(message)
-    return false
+    await undoRecords.withTurn(targetChat, () => {
+      return targetChat.sendMessage(
+        submittedAttachments.length > 0
+          ? {
+              messageId,
+              text: modelText,
+              files: submittedAttachments.map(toFileUIPart),
+              metadata: createVisualChatMessageMetadata(submittedAttachments)
+            }
+          : { messageId, text: modelText }
+      )
+    })
+    if (!acceptance.accepted) {
+      rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
+      return false
+    }
+    if (targetChat.status === 'error' && !chatFailure.value) {
+      toast.error(targetChat.error?.message || 'The visual reference could not be sent.')
+    }
+    return true
   } catch (error) {
-    rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
+    if (!acceptance.accepted)
+      rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
     console.error('Chat error:', error)
     if (!chatFailure.value) toast.error(error instanceof Error ? error.message : String(error))
-    return false
+    return acceptance.accepted
+  } finally {
+    stopAcceptanceWatch()
+    if (acceptance.accepted && requestIsPresent()) {
+      undoRecords.reported(targetChat, note.reports, messageId)
+      await history.flush().catch(() => undefined)
+    }
   }
+}
+
+function captureChatRequestOwner(tab: NonNullable<typeof activeTab.value>) {
+  return {
+    tab,
+    tabId: tab.id,
+    graph: tab.store.graph,
+    documentId: chatDocumentId(tab.store),
+    providerID: providerID.value,
+    sessionRevision: sessionRevision.value
+  }
+}
+
+function chatRequestOwnerIsCurrent(owner: ReturnType<typeof captureChatRequestOwner>): boolean {
+  const tab = activeTab.value
+  return (
+    tab?.id === owner.tabId &&
+    tab.store === owner.tab.store &&
+    owner.tab.store.graph === owner.graph &&
+    chatDocumentId(owner.tab.store) === owner.documentId &&
+    providerID.value === owner.providerID &&
+    sessionRevision.value === owner.sessionRevision
+  )
 }
 
 async function handleSubmit(
@@ -371,7 +618,7 @@ async function handleSubmit(
   const restoreSubmission = () => {
     restoreInput()
     restoreAttachments(requestedTab?.store, submittedAttachments)
-    requestedNodeDraft.value = [...new Set([...submittedNodeIds, ...requestedNodeDraft.value])]
+    requestedNodeDraft.value = uniq([...submittedNodeIds, ...requestedNodeDraft.value])
   }
   const requestedSubmissionPending = useChatSubmissionPending(requestedTab?.store)
   if (
@@ -380,18 +627,18 @@ async function handleSubmit(
     attachmentBusy.value ||
     requestedSubmissionPending.value ||
     status.value === 'streaming' ||
-    status.value === 'submitted'
+    status.value === 'submitted' ||
+    history.busy.value
   ) {
     restoreSubmission()
     return false
   }
   requestedSubmissionPending.value = true
-  const requestedTabId = requestedTab.id
-  const requestedProviderID = providerID.value
-  const requestedSessionRevision = sessionRevision.value
+  const requestedOwner = captureChatRequestOwner(requestedTab)
   try {
     let currentChat: Chat<UIMessage> | null
     try {
+      await suspendReplacedDocument()
       currentChat = await ensureChat()
     } catch (error) {
       restoreSubmission()
@@ -399,11 +646,7 @@ async function handleSubmit(
       toast.error(error instanceof Error ? error.message : String(error))
       return false
     }
-    if (
-      activeTab.value?.id !== requestedTabId ||
-      providerID.value !== requestedProviderID ||
-      sessionRevision.value !== requestedSessionRevision
-    ) {
+    if (!chatRequestOwnerIsCurrent(requestedOwner)) {
       restoreSubmission()
       toast.error('The chat context changed before the message was sent. Please try again.')
       return false
@@ -422,9 +665,9 @@ async function handleSubmit(
     publishedChatContext = {
       chat: published,
       generation: refreshGeneration,
-      sessionRevision: requestedSessionRevision,
-      tabId: requestedTabId,
-      providerID: requestedProviderID
+      sessionRevision: requestedOwner.sessionRevision,
+      tabId: requestedOwner.tabId,
+      providerID: requestedOwner.providerID
     }
     requestedNodeDraft.value = []
     return await sendPreparedSubmission(
@@ -442,14 +685,35 @@ async function handleSubmit(
   }
 }
 
+async function prepareOwnedVisualAttachment(
+  file: File,
+  source: VisualChatAttachment['source'],
+  isCurrentDraft: () => boolean
+): Promise<VisualChatAttachment | null> {
+  const image = isSVGFile(file) ? await rasterizeSVGAttachment(file) : file
+  if (!isCurrentDraft()) return null
+  const attachment = await normalizeVisualAttachment(image, { source })
+  return isCurrentDraft() ? attachment : null
+}
+
 async function addVisualAttachments(
   files: readonly File[],
   source: 'file' | 'selection' = 'file'
 ): Promise<void> {
-  const owner = activeTab.value?.store
-  if (!owner || files.length === 0 || attachmentBusy.value) return
+  const ownerTab = activeTab.value
+  const owner = ownerTab?.store
+  if (!ownerTab || !owner || files.length === 0 || attachmentBusy.value) return
   const attachmentDraft = useChatAttachments(owner)
-  const remainingSlots = MAX_VISUAL_ATTACHMENTS - attachmentDraft.value.length
+  const originalDraft = attachmentDraft.value
+  const conversationId = history.current.value?.id
+  const generation = attachmentDraftGeneration
+  const isCurrentDraft = () =>
+    attachmentDraftGeneration === generation &&
+    activeTab.value?.id === ownerTab.id &&
+    activeTab.value.store === owner &&
+    history.current.value?.id === conversationId &&
+    attachmentDraft.value === originalDraft
+  const remainingSlots = MAX_VISUAL_ATTACHMENTS - originalDraft.length
   if (remainingSlots <= 0) {
     toast.error(`You can attach up to ${MAX_VISUAL_ATTACHMENTS} images.`)
     return
@@ -457,20 +721,25 @@ async function addVisualAttachments(
 
   attachmentBusy.value = true
   try {
-    const next = [...attachmentDraft.value]
+    const next = [...originalDraft]
     let totalBytes = next.reduce((sum, attachment) => sum + attachment.sizeBytes, 0)
     for (const file of files.slice(0, remainingSlots)) {
+      if (!isCurrentDraft()) return
       try {
-        const attachment = await normalizeVisualAttachment(file, { source })
+        const attachment = await prepareOwnedVisualAttachment(file, source, isCurrentDraft)
+        if (!attachment) return
+        if (next.length >= MAX_VISUAL_ATTACHMENTS) break
         if (totalBytes + attachment.sizeBytes > MAX_VISUAL_ATTACHMENT_TOTAL_BYTES) {
           throw new Error('The combined image references exceed the 6 MB limit.')
         }
         next.push(attachment)
         totalBytes += attachment.sizeBytes
       } catch (error) {
+        if (!isCurrentDraft()) return
         toast.error(error instanceof Error ? error.message : String(error))
       }
     }
+    if (!isCurrentDraft()) return
     attachmentDraft.value = next
     if (files.length > remainingSlots) {
       toast.error(`Only ${MAX_VISUAL_ATTACHMENTS} image references can be attached at once.`)
@@ -581,7 +850,7 @@ async function handleHistoryAction(action: () => Promise<unknown>): Promise<void
   } catch (error) {
     toast.error(error instanceof Error ? error.message : 'Failed to update conversation history')
   } finally {
-    await refreshChat()
+    await refreshChat(false, false)
   }
 }
 
@@ -638,7 +907,9 @@ async function handleRetry(): Promise<boolean> {
   const tab = activeTab.value
   if (!current || !tab || current.status !== 'error' || submissionPending.value) return false
   const expectedContext = currentContextId()
-  submissionPending.value = true
+  const requestedPending = useChatSubmissionPending(tab.store)
+  if (requestedPending.value) return false
+  requestedPending.value = true
   try {
     current.clearError()
     await current.regenerate()
@@ -647,7 +918,7 @@ async function handleRetry(): Promise<boolean> {
     toast.error(error instanceof Error ? error.message : String(error))
     return false
   } finally {
-    submissionPending.value = false
+    requestedPending.value = false
   }
 }
 
@@ -817,7 +1088,10 @@ function projectionCapabilities(hasActiveTab: boolean, busy: boolean) {
 function getProjection(): AIPopoutProjection {
   const activeContextId = currentContextId()
   const busy =
-    submissionPending.value || status.value === 'submitted' || status.value === 'streaming'
+    submissionPending.value ||
+    history.busy.value ||
+    status.value === 'submitted' ||
+    status.value === 'streaming'
   const hasActiveTab = Boolean(activeTab.value)
   const value: AIPopoutProjection = {
     protocolVersion: AI_POPOUT_PROTOCOL_VERSION,
@@ -892,7 +1166,89 @@ const popoutHost: AIPopoutHost = {
 
 registerAIPopoutHost(popoutHost)
 
+function regenerationIsBlocked(): boolean {
+  return (
+    submissionPending.value ||
+    attachmentBusy.value ||
+    history.busy.value ||
+    historyReadOnly.value ||
+    !['ready', 'error'].includes(status.value)
+  )
+}
+
+async function handleRegenerate(expectedMessageId?: string): Promise<void> {
+  if (regenerationIsBlocked()) return
+  const requestedTab = activeTab.value
+  if (!requestedTab) return
+  const requestedPending = useChatSubmissionPending(requestedTab.store)
+  if (requestedPending.value) return
+  const requestedOwner = captureChatRequestOwner(requestedTab)
+  const requestedConversation = history.current.value?.id
+  const requestedMessage = expectedMessageId ?? messages.value.at(-1)?.id
+  if (!requestedMessage || messages.value.at(-1)?.id !== requestedMessage) return
+  requestedPending.value = true
+  try {
+    // The existing owner lock covers lazy reconnection and the request, including a second click.
+    await refreshChat(true, false)
+    const current = chat.value
+    if (
+      !current ||
+      !chatRequestOwnerIsCurrent(requestedOwner) ||
+      history.current.value?.id !== requestedConversation ||
+      !['ready', 'error'].includes(current.status)
+    )
+      return
+    const last = current.messages.at(-1)
+    if (!last || last.id !== requestedMessage) return
+    clearChatFailure()
+    if (last.role === 'assistant') revertTurn(last.id)
+    await undoRecords.withTurn(current, () =>
+      current.regenerate({ messageId: last.id }).catch(() => undefined)
+    )
+    await history.flush().catch(() => undefined)
+  } finally {
+    requestedPending.value = false
+    scheduleProjectionNotification()
+  }
+}
+
+async function handleRevert(messageId: string): Promise<void> {
+  if (!chat.value || submissionPending.value || !['ready', 'error'].includes(chat.value.status))
+    return
+  if (revertTurn(messageId)) await history.flush().catch(() => undefined)
+}
+async function handleRestore(messageId: string): Promise<void> {
+  if (!chat.value || submissionPending.value || !['ready', 'error'].includes(chat.value.status))
+    return
+  if (restoreTurn(messageId)) await history.flush().catch(() => undefined)
+}
+async function handleEdit(messageId: string, text: string): Promise<void> {
+  const current = chat.value
+  if (
+    !current ||
+    submissionPending.value ||
+    !['ready', 'error'].includes(current.status) ||
+    !text.trim()
+  )
+    return
+  const index = current.messages.findIndex((message) => message.id === messageId)
+  const later = current.messages.slice(index + 1)
+  if (index === -1 || later.some((message) => message.role === 'user')) return
+  for (const message of later) if (message.role === 'assistant') revertTurn(message.id)
+  const note = undoRecords.note(text.trim(), current.messages.slice(0, index))
+  setVisibleMessageText(messageId, text.trim())
+  await undoRecords.withTurn(current, () =>
+    current.sendMessage({ messageId, text: note.text }).catch(() => undefined)
+  )
+  undoRecords.reported(current, note.reports, messageId)
+  await history.flush().catch(() => undefined)
+}
+
 export const chatPanelController = {
+  handleRegenerate,
+  handleRevert,
+  handleRestore,
+  handleEdit,
   history,
   handleHistoryAction,
   historyReadOnly,

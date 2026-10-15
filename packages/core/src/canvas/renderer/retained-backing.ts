@@ -659,7 +659,7 @@ function installSceneBackingImage(
   clearSubtreePictureCache(r)
 }
 
-function cancelSceneBackingBuild(r: SkiaRenderer): void {
+export function cancelSceneBackingBuild(r: SkiaRenderer): void {
   const build = r.sceneBackingBuild
   if (build) sceneBackingBuildTiles.delete(build)
   build?.surface.delete()
@@ -839,6 +839,27 @@ export function renderSceneBacking(
   )
 }
 
+function backingWouldRegressLiveScene(
+  r: SkiaRenderer,
+  sceneVersion: number,
+  positionPreviewVersion: number
+): boolean {
+  const live = r.lastLiveSceneContent
+  const backing = r.sceneBacking
+  return Boolean(
+    live &&
+    backing &&
+    live.pageId === r.pageId &&
+    backing.pageId === r.pageId &&
+    sceneVersion >= live.sceneVersion &&
+    positionPreviewVersion >= live.positionPreviewVersion &&
+    r.fontGeneration >= live.fontGeneration &&
+    (backing.sceneVersion < live.sceneVersion ||
+      backing.positionPreviewVersion < live.positionPreviewVersion ||
+      backing.fontGeneration < live.fontGeneration)
+  )
+}
+
 function presentCompletedBacking(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -870,6 +891,11 @@ function presentCompletedBacking(
   )
   if (drewCurrent) return 'backing'
   if (r.sceneBackingBuild) {
+    if (backingWouldRegressLiveScene(r, sceneVersion, positionPreviewVersion)) {
+      // Continue the bounded rebuild, but do not replace an already visible live edit with
+      // an older completed image. The pipeline keeps drawing the current live scene until ready.
+      return false
+    }
     drawLastGoodSceneBacking(r, canvas)
     return 'backing'
   }

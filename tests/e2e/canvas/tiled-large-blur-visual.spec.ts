@@ -1,20 +1,42 @@
 import { readFileSync } from 'node:fs'
 
+import * as v from 'valibot'
+
 import type { RecordedWheelSample } from '@open-pencil/core/profiler'
 
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 
 const editor = useEditorSetup('/?test&no-chrome&no-rulers&renderer=tiled&navigation-benchmark')
-const reversal = JSON.parse(
+const WheelSample: v.GenericSchema<unknown, RecordedWheelSample> = v.object({
+  timeMs: v.number(),
+  deltaX: v.number(),
+  deltaY: v.number(),
+  deltaMode: v.number(),
+  ctrlKey: v.optional(v.boolean(), false),
+  metaKey: v.optional(v.boolean(), false),
+  shiftKey: v.optional(v.boolean(), false),
+  clientX: v.number(),
+  clientY: v.number(),
+  cancelable: v.optional(v.boolean(), true),
+  directionInvertedFromDevice: v.optional(v.boolean())
+})
+const GestureJSON = v.pipe(v.string(), v.parseJson(), v.object({ wheel: v.array(WheelSample) }))
+const reversal = v.parse(
+  GestureJSON,
   readFileSync('tests/fixtures/navigation/gestures/synthetic-repeated-pinch-reversal.json', 'utf8')
-) as { wheel: RecordedWheelSample[] }
+)
 
 async function waitForTiledSettlement() {
-  await editor.page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.test?.navigation?.waitForSettlement()
+  })
 }
 
 async function setLargeBlurRadius(radius: number) {
   await editor.page.evaluate((nextRadius) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = [...store.graph.getAllNodes()].find(
@@ -63,14 +85,17 @@ async function replayReversal() {
 
 test('large blur remains seamless after tiled mutation and zoom reversal', async () => {
   test.setTimeout(120_000)
-  await editor.page.evaluate(() =>
-    window.openPencil?.openFile?.('/tests/fixtures/gold-preview.fig')
-  )
+  await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.openFile?.('/tests/fixtures/gold-preview.fig')
+  })
   await editor.page.waitForFunction(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     return (
       store != null &&
-      !store.state.loading &&
+      store.state.preparation === null &&
       [...store.graph.getAllNodes()].some(
         (node) =>
           node.name === 'Group' &&
@@ -81,6 +106,8 @@ test('large blur remains seamless after tiled mutation and zoom reversal', async
     )
   })
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.zoomToFit()

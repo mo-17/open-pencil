@@ -16,7 +16,7 @@ interface Args {
   narrow: boolean
 }
 const meta = {
-  title: 'Chat/Playground',
+  title: 'App/Chat/Playground',
   args: { initialChat: 'dashboard', narrow: false },
   parameters: {
     docs: {
@@ -70,6 +70,9 @@ const meta = {
               :messages="selected.messages"
               :presentations="presentations"
               :status="selected.status"
+              interactive
+              @regenerate="regenerate"
+              @edit="resend"
             />
             <p v-if="notice" role="status" class="px-3 py-2 text-xs text-muted">{{ notice }}</p>
             <ChatComposer
@@ -104,7 +107,7 @@ export const Interaction: Story = {
     const canvas = within(canvasElement)
     await userEvent.click(canvas.getByRole('button', { name: 'New fixture' }))
     await userEvent.type(
-      canvas.getByRole('textbox', { name: 'Describe a change' }),
+      canvas.getByRole('textbox', { name: /^Describe a change/ }),
       'Make a dashboard'
     )
     await userEvent.click(canvas.getByRole('button', { name: 'Send message' }))
@@ -121,5 +124,18 @@ export const Interaction: Story = {
 export const Empty: Story = { args: { initialChat: 'empty' } }
 export const Streaming: Story = { args: { initialChat: 'streaming' } }
 export const ToolError: Story = { args: { initialChat: 'error' } }
+export const RevertedReply: Story = { args: { initialChat: 'reverted' } }
+export const FailedRequest: Story = {
+  args: { initialChat: 'failed-request' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    // Only the unanswered request offers to go again; the earlier reply does not regenerate.
+    await expect(canvas.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    await userEvent.click(canvas.getByRole('button', { name: 'Retry' }))
+    // The new reply is now the last message, so it offers to regenerate instead.
+    await expect(await canvas.findByRole('button', { name: 'Regenerate' })).toBeVisible()
+    await expect(canvas.queryByRole('button', { name: 'Retry' })).toBeNull()
+  }
+}
 export const Narrow: Story = { args: { narrow: true } }
 export const LongTitle: Story = { args: { initialChat: 'long-title', narrow: true } }

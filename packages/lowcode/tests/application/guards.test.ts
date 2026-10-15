@@ -31,7 +31,7 @@ function fixture() {
   return { graph, root, page, home }
 }
 
-function policy(page: SceneNode) {
+function pagePolicy(page: SceneNode) {
   if (!page.lowcodeApplicationPage) throw new Error('Missing page policy')
   return page.lowcodeApplicationPage
 }
@@ -44,7 +44,7 @@ describe('application guard contract', () => {
       { pageId: page.id, entryNodeId: page.childIds[0] }
     ])
     const policy = {
-      ...page.lowcodeApplicationPage,
+      ...pagePolicy(page),
       enterGuard: { conditionExpr: 'isSignedIn === true', fallback: '/home?from=detail#notice' },
       leaveConfirm: { dirtyExpr: 'draft !== saved', message: 'Leave without saving?' }
     }
@@ -152,12 +152,12 @@ describe('application guard contract', () => {
     for (const fallback of ['/unknown', '/products/1', '/home']) {
       const { graph, page, home } = fixture()
       page.lowcodeApplicationPage = {
-        ...policy(page),
+        ...pagePolicy(page),
         enterGuard: { conditionExpr: 'true', fallback }
       }
       if (fallback === '/home')
         home.lowcodeApplicationPage = {
-          ...policy(home),
+          ...pagePolicy(home),
           enterGuard: { conditionExpr: 'true', fallback: '/products/1' }
         }
       const result = resolveLowcodeApplicationPages(graph)
@@ -179,7 +179,7 @@ describe('application guard contract', () => {
   test('disabled application mode and reference roles keep dormant policies', () => {
     const { graph, root, page } = fixture()
     page.lowcodeApplicationPage = {
-      ...policy(page),
+      ...pagePolicy(page),
       enterGuard: { conditionExpr: 'true', fallback: '/unknown' },
       leaveConfirm: { dirtyExpr: 'dirty', message: 'Leave?' }
     }
@@ -195,7 +195,7 @@ describe('application guard contract', () => {
   test('cloning remaps only entry identity and detaches both guard objects', () => {
     const { graph, page } = fixture()
     page.lowcodeApplicationPage = {
-      ...policy(page),
+      ...pagePolicy(page),
       enterGuard: { conditionExpr: 'isSignedIn', fallback: '/home' },
       leaveConfirm: { dirtyExpr: 'dirty', message: 'Leave?' }
     }

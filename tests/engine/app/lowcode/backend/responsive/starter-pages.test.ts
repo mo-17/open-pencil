@@ -18,6 +18,8 @@ import {
 } from '@/app/plugins'
 import { listAppBackendProviderDescriptors } from '@/app/plugins/host/backend-provider'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const kinds = [
   ['notes', 2],
   ['shop', 4],
@@ -80,7 +82,7 @@ function expectNavigationState(graph: SceneGraph, pageId: string, node: SceneNod
   expect(graph.getNode(pageId)?.state?.some((entry) => entry.id === binding.stateId)).toBe(true)
   expect(
     node.events?.onChange?.every(
-      (action) => action.kind === 'condition' && action.condExpr.startsWith('$value === ')
+      (action) => action.kind === 'condition' && action.condExpr?.startsWith('$value === ')
     )
   ).toBe(true)
 }
@@ -89,7 +91,9 @@ function expectNodeSemantics(graph: SceneGraph, pageId: string, node: SceneNode)
   const compact = node.responsiveOverrides?.compact
   expect(compact).toBeDefined()
   if (node.type === 'LIST') {
-    expect(node.interactiveProps?.dataSourceRef?.kind).toBe('backendResource')
+    expect(readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)?.kind).toBe(
+      'backendResource'
+    )
     expect(compact?.height).toBe(520)
     expect(compact?.layoutMode).toBe('VERTICAL')
     expect(node.childIds).toHaveLength(1)
@@ -102,7 +106,7 @@ function expectNodeSemantics(graph: SceneGraph, pageId: string, node: SceneNode)
 }
 
 describe('notes and commerce compact page contracts', () => {
-  test.each(kinds)(
+  test.each([...kinds])(
     '%s adapts all %i pages while preserving forms and bounded collections',
     async (kind, count) => {
       const { editor, pageIds } = await fixture(kind)

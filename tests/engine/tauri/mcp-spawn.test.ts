@@ -8,6 +8,7 @@ import {
   spawnMCPIfNeeded
 } from '@/app/automation/mcp/spawn'
 
+import { fetchStub } from '#tests/helpers/fetch'
 import { clearTauriMocks, installTauriMockWindow, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
@@ -162,6 +163,38 @@ describe('Tauri MCP spawning', () => {
     })
   })
 
+  test('reports an older running server as outdated with the install command for this app', async () => {
+    installTauriMockWindow()
+    Object.assign(globalThis.window, { location: { origin: 'tauri://localhost' } })
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { platform: 'MacIntel', userAgent: 'Macintosh' }
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      fetchStub(async () =>
+        Response.json({
+          status: 'ok',
+          version: '0.15.1',
+          installCommand: 'npm i -g @open-pencil/mcp@0.15.1'
+        })
+      )
+    )
+    await mockTauriIPC((cmd) => {
+      if (cmd === 'plugin:path|resolve_directory') return '/mock/home'
+      if (cmd === 'plugin:fs|exists') return true
+      return null
+    })
+
+    expect(await spawnMCPIfNeeded()).toBeNull()
+    expect(getAutomationStartupFailure()).toEqual({ code: 'outdated', detail: '0.15.1' })
+    // The old server names its own version; the fix must name this app's.
+    const error = await getAutomationAuthToken().catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(Error)
+    expect(String(error)).toContain('npm i -g @open-pencil/mcp@0.0.0-test')
+    expect(String(error)).not.toContain('@open-pencil/mcp@0.15.1')
+  })
+
   test('spawns MCP server with shell plugin when health check is missing', async () => {
     installTauriMockWindow()
     Object.assign(globalThis.window, { location: { origin: 'tauri://localhost' } })
@@ -171,21 +204,23 @@ describe('Tauri MCP spawning', () => {
     })
 
     let healthChecks = 0
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      healthChecks += 1
-      if (healthChecks === 1) return new Response('', { status: 404 })
-      return new Response(
-        JSON.stringify({
-          status: 'ok',
-          version: '0.0.0-test',
-          authRequired: true,
-          discoveryPath: DISCOVERY_PATH
-        }),
-        { status: 200 }
-      )
-    })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      fetchStub(async () => {
+        healthChecks += 1
+        if (healthChecks === 1) return new Response('', { status: 404 })
+        return new Response(
+          JSON.stringify({
+            status: 'ok',
+            version: '0.0.0-test',
+            authRequired: true,
+            discoveryPath: DISCOVERY_PATH
+          }),
+          { status: 200 }
+        )
+      })
+    )
 
-    let onEvent: ((event: unknown) => void) | null = null
+    const spawned: { onEvent: ((event: unknown) => void) | null } = { onEvent: null }
     const calls: Array<{ cmd: string; args: unknown }> = []
     await mockTauriIPC((cmd, args) => {
       calls.push({ cmd, args })
@@ -206,7 +241,9 @@ describe('Tauri MCP spawning', () => {
             }
           }
         })
-        onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
+        spawned.onEvent = (
+          args as { onEvent: { onmessage: (event: unknown) => void } }
+        ).onEvent.onmessage
         return 77
       }
       const pathArg = (args as { path?: string })?.path
@@ -227,7 +264,7 @@ describe('Tauri MCP spawning', () => {
 
     const handle = await spawnMCPIfNeeded({ earlyExitMs: 5, healthPollMs: 5 })
     await expect(getAutomationAuthToken()).resolves.toBe('discovery-token')
-    onEvent?.({ event: 'Stderr', payload: [119, 97, 114, 110] })
+    spawned.onEvent?.({ event: 'Stderr', payload: [119, 97, 114, 110] })
     handle?.disconnect()
     await Promise.resolve()
 

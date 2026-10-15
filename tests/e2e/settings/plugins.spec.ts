@@ -13,7 +13,9 @@ import {
   signMarketplaceSnapshot,
   signPluginCatalog,
   type MarketplaceSnapshotPayloadV1,
-  type PluginCatalogPayloadV1
+  type PluginCatalogPayloadV1,
+  type PluginManifestPayload,
+  type PluginManifest
 } from '@open-pencil/plugin-contracts'
 import {
   digestCanonicalManifest,
@@ -78,14 +80,18 @@ interface MarketplaceSourceFixture {
 }
 
 async function marketplaceSourceFixture(): Promise<MarketplaceSourceFixture> {
+  const generated = Date.now()
+  const validForMs = 7 * 24 * 60 * 60 * 1_000
+  const generatedAt = new Date(generated).toISOString()
+  const expiresAt = new Date(generated + validForMs).toISOString()
   const root = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
   const catalogPayload: PluginCatalogPayloadV1 = {
     format: PLUGIN_CATALOG_FORMAT,
     schemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
     catalogId: 'openpencil.marketplace.stable',
     version: '1.0.0',
-    generatedAt: '2026-08-20T00:00:00.000Z',
-    expiresAt: '2026-08-27T00:00:00.000Z',
+    generatedAt,
+    expiresAt,
     entries: []
   }
   const catalog = await signPluginCatalog(catalogPayload, root.privateKey, {
@@ -97,8 +103,8 @@ async function marketplaceSourceFixture(): Promise<MarketplaceSourceFixture> {
     marketplaceId: 'openpencil.marketplace',
     version: '1.0.0',
     sequence: 1,
-    generatedAt: '2026-08-20T00:00:00.000Z',
-    expiresAt: '2026-08-27T00:00:00.000Z',
+    generatedAt,
+    expiresAt,
     publisherDirectory: { publishers: [], ownerships: [] },
     catalogs: [
       {
@@ -227,9 +233,9 @@ async function changeMapModule(
   await page.evaluate(
     ({ pluginId, changes: moduleChanges }) => {
       const store = window.openPencil?.getStore?.()
-      const node = store?.graph
-        .getAllNodes()
-        .find(
+      const node =
+        store &&
+        [...store.graph.getAllNodes()].find(
           (candidate) =>
             (candidate.interactiveProps?.module as ModuleInstanceV1 | undefined)?.pluginId ===
             pluginId
@@ -439,13 +445,21 @@ async function injectPublisherReviewFixtures(page: Page): Promise<PublisherRevie
     const catalogExpiresAt = '2027-01-01T00:00:00.000Z'
 
     function publisherManifest(
-      manifest: (typeof installItem)['package']['manifest'],
-      version: string
-    ) {
+      manifest: PluginManifestPayload,
+      version: string,
+      digest: string
+    ): PluginManifest {
       const next = structuredClone(manifest)
       next.plugin.version = version
       next.publisher = { id: publisherId, name: 'Reviewed Publisher', keyId }
-      return next
+      return {
+        ...next,
+        integrity: {
+          algorithm: 'SHA-256',
+          digest,
+          signature: { algorithm: 'Ed25519', keyId, value: 'A'.repeat(86) + '==' }
+        }
+      }
     }
 
     function catalogMetadata(source: 'network' | 'cache') {
@@ -458,7 +472,7 @@ async function injectPublisherReviewFixtures(page: Page): Promise<PublisherRevie
       } as const
     }
 
-    const installManifest = publisherManifest(installItem.package.manifest, '3.1.0')
+    const installManifest = publisherManifest(installItem.package.manifest, '3.1.0', installDigest)
     const installPackage = {
       trustSource: 'publisher-signature' as const,
       manifest: installManifest,
@@ -471,8 +485,16 @@ async function injectPublisherReviewFixtures(page: Page): Promise<PublisherRevie
       remoteCatalog: catalogMetadata('network')
     }
 
-    const currentManifest = publisherManifest(updatePlugin.package.manifest, '2.0.0')
-    const candidateManifest = publisherManifest(updatePlugin.package.manifest, '2.1.0')
+    const currentManifest = publisherManifest(
+      updatePlugin.package.manifest,
+      '2.0.0',
+      updateCurrentDigest
+    )
+    const candidateManifest = publisherManifest(
+      updatePlugin.package.manifest,
+      '2.1.0',
+      updateDigest
+    )
     const accepted = {
       manifest: currentManifest,
       verifiedDigest: updateCurrentDigest,
@@ -541,7 +563,10 @@ async function injectPublisherReviewFixtures(page: Page): Promise<PublisherRevie
                 updatedConnectors: [],
                 addedStorageProviders: [],
                 removedStorageProviders: [],
-                updatedStorageProviders: []
+                updatedStorageProviders: [],
+                addedBackendProviders: [],
+                removedBackendProviders: [],
+                updatedBackendProviders: []
               },
               status: 'pending' as const
             }
@@ -1072,7 +1097,7 @@ test('requires explicit runtime review and grant while exposing local audit deci
 
     const manager = pluginApp.appPluginRuntimeManager
     type RuntimeReview = Awaited<ReturnType<typeof manager.review>>
-    type RuntimePolicy = ReturnType<typeof manager.snapshot>['policies'][number]
+    type RuntimePolicy = Awaited<ReturnType<typeof manager.grant>>
     type RuntimeAuditEvent = RuntimePolicy['audit'][number]
     const capabilities = ['document.nodes.read'] as const
     const review: RuntimeReview = {

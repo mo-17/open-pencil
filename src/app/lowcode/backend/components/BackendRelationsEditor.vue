@@ -313,7 +313,7 @@ function changeOnDelete(relation: DataRelationIR, onDelete: DataForeignKeyIR['on
           editingRelationId ? panels.lowcodeBackendRelationSave : panels.lowcodeBackendRelationAdd
         }}
       </button>
-      <p v-if="operationError" class="mt-1 text-[10px] text-red-500">{{ operationError }}</p>
+      <p v-if="operationError" class="mt-1 text-[10px] text-error">{{ operationError }}</p>
     </div>
     <p v-if="application.dataModel.relations.length === 0" class="text-[10px] text-muted">
       {{ panels.lowcodeBackendNoRelations }}
@@ -369,7 +369,7 @@ function changeOnDelete(relation: DataRelationIR, onDelete: DataForeignKeyIR['on
       <button
         type="button"
         :aria-label="panels.lowcodeBackendRemoveRelation"
-        class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
+        class="rounded px-1 text-muted hover:bg-hover hover:text-error"
         @click="removeRelation(relation.id)"
       >
         ×

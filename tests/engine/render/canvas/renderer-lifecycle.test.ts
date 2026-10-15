@@ -12,13 +12,16 @@ import type {
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { ImagePreviewCache } from '#core/canvas/images/previews'
 import { LabelCache } from '#core/canvas/labels/cache'
 import { SkiaRenderer } from '#core/canvas/renderer'
 import { EffectRasterCache } from '#core/canvas/renderer/effect-raster-cache'
 import { destroyRenderer } from '#core/canvas/renderer/lifecycle'
 import { transferLastGoodFrame, withIsolatedDocumentCaches } from '#core/canvas/renderer/state'
-import { createGlyphSilhouetteCache } from '#core/canvas/text/derived'
-import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
+import { createGlyphSilhouetteCache, createDerivedGlyphPathCache } from '#core/canvas/text/derived'
+import { TextPreparationCache } from '#core/canvas/text/preparation/cache'
+
+import { asDouble, asRenderer } from './helpers'
 
 function deletable<T>() {
   return { delete: mock() } as T & { delete: ReturnType<typeof mock> }
@@ -46,12 +49,16 @@ function createRenderer() {
     textPictureGenerations: new Map(),
     renderCacheGraph: null,
     renderCachePageId: null,
+    liveImages: new Map(),
+    imagePreviews: new ImagePreviewCache(() => undefined),
+    onImagePreviewReady: null,
     vectorPathCache: new Map(),
     vectorStrokePathCache: new Map(),
     vectorStrokeOutlineCache: new Map(),
     fillGeometryCache: new Map(),
     strokeGeometryCache: new Map(),
     glyphSilhouetteCache: createGlyphSilhouetteCache(),
+    derivedGlyphPathCache: createDerivedGlyphPathCache(),
     fillPaint: deletable<Paint>(),
     strokePaint: deletable<Paint>(),
     selectionPaint: deletable<Paint>(),
@@ -78,6 +85,7 @@ function createRenderer() {
     rulerLabelPaint: deletable<Paint>(),
     penPathPaint: deletable<Paint>(),
     penLiveStrokePaint: deletable<Paint>(),
+    pencilStrokePaint: deletable<Paint>(),
     penHandlePaint: deletable<Paint>(),
     penVertexFill: deletable<Paint>(),
     penVertexStroke: deletable<Paint>(),
@@ -104,18 +112,20 @@ function createRenderer() {
     dpr: 1,
     viewportWidth: 100,
     viewportHeight: 100,
-    pageColor: { r: 1, g: 1, b: 1 },
+    pageColor: { r: 1, g: 1, b: 1, a: 1 },
     pageId: 'page',
-    tiledScene: {
+    tiledScene: asDouble<SkiaRenderer['tiledScene']>({
       destroy: mock(),
       invalidateStructure: mock()
-    } as Partial<SkiaRenderer['tiledScene']> as SkiaRenderer['tiledScene'],
-    labelParagraphCache: { clear: mock() } as SkiaRenderer['labelParagraphCache'],
+    }),
+    labelParagraphCache: asDouble<SkiaRenderer['labelParagraphCache']>({
+      clear: mock()
+    }),
     _flashPaint: null,
     profiler: { destroy: mock() } as Partial<SkiaRenderer['profiler']> as SkiaRenderer['profiler'],
     surface: deletable<Surface>()
   }
-  return renderer as SkiaRenderer
+  return asRenderer(renderer)
 }
 
 test('destroyRenderer releases tiled resources before deleting the main surface', () => {
@@ -145,11 +155,13 @@ test('destroyRenderer deletes all renderer-owned paints and label fonts', () => 
   const generatedEffectPaint = renderer.generatedEffectPaint
   const sectionTitleFont = renderer.sectionTitleFont
   const componentLabelFont = renderer.componentLabelFont
+  const pencilStrokePaint = renderer.pencilStrokePaint
 
   destroyRenderer(renderer)
 
   expect(parentOutlinePaint.delete).toHaveBeenCalled()
   expect(generatedEffectPaint.delete).toHaveBeenCalled()
+  expect(pencilStrokePaint.delete).toHaveBeenCalled()
   expect(sectionTitleFont?.delete).toHaveBeenCalled()
   expect(componentLabelFont?.delete).toHaveBeenCalled()
   expect(cachedImage.delete).toHaveBeenCalledTimes(1)
@@ -170,6 +182,10 @@ test('last-good frame ownership survives source renderer destruction', () => {
     image,
     pageId: 'page',
     sceneVersion: 3,
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     positionPreviewVersion: 2,
     fontGeneration: 1,
     panX: 12,
@@ -208,6 +224,10 @@ test('surface replacement keeps the completed frame and cancels only the stale b
     image,
     pageId: 'page',
     sceneVersion: 3,
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     positionPreviewVersion: 2,
     fontGeneration: 1,
     panX: 0,
@@ -221,7 +241,9 @@ test('surface replacement keeps the completed frame and cancels only the stale b
     worldWidth: 300,
     worldHeight: 200
   }
-  renderer.sceneBackingBuild = { surface: buildSurface } as SkiaRenderer['sceneBackingBuild']
+  renderer.sceneBackingBuild = asDouble<NonNullable<SkiaRenderer['sceneBackingBuild']>>({
+    surface: buildSurface
+  })
   renderer.subtreePictureCache.set('partial', {
     picture: buildPicture,
     pageId: 'page',

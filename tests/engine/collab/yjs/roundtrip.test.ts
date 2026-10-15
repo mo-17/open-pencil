@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 import * as Y from 'yjs'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { syncNodePropsToYMap, yNodeToProps } from '@/app/collab/yjs-sync'
 
@@ -55,7 +54,7 @@ function lowcodeNode(): SceneNode {
       ]
     },
     interactiveProps: { placeholder: 'Email', value: '' },
-    renderCondition: { expr: '$currentUser.signedIn' },
+    renderCondition: '$currentUser.signedIn',
     lowcodeDocumentState: [{ id: 'd1', name: 'rows', type: 'array', defaultValue: [] }],
     lowcodeSupabaseConfig: { url: 'https://abc.supabase.co', anonKey: 'anon-jwt' }
   })
@@ -68,7 +67,6 @@ describe('collab Yjs round-trip (Phase 3 §4.1)', () => {
     'bindings',
     'events',
     'interactiveProps',
-    'renderCondition',
     'lowcodeDocumentState',
     'lowcodeSupabaseConfig'
   ] as const
@@ -78,13 +76,13 @@ describe('collab Yjs round-trip (Phase 3 §4.1)', () => {
     const props = roundTrip(node)
     for (const field of LOWCODE_FIELDS) {
       expect(typeof props[field]).toBe('object')
-      expect(props[field]).toEqual((node as JSONObject)[field])
+      expect(props[field]).toEqual(node[field])
     }
   })
 
   test('guard: no lowcode field round-trips as a string (drift detector)', () => {
     const node = lowcodeNode()
-    const raw = node as JSONObject
+    const raw = node
     const props = roundTrip(node)
     for (const field of LOWCODE_FIELDS) {
       // The test node populates each lowcode field with an object. If this
@@ -99,5 +97,6 @@ describe('collab Yjs round-trip (Phase 3 §4.1)', () => {
     const props = roundTrip(node)
     expect(props.id).toBe(node.id)
     expect(props.type).toBe('INPUT')
+    expect(props.renderCondition).toBe('$currentUser.signedIn')
   })
 })

@@ -28,7 +28,16 @@ export function dateTimeInputFixture(target: 'react' | 'vue') {
     itemSpacing: 12,
     paddingLeft: 12,
     paddingTop: 12,
-    events: { onSubmit: [{ kind: 'setState', targetStateId: 'submits', valueExpr: 'submits + 1' }] }
+    events: {
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submits',
+          valueExpr: 'submits + 1'
+        }
+      ]
+    }
   })
   const field = (label: string, props: JSONObject) =>
     graph.createNode('INPUT', form.id, {
@@ -58,7 +67,11 @@ export function dateTimeInputFixture(target: 'react' | 'vue') {
     width: 300,
     height: 44,
     interactiveProps: { text: 'Clear time' },
-    events: { onClick: [{ kind: 'setState', targetStateId: 'appointment', valueExpr: '""' }] }
+    events: {
+      onClick: [
+        { id: 'fixture-action-2', kind: 'setState', targetStateId: 'appointment', valueExpr: '""' }
+      ]
+    }
   })
   graph.createNode('BUTTON', form.id, {
     width: 300,

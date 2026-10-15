@@ -6,6 +6,8 @@ import {
   SupabaseManagementError
 } from '@/app/lowcode/supabase/management-client'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 describe('Supabase Management OpenAPI client', () => {
   test('extracts project refs only from canonical HTTPS project URLs', () => {
     expect(projectRefFromSupabaseURL('https://abc-project.supabase.co/')).toBe('abc-project')
@@ -23,14 +25,14 @@ describe('Supabase Management OpenAPI client', () => {
   test('requests the official endpoint with a bearer PAT and bounded transport options', async () => {
     let requestedURL = ''
     let requestedInit: RequestInit | undefined
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = fetchStub(async (input: RequestInfo | URL, init?: RequestInit) => {
       requestedURL = String(input)
       requestedInit = init
       return new Response(JSON.stringify({ definitions: { todos: { properties: {} } } }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })
-    }) as typeof fetch
+    })
 
     const result = await fetchSupabaseDatabaseOpenAPI(
       {
@@ -56,10 +58,9 @@ describe('Supabase Management OpenAPI client', () => {
   })
 
   test('surfaces rate limits, permission failures, and oversized responses', async () => {
-    const rateLimited = (() =>
-      Promise.resolve(
-        new Response(null, { status: 429, headers: { 'retry-after': '12' } })
-      )) as typeof fetch
+    const rateLimited = fetchStub(() =>
+      Promise.resolve(new Response(null, { status: 429, headers: { 'retry-after': '12' } }))
+    )
     await expect(
       fetchSupabaseDatabaseOpenAPI(
         {
@@ -74,7 +75,7 @@ describe('Supabase Management OpenAPI client', () => {
       message: expect.stringContaining('12')
     })
 
-    const forbidden = (() => Promise.resolve(new Response(null, { status: 403 }))) as typeof fetch
+    const forbidden = fetchStub(() => Promise.resolve(new Response(null, { status: 403 })))
     await expect(
       fetchSupabaseDatabaseOpenAPI(
         {
@@ -85,10 +86,9 @@ describe('Supabase Management OpenAPI client', () => {
       )
     ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
 
-    const oversized = (() =>
-      Promise.resolve(
-        new Response('{}', { status: 200, headers: { 'content-length': '1000' } })
-      )) as typeof fetch
+    const oversized = fetchStub(() =>
+      Promise.resolve(new Response('{}', { status: 200, headers: { 'content-length': '1000' } }))
+    )
     await expect(
       fetchSupabaseDatabaseOpenAPI(
         {
@@ -99,10 +99,9 @@ describe('Supabase Management OpenAPI client', () => {
       )
     ).rejects.toMatchObject({ code: 'response-too-large' })
 
-    const echoedSecret = (() =>
-      Promise.resolve(
-        new Response('request failed for pat-do-not-expose', { status: 500 })
-      )) as typeof fetch
+    const echoedSecret = fetchStub(() =>
+      Promise.resolve(new Response('request failed for pat-do-not-expose', { status: 500 }))
+    )
     await expect(
       fetchSupabaseDatabaseOpenAPI(
         {
@@ -115,10 +114,12 @@ describe('Supabase Management OpenAPI client', () => {
   })
 
   test('aborts requests at the configured timeout without exposing the PAT', async () => {
-    const pending = ((_input: RequestInfo | URL, init?: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
-      })) as typeof fetch
+    const pending = fetchStub(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+        })
+    )
 
     const result = fetchSupabaseDatabaseOpenAPI(
       {

@@ -42,6 +42,7 @@ import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/pl
 import { NESTJS_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/nestjs/backend-provider'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
+import { expectRecord } from '#tests/helpers/assert'
 
 const ENGINE_VERSION = '0.13.2'
 const ALLOW_ACTIVATION: AppPluginActivationCompatibilityPolicy = () => ({ ok: true })
@@ -621,7 +622,7 @@ describe('app plugin store', () => {
     await current.load()
     await current.uninstall(MAP_PLUGIN_ID)
     const mapTombstone = (await currentStorage.list()).find(
-      (record) => record.pluginId === MAP_PLUGIN_ID
+      (record) => expectRecord(record).pluginId === MAP_PLUGIN_ID
     )
     if (!mapTombstone) throw new Error('Expected persisted Map uninstall record')
     const staleRecords = Array.from({ length: 64 }, (_, index) => ({
@@ -1795,7 +1796,9 @@ describe('app plugin store', () => {
       'restart OpenPencil'
     )
     expect(
-      (await storage.list()).find((record) => record.pluginId === signed.manifest.plugin.id)
+      (await storage.list()).find(
+        (record) => expectRecord(record).pluginId === signed.manifest.plugin.id
+      )
     ).toMatchObject({ installed: true, enabled: false })
     await staleWindow.load()
     expect(
@@ -1817,7 +1820,9 @@ describe('app plugin store', () => {
     const keyring = trustedPublisherKeyring(keyPair, initial.manifest)
     let catalogEntry = publisherEntry(keyPair, initial.manifest)
     let gate: Promise<void> | null = null
-    let releaseGate: (() => void) | null = null
+    let releaseGate: () => void = () => {
+      throw new Error('Gate is not initialized')
+    }
     const store = createAppPluginStore({
       storage: createMemoryAppPluginStateStorage(),
       catalog: [],
@@ -1837,7 +1842,7 @@ describe('app plugin store', () => {
     })
     const installation = store.installReviewed(initial.manifest.plugin.id, reviewedInstall)
     Reflect.set(reviewedInstall, 'digest', update.verifiedDigest)
-    releaseGate?.()
+    releaseGate()
     await expect(installation).resolves.toMatchObject({
       package: { manifest: { plugin: { version: '1.0.0' } } }
     })
@@ -1857,7 +1862,7 @@ describe('app plugin store', () => {
     )
     Reflect.set(reviewedCandidate, 'digest', initial.verifiedDigest)
     Reflect.set(reviewedCurrent, 'digest', update.verifiedDigest)
-    releaseGate?.()
+    releaseGate()
     await expect(acceptance).resolves.toMatchObject({
       package: { manifest: { plugin: { version: '1.1.0' } } }
     })

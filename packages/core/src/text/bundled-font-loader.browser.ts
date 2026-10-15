@@ -115,6 +115,7 @@ async function fetchBundledFontFromWorker(
 export async function fetchBundledFontBytes(value: string): Promise<ArrayBuffer> {
   if (IS_BROWSER) {
     const response = await fetch(value)
+    if (!response.ok) throw new Error(`Bundled font request failed with HTTP ${response.status}`)
     return response.arrayBuffer()
   }
   const worker = dedicatedFontWorkerScope()

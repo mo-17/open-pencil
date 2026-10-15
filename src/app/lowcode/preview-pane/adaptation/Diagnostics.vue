@@ -80,7 +80,7 @@ const status = computed(() =>
         >
           <icon-lucide-triangle-alert
             aria-hidden="true"
-            class="mt-0.5 size-3 shrink-0 text-amber-500"
+            class="mt-0.5 size-3 shrink-0 text-warning"
           />
           <span class="min-w-0">
             <span class="block break-words font-medium text-surface">{{ item.nodeName }}</span>

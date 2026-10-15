@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
+import * as v from 'valibot'
+
 import {
   createBackendProviderPlanV2,
   createBackendProviderRegistryV2,
@@ -13,46 +15,49 @@ import {
   supabaseBackfillApplicationV2,
   supabasePrivateRealtimeSelectionV2
 } from '#tests/engine/compiler/backend/supabase/v2/helpers'
+import { testPath } from '#tests/helpers/paths'
 
 type InspectionEnvelopeV1 = ReturnType<typeof createSupabaseBackfillInspectionSubjectV1>
-type Mutable<T> = T extends readonly (infer Item)[]
-  ? Mutable<Item>[]
-  : T extends object
-    ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
-    : T
-type MutableInspectionSubjectV1 = Mutable<InspectionEnvelopeV1['subject']>
+const InspectionSubjectFixture = v.looseObject({
+  providerAuthority: v.looseObject({ digest: v.string() }),
+  application: v.looseObject({ id: v.string() }),
+  plan: v.looseObject({ digest: v.string() }),
+  emission: v.looseObject({
+    artifacts: v.looseObject({ migrationPlan: v.looseObject({ digest: v.string() }) })
+  }),
+  migration: v.looseObject({ batchSize: v.number() }),
+  inspection: v.looseObject({ queryFamily: v.string() })
+})
+const InspectionProjectionFixture = v.object({
+  providerId: v.string(),
+  providerAuthorityDigest: v.string(),
+  applicationId: v.string(),
+  applicationDigest: v.string(),
+  migrationId: v.string(),
+  migrationDigest: v.string(),
+  migrationPlanDigest: v.string(),
+  inspectionSubjectDigest: v.string(),
+  tableName: v.string(),
+  cursorField: v.string(),
+  targetField: v.string(),
+  maximumCursor: v.number(),
+  batchSize: v.number(),
+  maximumBatchReceiptCount: v.number()
+})
+const InspectionCanonicalFixture = v.looseObject({
+  fixtureFormat: v.string(),
+  fixtureVersion: v.number(),
+  envelope: v.looseObject({ subject: InspectionSubjectFixture, subjectDigest: v.string() }),
+  projection: InspectionProjectionFixture
+})
+type InspectionProjectionV1 = v.InferOutput<typeof InspectionProjectionFixture>
+type MutableInspectionSubjectV1 = v.InferOutput<typeof InspectionSubjectFixture>
 
-interface InspectionProjectionV1 {
-  readonly providerId: string
-  readonly providerAuthorityDigest: string
-  readonly applicationId: string
-  readonly applicationDigest: string
-  readonly migrationId: string
-  readonly migrationDigest: string
-  readonly migrationPlanDigest: string
-  readonly inspectionSubjectDigest: string
-  readonly tableName: string
-  readonly cursorField: string
-  readonly targetField: string
-  readonly maximumCursor: number
-  readonly batchSize: number
-  readonly maximumBatchReceiptCount: number
-}
-
-interface InspectionCanonicalFixtureV1 {
-  readonly fixtureFormat: string
-  readonly fixtureVersion: number
-  readonly envelope: InspectionEnvelopeV1
-  readonly projection: InspectionProjectionV1
-}
-
-function readFixture(name: string): InspectionCanonicalFixtureV1 {
-  return JSON.parse(
-    readFileSync(
-      new URL(`../../../../../../../fixtures/backend/supabase/${name}`, import.meta.url),
-      'utf8'
-    )
-  ) as InspectionCanonicalFixtureV1
+function readFixture(name: string) {
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), InspectionCanonicalFixture),
+    readFileSync(testPath('fixtures', 'backend', 'supabase', name), 'utf8')
+  )
 }
 
 const fixture = readFixture('backfill-inspection-subject-v1.json')
@@ -153,7 +158,7 @@ function reversedInsertionOrder(value: unknown): unknown {
 function changedSubject(
   mutate: (subject: MutableInspectionSubjectV1) => void
 ): MutableInspectionSubjectV1 {
-  const subject = structuredClone(fixture.envelope.subject) as MutableInspectionSubjectV1
+  const subject = structuredClone(fixture.envelope.subject)
   mutate(subject)
   return subject
 }
@@ -203,7 +208,7 @@ describe('Supabase V2 backfill inspection canonical fixture', () => {
       'openpencil.test.backend.supabase.backfill-inspection-subject.v1'
     )
     expect(fixture.fixtureVersion).toBe(1)
-    expect(fixture.envelope).toEqual(actual)
+    expect(fixture.envelope).toEqual(v.parse(InspectionCanonicalFixture.entries.envelope, actual))
     expect(Object.keys(fixture.projection).sort()).toEqual(PROJECTION_KEYS)
     expect(fixture.projection).toEqual(projectionFromEnvelope(actual))
     expect(fixture.projection.migrationPlanDigest).toBe(
@@ -228,7 +233,9 @@ describe('Supabase V2 backfill inspection canonical fixture', () => {
     expect(floatFixture.fixtureFormat).toBe(
       'openpencil.test.backend.supabase.backfill-inspection-subject-float.v1'
     )
-    expect(floatFixture.envelope).toEqual(actual)
+    expect(floatFixture.envelope).toEqual(
+      v.parse(InspectionCanonicalFixture.entries.envelope, actual)
+    )
     expect(floatFixture.projection).toEqual(projectionFromEnvelope(actual))
     expect(actual.subject.migration.target).toMatchObject({
       postgresType: 'pg_catalog.float8',

@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/plugin-contracts",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "Portable declarative plugin, trust, catalog, marketplace, and isolated runtime contracts for OpenPencil.",
   "license": "MIT",
   "repository": {
@@ -52,6 +52,7 @@
     "@open-pencil/scene-graph": "workspace:*"
   },
   "dependencies": {
+    "es-toolkit": "^1.52.0",
     "js-base64": "^3.9.3"
   }
 }

@@ -2,19 +2,19 @@ import { isEqual } from 'es-toolkit/predicate'
 
 import {
   deserializeInstanceOverrideState,
-  serializeInstanceOverrideState
-} from '@open-pencil/scene-graph'
-import type {
-  Fill,
-  FillType,
-  FigmaRawStructuralFieldPresence,
-  GeometryPath,
-  SceneNode,
-  SourceMetadata
+  serializeInstanceOverrideState,
+  type Fill,
+  type FillType,
+  type FigmaRawStructuralFieldPresence,
+  type GeometryPath,
+  type SceneNode,
+  type SourceMetadata
 } from '@open-pencil/scene-graph'
 import { copyFills } from '@open-pencil/scene-graph/copy'
 import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
 import type { Matrix, Vector } from '@open-pencil/scene-graph/primitives'
+
+import { ORDER_KEY_FIELD, PAGE_FIELD, PARENTS_FIELD } from '@/app/collab/shared-tree/fields'
 
 const DERIVED_NODE_FIELDS = new Set<keyof SceneNode>(['textPicture'])
 const FIGMA_RAW_STRUCTURAL_FIELDS = [
@@ -25,6 +25,17 @@ const FIGMA_RAW_STRUCTURAL_FIELDS = [
   'transform',
   'frameMaskDisabled'
 ] as const
+/**
+ * The layer tree syncs as parent entries, order keys and pages (`src/app/collab/shared-tree/fields.ts`), so a
+ * layer's own fields leave out its place in the tree, and decoding skips the tree's fields.
+ */
+const TREE_FIELDS = new Set<string>([
+  'parentId',
+  'childIds',
+  PARENTS_FIELD,
+  ORDER_KEY_FIELD,
+  PAGE_FIELD
+])
 const FILL_TYPES = new Set<FillType>([
   'SOLID',
   'GRADIENT_LINEAR',
@@ -47,12 +58,12 @@ export type DecodedYjsNodeProps = Partial<SceneNode> & Record<string, unknown>
 export function encodeNodeForYjs(node: SceneNode): Record<string, unknown> {
   const encoded: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(node)) {
-    if (DERIVED_NODE_FIELDS.has(key as keyof SceneNode)) continue
-    // Yjs's binary value encoding does not preserve native Map instances.
+    if (DERIVED_NODE_FIELDS.has(key as keyof SceneNode) || TREE_FIELDS.has(key)) continue
     encoded[key] = structuredClone(
       key === 'instanceOverrides' ? serializeInstanceOverrideState(node.instanceOverrides) : value
     )
   }
+  encoded.instanceOverrides = serializeInstanceOverrideState(node.instanceOverrides)
   return encoded
 }
 
@@ -76,12 +87,15 @@ export function syncEncodedNodeToYMap(
 export function decodeNodeFromYjs(ynode: YjsNodeLike): DecodedYjsNodeProps {
   const props: Record<string, unknown> = {}
   for (const [key, value] of ynode.entries()) {
-    if (DERIVED_NODE_FIELDS.has(key as keyof SceneNode)) continue
+    if (DERIVED_NODE_FIELDS.has(key as keyof SceneNode) || TREE_FIELDS.has(key)) continue
     props[key] = structuredClone(value)
   }
 
-  props.instanceOverrides = deserializeInstanceOverrideState(props.instanceOverrides)
   props.source = normalizeSourceMetadata(props.source)
+  // Rooms written before overrides were serialized hold an empty object, which reads as none.
+  if ('instanceOverrides' in props) {
+    props.instanceOverrides = deserializeInstanceOverrideState(props.instanceOverrides)
+  }
   if ('fillGeometry' in props) props.fillGeometry = normalizeGeometryPaths(props.fillGeometry)
   if ('strokeGeometry' in props) props.strokeGeometry = normalizeGeometryPaths(props.strokeGeometry)
   props.textPicture = null

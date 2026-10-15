@@ -19,6 +19,8 @@ import {
 } from '@open-pencil/compiler'
 import type { BackendApplicationSpecV2 } from '@open-pencil/lowcode/backend'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import { supabaseBackfillApplicationV2, supabasePrivateRealtimeSelectionV2 } from '../helpers'
 
 function createPlan(
@@ -540,7 +542,11 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     for (const invalid of invalidCases) {
       const application = supabaseBackfillApplicationV2()
       application.dataModel.entities[0].fields[1].type = invalid.type
-      Reflect.set(application.dataModel.entities[0].fields[1].default, 'value', invalid.value)
+      Reflect.set(
+        expectDefined(application.dataModel.entities[0].fields[1].default),
+        'value',
+        invalid.value
+      )
       Reflect.set(application.dataMigrations.migrations[0].transforms[0], 'value', invalid.value)
       expect(adapter.validate(directContext(application))).toContainEqual(
         expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
@@ -554,7 +560,11 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     ]
     invalidEnum.dataModel.entities[0].fields[1].type = 'enum'
     invalidEnum.dataModel.entities[0].fields[1].enumId = 'account-status-type'
-    Reflect.set(invalidEnum.dataModel.entities[0].fields[1].default, 'value', 'archived')
+    Reflect.set(
+      expectDefined(invalidEnum.dataModel.entities[0].fields[1].default),
+      'value',
+      'archived'
+    )
     Reflect.set(invalidEnum.dataMigrations.migrations[0].transforms[0], 'value', 'archived')
     expect(adapter.validate(directContext(invalidEnum))).toContainEqual(
       expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
@@ -570,7 +580,11 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
           ]
           application.dataModel.entities[0].fields[1].enumId = 'account-status-type'
         }
-        Reflect.set(application.dataModel.entities[0].fields[1].default, 'value', value)
+        Reflect.set(
+          expectDefined(application.dataModel.entities[0].fields[1].default),
+          'value',
+          value
+        )
         Reflect.set(application.dataMigrations.migrations[0].transforms[0], 'value', value)
         expect(adapter.validate(directContext(application))).toContainEqual(
           expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })

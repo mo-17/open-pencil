@@ -27,7 +27,7 @@ describe('update_lowcode_node — motion actions', () => {
     const result = updateEvents(button.id, { onClick: actions }, figma)
 
     expect(result.ok).toBe(true)
-    expect(graph.getNode(button.id)?.events?.onClick).toEqual(actions)
+    expect<unknown>(graph.getNode(button.id)?.events?.onClick).toEqual(actions)
   })
 
   test('persists toggleMotion and bounded awaitMotion controls', () => {
@@ -46,7 +46,7 @@ describe('update_lowcode_node — motion actions', () => {
     ]
 
     expect(updateEvents(button.id, { onClick: actions }, figma).ok).toBe(true)
-    expect(graph.getNode(button.id)?.events?.onClick).toEqual(actions)
+    expect<unknown>(graph.getNode(button.id)?.events?.onClick).toEqual(actions)
 
     const invalid = updateEvents(
       button.id,

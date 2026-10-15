@@ -14,6 +14,7 @@ import {
   nodesHaveNavigateHandler,
   nodesHaveBackHandler,
   nodesHaveNavigateParams,
+  referencedComponentNames,
   referencedLucideIconNames
 } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
@@ -70,6 +71,10 @@ export function buildComponentModule(
   const kitImports = uiKit ? collectKitImports(bodyNodes, uiKit) : []
   const kitImportBlock =
     kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
+  const componentImports = buildComponentImports(
+    referencedComponentNames(bodyNodes).filter((name) => name !== def.name),
+    './'
+  )
   const lucideImport = buildLucideIconImport(referencedLucideIconNames(bodyNodes))
   const moduleImports = buildReactModuleImports(bodyNodes, true)
   const moduleImportBlock = moduleImports ? `${moduleImports}\n` : ''
@@ -98,6 +103,7 @@ export function buildComponentModule(
     validationImport,
     i18nImport,
     kitImportBlock,
+    componentImports ? `${componentImports}\n` : '',
     lucideImport,
     moduleImportBlock,
     enhancedSelectImport(bodyNodes, './'),

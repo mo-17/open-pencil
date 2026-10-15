@@ -13,6 +13,7 @@ import { applyResize, commitResizePreview } from '#vue/shared/input/resize'
 import type { DragResize } from '#vue/shared/input/types'
 
 import { expectDefined } from '#tests/helpers/assert'
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 
 const BLACK: Fill = {
   type: 'SOLID',
@@ -162,6 +163,7 @@ describe('group resize reflows path text instead of squashing it', () => {
       origStrokes: [],
       origTextPathData: null,
       origTextPathBox: null,
+      lockedAspectRatio: null,
       origChildren: new Map([[text.id, origChild]])
     }
 
@@ -259,6 +261,7 @@ describe('direct (non-group) resize reflows path text instead of squashing it', 
       origStrokes: copyStrokes(text.strokes),
       origTextPathData: structuredClone(expectDefined(text.textPathData)),
       origTextPathBox: { ...box },
+      lockedAspectRatio: null,
       origChildren: null
     }
 
@@ -379,6 +382,7 @@ describe('resize + export integration: real commit path clears stale raw payload
       origStrokes: copyStrokes(text.strokes),
       origTextPathData: structuredClone(expectDefined(text.textPathData)),
       origTextPathBox: { ...box },
+      lockedAspectRatio: null,
       origChildren: null
     }
 
@@ -394,7 +398,7 @@ describe('resize + export integration: real commit path clears stale raw payload
     )
 
     const out = await exportFigFile(graph)
-    const reparsed = parseFigBuffer(out)
+    const reparsed = parseFigBuffer(uint8ArrayToArrayBuffer(out))
     const exported = expectDefined(reparsed.nodeChanges.find((nc) => nc.type === 'TEXT_PATH'))
 
     // No stale silhouette geometry resurrected from the raw payload.

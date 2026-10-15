@@ -17,6 +17,8 @@ async function chooseBlend(sectionName: string, option: string) {
 
 async function nodeState(id: string) {
   return page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.getNode(nodeId)
@@ -39,6 +41,8 @@ test.beforeAll(async ({ browser }) => {
   canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   ;[firstId, secondId] = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const props = {
@@ -100,12 +104,16 @@ test('edits fill and effect blend modes with style detachment and undo', async (
   await effects.getByRole('button', { name: 'Expand effect settings' }).click()
   await chooseBlend('Effects', 'Screen')
   expect(await nodeState(firstId)).toMatchObject({ effectBlend: 'SCREEN', effectStyleId: null })
+  await page.mouse.move(0, 0)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
   await expect(effects).toHaveScreenshot('effect-blend-mode.png')
 })
 
 test('batches fill blend modes across a compatible selection', async () => {
   await page.evaluate(
     ([first, second]) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.select([first, second])

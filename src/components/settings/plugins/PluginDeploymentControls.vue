@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import {
   AlertDialogAction,
   AlertDialogCancel,
@@ -245,10 +246,7 @@ async function clearToken(): Promise<void> {
 }
 
 function parameters(): DeploymentPluginParameters {
-  const normalizedLocales = locales.value
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean)
+  const normalizedLocales = compact(locales.value.split(',').map((value) => value.trim()))
   return {
     environment: environment.value,
     ...(target.value.trim() ? { target: target.value.trim() } : {}),
@@ -586,7 +584,7 @@ onBeforeUnmount(() => {
         <AlertDialogAction as-child>
           <button
             type="button"
-            class="rounded bg-danger px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+            class="rounded bg-error-fill px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
             :disabled="
               !pendingPlan?.documentSaved ||
               !pendingReview ||

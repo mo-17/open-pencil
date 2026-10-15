@@ -7,6 +7,8 @@ export interface VRTourSampleAsset {
   readonly downloadUrl: string
   /** SceneGraph lookup key, not a cryptographic integrity proof. */
   readonly graphImageHash: string
+  /** Canonical SHA-1 of the reviewed bytes; the legacy lookup key remains stable. */
+  readonly sha1: string
   readonly sha256: string
   readonly byteLength: number
   readonly width: number
@@ -31,6 +33,7 @@ export const VR_TOUR_SAMPLE_ASSETS: readonly VRTourSampleAsset[] = Object.freeze
     downloadUrl:
       'https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/cayley_interior.jpg',
     graphImageHash: '15f764c0f877a4c39d142c7b81de01b44e742659',
+    sha1: '03d4f1069f360564d34c07bbe71a487719b96719',
     sha256: 'abf4897f4c2f36226a1ffbb2dbc52e5777e04f2ab18a8b46d05f327b98c879cc',
     byteLength: 4_583_075,
     width: 8192,
@@ -47,6 +50,7 @@ export const VR_TOUR_SAMPLE_ASSETS: readonly VRTourSampleAsset[] = Object.freeze
     panoramaUrl: '/assets/vr-tour/lebombo.jpg',
     downloadUrl: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/lebombo.jpg',
     graphImageHash: '76df83c660b192f7bc8a141d8bda7550550a39c9',
+    sha1: '052140489fccf14b6007a95601aff989745d47c9',
     sha256: '2e70777b9947b8a74809c22b9485bea6c4d67955e1ab2747507890b429eb1e9b',
     byteLength: 1_873_244,
     width: 8192,

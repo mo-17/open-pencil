@@ -113,10 +113,11 @@ describe('compiler — low-code motion actions', () => {
   test('drops malformed persisted motion actions without throwing', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    const malformed = JSON.parse(`[
-      { "id": "bad-target", "kind": "playMotion", "targetNodeId": 42 },
-      { "id": "bad-track", "kind": "stopMotion", "targetNodeId": "target", "trackId": "   " }
-    ]`) as ActionDef[]
+    const malformed: ActionDef[] = [
+      { id: 'bad-target', kind: 'playMotion', targetNodeId: 'target' },
+      { id: 'bad-track', kind: 'stopMotion', targetNodeId: 'target', trackId: '   ' }
+    ]
+    Reflect.set(malformed[0], 'targetNodeId', 42)
     graph.createNode('BUTTON', pageId, { events: { onClick: malformed } })
 
     const ir = collectTree(graph, pageId)
@@ -169,6 +170,7 @@ describe('compiler — low-code motion actions', () => {
       emitEventHandler([
         {
           kind: 'condition',
+          references: [],
           condAst: { kind: 'number', value: 1 },
           consequent: [{ kind: 'playMotion', targetNodeId: 'nested' }]
         }

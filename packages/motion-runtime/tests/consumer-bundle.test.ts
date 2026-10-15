@@ -1,9 +1,12 @@
 import { expect, test } from 'bun:test'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const repoRoot = resolve(packageRoot, '../..')
+import * as v from 'valibot'
+
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
+
+const repoRoot = await resolveWorkspaceRoot(import.meta.dir)
+const packageRoot = resolve(repoRoot, 'packages/motion-runtime')
 const buildFixture = resolve(packageRoot, 'tests/fixtures/build-framework-neutral-consumer.ts')
 
 interface ConsumerBundleResult {
@@ -30,7 +33,14 @@ async function buildConsumerBundle(): Promise<ConsumerBundleResult> {
     throw new Error(`Consumer bundle build failed (${exitCode}):\n${stderr}`)
   }
 
-  return JSON.parse(stdout) as ConsumerBundleResult
+  return v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.object({ contributingInputs: v.array(v.string()), bundledSource: v.string() })
+    ),
+    stdout
+  )
 }
 
 test('tree-shakes Vue and DOM adapters from a framework-neutral consumer bundle', async () => {

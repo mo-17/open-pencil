@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 function installLocalStorage() {
   const data = new Map<string, string>()
   const storage = {
@@ -269,7 +271,7 @@ describe('lowcode deploy history', () => {
     installLocalStorage()
     const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy/history')
     const calls: Array<{ url: string; init?: RequestInit }> = []
-    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    const fetcher = fetchStub(async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(input), init })
       return new Response(
         JSON.stringify({ id: 'dep_restored', ssl_url: 'https://app.netlify.app' })
@@ -297,8 +299,9 @@ describe('lowcode deploy history', () => {
   test('surfaces Netlify rollback API errors without persisting tokens', async () => {
     const storage = installLocalStorage()
     const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy/history')
-    const fetcher = (async () =>
-      new Response('Unauthorized', { status: 401 })) satisfies typeof fetch
+    const fetcher = fetchStub(
+      async () => new Response('Unauthorized', { status: 401 })
+    ) satisfies typeof fetch
 
     await expect(
       restoreNetlifyDeploy({ token: 'bad-token', siteId: 'site_1', deployId: 'dep_1' }, fetcher)

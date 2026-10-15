@@ -2,14 +2,15 @@ import { describe, expect, test } from 'bun:test'
 
 import { responsiveStyleVariants } from '#design-jsx/export/responsive'
 
-import {
-  collectResponsiveTailwindClasses,
-  collectTailwindClasses
-} from '@open-pencil/core/io/formats/jsx'
 import { compileTailwindCSS } from '@open-pencil/dom-css'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
-function fixture(properties: Partial<SceneNode>) {
+import {
+  collectResponsiveTailwindClasses,
+  collectTailwindClasses
+} from '#core/io/formats/jsx/index'
+
+function fixture(properties: Partial<SceneNode> = {}) {
   const graph = new SceneGraph()
   const frame = graph.createNode('FRAME', graph.getPages()[0].id, {
     width: 400,

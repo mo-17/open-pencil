@@ -66,6 +66,14 @@ export type SceneGraphEventHandlers = Partial<{
   ) => void
 }>
 
+/** Hears about nodes as an edit adds and changes them, synchronously and before each change. */
+export interface NodeChangeObserver {
+  /** A node is about to change and is still as it was. */
+  before: (node: SceneNode) => void
+  /** A node was just added. */
+  created: (node: SceneNode) => void
+}
+
 export type DocumentColorSpace = 'srgb' | 'display-p3'
 
 export type LibrarySource =
@@ -389,12 +397,14 @@ export type MaskType = 'ALPHA' | 'VECTOR' | 'LUMINANCE'
 export interface LayoutGrid {
   visible?: boolean
   color?: Color
-  pattern?: 'COLUMNS' | 'ROWS' | 'GRID'
+  /** `STRIPES` is the archive's name for columns or rows, along `axis`. */
+  pattern?: 'COLUMNS' | 'ROWS' | 'GRID' | 'STRIPES'
   axis?: 'X' | 'Y'
   type?: 'MIN' | 'CENTER' | 'MAX' | 'STRETCH'
   alignment?: 'MIN' | 'CENTER' | 'MAX' | 'STRETCH'
   numSections?: number
-  count?: number
+  /** Figma's plugin API reports an Auto count as `null` and accepts `Infinity` for it. */
+  count?: number | null
   offset?: number
   sectionSize?: number
   gutterSize?: number
@@ -438,6 +448,22 @@ export type TextDecorationStyle = 'SOLID' | 'DOTTED' | 'WAVY'
 export type LeadingTrim = 'NONE' | 'CAP_HEIGHT'
 export type TextDirection = 'AUTO' | 'LTR' | 'RTL'
 export type LayoutDirection = 'AUTO' | 'LTR' | 'RTL'
+/** Whether a paragraph is an item of a numbered list, a bulleted list, or no list. */
+export type TextListType = 'NONE' | 'ORDERED' | 'UNORDERED'
+
+/** How one paragraph of a text node (a line ending at a newline) sits in a list. */
+/** Spacing a text sets for all its paragraphs and a paragraph can set for itself. */
+export type TextParagraphSpacingField = 'listSpacing' | 'paragraphSpacing' | 'paragraphIndent'
+
+export interface TextParagraphStyle {
+  listType: TextListType
+  /** Nesting level: 1–5 for list items; kept but not drawn for plain paragraphs. */
+  indentation: number
+  /** This paragraph's own spacing, in place of the text's; absent ones follow the text. */
+  listSpacing?: number
+  paragraphSpacing?: number
+  paragraphIndent?: number
+}
 
 export interface FontVariation {
   axis: string
@@ -448,6 +474,29 @@ export interface FontFeature {
   tag: string
   enabled: boolean
 }
+
+/** Where a stretch of text links to, as Figma's `HyperlinkTarget`: a URL, or a node by its ID. */
+export interface HyperlinkTarget {
+  type: 'URL' | 'NODE'
+  value: string
+}
+
+/** The text fields a range of characters can bind to a variable, as Figma lists them. */
+export const TEXT_BINDABLE_FIELDS = [
+  'fontFamily',
+  'fontSize',
+  'fontStyle',
+  'fontWeight',
+  'letterSpacing',
+  'lineHeight',
+  'paragraphSpacing',
+  'paragraphIndent'
+] as const
+
+export type TextBindableField = (typeof TEXT_BINDABLE_FIELDS)[number]
+
+/** Variable IDs bound to text fields, by field. */
+export type TextBoundVariables = Partial<Record<TextBindableField, string>>
 
 export interface CharacterStyleOverride {
   fontWeight?: number
@@ -466,6 +515,15 @@ export interface CharacterStyleOverride {
   fontVariations?: FontVariation[]
   fontFeatures?: FontFeature[]
   textLanguage?: string | null
+  textCase?: TextCase
+  /** A link over the characters; `null`, like leaving it out, links nowhere. */
+  hyperlink?: HyperlinkTarget | null
+  /** The text style the characters use in place of the text's own; `null` uses none. */
+  textStyleId?: string | null
+  /** The fill style the characters use in place of the text's own; `null` uses none. */
+  fillStyleId?: string | null
+  /** The characters' text field bindings, in place of the text's own. */
+  boundVariables?: TextBoundVariables
 }
 
 export interface StyleRun {
@@ -481,7 +539,10 @@ export interface ArcData {
 }
 
 export type LayoutMode = 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID' | 'FREE'
+/** A node's sizing along one axis; fill is stored on the child, hug on its own layout. */
 export type LayoutSizing = 'FIXED' | 'HUG' | 'FILL'
+/** Whether an auto-layout frame keeps its size or hugs its children along one of its axes. */
+export type AxisSizingMode = 'FIXED' | 'HUG'
 
 /**
  * True when the layout mode runs an auto-layout (flex / grid) engine over
@@ -559,6 +620,11 @@ export interface DerivedTextGlyph {
   /** Figma Glyph.rotation — radians, not degrees. Zero for axis-aligned text. */
   rotation?: number
   /**
+   * Horizontal advance in pixels at `fontSize`, before `scaleX`, when the shaping source gave
+   * one; where the glyph ends, so decorations stop at the text rather than the layer's edge.
+   */
+  advance?: number
+  /**
    * Accumulated non-uniform resize scale (default 1). Paint order is
    * translate → scale(scaleX,Y) → rotate → scale(fontSize,-fontSize) so
    * anisotropic stretch matches scaleGeometryPaths(strokeGeometry).
@@ -623,6 +689,56 @@ export interface EnabledLibraryBinding {
   libraryId: string
   revisionId: string
   enabled: boolean
+}
+
+/** The library a document publishes as. */
+export interface SourceLibraryPublication {
+  libraryId: string
+  revisionId: string
+  name: string
+  catalogSource?: string
+}
+
+/** A reply in a canvas comment thread. */
+export interface CommentReply {
+  id: string
+  author: string
+  /** The author's collaboration color when they wrote it, for their avatar. */
+  authorColor?: Color
+  /** Markdown: bold, italic, strikethrough, links and lists. */
+  text: string
+  createdAt: string
+  deleted?: boolean
+}
+
+/** A canvas comment thread, kept in the document's root plugin data. */
+export interface CommentThread {
+  id: string
+  pageId: string
+  /** Page name when the pin was placed, for readers of the raw data. */
+  pageName?: string
+  /** Top-level layer under the pin; the pin follows it when it moves. */
+  nodeId?: string | null
+  nodeName?: string | null
+  /** Offset from the layer's top-left corner, in canvas units. */
+  offsetX?: number
+  offsetY?: number
+  /** Canvas position when the pin was last saved; used when the layer is gone. */
+  x: number
+  y: number
+  author: string
+  /** The author's collaboration color when they wrote it, for their avatar. */
+  authorColor?: Color
+  /** Markdown: bold, italic, strikethrough, links and lists. */
+  text: string
+  createdAt: string
+  /** Bumped on every change. */
+  updatedAt: string
+  resolved: boolean
+  resolvedAt?: string | null
+  /** Deleted threads stay as tombstones so a stale copy cannot bring them back. */
+  deleted?: boolean
+  replies: CommentReply[]
 }
 
 export interface SceneNode {
@@ -701,6 +817,19 @@ export interface SceneNode {
   lineHeight: number | null
   letterSpacing: number
   maxLines: number | null
+  /**
+   * One entry per paragraph of `text`, in order. Missing entries are plain paragraphs, so text
+   * without lists keeps this empty.
+   */
+  textParagraphs: TextParagraphStyle[]
+  /** Space after a list item followed by another; a paragraph's own value comes first. */
+  listSpacing: number
+  /** Space after a paragraph other than between two list items. */
+  paragraphSpacing: number
+  /** Indent of the first line of each plain paragraph. */
+  paragraphIndent: number
+  /** Whether list markers hang outside the text box instead of indenting the items. */
+  hangingList: boolean
 
   styleRuns: StyleRun[]
   fontVariations: FontVariation[]
@@ -729,7 +858,7 @@ export interface SceneNode {
 
   vectorNetwork: VectorNetwork | null
   handleMirroring: HandleMirroring
-  booleanOperation?: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'EXCLUDE'
+  booleanOperation: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'EXCLUDE' | undefined
   fillGeometry: GeometryPath[]
   strokeGeometry: GeometryPath[]
 
@@ -745,12 +874,25 @@ export interface SceneNode {
   borderLeftWeight: number
   independentStrokeWeights: boolean
 
+  /**
+   * The weight and alignment a node keeps for its strokes, as Figma keeps them on the node: they
+   * last while it has no strokes, and a stroke added to it takes them. Each stroke still carries
+   * its own `weight` and `align`, which win while the node has strokes.
+   */
+  strokeWeight: number
+  strokeAlign: Stroke['align']
+
   strokeMiterLimit: number
 
   minWidth: number | null
   maxWidth: number | null
   minHeight: number | null
   maxHeight: number | null
+  /**
+   * The size whose proportions the layer keeps, as Figma stores it: the width and height it had
+   * when the ratio was locked, not a reduced ratio. Null leaves the proportions free.
+   */
+  targetAspectRatio: Vector | null
 
   isMask: boolean
   maskType: MaskType
@@ -807,6 +949,11 @@ export interface SceneNode {
   librarySource: LibraryAssetSource | null
   isPublishable: boolean
   isSymbolPublishable: boolean
+  /**
+   * On an instance inside a component: its properties show on instances of that component,
+   * as Figma's `isExposedInstance`.
+   */
+  isExposedInstance: boolean
   symbolDescription: string
   symbolLinks: SymbolLink[]
   variantPropSpecs: VariantPropSpec[]
@@ -1153,6 +1300,8 @@ export interface VariableCollectionMode {
    * at-rule prelude (`@media (max-width: 640px)`). Absent means the default for its axis.
    */
   condition?: string
+  /** Where Figma lists the mode, as the file saved it; Figma orders a collection's modes by it. */
+  sortPosition?: string
 }
 
 export interface VariableCollection {
@@ -1162,7 +1311,31 @@ export interface VariableCollection {
   modes: VariableCollectionMode[]
   defaultModeId: string
   variableIds: string[]
+  /**
+   * The attribute that switches a mode with no condition of its own, `data-theme` for
+   * `[data-theme="dark"]`. Absent means one named after the collection.
+   */
+  modeAttribute?: string
   pluginData?: PluginDataEntry[]
+  /**
+   * Published library key, for a collection the file copies from a library. Such a collection
+   * belongs to the library: Figma lists it with the library's, not the file's own.
+   */
+  key?: string
+  /** Published library version, which references by key carry with it. */
+  version?: string
+}
+
+/** Whether a collection is a library's copy, which takes no variables or modes of the file's. */
+export function isLibraryCollection(collection: Pick<VariableCollection, 'key'>): boolean {
+  return !!collection.key
+}
+
+/** An HTML attribute name a stylesheet can select on unescaped: `data-theme`, `theme`. */
+export const MODE_ATTRIBUTE_PATTERN = /^[A-Za-z_][\w-]*$/
+
+export function isModeAttributeName(name: string): boolean {
+  return name.length <= 100 && MODE_ATTRIBUTE_PATTERN.test(name)
 }
 
 // ── Lowcode (Phase 0) ──────────────────────────────────────────────

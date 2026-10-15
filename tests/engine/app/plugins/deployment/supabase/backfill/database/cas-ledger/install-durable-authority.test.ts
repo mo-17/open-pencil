@@ -873,9 +873,7 @@ describe('Supabase backfill database CAS ledger install durable authority', () =
       const results = await Promise.allSettled(operations)
       expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
       expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
-      const winner = results.find(
-        (result): result is PromiseFulfilledResult<unknown> => result.status === 'fulfilled'
-      )
+      const winner = results.find((result) => result.status === 'fulfilled')
       if (!winner || winner.value === null || typeof winner.value !== 'object') {
         throw new TypeError('Expected one precommit or settleBeforePrecommit winner.')
       }
@@ -961,9 +959,7 @@ describe('Supabase backfill database CAS ledger install durable authority', () =
     ])
     expect(settlements.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
     expect(settlements.filter(({ status }) => status === 'rejected')).toHaveLength(1)
-    const settled = settlements.find(
-      (result): result is PromiseFulfilledResult<unknown> => result.status === 'fulfilled'
-    )
+    const settled = settlements.find((result) => result.status === 'fulfilled')
     expect(settled?.value).toMatchObject({ status: 'not-dispatched' })
     await durableError(
       current.durable.authority.settleKnownNotDispatched({
@@ -1252,9 +1248,7 @@ describe('Supabase backfill database CAS ledger install durable authority', () =
     ])
     expect(reconciliations.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
     expect(reconciliations.filter(({ status }) => status === 'rejected')).toHaveLength(1)
-    const applied = reconciliations.find(
-      (result): result is PromiseFulfilledResult<unknown> => result.status === 'fulfilled'
-    )
+    const applied = reconciliations.find((result) => result.status === 'fulfilled')
     expect(applied?.value).toMatchObject({ status: 'applied', databaseLedgerBound: true })
   })
 

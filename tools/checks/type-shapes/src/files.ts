@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+
 export const TYPE_SHAPE_ROOTS = [
   'src',
   'packages/core/src',
@@ -20,6 +22,7 @@ export async function discoverTypeShapeFiles(
 ): Promise<string[]> {
   const files: string[] = []
   for (const root of roots) {
+    if (!existsSync(root)) continue
     for await (const path of new Bun.Glob('**/*.{ts,tsx}').scan(root)) {
       if (!isTypeShapeSourcePath(path)) continue
       files.push(`${root}/${path}`)

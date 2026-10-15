@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import type * as StaticButtonFixture from '#tests/helpers/code/static-button'
+
 for (const imageScaleMode of ['FIT', 'FILL'] as const)
   for (const disabled of [false, true])
     test(`CodePen browser export keeps IMAGE ${imageScaleMode} button artwork and native disabled=${disabled}`, async ({
@@ -8,7 +10,10 @@ for (const imageScaleMode of ['FIT', 'FILL'] as const)
       await page.goto('/?test&no-chrome&no-rulers')
       const output = await page.evaluate(
         async ({ disabled, imageScaleMode }) => {
-          const { staticButtonExports } = await import('/tests/helpers/code/static-button.ts')
+          const moduleURL = new URL('/tests/helpers/code/static-button.ts', location.origin).href
+          const { staticButtonExports } = (await import(
+            /* @vite-ignore */ moduleURL
+          )) as typeof StaticButtonFixture
           return staticButtonExports(disabled, imageScaleMode)
         },
         { disabled, imageScaleMode }
@@ -60,7 +65,10 @@ for (const disabled of [false, true])
   }) => {
     await page.goto('/?test&no-chrome&no-rulers')
     const output = await page.evaluate(async (disabled) => {
-      const { staticButtonExports } = await import('/tests/helpers/code/static-button.ts')
+      const moduleURL = new URL('/tests/helpers/code/static-button.ts', location.origin).href
+      const { staticButtonExports } = (await import(
+        /* @vite-ignore */ moduleURL
+      )) as typeof StaticButtonFixture
       return staticButtonExports(disabled)
     }, disabled)
     expect(output.js).toBe('')

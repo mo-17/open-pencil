@@ -13,6 +13,8 @@ import { parseFigBuffer } from '@open-pencil/fig'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { slotPropertyId } from '@open-pencil/scene-graph'
 
+import { releaseFigPopulationWorker } from '#core/kiwi/fig/population/client'
+
 let original: SceneGraph
 let reopened: SceneGraph
 let records: NodeChange[]
@@ -43,10 +45,8 @@ function slotContents(graph: SceneGraph): Record<string, string[]> {
 beforeAll(async () => {
   await initCodec()
   original = await parseFigFile(await Bun.file(`${FIXTURES}/slots.fig`).arrayBuffer())
-  // An unedited document exports its original archive; an edit makes the export re-encode.
-  const untouched = original.getPages().find((page) => page.name === 'Page 1')
-  if (!untouched) throw new Error('Missing Page 1')
-  original.updateNode(untouched.id, { name: 'Page 1 (edited)' })
+  // Without its archive the export encodes every record, which is what this checks.
+  releaseFigPopulationWorker(original)
   const exported = await exportFigFile(original)
   expect(exported).not.toEqual(
     new Uint8Array(await Bun.file(`${FIXTURES}/slots.fig`).arrayBuffer())

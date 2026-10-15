@@ -92,12 +92,12 @@ function createReducedMotionQuery(initial = false) {
     removeListener(listener) {
       if (listener) listeners.delete(listener)
     },
-    addEventListener(type, listener) {
+    addEventListener(type: string, listener: ChangeListener | EventListenerObject) {
       if (type !== 'change') return
       if (typeof listener === 'function') listeners.add(listener)
       else listenerObjects.add(listener)
     },
-    removeEventListener(type, listener) {
+    removeEventListener(type: string, listener: ChangeListener | EventListenerObject) {
       if (type !== 'change') return
       if (typeof listener === 'function') listeners.delete(listener)
       else listenerObjects.delete(listener)

@@ -21,7 +21,7 @@ export interface MediaHost {
 }
 
 function host(type = 'root', text = ''): MediaHost {
-  return Vue.markRaw({
+  return Vue.markRaw<MediaHost>({
     type,
     text,
     props: {},

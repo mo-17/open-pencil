@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+
+import { compact } from 'es-toolkit'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
@@ -19,10 +20,11 @@ import { createFigSessionOriginalArchiveRequester } from '#core/kiwi/fig/session
 import { registerReaderRecovery } from '#core/kiwi/fig/session/document-state'
 import { computeAllLayouts } from '#core/layout'
 
-const ROOT = resolve(import.meta.dir, '../../../../..')
-const READ_MODULE_URL = pathToFileURL(
-  resolve(ROOT, 'packages/core/src/io/formats/fig/read.ts')
-).href
+import { asDouble } from '#tests/helpers/doubles'
+import { repoPath } from '#tests/helpers/paths'
+
+const ROOT = repoPath()
+const READ_MODULE_URL = pathToFileURL(repoPath('packages/core/src/io/formats/fig/read.ts')).href
 
 function hydrationDelta(graph: SceneGraph, options: { create?: boolean } = {}): FigPopulationDelta {
   const page = graph.getPages()[0]
@@ -81,18 +83,20 @@ describe('FIG session ownership', () => {
 
   test('discards an archive response when the graph changes while it is pending', async () => {
     const graph = new SceneGraph()
-    let resolveArchive: ((bytes: Uint8Array) => void) | null = null
+    const archive: { resolve: ((bytes: Uint8Array) => void) | null } = {
+      resolve: null
+    }
     registerOriginalArchiveRequest(
       graph,
       () =>
         new Promise<Uint8Array>((resolve) => {
-          resolveArchive = resolve
+          archive.resolve = resolve
         })
     )
     const request = requestOriginalArchive(graph)
 
     graph.updateNode(graph.rootId, { name: 'Edited' })
-    resolveArchive?.(new Uint8Array([1, 2, 3]))
+    archive.resolve?.(new Uint8Array([1, 2, 3]))
 
     await expect(request).resolves.toBeNull()
     releaseFigPopulationWorker(graph)
@@ -139,7 +143,9 @@ describe('FIG session ownership', () => {
 
   test('discards a pending archive response after a variable collection change', async () => {
     const graph = new SceneGraph()
-    let resolveArchive: ((bytes: Uint8Array) => void) | null = null
+    let resolveArchive: (bytes: Uint8Array) => void = () => {
+      throw new Error('Archive request did not start')
+    }
     registerOriginalArchiveRequest(
       graph,
       () =>
@@ -156,7 +162,7 @@ describe('FIG session ownership', () => {
       defaultModeId: 'light',
       variableIds: []
     })
-    resolveArchive?.(new Uint8Array([1, 2, 3]))
+    resolveArchive(new Uint8Array([1, 2, 3]))
 
     await expect(request).resolves.toBeNull()
     releaseFigPopulationWorker(graph)
@@ -277,7 +283,7 @@ describe('FIG session ownership', () => {
       graph,
       state,
       emitEditorEvent: () => undefined,
-      getRenderer: () => undefined,
+      getRenderer: () => null,
       requestRender: () => undefined,
       setSelectedIds: (ids: Set<string>) => {
         state.selectedIds = ids
@@ -295,7 +301,9 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    const component = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const component = graph.createNode('COMPONENT', page.id, {
+      name: 'Button'
+    })
     const instance = graph.createInstance(component.id, page.id)
     if (!instance) throw new Error('Expected instance')
     registerOriginalArchiveRequest(graph, async () => new Uint8Array([1, 2, 3]))
@@ -340,7 +348,9 @@ describe('FIG session ownership', () => {
 
   test('accepts trusted hydration while an original archive request is pending', async () => {
     const graph = new SceneGraph()
-    let resolveArchive: ((bytes: Uint8Array) => void) | null = null
+    let resolveArchive: (bytes: Uint8Array) => void = () => {
+      throw new Error('Archive request did not start')
+    }
     registerOriginalArchiveRequest(
       graph,
       () =>
@@ -352,7 +362,7 @@ describe('FIG session ownership', () => {
 
     applyFigPopulationDelta(graph, hydrationDelta(graph, { create: true }))
     const archive = new Uint8Array([1, 2, 3])
-    resolveArchive?.(archive)
+    resolveArchive(archive)
 
     await expect(request).resolves.toBe(archive)
     releaseFigPopulationWorker(graph)
@@ -373,7 +383,9 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    const component = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const component = graph.createNode('COMPONENT', page.id, {
+      name: 'Button'
+    })
     const instance = graph.createInstance(component.id, page.id)
     if (!instance) throw new Error('Expected instance')
     const scheduler = createComponentSyncScheduler(
@@ -417,7 +429,9 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    const component = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const component = graph.createNode('COMPONENT', page.id, {
+      name: 'Button'
+    })
     const instance = graph.createInstance(component.id, page.id)
     if (!instance) throw new Error('Expected instance')
     const scheduler = createComponentSyncScheduler(
@@ -441,7 +455,9 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    const component = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const component = graph.createNode('COMPONENT', page.id, {
+      name: 'Button'
+    })
     const instance = graph.createInstance(component.id, page.id)
     if (!instance) throw new Error('Expected instance')
     const scheduler = createComponentSyncScheduler(
@@ -454,7 +470,9 @@ describe('FIG session ownership', () => {
         scheduler.scheduleComponentSync(node.id)
         if (origin !== 'derived-component-sync' || authored) return
         authored = true
-        graph.updateNode(graph.rootId, { name: 'Authored during component sync' })
+        graph.updateNode(graph.rootId, {
+          name: 'Authored during component sync'
+        })
       }
     })
     registerOriginalArchiveRequest(graph, async () => new Uint8Array([1, 2, 3]))
@@ -520,7 +538,9 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    const component = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const component = graph.createNode('COMPONENT', page.id, {
+      name: 'Button'
+    })
     const instance = graph.createInstance(component.id, page.id)
     if (!instance) throw new Error('Expected instance')
     let rendered = false
@@ -528,7 +548,9 @@ describe('FIG session ownership', () => {
       () => graph,
       () => {
         rendered = true
-        graph.updateNode(graph.rootId, { name: 'Authored from render listener' })
+        graph.updateNode(graph.rootId, {
+          name: 'Authored from render listener'
+        })
       }
     )
     const unbind = graph.onNodeEvents({
@@ -610,8 +632,16 @@ describe('FIG session ownership', () => {
       primaryAxisSizing: 'FIXED',
       counterAxisSizing: 'FIXED'
     })
-    const laidOut = graph.createNode('RECTANGLE', frame.id, { width: 20, height: 20 })
-    const authored = graph.createNode('RECTANGLE', page.id, { x: 1, width: 20, height: 20 })
+    const laidOut = graph.createNode('RECTANGLE', frame.id, {
+      x: 99,
+      width: 20,
+      height: 20
+    })
+    const authored = graph.createNode('RECTANGLE', page.id, {
+      x: 1,
+      width: 20,
+      height: 20
+    })
     let edited = false
     registerOriginalArchiveRequest(graph, async () => new Uint8Array([1, 2, 3]))
     const unbind = graph.onNodeEvents({
@@ -674,10 +704,18 @@ describe('FIG session ownership', () => {
     }
     let workerTerminated = false
     let portClosed = false
-    const worker = { terminate: () => (workerTerminated = true) } as Worker
+    const worker = {
+      terminate: () => {
+        workerTerminated = true
+      }
+    } as Worker
     const port = {
-      postMessage: () => undefined,
-      close: () => (portClosed = true)
+      postMessage: (_message: unknown) => {
+        // The oversized path only disposes the port; it never posts to it.
+      },
+      close: () => {
+        portClosed = true
+      }
     } as MessagePort
     const archive = new Uint8Array([4, 5, 6])
     registerEmptyReader(graph)
@@ -713,11 +751,17 @@ describe('FIG session ownership', () => {
     }
     let workerTerminated = false
     let portClosed = false
-    const worker = { terminate: () => (workerTerminated = true) } as Worker
-    const port = {
+    const worker = asDouble<Worker>({
+      terminate: () => {
+        workerTerminated = true
+      }
+    })
+    const port = asDouble<MessagePort>({
       postMessage: () => undefined,
-      close: () => (portClosed = true)
-    } as MessagePort
+      close: () => {
+        portClosed = true
+      }
+    })
     registerOriginalArchiveRequest(graph, async () => new Uint8Array([4, 5, 6]))
     registerFigPopulationWorker(graph, worker, port)
 
@@ -741,7 +785,11 @@ describe('FIG session ownership', () => {
       if (event.data.type !== 'original-archive') return
       const bytes = archive.slice()
       channel.port2.postMessage(
-        { type: 'original-archive-result', requestId: event.data.requestId, bytes },
+        {
+          type: 'original-archive-result',
+          requestId: event.data.requestId,
+          bytes
+        },
         [bytes.buffer]
       )
     }
@@ -876,7 +924,10 @@ describe('FIG session ownership', () => {
     )
     registerFigPopulationWorker(graph, worker, channel.port1)
 
-    channel.port2.postMessage({ type: 'population-error', error: 'synthetic failure' })
+    channel.port2.postMessage({
+      type: 'population-error',
+      error: 'synthetic failure'
+    })
     await new Promise((resolve) => {
       setTimeout(resolve, 0)
     })
@@ -972,15 +1023,15 @@ describe('FIG session ownership', () => {
       process.env.DEV = 'true'
       const { parseFigFile } = await import(${JSON.stringify(READ_MODULE_URL)})
       const { createFigPopulationWorker, requestOriginalArchive, releaseFigPopulationWorker } = await import(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/population/client.ts')).href)}
+        ${JSON.stringify(pathToFileURL(repoPath('packages/core/src/kiwi/fig/population/client.ts')).href)}
       )
       const { isReaderPagePending, hasReaderSession } = await import(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/session/document-state.ts')).href)}
+        ${JSON.stringify(pathToFileURL(repoPath('packages/core/src/kiwi/fig/session/document-state.ts')).href)}
       )
       const { deserializeSceneGraph } = await import(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/parse/transfer.ts')).href)}
+        ${JSON.stringify(pathToFileURL(repoPath('packages/core/src/kiwi/fig/parse/transfer.ts')).href)}
       )
-      const bytes = await readFile(${JSON.stringify(resolve(ROOT, 'tests/fixtures/circle-text.fig'))})
+      const bytes = await readFile(${JSON.stringify(repoPath('tests/fixtures/circle-text.fig'))})
       const input = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       const graph = await parseFigFile(input, { populate: 'first-page' })
       assert.equal(input.byteLength, 0)
@@ -998,7 +1049,7 @@ describe('FIG session ownership', () => {
       releaseFigPopulationWorker(graph)
 
       const directWorker = new Worker(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/session/worker.ts')).href)},
+        ${JSON.stringify(pathToFileURL(repoPath('packages/core/src/kiwi/fig/session/worker.ts')).href)},
         { type: 'module' }
       )
       const directChannel = new MessageChannel()
@@ -1083,7 +1134,7 @@ describe('FIG session ownership', () => {
       process.exited
     ])
 
-    expect(exitCode, [stdout, stderr].filter(Boolean).join('\n')).toBe(0)
+    expect(exitCode, compact([stdout, stderr]).join('\n')).toBe(0)
   })
 
   test.serial('rejects session worker construction outside Worker runtimes', async () => {

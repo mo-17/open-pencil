@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { CodePenShowcaseError } from './error'
 import { auditCodePenOptionSecrets, auditCodePenPrefillSecrets } from './security'
 import {
@@ -65,10 +67,10 @@ function cleanOptions(
   options: CodePenShowcaseOptions
 ): Omit<CodePenPrefillData, 'html' | 'css' | 'js'> {
   const tags = options.tags
-    ?.map((tag) => tag.trim())
-    .filter(Boolean)
-    .map((tag) => truncateUTF8(tag, 64))
-    .slice(0, 5)
+    ? compact(options.tags.map((tag) => tag.trim()))
+        .map((tag) => truncateUTF8(tag, 64))
+        .slice(0, 5)
+    : undefined
   const title = options.title?.trim()
   const description = options.description?.trim()
   return {

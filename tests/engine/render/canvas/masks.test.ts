@@ -1,11 +1,15 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
+import type { Canvas, InputRect, Paint } from 'canvaskit-wasm'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderNode } from '#core/canvas/scene'
+
+import { canvasMock } from '#tests/engine/render/canvas/effects/helpers'
+
+import { asCanvas, asRenderer } from './helpers'
 
 function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id
@@ -13,15 +17,15 @@ function pageId(graph: SceneGraph) {
 
 function createCanvas() {
   return {
-    save: mock(() => undefined),
-    restore: mock(() => undefined),
-    translate: mock(() => undefined),
-    concat: mock(() => undefined),
-    rotate: mock(() => undefined),
-    scale: mock(() => undefined),
-    saveLayer: mock(() => undefined),
-    clipRect: mock(() => undefined),
-    clipRRect: mock(() => undefined)
+    save: canvasMock('save'),
+    restore: canvasMock('restore'),
+    translate: canvasMock('translate'),
+    concat: canvasMock('concat'),
+    rotate: canvasMock('rotate'),
+    scale: canvasMock('scale'),
+    saveLayer: mock((_paint?: Paint, _bounds?: InputRect | null) => undefined),
+    clipRect: canvasMock('clipRect'),
+    clipRRect: canvasMock('clipRRect')
   }
 }
 
@@ -58,11 +62,11 @@ function createRenderer() {
     renderComponentSet: mock((_canvas: Canvas, node) => {
       rendered.push(node.id)
     }),
-    renderNode(canvas, graph, nodeId, overlays, parentAbsX, parentAbsY) {
-      renderNode(this as SkiaRenderer, canvas, graph, nodeId, overlays, parentAbsX, parentAbsY)
+    renderNode(...args: Parameters<SkiaRenderer['renderNode']>) {
+      renderNode(asRenderer(this), ...args)
     }
   }
-  return { renderer: renderer as SkiaRenderer, rendered }
+  return { renderer: asRenderer(renderer), rendered }
 }
 
 describe('canvas masks', () => {
@@ -79,7 +83,7 @@ describe('canvas masks', () => {
     const { renderer, rendered } = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, frame.id, {})
+    renderNode(renderer, asCanvas(canvas), graph, frame.id, {})
 
     expect(rendered).toEqual([frame.id, below.id, clipped.id, mask.id])
     expect(renderer.effectLayerPaint.setBlendMode).toHaveBeenCalledWith('DstIn')
@@ -114,7 +118,7 @@ describe('canvas masks', () => {
     const { renderer, rendered } = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, frame.id, {})
+    renderNode(renderer, asCanvas(canvas), graph, frame.id, {})
 
     expect(rendered).toEqual([
       frame.id,
@@ -140,9 +144,10 @@ describe('canvas masks', () => {
     const { renderer, rendered } = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, frame.id, {})
+    renderNode(renderer, asCanvas(canvas), graph, frame.id, {})
 
-    expect(rendered).toEqual([frame.id, clipped.id, mask.id])
+    // The mask draws once for its luma and once more to scale that by its alpha, as Figma does.
+    expect(rendered).toEqual([frame.id, clipped.id, mask.id, mask.id])
     expect(renderer.ck.ColorFilter.MakeLuma).toHaveBeenCalled()
     expect(renderer.effectLayerPaint.setColorFilter).toHaveBeenCalledWith(expect.any(Object))
     expect(renderer.effectLayerPaint.setColorFilter).toHaveBeenLastCalledWith(null)
@@ -157,7 +162,7 @@ describe('canvas masks', () => {
     })
     const { renderer, rendered } = createRenderer()
 
-    renderNode(renderer, createCanvas() as Canvas, graph, mask.id, {})
+    renderNode(renderer, asCanvas(createCanvas()), graph, mask.id, {})
 
     expect(rendered).toEqual([])
   })

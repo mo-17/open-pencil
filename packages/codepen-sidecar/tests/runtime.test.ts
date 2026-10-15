@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 import { toUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { serializeCodePenSidecarRequest } from '@open-pencil/compiler/codepen/sidecar-wire'
@@ -16,7 +17,8 @@ import { createCodePenSidecarShowcase, CodePenSidecarRuntimeError } from '../src
 function packageName(files: Map<string, string | Uint8Array>): string {
   const source = files.get('package.json')
   if (typeof source !== 'string') throw new Error('Fixture package.json missing')
-  return JSON.parse(source).name as string
+  return v.parse(v.pipe(v.string(), v.parseJson(), v.looseObject({ name: v.string() })), source)
+    .name
 }
 
 function parsedRequest(
@@ -136,7 +138,14 @@ describe('CodePen sidecar pure runtime', () => {
     const files = generatedProject('react')
     const result = await createCodePenSidecarShowcase(parsedRequest(files, 'react'))
     const match = result.data.html.match(/<script type="importmap">(.*?)<\/script>/s)
-    const importMap = JSON.parse(match?.[1] ?? '{}') as { imports?: Record<string, string> }
+    const importMap = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ imports: v.optional(v.record(v.string(), v.string())) })
+      ),
+      match?.[1] ?? '{}'
+    )
     const urls = Object.entries(importMap.imports ?? {})
     expect(urls.some(([name]) => name === 'react')).toBe(true)
     for (const [name, url] of urls) {

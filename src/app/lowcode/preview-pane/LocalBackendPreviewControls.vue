@@ -112,7 +112,7 @@ watch(
         <span>NestJS</span>
         <span
           class="size-1.5 shrink-0 rounded-full"
-          :class="running ? 'bg-emerald-500' : 'bg-muted'"
+          :class="running ? 'bg-success-fill' : 'bg-muted'"
         />
         <span class="truncate text-muted">{{ status }}</span>
       </button>
@@ -179,7 +179,7 @@ watch(
               <h2 class="flex items-center gap-2 text-sm font-medium">
                 <span
                   class="size-2 rounded-full"
-                  :class="running ? 'bg-emerald-500' : 'bg-muted'"
+                  :class="running ? 'bg-success-fill' : 'bg-muted'"
                 />{{ status }}
               </h2>
               <p class="mt-2 text-xs leading-relaxed text-muted">{{ text.externalDescription }}</p>

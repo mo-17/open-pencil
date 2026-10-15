@@ -6,10 +6,13 @@ import type { EditorPreparation } from '@/app/editor/preparation/types'
 import type { NodeEditState } from '@/app/editor/vector/types'
 import type { MotionPathEditSelection } from '@/app/motion-path/types'
 import { appPreferences } from '@/app/settings/preferences/store'
+import { resolvedAppTheme } from '@/app/shell/theme'
 
 export function createInitialAppEditorState(pageId: string): AppEditorState {
   return {
     ...createDefaultEditorState(pageId),
+    // New pages and sections take their colors from the interface theme, as in Figma.
+    theme: resolvedAppTheme.value,
     snappingPreferences: { ...appPreferences.value.editing.snapping },
     showUI: true,
     showRulers: true,
@@ -24,6 +27,8 @@ export function createInitialAppEditorState(pageId: string): AppEditorState {
     nodeEditState: null,
     motionPathEdit: null,
     renameSelectionOpen: false,
+    variablesOpen: false,
+    iconPickerOpen: false,
     renameNodeId: null,
     numberFieldFocused: false,
     preparation: null,
@@ -46,6 +51,10 @@ export type AppEditorState = EditorState & {
   nodeEditState: NodeEditState | null
   motionPathEdit: MotionPathEditSelection | null
   renameSelectionOpen: boolean
+  /** The variables dialog, opened from the Design panel, the View menu, or the palette. */
+  variablesOpen: boolean
+  /** The icon picker, opened from the toolbar, the Object menu, or the palette. */
+  iconPickerOpen: boolean
   renameNodeId: string | null
   numberFieldFocused: boolean
   preparation: EditorPreparation | null

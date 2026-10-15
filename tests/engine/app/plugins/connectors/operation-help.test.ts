@@ -33,6 +33,8 @@ import {
 } from '@/app/plugins/connectors/supabase-schema-inspector'
 import type { ConnectorHostAdapter } from '@/app/plugins/connectors/types'
 
+import { repoPath } from '#tests/helpers/paths'
+
 const MUTATION_ATTEMPT_ID = '638acdad-eb0d-4115-adc3-894510531332'
 
 const BUNDLED_CONNECTORS: readonly Readonly<{
@@ -143,7 +145,7 @@ describe('connector operation help', () => {
         maxBytes: 32_768
       }
     }
-    const help = connectorOperationHelp('third-party.plugin', operation, 'en-US')
+    const help = connectorOperationHelp('third-party.plugin', operation, 'en')
     expect(help.fields).toHaveLength(CONNECTOR_OPERATION_HELP_LIMITS.maxFields)
     expect(help.truncated).toBe(true)
   })
@@ -156,7 +158,7 @@ describe('connector operation help', () => {
     const columns = connectorOperationHelp(
       SUPABASE_BUSINESS_CONNECTOR_CONTRACT.pluginId,
       query,
-      'en-US'
+      'en'
     ).fields.find(({ path }) => path === 'columns')
     expect(columns).toMatchObject({
       type: 'array',
@@ -176,7 +178,7 @@ describe('connector operation help', () => {
     for (const { contract, adapter } of BUNDLED_CONNECTORS) {
       for (const operation of contract.operations) {
         operationCount += 1
-        const english = connectorOperationHelp(contract.pluginId, operation, 'en-US')
+        const english = connectorOperationHelp(contract.pluginId, operation, 'en')
         const chinese = connectorOperationHelp(contract.pluginId, operation, 'zh-CN')
         expect(english.exampleJson, `${contract.pluginId}/${operation.operationId}`).not.toBeNull()
         expect(chinese.exampleJson).toBe(english.exampleJson)
@@ -203,10 +205,7 @@ describe('connector operation help', () => {
 
   test('keeps example fill DOM-only and never renders schema text as HTML', async () => {
     const source = await Bun.file(
-      new URL(
-        '../../../../../src/components/settings/plugins/PluginConnectorOperationRunner.vue',
-        import.meta.url
-      )
+      repoPath('src/components/settings/plugins/PluginConnectorOperationRunner.vue')
     ).text()
     expect(source).not.toContain('v-html')
     expect(source).toContain('@click="fillOperationExample"')

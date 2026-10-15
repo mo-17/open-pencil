@@ -17,6 +17,8 @@ test('first edit replaces baked missing-font glyphs with visible live substituti
   await editor.canvas.waitForInit()
   await editor.canvas.clearCanvas()
   const textId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     const pageId = store.state.currentPageId
@@ -55,6 +57,8 @@ test('first edit replaces baked missing-font glyphs with visible live substituti
   })
 
   await editor.page.waitForFunction((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const node = store?.graph.getNode(id)
     return node ? store?.renderer?.nodeFontReadiness(node) === 'substituted' : false
@@ -68,6 +72,8 @@ test('first edit replaces baked missing-font glyphs with visible live substituti
   await expectCanvas(editor.canvas, 'missing-font-live-substitution-after-first-edit')
 
   const edited = await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const node = store?.graph.getNode(id)
     return node?.type === 'TEXT'

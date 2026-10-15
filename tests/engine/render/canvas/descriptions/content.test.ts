@@ -36,7 +36,7 @@ test.each(['horizontal', 'vertical'] as const)(
       const paragraph = build(label, color, options)
       shaped.push(label.text)
       missing.push(...missingGlyphCharacters(label.text, paragraph.getShapedLines()))
-      texts.set(paragraph, label.text)
+      for (const block of paragraph.blocks) texts.set(block.paragraph, label.text)
       return paragraph
     })
     const draw = h.canvas.drawParagraph.bind(h.canvas)
@@ -82,7 +82,7 @@ test('Descriptions vertical canvas reserves the same line for empty and single-l
   const buildSpy = spyOn(h.renderer, 'buildParagraph').mockImplementation(
     (label, color, options) => {
       const paragraph = build(label, color, options)
-      textByParagraph.set(paragraph, label.text)
+      for (const block of paragraph.blocks) textByParagraph.set(block.paragraph, label.text)
       return paragraph
     }
   )

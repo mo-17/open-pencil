@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
@@ -57,7 +59,7 @@ export function carouselTextNode(node: SceneNode): SceneNode | null {
   return {
     ...moduleLabelTextNode(
       node,
-      parts.filter(Boolean).join('\n'),
+      compact(parts).join('\n'),
       node.width,
       14,
       node.textLanguage ?? 'en'

@@ -10,6 +10,7 @@ import {
 } from '#compiler/adapters/page-viewport/project'
 import type { ComponentDef, IRElement, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
+import { compact } from 'es-toolkit'
 
 import { emitVueBackendListStatus } from '../backend-client/list-status'
 import { emitVueBackendPageRuntime } from '../backend-client/lists'
@@ -309,7 +310,7 @@ export function buildVuePageModule(
     : ''
   return {
     source: `<script setup lang="ts">
-${scriptLines.filter(Boolean).join('\n')}
+${compact(scriptLines).join('\n')}
 </script>
 
 <template>

@@ -65,6 +65,7 @@ export function stepperBindingGraph(variant: StepperBindingVariant = 'base') {
         valueExpr: '$event.detail.currentIndex'
       },
       {
+        id: 'fixture-action-1',
         kind: 'setState',
         targetStateId: 'eventPrevious',
         valueExpr: '$event.detail.previousIndex'

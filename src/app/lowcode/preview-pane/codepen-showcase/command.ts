@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import type { CompileWarning } from '@open-pencil/compiler'
 import {
   parseCodePenSidecarResponse,
@@ -143,10 +145,7 @@ export function defaultCodePenTitle(documentName: string): string {
 }
 
 export function codePenTags(value: string): string[] {
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
+  return compact(value.split(',').map((entry) => entry.trim()))
     .slice(0, 5)
     .map((entry) => truncateUTF8(entry, 64))
 }

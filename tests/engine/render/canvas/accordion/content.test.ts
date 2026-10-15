@@ -22,7 +22,7 @@ test('Accordion shapes Chinese titles and multiline content within its frame', a
   const build = h.renderer.buildParagraph.bind(h.renderer)
   const spy = spyOn(h.renderer, 'buildParagraph').mockImplementation((label, color, options) => {
     const paragraph = build(label, color, options)
-    shaped.push({ text: label.text, lines: paragraph.getNumberOfLines() })
+    shaped.push({ text: label.text, lines: paragraph.getShapedLines().length })
     return paragraph
   })
   try {

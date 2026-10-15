@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import { IS_BROWSER, WEB_APP_ORIGIN } from '@/constants'
 
 /** Origins OpenPencil may run from when calling S3 from the browser. */
@@ -32,7 +34,7 @@ export function collectCloudCORSOrigins(extra?: string | null): string[] {
     }
   }
   if (browserOrigin) set.add(browserOrigin)
-  return [...set].filter(Boolean).sort()
+  return compact([...set]).sort()
 }
 
 function escapeXML(value: string): string {
@@ -78,6 +80,7 @@ export function buildCORSConfigurationJSON(origins: string[]): string {
         AllowedHeaders: ['*'],
         AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
         AllowedOrigins: origins,
+        // Content-Range lets a 200 reply to a range read be checked against the request.
         ExposeHeaders: [
           'ETag',
           'Content-Range',

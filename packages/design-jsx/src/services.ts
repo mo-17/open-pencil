@@ -29,9 +29,12 @@ export interface DesignJSXServices<Artwork> {
   /** Vector nodes for the artwork, created under the placement's parent. */
   createArtwork(graph: SceneGraph, artwork: Artwork, placement: ArtworkPlacement): SceneNode
   /** Lay out the graph once rendered nodes are in place. */
-  layout(graph: SceneGraph, scopeId?: string, signal?: AbortSignal): void | Promise<void>
+  layout(graph: SceneGraph, rootIds: readonly string[], signal?: AbortSignal): void | Promise<void>
   /** Host metadata preflight; complete before any graph mutation. */
   validateTree?(tree: TreeNode, signal?: AbortSignal): void | Promise<void>
   /** Host-owned node metadata, such as validated lowcode interactive properties. */
-  prepareNodeProps?(tree: TreeNode): { props: Partial<SceneNode>; warnings?: string[] }
+  prepareNodeProps?(tree: TreeNode): {
+    props: Partial<SceneNode>
+    warnings?: string[]
+  }
 }

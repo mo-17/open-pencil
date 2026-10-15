@@ -1,6 +1,7 @@
 import { parse, type Node } from 'acorn'
 import { transform } from 'sucrase'
 
+import { REKA_ELEMENTS } from './behaviours'
 import { designJSXHelpers } from './helpers'
 import * as React from './mini-react'
 import { designVar, defineVars } from './vars'
@@ -17,6 +18,8 @@ const RESERVED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 const TAG_ALIASES = new Map<string, string>([
   ['Frame', 'frame'],
   ['Text', 'text'],
+  ['Span', 'text-span'],
+  ['Paragraph', 'text-paragraph'],
   ['Rectangle', 'rectangle'],
   ['Ellipse', 'ellipse'],
   ['Line', 'line'],
@@ -228,6 +231,18 @@ class SafeExpressionEvaluator {
       const alias = TAG_ALIASES.get(identifierName(tagNode))
       if (alias === undefined) unsafe(`JSX tag ${identifierName(tagNode)} is not allowed`)
       tagName = alias
+    } else if (
+      tagNode.type === 'MemberExpression' &&
+      tagNode.computed !== true &&
+      tagNode.optional !== true
+    ) {
+      const namespace = identifierName(requireNode(tagNode.object, 'JSX namespace'))
+      const part = identifierName(requireNode(tagNode.property, 'JSX part'))
+      if (!Object.hasOwn(REKA_ELEMENTS, namespace))
+        unsafe(`JSX tag ${namespace}.${part} is not allowed`)
+      const parts = REKA_ELEMENTS[namespace]
+      if (!Object.hasOwn(parts, part)) unsafe(`JSX tag ${namespace}.${part} is not allowed`)
+      tagName = `${namespace}.${part}`
     } else {
       return unsafe('dynamic JSX tags are not allowed')
     }

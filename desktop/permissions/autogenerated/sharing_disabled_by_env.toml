@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sharing-disabled-by-env"
+description = "Enables the sharing_disabled_by_env command without any pre-configured scope."
+commands.allow = ["sharing_disabled_by_env"]
+
+[[permission]]
+identifier = "deny-sharing-disabled-by-env"
+description = "Denies the sharing_disabled_by_env command without any pre-configured scope."
+commands.deny = ["sharing_disabled_by_env"]

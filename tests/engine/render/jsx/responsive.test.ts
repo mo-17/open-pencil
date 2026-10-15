@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, type SceneNode } from '@open-pencil/core'
+import { SceneGraph, type SceneNode } from '#core/index'
 import {
   collectResponsiveTailwindClasses,
   collectTailwindClasses
-} from '@open-pencil/core/io/formats/jsx'
+} from '#core/io/formats/jsx/index'
 
 /**
  * Phase 3 §7 — `collectResponsiveTailwindClasses` derives breakpoint-prefixed

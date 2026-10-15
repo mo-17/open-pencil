@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import {
   parseBackendApplicationSpecV1,
   type BackendApplicationSpecV1
@@ -66,7 +68,7 @@ export function createBackendGettingStartedGuide(
       callbackPath: authentication.callbackPath
     },
     modules,
-    roles: [...new Set(modules.flatMap((module) => module.roles))],
+    roles: uniq(modules.flatMap((module) => module.roles)),
     accountSetup: businessLabel(accountSetup, locale),
     boundaries: boundaries.map((boundary) => businessLabel(boundary, locale))
   }

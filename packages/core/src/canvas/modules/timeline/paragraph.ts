@@ -45,7 +45,7 @@ export function drawTimelineText(
     renderer.color4f(color.r, color.g, color.b, color.a),
     { halfLeading: true },
     (paragraph) => {
-      canvas.drawParagraph(paragraph, block.x, block.y)
+      paragraph.draw(canvas, block.x, block.y)
       return paragraph.getHeight()
     }
   )

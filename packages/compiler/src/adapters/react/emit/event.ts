@@ -18,6 +18,7 @@ import type {
   IRTrackEventHandler,
   IRToastHandler
 } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { emitExpression, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 import type { ExprAst } from '@open-pencil/lowcode'
@@ -193,7 +194,7 @@ function eventNeedsArgument(
 }
 
 function joinHandlerParts(...parts: string[]): string {
-  return parts.filter(Boolean).join(' ')
+  return compact(parts).join(' ')
 }
 
 function emitRequestTimedArrow(options: {

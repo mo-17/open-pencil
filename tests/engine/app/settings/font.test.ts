@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { DEFAULT_WEB_FONT_PROVIDER_SETTINGS } from '@open-pencil/core/text'
+
 import { useFontSettings, type FontSettingsActions } from '@/components/font-settings/use'
 
 function actions(overrides: Partial<FontSettingsActions> = {}): FontSettingsActions {
@@ -25,9 +27,7 @@ function actions(overrides: Partial<FontSettingsActions> = {}): FontSettingsActi
       return ['Inter']
     },
     onlineFontsEnabled: { value: true },
-    fontProviderSettings: {
-      value: { google: true, fontsource: true, bunny: false, fontshare: false }
-    },
+    fontProviderSettings: { value: { ...DEFAULT_WEB_FONT_PROVIDER_SETTINGS } },
     ...overrides
   }
 }

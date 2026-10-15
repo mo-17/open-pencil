@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
 
 test('mixed vector regions keep open stroke segments', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.createNode('VECTOR', store.state.currentPageId, {
@@ -60,6 +62,8 @@ test('mixed vector regions keep open stroke segments', async () => {
 
 test('even-odd vector geometry preserves holes', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const bytes: number[] = []

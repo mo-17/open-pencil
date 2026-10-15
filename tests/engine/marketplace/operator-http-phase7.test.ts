@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 
+import * as v from 'valibot'
+
 import {
   MARKETPLACE_ADMIN_ASSERTION_HEADER,
   createMarketplaceHttpApp,
@@ -10,6 +12,11 @@ import {
   createMemoryMarketplaceRepository,
   signMarketplaceOperatorAssertion,
   verifyMarketplaceAuditChain,
+  parseMarketplaceControlJSON,
+  parseMarketplaceOperatorOverview,
+  parseMarketplaceControlPage,
+  parseMarketplaceControlAuditEvent,
+  parseMarketplaceControlPublisherAuditPage,
   type MarketplaceOperatorAuthorizationV2,
   type MarketplaceOperatorOperation,
   type MarketplaceOperatorRole
@@ -28,21 +35,6 @@ const GRANT_DIGEST = createHash('sha256').update('phase7-http-step-up-grant').di
 const RAW_OPERATOR_ID = 'user-01j5phase7operator'
 const OPERATOR_ACTOR = `portal:${createHash('sha256').update(RAW_OPERATOR_ID).digest('base64url')}`
 const encoder = new TextEncoder()
-
-interface OperatorOverviewResponse {
-  auditAccess: unknown
-  recentAudit: unknown[]
-}
-
-interface OperatorAuditPageResponse {
-  items: Array<{
-    schemaVersion: number
-    reason: string | null
-    correlationId: string | null
-    contextDigest: string | null
-    chainStatus: string
-  }>
-}
 
 let nonceSequence = 0
 
@@ -205,7 +197,10 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
       { oldMfa: true }
     )
     expect(security.response.status).toBe(200)
-    const available = (await security.response.json()) as OperatorOverviewResponse
+    const available = parseMarketplaceControlJSON(
+      await security.response.text(),
+      parseMarketplaceOperatorOverview
+    )
     expect(available.auditAccess).toBe('available')
     expect(available.recentAudit.length).toBeGreaterThan(0)
   })
@@ -244,7 +239,11 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
     expect(publicText).not.toContain(auditContext.correlationId as string)
     expect(publicText).toContain(event.contextDigest as string)
     await expect(
-      verifyMarketplaceAuditChain((JSON.parse(publicText) as { events: unknown }).events)
+      verifyMarketplaceAuditChain(
+        parseMarketplaceControlJSON(publicText, (value) =>
+          v.parse(v.looseObject({ events: v.unknown() }), value)
+        ).events
+      )
     ).resolves.toHaveLength(state.auditEvents.length)
 
     const privateAudit = await operatorRequest(
@@ -255,7 +254,9 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
       { oldMfa: true }
     )
     expect(privateAudit.response.status).toBe(200)
-    const privatePage = (await privateAudit.response.json()) as OperatorAuditPageResponse
+    const privatePage = parseMarketplaceControlJSON(await privateAudit.response.text(), (value) =>
+      parseMarketplaceControlPage(value, parseMarketplaceControlAuditEvent)
+    )
     expect(privatePage.items.at(-1)).toMatchObject({
       schemaVersion: 1,
       reason,
@@ -272,10 +273,10 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
       { oldMfa: true }
     )
     expect(publisherAudit.response.status).toBe(200)
-    const publisherPage = (await publisherAudit.response.json()) as {
-      publisherId: string
-      items: Array<{ action: string; subject: string; contextDigest?: string }>
-    }
+    const publisherPage = parseMarketplaceControlJSON(
+      await publisherAudit.response.text(),
+      parseMarketplaceControlPublisherAuditPage
+    )
     expect(publisherPage.publisherId).toBe('acme')
     expect(publisherPage.items.map(({ action }) => action)).toContain('publisher.created')
     expect(publisherPage.items.map(({ action }) => action)).toContain(
@@ -500,7 +501,9 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
       { body: previewBody, oldMfa: true }
     )
     expect(securityPreview.response.status).toBe(200)
-    const preview = (await securityPreview.response.json()) as { authorityDigest: string }
+    const preview = parseMarketplaceControlJSON(await securityPreview.response.text(), (value) =>
+      v.parse(v.looseObject({ authorityDigest: v.string() }), value)
+    )
 
     const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     await service.registerPublisher(

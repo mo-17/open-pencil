@@ -56,7 +56,7 @@ describe('reviewed external service MCP lifecycle', () => {
     const reviewed = descriptor('linear-issues')
     const operation = reviewed.connector.contract.operations[0]
     if (!operation) throw new Error('Missing reviewed Linear operation')
-    const help = connectorOperationHelp(reviewed.connector.contract.pluginId, operation, 'en-US')
+    const help = connectorOperationHelp(reviewed.connector.contract.pluginId, operation, 'en')
     expect(help.exampleJson).toBe(
       JSON.stringify(reviewed.connector.metadata.operations[0]?.example, null, 2)
     )
@@ -71,7 +71,7 @@ describe('reviewed external service MCP lifecycle', () => {
         (plugin) => plugin.package.manifest.plugin.id === reviewed.connector.contract.pluginId
       )
     if (!installed) throw new Error('Missing installed Linear plugin')
-    const [control] = pluginConnectorControls(installed, appConnectorAuthorization, 'en-US')
+    const [control] = pluginConnectorControls(installed, appConnectorAuthorization, 'en')
     expect(control?.manualSetup).toEqual({
       note: reviewed.manualSetup.note,
       scopes: reviewed.manualSetup.scopes

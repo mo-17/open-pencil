@@ -3,7 +3,10 @@ import { expect, type Page } from '@playwright/test'
 /** Only fixture construction uses the editor API; subsequent edits use the visible panel. */
 export async function advancedInputsFixture(page: Page) {
   return page.evaluate(() => {
-    const editor = window.openPencil.getStore()
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const dateTime = editor.createShape('INPUT', 120, 140, 360, 44)
     const number = editor.createShape('INPUT', 120, 230, 360, 44)
     const password = editor.createShape('INPUT', 120, 320, 360, 44)

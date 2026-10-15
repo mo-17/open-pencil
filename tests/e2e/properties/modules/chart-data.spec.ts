@@ -100,7 +100,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
     page
   }) => {
     const canvas = await prepareChart(page, renderer)
-    const first = await page.evaluate(() => [...window.openPencil.getStore().state.selectedIds][0])
+    const first = await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...window.openPencil.getStore().state.selectedIds][0]
+    })
     await insertChart(page)
     const before = await selectedExpansionConfig(page)
     const value = page
@@ -115,12 +118,16 @@ for (const renderer of ['retained', 'tiled'] as const) {
       await page.locator(`[data-node-id="${first}"]`).getByTestId('layers-item').click()
       await expect.poll(() => oldInput.evaluate((element) => element.isConnected)).toBe(false)
       await oldInput.evaluate((element) => {
+        if (!(element instanceof HTMLInputElement)) throw new Error('Expected input element')
         element.dispatchEvent(new FocusEvent('focus'))
         element.value = '999'
         element.dispatchEvent(new Event('input', { bubbles: true }))
         element.dispatchEvent(new Event('change', { bubbles: true }))
       })
-      await oldApply.evaluate((element) => element.click())
+      await oldApply.evaluate((element) => {
+        if (!(element instanceof HTMLElement)) throw new Error('Expected clickable element')
+        element.click()
+      })
       expect(await selectedExpansionConfig(page)).toEqual(before)
       await expect(
         page

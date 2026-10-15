@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   MARKETPLACE_ADMIN_ASSERTION_HEADER,
   MARKETPLACE_CONTROL_LIMITS,
@@ -2022,7 +2024,10 @@ describe('marketplace Phase 4 submission validation and revision HTTP contract',
     expect(encoder.encode(responseSource).byteLength).toBeLessThanOrEqual(
       MARKETPLACE_CONTROL_LIMITS.maxResponseJsonBytes
     )
-    const responseValue = JSON.parse(responseSource) as MarketplaceHttpTestRecord
+    const responseValue = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())),
+      responseSource
+    )
     expect(Object.hasOwn(responseValue, 'revisions')).toBe(false)
     expect(parseMarketplaceControlSubmissionSummary(responseValue).revision).toBe(128)
     const after = await fixture.service.snapshot()

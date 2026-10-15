@@ -1,14 +1,11 @@
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+
+import { readPackageManifest } from '@open-pencil/package-artifacts-tools'
 
 import { DEFAULT_PACKAGES, preparePublishDirectories } from './publish-dirs'
 
 const root = process.cwd()
-const corePackageJSON = JSON.parse(
-  await readFile(join(root, 'packages/core/package.json'), 'utf8')
-) as {
-  version: string
-}
+const corePackageJSON = await readPackageManifest(join(root, 'packages/core/package.json'))
 
 await preparePublishDirectories({
   coreVersion: corePackageJSON.version,

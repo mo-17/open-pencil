@@ -48,7 +48,9 @@ describe('component template asset discovery', () => {
       favorites
     })
     expect(result.map((item) => item.id)).toEqual([id])
-    expect(result[0]).toBe(templates.find((item) => item.id === id))
+    const expectedTemplate = templates.find((item) => item.id === id)
+    if (!expectedTemplate) throw new Error('Expected template fixture')
+    expect(result[0]).toBe(expectedTemplate)
     expect(
       filterComponentTemplateAssets(templates, { ...filter, category: 'input' }).every(
         (item) => item.category === 'input'
@@ -56,7 +58,7 @@ describe('component template asset discovery', () => {
     ).toBe(true)
     const chinese = getComponentTemplates('zh-CN')
     const item = chinese.find((entry) => entry.id === 'validated-form')
-    expect(item).toBeDefined()
+    if (!item) throw new Error('Expected localized template fixture')
     expect(
       filterComponentTemplateAssets(chinese, { ...filter, query: item?.name ?? 'missing' }).map(
         (entry) => entry.id

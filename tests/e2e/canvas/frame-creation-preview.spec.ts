@@ -9,6 +9,8 @@ async function setup(page: Page, renderer: 'retained' | 'tiled') {
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     for (let i = 0; i < 80; i++) {
@@ -26,7 +28,10 @@ async function setup(page: Page, renderer: 'retained' | 'tiled') {
     store.clearSelection()
     store.requestRender()
   })
-  await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+  await page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.test?.navigation?.waitForSettlement()
+  })
   const element = page.getByTestId('canvas-element')
   const box = expectDefined(await element.boundingBox(), 'canvas bounds')
   return {
@@ -40,6 +45,8 @@ async function setup(page: Page, renderer: 'retained' | 'tiled') {
 
 async function probeCreation(page: Page) {
   return page.evaluateHandle(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const element = document.querySelector('[data-test-id="canvas-element"]')
     if (!store || !element) throw new Error('Editor unavailable')
@@ -110,20 +117,36 @@ for (const renderer of ['retained', 'tiled'] as const) {
       }
       expect((await page.screenshot({ clip })).equals(before)).toBe(false)
       await page.mouse.up()
-      await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+      await page.evaluate(() => {
+        if (!window.openPencil) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.test?.navigation?.waitForSettlement()
+      })
       const finished = await probe.evaluate((p) => p.sample())
       expect(finished.interactive).toBe(false)
       expect(finished.batching).toBe(false)
-      await page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+      await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().undoAction()
+      })
       expect(
-        await page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id ?? '') === undefined,
-          started.id
-        )
+        await page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id ?? '') === undefined
+        }, started.id)
       ).toBe(true)
-      expect(await page.evaluate(() => window.openPencil?.getStore?.().undo.canUndo)).toBe(false)
-      await page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+      expect(
+        await page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().undo.canUndo
+        })
+      ).toBe(false)
+      await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().redoAction()
+      })
       const restored = await page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const node = window.openPencil?.getStore?.().graph.getNode(id ?? '')
         return { width: node?.width, height: node?.height }
       }, started.id)
@@ -152,12 +175,15 @@ for (const renderer of ['retained', 'tiled'] as const) {
         if (cancellation === 'escape') await page.keyboard.press('Escape')
         else await probe.evaluate((p) => p.cancelPointer())
         await page.mouse.up()
-        await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+        await page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.navigation?.waitForSettlement()
+        })
         expect(
-          await page.evaluate(
-            (nodeId) => window.openPencil?.getStore?.().graph.getNode(nodeId ?? '') === undefined,
-            id
-          )
+          await page.evaluate((nodeId) => {
+            if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+            return window.openPencil?.getStore?.().graph.getNode(nodeId ?? '') === undefined
+          }, id)
         ).toBe(true)
         const cancelled = await probe.evaluate((p) => p.sample())
         expect(cancelled.interactive).toBe(false)

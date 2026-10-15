@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, spyOn, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { exportFigFile, initCodec, parseFigFile, SceneGraph } from '@open-pencil/core'
 import {
   decodeFigmaMotionSharedEnvelope,
@@ -27,6 +29,7 @@ import {
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 import { advancedMotionSpec } from '#tests/helpers/motion-v3-advanced'
 
 const validMotion = (): MotionSpec =>
@@ -109,10 +112,6 @@ function sharedMotionEntry(value: string) {
   }
 }
 
-function exactBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-}
-
 function findNode(graph: SceneGraph, name: string): SceneNode {
   const node = [...graph.getAllNodes()].find((candidate) => candidate.name === name)
   if (!node) throw new Error(`Expected node named ${name}`)
@@ -125,7 +124,13 @@ function archivedSharedValues(entries: PluginDataEntry[]): string[] {
       (entry) =>
         entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_MOTION_SHARED_CONFLICT_KEY
     )
-    .map((entry) => (JSON.parse(entry.value) as { value: string }).value)
+    .map(
+      (entry) =>
+        v.parse(
+          v.pipe(v.string(), v.parseJson(), v.looseObject({ value: v.string() })),
+          entry.value
+        ).value
+    )
 }
 
 describe('MotionSpec pluginData persistence', () => {
@@ -257,7 +262,7 @@ describe('MotionSpec pluginData persistence', () => {
       })
 
       const firstBytes = await exportFigFile(graph)
-      const raw = parseFigBuffer(exactBuffer(firstBytes))
+      const raw = parseFigBuffer(uint8ArrayToArrayBuffer(firstBytes))
       const exported = raw.nodeChanges.find((candidate) => candidate.name === node.name)
       const activeShared = (exported?.pluginData ?? []).filter(
         (entry) =>
@@ -269,12 +274,12 @@ describe('MotionSpec pluginData persistence', () => {
         ok: true,
         value: { schema: 'openpencil.motion', version: 1, motion: canonical }
       })
-      const first = await parseFigFile(exactBuffer(firstBytes))
+      const first = await parseFigFile(uint8ArrayToArrayBuffer(firstBytes))
       const firstNode = findNode(first, node.name)
       expect(firstNode.motion).toEqual(canonical)
       expect(archivedSharedValues(firstNode.pluginData)).toContain(rawShared.value)
 
-      const second = await parseFigFile(exactBuffer(await exportFigFile(first)))
+      const second = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(first)))
       const secondNode = findNode(second, node.name)
       expect(secondNode.motion).toEqual(canonical)
       expect(archivedSharedValues(secondNode.pluginData)).toContain(rawShared.value)
@@ -307,7 +312,7 @@ describe('MotionSpec pluginData persistence', () => {
 
       graph.clearNodeFields(source.id, ['motion'])
       const clearedBytes = await exportFigFile(graph)
-      const decoded = parseFigBuffer(exactBuffer(clearedBytes))
+      const decoded = parseFigBuffer(uint8ArrayToArrayBuffer(clearedBytes))
       const exported = decoded.nodeChanges.find((candidate) => candidate.name === source.name)
       const activeShared = (exported?.pluginData ?? []).filter(
         (entry) =>
@@ -323,14 +328,14 @@ describe('MotionSpec pluginData persistence', () => {
         }
       })
 
-      const reopened = await parseFigFile(exactBuffer(clearedBytes))
+      const reopened = await parseFigFile(uint8ArrayToArrayBuffer(clearedBytes))
       const reopenedNode = findNode(reopened, source.name)
       expect(reopenedNode.motion).toBeUndefined()
       expect(archivedSharedValues(reopenedNode.pluginData)).toContain(rawShared.value)
 
       const resavedBytes = await exportFigFile(reopened)
       expect(resavedBytes).toEqual(clearedBytes)
-      const resavedRaw = parseFigBuffer(exactBuffer(resavedBytes))
+      const resavedRaw = parseFigBuffer(uint8ArrayToArrayBuffer(resavedBytes))
       const resaved = resavedRaw.nodeChanges.find((candidate) => candidate.name === source.name)
       const resavedShared = (resaved?.pluginData ?? []).filter(
         (entry) =>
@@ -342,7 +347,7 @@ describe('MotionSpec pluginData persistence', () => {
       expect(decodeFigmaMotionSharedPayload(resavedShared[0].value)).toEqual(
         decodeFigmaMotionSharedPayload(activeShared[0].value)
       )
-      const reopenedAgain = await parseFigFile(exactBuffer(resavedBytes))
+      const reopenedAgain = await parseFigFile(uint8ArrayToArrayBuffer(resavedBytes))
       expect(findNode(reopenedAgain, source.name).motion).toBeUndefined()
     } finally {
       warn.mockRestore()
@@ -400,7 +405,7 @@ describe('MotionSpec pluginData persistence', () => {
     const expected = node.motion
     expect(expected?.preset).toEqual({ id: 'user-card-enter', version: 3, parameters: {} })
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Node = findNode(g1, node.name)
     expect(g1Node.motion).toEqual(expected)
     expect(g1Node.pluginData).toContainEqual({
@@ -409,7 +414,7 @@ describe('MotionSpec pluginData persistence', () => {
       value: 'yes'
     })
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Node = findNode(g2, node.name)
     expect(g2Node.motion).toEqual(expected)
     expect(g2Node.motion).toEqual(g1Node.motion)
@@ -431,12 +436,12 @@ describe('MotionSpec pluginData persistence', () => {
       motion: expected
     })
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Node = findNode(g1, node.name)
     expect(g1Node.motion).toEqual(expected)
     expect(g1Node.motion).not.toBe(expected)
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Node = findNode(g2, node.name)
     expect(g2Node.motion).toEqual(expected)
     expect(g2Node.motion).toEqual(g1Node.motion)
@@ -453,13 +458,13 @@ describe('MotionSpec pluginData persistence', () => {
       name: 'Scene choreography owner',
       motionScene: validMotionScene(target.id)
     })
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Owner = findNode(g1, owner.name)
     const g1Target = findNode(g1, target.name)
     expect(g1Owner.motionScene).toEqual(validMotionScene(g1Target.id))
     expect(g1Owner.source.editedFields).toEqual([])
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Owner = findNode(g2, owner.name)
     const g2Target = findNode(g2, target.name)
     expect(g2Owner.motionScene).toEqual(validMotionScene(g2Target.id))
@@ -479,12 +484,12 @@ describe('MotionSpec pluginData persistence', () => {
       pluginData: [future]
     })
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Node = findNode(g1, node.name)
     expect(g1Node.motionScene).toBeUndefined()
     expect(g1Node.pluginData).toContainEqual(future)
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Node = findNode(g2, node.name)
     expect(g2Node.motionScene).toBeUndefined()
     expect(g2Node.pluginData).toContainEqual(future)
@@ -502,7 +507,7 @@ describe('MotionSpec pluginData persistence', () => {
     })
 
     const bytes = await exportFigFile(graph)
-    const decoded = parseFigBuffer(exactBuffer(bytes))
+    const decoded = parseFigBuffer(uint8ArrayToArrayBuffer(bytes))
     const exported = decoded.nodeChanges.find((candidate) => candidate.name === node.name)
     const shared = (exported?.pluginData ?? []).filter(
       (entry) =>
@@ -532,12 +537,12 @@ describe('MotionSpec pluginData persistence', () => {
       pluginData: [malformed]
     })
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Node = findNode(g1, node.name)
     expect(g1Node.motion).toBeUndefined()
     expect(g1Node.pluginData).toContainEqual(malformed)
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Node = findNode(g2, node.name)
     expect(g2Node.motion).toBeUndefined()
     expect(g2Node.pluginData).toContainEqual(malformed)
@@ -562,7 +567,7 @@ describe('MotionSpec pluginData persistence', () => {
     root.pluginData = [documentMalformed]
     page.pluginData = [canvasFuture]
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Root = g1.getNode(g1.rootId)
     const g1Page = g1.getPages()[0]
     expect(g1Root?.motion).toBeUndefined()
@@ -570,7 +575,7 @@ describe('MotionSpec pluginData persistence', () => {
     expect(g1Page.motion).toBeUndefined()
     expect(g1Page.pluginData).toEqual([canvasFuture])
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Root = g2.getNode(g2.rootId)
     const g2Page = g2.getPages()[0]
     expect(g2Root?.motion).toBeUndefined()
@@ -598,7 +603,7 @@ describe('MotionSpec pluginData persistence', () => {
       })
 
       const bytes = await exportFigFile(graph)
-      const decoded = parseFigBuffer(exactBuffer(bytes))
+      const decoded = parseFigBuffer(uint8ArrayToArrayBuffer(bytes))
       const exported = decoded.nodeChanges.find((candidate) => candidate.name === node.name)
       const canonicalMotionEntries = (exported?.pluginData ?? []).filter(
         (entry) => entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_MOTION_KEY
@@ -611,7 +616,7 @@ describe('MotionSpec pluginData persistence', () => {
         }
       ])
 
-      const imported = await parseFigFile(exactBuffer(bytes))
+      const imported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
       const importedNode = findNode(imported, node.name)
       expect(importedNode.motion).toBeUndefined()
       expect(importedNode.pluginData).toContainEqual(future)

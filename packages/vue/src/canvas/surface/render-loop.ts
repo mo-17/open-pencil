@@ -155,7 +155,7 @@ export function createCanvasRenderLoop(
   let dirty = true
   let frameScheduled = false
   let lastRenderVersion = -1
-  let lastSceneVersion = -1
+  let lastCanvasVersion = -1
   let lastSelectedIds: Set<string> | null = null
   let generatedEffectTimer: ReturnType<typeof setTimeout> | null = null
   let generatedEffectFrameDue = false
@@ -236,7 +236,7 @@ export function createCanvasRenderLoop(
   ): boolean {
     const state = getRenderState()
     const versionChanged = state.renderVersion !== lastRenderVersion
-    const sceneChanged = state.sceneVersion !== lastSceneVersion
+    const sceneChanged = state.canvasVersion !== lastCanvasVersion
     const selectionChanged = state.selectedIds !== lastSelectedIds
     if (!dirty && !versionChanged && !sceneChanged && !selectionChanged) return true
 
@@ -378,7 +378,7 @@ export function createCanvasRenderLoop(
   function markRendered() {
     const state = getRenderState()
     lastRenderVersion = state.renderVersion
-    lastSceneVersion = state.sceneVersion
+    lastCanvasVersion = state.canvasVersion
     lastSelectedIds = state.selectedIds
     consecutiveRenderFailures = 0
   }

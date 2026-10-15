@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, createLinter, type MotionSpec } from '@open-pencil/core'
+import { createLinter } from '@open-pencil/core'
+import { SceneGraph, type MotionSpec } from '@open-pencil/scene-graph'
 
 describe('createLinter', () => {
   test('reports default names and empty frames', () => {
@@ -22,14 +23,14 @@ describe('createLinter', () => {
       name: 'Card',
       width: 200,
       height: 80,
-      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 1, g: 1, b: 1 } }]
+      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 1, g: 1, b: 1, a: 1 } }]
     })
     graph.createNode('TEXT', frame.id, {
       name: 'Label',
       width: 80,
       height: 20,
       text: 'Hello',
-      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 0.8, g: 0.8, b: 0.8 } }]
+      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 0.8, g: 0.8, b: 0.8, a: 1 } }]
     })
 
     const result = createLinter({ preset: 'recommended' }).lintGraph(graph, [frame.id])
@@ -74,7 +75,7 @@ describe('createLinter', () => {
         type: 'SOLID' as const,
         visible: true,
         opacity: 1,
-        color: { r: 1, g: 1, b: 1 }
+        color: { r: 1, g: 1, b: 1, a: 1 }
       }))
     })
     for (let index = 0; index < 6; index++) {
@@ -140,7 +141,7 @@ describe('createLinter', () => {
       type: 'SOLID' as const,
       visible: true,
       opacity: 1,
-      color: { r: 1, g: 1, b: 1 }
+      color: { r: 1, g: 1, b: 1, a: 1 }
     }))
     const nodes = ['First', 'Second'].map((name) =>
       graph.createNode('TEXT', page.id, {

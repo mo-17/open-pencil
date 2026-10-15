@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { SUPABASE_JS_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/supabase'
 
 /**
@@ -20,10 +22,17 @@ import { SUPABASE_JS_VERSION } from '@open-pencil/compiler/adapters/react/lowcod
 describe('preview can resolve @supabase/supabase-js (Phase 3 §2 regression)', () => {
   test('packages/compiler declares @supabase/supabase-js pinned to SUPABASE_JS_VERSION', () => {
     const pkgPath = join(process.cwd(), 'packages/compiler/package.json')
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.optional(v.record(v.string(), v.string())),
+          devDependencies: v.optional(v.record(v.string(), v.string()))
+        })
+      ),
+      readFileSync(pkgPath, 'utf-8')
+    )
     const declared =
       pkg.devDependencies?.['@supabase/supabase-js'] ?? pkg.dependencies?.['@supabase/supabase-js']
     expect(declared).toBe(SUPABASE_JS_VERSION)

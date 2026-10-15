@@ -423,7 +423,7 @@ interface PreparedMarketplaceSubmission {
 }
 
 async function prepareSubmission(
-  options: CreateMarketplaceServiceOptions,
+  _options: CreateMarketplaceServiceOptions,
   publicBaseURL: string,
   state: MarketplaceStateV1,
   input: SubmitMarketplacePluginInput,

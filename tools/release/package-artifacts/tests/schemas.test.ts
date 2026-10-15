@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { parsePackageManifest } from '#package-artifacts/manifest/read'
+import { parsePackageManifest, parseWorkspacePackageJSON } from '#package-artifacts/manifest/read'
 import { isRegistryNotFound, validateRegistryVersion } from '#package-artifacts/npm/registry'
 import { parseWorkspace } from '#package-artifacts/workspace/schema'
 
@@ -51,4 +51,38 @@ test('registry output distinguishes missing versions from errors and malformed r
   }
   expect(() => validateRegistryVersion('"1.0.0"', '1.0.0')).not.toThrow()
   expect(() => validateRegistryVersion('"2.0.0"', '1.0.0')).toThrow('expected version')
+})
+
+test('private workspace manifests may omit identity fields without dropping package metadata', () => {
+  const manifest = {
+    name: '@fixture/private',
+    private: true,
+    custom: { keep: ['future'] },
+    exports: { '.': { bun: ['./src/index.ts', null], default: './dist/index.js' } },
+    peerDependenciesMeta: { '@fixture/optional': { optional: true, custom: { keep: true } } },
+    publishConfig: { access: 'public' as const, custom: { preservedUntilPolicyValidation: true } }
+  }
+  expect(parseWorkspacePackageJSON(JSON.stringify(manifest), 'private')).toEqual(manifest)
+  expect(() => parsePackageManifest(JSON.stringify(manifest), 'public')).toThrow(
+    'public: invalid package manifest'
+  )
+})
+
+test('partial workspace manifests still reject malformed known nested fields', () => {
+  for (const fields of [
+    { dependencies: { dependency: 42 } },
+    { peerDependenciesMeta: [] },
+    { peerDependenciesMeta: { dependency: { optional: 'true' } } },
+    { exports: { '.': { bun: false } } },
+    { publishConfig: { provenance: 'true' } }
+  ]) {
+    expect(() => parseWorkspacePackageJSON(JSON.stringify(fields), 'private')).toThrow(
+      'private: invalid package fields'
+    )
+  }
+  for (const source of ['[]', 'null', '42', '"manifest"']) {
+    expect(() => parseWorkspacePackageJSON(source, 'private')).toThrow(
+      'private: expected an object'
+    )
+  }
 })

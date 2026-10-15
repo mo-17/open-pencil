@@ -102,7 +102,7 @@ test.each([24, 32])(
     const buildSpy = spyOn(h.renderer, 'buildParagraph').mockImplementation(
       (label, color, options) => {
         const paragraph = build(label, color, options)
-        labels.set(paragraph, label.text)
+        for (const block of paragraph.blocks) labels.set(block.paragraph, label.text)
         return paragraph
       }
     )
@@ -150,7 +150,7 @@ test('nowrap breadcrumb gives its current page a visible ellipsized allocation a
   const buildSpy = spyOn(h.renderer, 'buildParagraph').mockImplementation(
     (label, color, options) => {
       const paragraph = build(label, color, options)
-      labels.set(paragraph, label.text)
+      for (const block of paragraph.blocks) labels.set(block.paragraph, label.text)
       return paragraph
     }
   )
@@ -193,7 +193,8 @@ test('a 320px horizontal stepper paints all three short Chinese steps within its
   const paintParagraph = h.canvas.drawParagraph.bind(h.canvas)
   const shape = spyOn(h.renderer, 'buildParagraph').mockImplementation((label, color, options) => {
     const paragraph = createParagraph(label, color, options)
-    if (finalLabels.has(label.text)) finalParagraphs.set(paragraph, label.text)
+    if (finalLabels.has(label.text))
+      for (const block of paragraph.blocks) finalParagraphs.set(block.paragraph, label.text)
     return paragraph
   })
   const paint = spyOn(h.canvas, 'drawParagraph').mockImplementation((paragraph, x, y) => {

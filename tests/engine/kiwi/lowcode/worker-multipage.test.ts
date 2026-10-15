@@ -6,6 +6,8 @@ import { parseFigBuffer } from '@open-pencil/fig'
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { deserializeSceneGraph, serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 setDefaultTimeout(30_000)
 
 /**
@@ -37,7 +39,7 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
   async function parseViaSimulatedWorker(graph: SceneGraph): Promise<SceneGraph> {
     const bytes = await exportFigFile(graph)
     const { nodeChanges, blobs, images, figKiwiVersion, figSchemaDeflated, objectAnimations } =
-      parseFigBuffer(bytes.buffer)
+      parseFigBuffer(uint8ArrayToArrayBuffer(bytes))
     const built = importNodeChanges(nodeChanges, blobs, new Map(images), {
       populate: 'first-page'
     })

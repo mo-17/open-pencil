@@ -127,3 +127,10 @@ export function clearDecodedImageCache(state: DecodedImageCacheState): void {
   state.imageCacheFrameDepth = 0
   state.imageCacheFrameUsed.clear()
 }
+
+/** Release a decoded image whose encoded source was replaced. */
+export function removeDecodedImageCacheEntry(state: DecodedImageCacheState, key: string): void {
+  const entry = state.imageCache.get(key)
+  if (entry) removeCachedImage(state, key, entry)
+  state.imageCacheFrameUsed.delete(key)
+}

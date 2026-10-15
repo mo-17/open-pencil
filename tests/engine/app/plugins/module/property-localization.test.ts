@@ -27,7 +27,7 @@ function declaredPropertyKeys(): readonly string[] {
   return PHASE_6_MODULE_DEFINITIONS.flatMap((definition) =>
     definition.fields.flatMap((field) => [
       ...(field.i18nLabelKey ? [field.i18nLabelKey] : []),
-      ...(field.kind === 'select' && field.i18nLabelKey
+      ...(field.kind === 'select' && field.options && field.i18nLabelKey
         ? field.options.map((option) => `${field.i18nLabelKey}:${option}`)
         : [])
     ])

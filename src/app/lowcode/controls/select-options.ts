@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import { lowcodeSelectOptions, type LowcodeSelectOption } from '@open-pencil/lowcode'
 
 type SelectProperties = Record<string, unknown>
@@ -28,17 +30,15 @@ export function editSelectOptions(
   }
   const next: SelectProperties = { ...props, options }
   if (props.multiple === true && Array.isArray(props.value)) {
-    next.value = [
-      ...new Set(
-        props.value.flatMap((value) => {
-          if (typeof value !== 'string') return []
-          if (edit.kind === 'remove' && previous[edit.index].value === value) return []
-          if (edit.kind === 'update' && previous[edit.index].value === value)
-            return [options[edit.index].value]
-          return [value]
-        })
-      )
-    ]
+    next.value = uniq(
+      props.value.flatMap((value) => {
+        if (typeof value !== 'string') return []
+        if (edit.kind === 'remove' && previous[edit.index].value === value) return []
+        if (edit.kind === 'update' && previous[edit.index].value === value)
+          return [options[edit.index].value]
+        return [value]
+      })
+    )
     return next
   }
   if (typeof props.value !== 'string' || options.some((option) => option.value === props.value))

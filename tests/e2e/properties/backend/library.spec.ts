@@ -9,6 +9,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function documentState(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const root = editor.graph.getNode(editor.graph.rootId)

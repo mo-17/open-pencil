@@ -164,10 +164,8 @@ describe('Supabase database-read credential native bridge', () => {
       { ...configuredReceipt(), configured: false },
       { ...configuredReceipt(), connectionProfileDigest: null }
     ]) {
-      const bridge = createSupabaseDatabaseReadCredentialNativeBridge(<T>(command) =>
-        Promise.resolve(
-          (command === 'supabase_database_read_credential_status_v1' ? result : result) as T
-        )
+      const bridge = createSupabaseDatabaseReadCredentialNativeBridge(<T>() =>
+        Promise.resolve(result as T)
       )
       if (typeof result === 'string') {
         await expect(bridge.statusV1(GENERATION)).rejects.toMatchObject({

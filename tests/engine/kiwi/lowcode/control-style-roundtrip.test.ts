@@ -135,7 +135,7 @@ function nativePaddingArchive(): Uint8Array {
 describe('lowcode control typography and padding in real FIG archives', () => {
   beforeAll(initCodec)
 
-  test.each(CONTROL_TYPES)(
+  test.each([...CONTROL_TYPES])(
     '%s preserves authored style across two save and reopen cycles',
     async (type) => {
       let graph = new SceneGraph()

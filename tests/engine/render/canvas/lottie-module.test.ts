@@ -1,6 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
-
-import type { Canvas } from 'canvaskit-wasm'
+import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
@@ -17,7 +15,12 @@ import {
   type LottieModuleConfigV1
 } from '#core/plugins/lottie'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 function lottieFrame(overrides: Partial<SceneNode> = {}): SceneNode {
   return createDefaultNode(() => 'lottie-1', 'FRAME', {
@@ -74,12 +77,12 @@ describe('Lottie module CanvasKit preview', () => {
   })
 
   test('draws a clipped offline placeholder through the exact adapter identity', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const renderer = rendererWithFont()
 
     expect(LOTTIE_MODULE_CANVAS_ADAPTER.pluginId).toBe('open-pencil.lottie')
     expect(LOTTIE_MODULE_CANVAS_ADAPTER.moduleType).toBe('lottie')
-    expect(LOTTIE_MODULE_CANVAS_ADAPTER.render(renderer, canvas as Canvas, lottieFrame())).toBe(
+    expect(LOTTIE_MODULE_CANVAS_ADAPTER.render(renderer, asCanvas(canvas), lottieFrame())).toBe(
       true
     )
     expect(canvas.save).toHaveBeenCalledTimes(1)
@@ -90,26 +93,26 @@ describe('Lottie module CanvasKit preview', () => {
     expect(canvas.drawText).toHaveBeenCalledTimes(1)
     expect(canvas.restore).toHaveBeenCalledTimes(1)
 
-    const registryCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
-    renderShapeUncached(renderer, registryCanvas as Canvas, lottieFrame(), new SceneGraph())
+    const registryCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
+    renderShapeUncached(renderer, asCanvas(registryCanvas), lottieFrame(), new SceneGraph())
     expect(registryCanvas.drawPath).toHaveBeenCalledTimes(1)
   })
 
   test('fails closed for invalid identities and non-FRAME hosts', () => {
     const renderer = rendererWithFont()
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawText: canvasMock('drawText') }
     const invalid = lottieFrame({
       interactiveProps: {
         module: { ...createLottieModuleInstance(), pluginId: 'unknown.plugin' }
       }
     })
 
-    expect(renderLottieModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderLottieModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawPath).not.toHaveBeenCalled()
 
     const rectangle = createDefaultNode(() => 'rectangle-1', 'RECTANGLE', {
       interactiveProps: { module: createLottieModuleInstance() }
     })
-    expect(renderLottieModulePreview(renderer, invalidCanvas as Canvas, rectangle)).toBe(false)
+    expect(renderLottieModulePreview(renderer, asCanvas(invalidCanvas), rectangle)).toBe(false)
   })
 })

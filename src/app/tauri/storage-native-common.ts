@@ -1,4 +1,4 @@
-import { randomHex } from '@open-pencil/core/random'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import type { ParsedContentRange } from './content-range'
 import { tauriResponseBody, withAbortSignal, type TauriHttpHeader } from './http'

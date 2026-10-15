@@ -5,6 +5,7 @@ import type { SceneGraph, VariableValue } from '@open-pencil/scene-graph'
 import { extractPluginData } from '../node-change/plugin-data'
 import { readVariableMetadata } from '../node-change/variable/metadata'
 import {
+  readModeAttribute,
   readModeConditions,
   readVariableToken,
   withoutTokenPluginData
@@ -70,11 +71,19 @@ export function materializeVariableResources(
       name: resource.name ?? 'Variables',
       modes: modes.map((mode) => {
         const modeId = guidToString(mode.id)
-        return { modeId, name: mode.name, condition: conditions[modeId] }
+        return {
+          modeId,
+          name: mode.name,
+          condition: conditions[modeId],
+          ...(mode.sortPosition ? { sortPosition: mode.sortPosition } : {})
+        }
       }),
       defaultModeId: guidToString(modes[0].id),
       variableIds: [],
-      pluginData: pluginData.length > 0 ? pluginData : undefined
+      modeAttribute: readModeAttribute(resource),
+      pluginData: pluginData.length > 0 ? pluginData : undefined,
+      key: typeof resource.key === 'string' ? resource.key : undefined,
+      version: typeof resource.version === 'string' ? resource.version : undefined
     })
   }
   addVariables(graph, resources, report)

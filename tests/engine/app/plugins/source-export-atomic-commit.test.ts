@@ -14,7 +14,10 @@ const TEMPORARY = `${TARGET}.openpencil-${UUID}.tmp`
 describe('Tauri source export atomic commit', () => {
   test('invokes the host-owned commit command with both exact paths', async () => {
     const calls: Array<{ command: string; args: unknown }> = []
-    const invoke: TauriSourceExportCommitInvoker = async <T>(command, args) => {
+    const invoke: TauriSourceExportCommitInvoker = async <T>(
+      command: string,
+      args: { temporaryPath: string; targetPath: string }
+    ) => {
       calls.push({ command, args })
       return undefined as T
     }

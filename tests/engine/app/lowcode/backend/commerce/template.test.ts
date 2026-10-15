@@ -144,7 +144,7 @@ describe('single-item checkout example', () => {
       allActions.some(
         (action) =>
           action.kind === 'setVariable' &&
-          ['checkoutAttempt', 'cancelAttempt', 'restockAttempt'].includes(action.targetName)
+          ['checkoutAttempt', 'cancelAttempt', 'restockAttempt'].includes(action.targetName ?? '')
       )
     ).toBe(false)
     for (const name of ['Start new order', 'Start new cancellation', 'Start new restock']) {
@@ -161,7 +161,7 @@ describe('single-item checkout example', () => {
     }
   })
 
-  test.each(['react', 'vue'] as const)(
+  test.each([...(['react', 'vue'] as const)])(
     '%s export includes command-backed checkout and cancellation',
     async (target) => {
       const { application, descriptor, editor, store } = await fixture()

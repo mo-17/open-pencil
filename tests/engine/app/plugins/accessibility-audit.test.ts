@@ -13,14 +13,16 @@ describe('static accessibility audit plugin', () => {
       name: 'Card',
       width: 200,
       height: 80,
-      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 1, g: 1, b: 1 } }]
+      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 1, g: 1, b: 1, a: 1 } }]
     })
     graph.createNode('TEXT', frame.id, {
       name: 'Label',
       width: 80,
       height: 20,
       text: 'Low contrast',
-      fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 0.82, g: 0.82, b: 0.82 } }]
+      fills: [
+        { type: 'SOLID', visible: true, opacity: 1, color: { r: 0.82, g: 0.82, b: 0.82, a: 1 } }
+      ]
     })
 
     const result = runStaticAccessibilityAudit({ graph } as EditorStore)
@@ -54,7 +56,7 @@ describe('static accessibility audit plugin', () => {
       type: 'SOLID' as const,
       visible: true,
       opacity: 1,
-      color: { r: 1, g: 1, b: 1 }
+      color: { r: 1, g: 1, b: 1, a: 1 }
     }))
     const text = 'x'.repeat(4_096)
     for (let index = 0; index < 65; index++) {

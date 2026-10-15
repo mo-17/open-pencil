@@ -49,7 +49,7 @@ describe('CodePen showcase sidecar command contract', () => {
         i18n: true,
         locales: ['fr', 'ar']
       },
-      new Map([
+      new Map<string, string | Uint8Array>([
         ['src/main.tsx', 'export {}'],
         ['src/image.bin', new Uint8Array([1, 2, 3])]
       ]),

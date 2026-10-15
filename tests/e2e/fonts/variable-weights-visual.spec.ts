@@ -21,6 +21,8 @@ test('variable fonts render each style at its named instance', async ({ page }) 
   await openEditor(page)
 
   const result = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store?.renderer) throw new Error('OpenPencil renderer not initialized')
     const fontModuleURL = performance

@@ -84,7 +84,7 @@ function payloadValue(key: string): string {
 
 <template>
   <div class="flex w-full min-w-0 flex-col gap-2" data-property="backend-action">
-    <p v-if="!application" class="text-[10px] text-amber-500">
+    <p v-if="!application" class="text-[10px] text-warning">
       {{ panels.lowcodeBackendNoResource }}
     </p>
     <template v-if="action.kind === 'backendAuth'">
@@ -241,7 +241,7 @@ function payloadValue(key: string): string {
         </option>
       </select>
     </label>
-    <ul v-if="diagnostics.length" class="space-y-1 text-[10px] text-red-500">
+    <ul v-if="diagnostics.length" class="space-y-1 text-[10px] text-error">
       <li v-for="(entry, index) in diagnostics" :key="index">{{ entry.message }}</li>
     </ul>
   </div>

@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { escapeJSXText, formatProp } from '@open-pencil/design-jsx'
 import type { SceneGraph, SceneNode, NodeType } from '@open-pencil/scene-graph'
 
@@ -191,10 +193,9 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number): string {
 
   if (children.length === 0) return `${prefix}${opening} />`
 
-  const childJSX = children
-    .filter((c) => c.visible)
-    .map((c) => nodeToJSX(c, graph, indent + 1))
-    .filter(Boolean)
+  const childJSX = compact(
+    children.filter((c) => c.visible).map((c) => nodeToJSX(c, graph, indent + 1))
+  )
 
   if (childJSX.length === 0) return `${prefix}${opening} />`
 
@@ -208,8 +209,5 @@ export function sceneNodeToTailwindJSX(nodeId: string, graph: SceneGraph): strin
 }
 
 export function selectionToTailwindJSX(nodeIds: string[], graph: SceneGraph): string {
-  return nodeIds
-    .map((id) => sceneNodeToTailwindJSX(id, graph))
-    .filter(Boolean)
-    .join('\n\n')
+  return compact(nodeIds.map((id) => sceneNodeToTailwindJSX(id, graph))).join('\n\n')
 }

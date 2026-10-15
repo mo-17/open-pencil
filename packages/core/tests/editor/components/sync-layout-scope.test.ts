@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
 
-import { computeAllLayouts } from '@open-pencil/core/layout'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { createComponentSyncScheduler } from '#core/editor/component-sync'
+import { createGraphEventSubscription } from '#core/editor/graph-events'
+import { computeAllLayouts } from '#core/layout'
 
 function createGraph() {
   const graph = new SceneGraph()
@@ -90,6 +91,27 @@ describe('component sync layout scope', () => {
     expect(scopes).toEqual([])
   })
 
+  test('layout writing its own results schedules no sync', async () => {
+    const { graph, label } = createGraph()
+    const scopes: (string | undefined)[] = []
+    const { scheduleComponentSync } = createComponentSyncScheduler(
+      () => graph,
+      () => undefined,
+      (innerGraph, scopeId) => {
+        scopes.push(scopeId)
+        computeAllLayouts(innerGraph, scopeId)
+      }
+    )
+
+    graph.withLayoutMutations(() => {
+      graph.updateNode(label.id, { width: 120 })
+      scheduleComponentSync(label.id)
+    })
+
+    await Promise.resolve()
+    expect(scopes).toEqual([])
+  })
+
   test('a cross-page instance still receives the component layout', async () => {
     const { graph, instance, component } = createGraph()
     const { scheduleComponentSync } = createComponentSyncScheduler(
@@ -111,4 +133,54 @@ describe('component sync layout scope', () => {
     expect(instanceLabel?.x).toBe(componentLabel?.x)
     expect(instanceLabel?.width).toBe(componentLabel?.width)
   })
+
+  test.each(['source-hydration', 'derived-layout', 'derived-component-sync'] as const)(
+    'preserves resolved %s values while synchronizing listener-authored edits',
+    async (origin) => {
+      const { graph, componentPage, instancePage, label, instance } = createGraph()
+      const instanceLabel = expectDefined(graph.getChildren(instance.id)[0], 'instance label')
+      const scopes: (string | undefined)[] = []
+      const { scheduleComponentSync } = createComponentSyncScheduler(
+        () => graph,
+        () => undefined,
+        (_graph, scopeId) => {
+          scopes.push(scopeId)
+        }
+      )
+      const subscription = createGraphEventSubscription({
+        getGraph: () => graph,
+        getRenderers: () => [],
+        scheduleComponentSync,
+        requestRender: () => undefined,
+        emitEditorEvent: () => undefined
+      })
+      subscription.subscribeToGraph()
+      const stopAuthoredListener = graph.onNodeEvents({
+        updated: (id, changes, eventOrigin) => {
+          if (id === label.id && eventOrigin === origin && changes.height === 100) {
+            graph.updateNode(label.id, { text: 'Listener authored' })
+          }
+        }
+      })
+      try {
+        graph.withNodeMutationOrigin(origin, () => {
+          graph.updateNode(instanceLabel.id, { text: 'Resolved value' })
+          graph.updateNode(label.id, { width: 120 })
+        })
+        await Promise.resolve()
+        expect(instanceLabel.text).toBe('Resolved value')
+        expect(scopes).toEqual([])
+
+        graph.withNodeMutationOrigin(origin, () => {
+          graph.updateNode(label.id, { height: 100 })
+        })
+        await Promise.resolve()
+        expect(instanceLabel.text).toBe('Listener authored')
+        expect(scopes.toSorted()).toEqual([componentPage.id, instancePage.id].toSorted())
+      } finally {
+        stopAuthoredListener()
+        subscription.unsubscribeFromGraph()
+      }
+    }
+  )
 })

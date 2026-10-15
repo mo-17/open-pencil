@@ -90,7 +90,10 @@ export interface ShapedClipboardText {
   logicalIndexToCharacterOffsetMap: number[]
 }
 
-type DerivedGlyphMetric = { advance: number; commands: GlyphOutlineMetrics['commands'] }
+type DerivedGlyphMetric = {
+  advance: number
+  commands: GlyphOutlineMetrics['commands']
+}
 
 function buildTextGlyphs(
   text: string,

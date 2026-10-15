@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { ZUSTAND_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/state'
 
 /**
@@ -23,10 +25,17 @@ import { ZUSTAND_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/st
 describe('preview can resolve zustand (Phase 2 §2 regression)', () => {
   test('packages/compiler declares zustand pinned to ZUSTAND_VERSION', () => {
     const pkgPath = join(process.cwd(), 'packages/compiler/package.json')
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.optional(v.record(v.string(), v.string())),
+          devDependencies: v.optional(v.record(v.string(), v.string()))
+        })
+      ),
+      readFileSync(pkgPath, 'utf-8')
+    )
     const declared = pkg.devDependencies?.zustand ?? pkg.dependencies?.zustand
     // Same pin the React adapter injects into emitted projects, so the
     // preview-resolvable copy and the exported-project copy never diverge.

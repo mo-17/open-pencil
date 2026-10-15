@@ -75,12 +75,16 @@ describe('fig roundtrip source metadata', () => {
     page.source.fig.rawNodeFields.strokeJoin = 'BEVEL'
     page.source.fig.rawNodeFields.strokeWeight = 0
 
-    const first = graph.createNode('COMPONENT', page.id, { name: 'icon/accessibility' })
+    const first = graph.createNode('COMPONENT', page.id, {
+      name: 'icon/accessibility'
+    })
     first.source.format = 'fig'
     first.source.id = '4:4812'
     first.source.orderKey = '~~~~~~~~~~1'
 
-    const second = graph.createNode('COMPONENT', page.id, { name: 'icon/align-center' })
+    const second = graph.createNode('COMPONENT', page.id, {
+      name: 'icon/align-center'
+    })
     second.source.format = 'fig'
     second.source.id = '4:4813'
     second.source.orderKey = '~~~~~~~~~~3'
@@ -141,7 +145,14 @@ describe('fig roundtrip source metadata', () => {
     rect.source.format = 'fig'
     rect.source.id = '4:500'
     rect.source.fig.rawSize = { x: 80, y: 40 }
-    rect.source.fig.rawTransform = { m00: 1, m01: 0, m02: 1, m10: 0, m11: 1, m12: 2 }
+    rect.source.fig.rawTransform = {
+      m00: 1,
+      m01: 0,
+      m02: 1,
+      m10: 0,
+      m11: 1,
+      m12: 2
+    }
     rect.source.fig.rawNodeFields.fillPaints = [
       {
         type: 'SOLID',
@@ -180,7 +191,9 @@ describe('fig roundtrip source metadata', () => {
   test('does not restore cleared imported size constraints from raw metadata', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const frame = graph.createNode('FRAME', page.id, { name: 'Cleared constraints' })
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'Cleared constraints'
+    })
     frame.source.format = 'fig'
     frame.source.id = '4:501'
     frame.source.fig.rawNodeFields.minSize = { value: { x: 120, y: 80 } }
@@ -220,8 +233,14 @@ describe('fig roundtrip source metadata', () => {
         sourceNodeId: { sessionID: 4, localID: 900 }
       }
     ]
-    text.source.fig.rawNodeFields.textUnderlineOffset = { value: 2, units: 'PIXELS' }
-    text.source.fig.rawNodeFields.textDecorationThickness = { value: 1.5, units: 'PIXELS' }
+    text.source.fig.rawNodeFields.textUnderlineOffset = {
+      value: 2,
+      units: 'PIXELS'
+    }
+    text.source.fig.rawNodeFields.textDecorationThickness = {
+      value: 1.5,
+      units: 'PIXELS'
+    }
     text.source.fig.rawNodeFields.toggledOnOTFeatures = ['DLIG']
     text.source.fig.rawNodeFields.toggledOffOTFeatures = ['LIGA']
     text.source.fig.rawNodeFields.semanticWeight = 'BOLD'
@@ -241,8 +260,14 @@ describe('fig roundtrip source metadata', () => {
     expect(text.source.fig.rawNodeFields.textDecorationFillPaints).toEqual(
       exported?.textDecorationFillPaints
     )
-    expect(exported?.textUnderlineOffset).toEqual({ value: 2, units: 'PIXELS' })
-    expect(exported?.textDecorationThickness).toEqual({ value: 1.5, units: 'PIXELS' })
+    expect(exported?.textUnderlineOffset).toEqual({
+      value: 2,
+      units: 'PIXELS'
+    })
+    expect(exported?.textDecorationThickness).toEqual({
+      value: 1.5,
+      units: 'PIXELS'
+    })
     expect(exported?.toggledOnOTFeatures).toEqual(['DLIG'])
     expect(exported?.toggledOffOTFeatures).toEqual(['LIGA'])
     expect(exported?.semanticWeight).toBe('BOLD')
@@ -253,7 +278,9 @@ describe('fig roundtrip source metadata', () => {
   test('preserves imported grid, export, and prototype metadata for round-trip', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const frame = graph.createNode('FRAME', page.id, { name: 'Imported metadata frame' })
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'Imported metadata frame'
+    })
     frame.source.format = 'fig'
     frame.source.id = '4:505'
     frame.source.fig.rawNodeFields.layoutGrids = [
@@ -278,9 +305,17 @@ describe('fig roundtrip source metadata', () => {
         useAbsoluteBounds: false
       }
     ]
-    frame.source.fig.rawNodeFields.prototypeStartNodeID = { sessionID: 4, localID: 900 }
-    frame.source.fig.rawNodeFields.transitionInfo = { type: 'DISSOLVE', duration: 0.2 }
-    const prototypeStart = graph.createNode('FRAME', page.id, { name: 'Prototype start' })
+    frame.source.fig.rawNodeFields.prototypeStartNodeID = {
+      sessionID: 4,
+      localID: 900
+    }
+    frame.source.fig.rawNodeFields.transitionInfo = {
+      type: 'DISSOLVE',
+      duration: 0.2
+    }
+    const prototypeStart = graph.createNode('FRAME', page.id, {
+      name: 'Prototype start'
+    })
     prototypeStart.source.format = 'fig'
     prototypeStart.source.id = '4:900'
 
@@ -294,7 +329,10 @@ describe('fig roundtrip source metadata', () => {
     expect(grid.axis).toBe('X')
     expect(metadataRecord(grid.color).a).toBeCloseTo(0.1)
     expect(frame.source.fig.rawNodeFields.exportSettings).toEqual(exported?.exportSettings)
-    expect(exported?.prototypeStartNodeID).toEqual({ sessionID: 4, localID: 900 })
+    expect(exported?.prototypeStartNodeID).toEqual({
+      sessionID: 4,
+      localID: 900
+    })
     expect(metadataRecord(exported?.transitionInfo).type).toBe('DISSOLVE')
   })
 
@@ -355,7 +393,11 @@ describe('fig roundtrip source metadata', () => {
       keyframeValueRef: {
         value: {
           imageValue: {
-            image: { hash: new Uint8Array([1, 2, 3]), name: 'keyframe.png', dataBlob: 1 }
+            image: {
+              hash: new Uint8Array([1, 2, 3]),
+              name: 'keyframe.png',
+              dataBlob: 1
+            }
           }
         },
         dataType: 'IMAGE',
@@ -381,7 +423,11 @@ describe('fig roundtrip source metadata', () => {
         entries: [
           {
             id: timelineId,
-            data: { durationUs: 2_000_000n, defaultTimeline: true, playbackStyle: 'LOOP' }
+            data: {
+              durationUs: 2_000_000n,
+              defaultTimeline: true,
+              playbackStyle: 'LOOP'
+            }
           }
         ]
       },
@@ -437,7 +483,9 @@ describe('fig roundtrip source metadata', () => {
     const rect = graph.createNode('RECTANGLE', page.id, { name: g0.name })
     if (!imported.source) throw new Error('Expected imported Figma source metadata')
     rect.source = imported.source
-    const animationTarget = graph.createNode('RECTANGLE', page.id, { name: 'Animation target' })
+    const animationTarget = graph.createNode('RECTANGLE', page.id, {
+      name: 'Animation target'
+    })
     animationTarget.source.format = 'fig'
     animationTarget.source.id = '8:105'
 
@@ -454,7 +502,10 @@ describe('fig roundtrip source metadata', () => {
 
       const keyframeValue = exported?.keyframeValue as {
         value?: {
-          textDataValue?: { characters?: string; glyphs?: Array<{ commandsBlob?: number }> }
+          textDataValue?: {
+            characters?: string
+            glyphs?: Array<{ commandsBlob?: number }>
+          }
         }
         valueType?: string
       }
@@ -465,7 +516,9 @@ describe('fig roundtrip source metadata', () => {
       expect(decoded.blobs[blobIndex as number]).toEqual(glyphBlob)
 
       const keyframeValueRef = exported?.keyframeValueRef as {
-        value?: { imageValue?: { image?: { dataBlob?: number; name?: string } } }
+        value?: {
+          imageValue?: { image?: { dataBlob?: number; name?: string } }
+        }
         dataType?: string
         resolvedDataType?: string
       }
@@ -505,7 +558,10 @@ describe('fig roundtrip source metadata', () => {
         },
         ...opaqueTypes.map((type, index): NodeChange => ({
           guid: { sessionID: 8, localID: 300 + index },
-          parentIndex: { guid: canvasGuid, position: String.fromCharCode(97 + index) },
+          parentIndex: {
+            guid: canvasGuid,
+            position: String.fromCharCode(97 + index)
+          },
           phase: 'CREATED',
           type
         })),
@@ -568,7 +624,9 @@ describe('fig roundtrip source metadata', () => {
   test('preserves unrelated raw metadata when visual fields are edited', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const frame = graph.createNode('FRAME', page.id, { name: 'Edited metadata frame' })
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'Edited metadata frame'
+    })
     frame.source.format = 'fig'
     frame.source.id = '4:506'
     frame.source.fig.rawNodeFields.fillPaints = [{ type: 'SOLID' }]
@@ -642,7 +700,9 @@ describe('fig roundtrip source metadata', () => {
   test('ignores raw unsupported effects when normalized effects are edited', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const rect = graph.createNode('RECTANGLE', page.id, { name: 'Edited effect metadata' })
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Edited effect metadata'
+    })
     rect.source.format = 'fig'
     rect.source.id = '4:504'
     rect.source.fig.rawNodeFields.effects = [
@@ -679,7 +739,9 @@ describe('fig roundtrip source metadata', () => {
   test('ignores raw geometry payloads when independent stroke weights are edited', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const rect = graph.createNode('RECTANGLE', page.id, { name: 'Independent stroke metadata' })
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Independent stroke metadata'
+    })
     rect.source.format = 'fig'
     rect.source.id = '4:507'
     rect.source.fig.rawNodeFields.fillGeometry = [{ windingRule: 'NONZERO', commands: [] }]
@@ -711,7 +773,9 @@ describe('fig roundtrip source metadata', () => {
     text.source.id = '4:501'
     text.source.fig.rawNodeFields.fontVariations = [{ axisName: 'wght', value: 900 }]
 
-    graph.updateNode(text.id, { fontVariations: [{ axis: 'wght', value: 650 }] })
+    graph.updateNode(text.id, {
+      fontVariations: [{ axis: 'wght', value: 650 }]
+    })
 
     const decoded = decodeExport(await exportFigFile(graph))
     const exported = decoded.nodeChanges.find(
@@ -737,7 +801,14 @@ describe('fig roundtrip source metadata', () => {
           { x: 0, y: 0 },
           { x: 100, y: 0 }
         ],
-        segments: [{ start: 0, end: 1, tangentStart: { x: 0, y: 0 }, tangentEnd: { x: 0, y: 0 } }],
+        segments: [
+          {
+            start: 0,
+            end: 1,
+            tangentStart: { x: 0, y: 0 },
+            tangentEnd: { x: 0, y: 0 }
+          }
+        ],
         regions: []
       }
     })
@@ -753,9 +824,73 @@ describe('fig roundtrip source metadata', () => {
       (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:465'
     )
 
-    expect(metadataRecord(exported?.vectorData).normalizedSize).toEqual({ x: 0, y: 0 })
+    expect(metadataRecord(exported?.vectorData).normalizedSize).toEqual({
+      x: 0,
+      y: 0
+    })
     const blobIndex = metadataRecord(exported?.vectorData).vectorNetworkBlob
     expect(typeof blobIndex).toBe('number')
     expect(decoded.blobs[blobIndex as number]).toEqual(rawVectorBlob)
   })
+
+  test('keeps saved GUIDs of reopened nodes when a sibling is inserted before them', async () => {
+    const graph = new SceneGraph()
+    graph.createNode('FRAME', graph.getPages()[0].id, { name: 'Card' })
+    const saved = await exportFigFile(graph)
+
+    const reopened = await parseFigFile(saved.slice().buffer)
+    const page = reopened.getPages()[0]
+    const inserted = reopened.createNode('RECTANGLE', page.id, {
+      name: 'Inserted'
+    })
+    reopened.reorderChild(inserted.id, page.id, 0)
+    const resaved = await exportFigFile(reopened)
+
+    const cardGuid = savedGuidOf(saved, 'Card')
+    expect(cardGuid).toBeDefined()
+    expect(savedGuidOf(resaved, 'Card')).toBe(cardGuid)
+    const insertedGuid = savedGuidOf(resaved, 'Inserted')
+    expect(insertedGuid).toBeDefined()
+    expect(insertedGuid).not.toBe(cardGuid)
+  })
+
+  test('keeps the GUIDs of new layers across saves when a sibling is inserted before them', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('FRAME', page.id, { name: 'Card' })
+    const cardGuid = savedGuidOf(await exportFigFile(graph), 'Card')
+
+    const inserted = graph.createNode('RECTANGLE', page.id, {
+      name: 'Inserted'
+    })
+    graph.reorderChild(inserted.id, page.id, 0)
+    const resaved = await exportFigFile(graph)
+
+    expect(cardGuid).toBeDefined()
+    expect(savedGuidOf(resaved, 'Card')).toBe(cardGuid)
+    const insertedGuid = savedGuidOf(resaved, 'Inserted')
+    expect(insertedGuid).toBeDefined()
+    expect(insertedGuid).not.toBe(cardGuid)
+  })
+
+  test('gives an opened layer its saved GUID when a new layer has the same ID', async () => {
+    let next = 0
+    const graph = new SceneGraph(() => `9:${++next}`)
+    const page = graph.getPages()[0]
+    const created = graph.createNode('FRAME', page.id, { name: 'Created' })
+    const opened = graph.createNode('FRAME', page.id, { name: 'Opened' })
+    graph.updateNode(opened.id, {
+      source: { ...opened.source, id: created.id }
+    })
+    const saved = await exportFigFile(graph)
+
+    expect(savedGuidOf(saved, 'Opened')).toBe(created.id)
+    expect(savedGuidOf(saved, 'Created')).toBeDefined()
+    expect(savedGuidOf(saved, 'Created')).not.toBe(created.id)
+  })
 })
+
+function savedGuidOf(bytes: Uint8Array, name: string): string | undefined {
+  const nodeChange = decodeExport(bytes).nodeChanges.find((change) => change.name === name)
+  return nodeChange?.guid ? guidToString(nodeChange.guid) : undefined
+}

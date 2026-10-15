@@ -7,16 +7,20 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["node", "bun"],
+    "types": [
+      "node",
+      "bun"
+    ],
     "paths": {
-      "#compiler/*": ["./src/*"],
-      "#core/*": ["../core/src/*"],
-      "@open-pencil/core": ["../core/src/index.ts"],
-      "@open-pencil/core/*": ["../core/src/*"]
+      "#compiler/*": [
+        "./src/*"
+      ]
     },
     "noCheck": true,
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

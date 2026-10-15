@@ -16,6 +16,7 @@ function makeIR(pageName: string, pageId = `p-${pageName}`): IRTree {
     docStates: [],
     docStateReads: [],
     docStateWrites: [],
+    usesRouteParams: false,
     warnings: []
   }
 }

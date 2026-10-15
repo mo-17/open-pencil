@@ -4,6 +4,7 @@ import {
 } from '#compiler/backend/nestjs/browser-auth'
 import { emitNestJSClient } from '#compiler/backend/nestjs/client'
 import type { IRTree } from '#compiler/ir/types'
+import { parseCompilerPackageJSON } from '#compiler/package-json'
 import type { CompilerOptions } from '#compiler/types'
 
 import { deriveLowcodePageRoutes, validateLowcodeNavigationTarget } from '@open-pencil/lowcode'
@@ -82,7 +83,7 @@ function integrateClientDependencies(
 ): void {
   const manifest = files.get('package.json')
   if (typeof manifest !== 'string') throw new Error('Frontend package manifest is required.')
-  const parsed = JSON.parse(manifest) as { dependencies?: Record<string, string> }
+  const parsed = parseCompilerPackageJSON(manifest)
   parsed.dependencies = { ...parsed.dependencies, 'openid-client': OPENID_CLIENT_VERSION }
   files.set('package.json', JSON.stringify(parsed, null, 2) + '\n')
   // The trusted desktop sidecar owns its fixed loopback connection; a VFS config cannot proxy.

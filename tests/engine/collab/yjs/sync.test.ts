@@ -37,33 +37,6 @@ import { expectDefined, getNodeOrThrow } from '#tests/helpers/assert'
 import { generatedEffect } from '#tests/helpers/generated-effect'
 import { connectYDocs } from '#tests/helpers/yjs'
 
-// Test copy of the private apply path.
-function applyYnodeToGraph(peer: SceneGraph, nodeId: string, ynode: Y.Map<unknown>) {
-  const props = yNodeToProps(ynode)
-  if (peer.getNode(nodeId)) {
-    peer.updateNode(nodeId, props as Partial<SceneNode>)
-    return
-  }
-  const type = props.type as SceneNode['type'] | undefined
-  if (!type) return
-  const parentId = typeof props.parentId === 'string' ? props.parentId : null
-  peer.createNodeWithId(nodeId, type, parentId, props as Partial<SceneNode>)
-  if (parentId === null) peer.rootId = nodeId
-}
-
-function seedHostIntoYjs(host: SceneGraph): Y.Map<Y.Map<unknown>> {
-  const doc = new Y.Doc()
-  const ynodes = doc.getMap<Y.Map<unknown>>('nodes')
-  doc.transact(() => {
-    for (const node of host.getAllNodes()) {
-      const ynode = new Y.Map<unknown>()
-      ynodes.set(node.id, ynode)
-      syncNodePropsToYMap(node, ynode)
-    }
-  })
-  return ynodes
-}
-
 function firstPage(graph: SceneGraph): SceneNode {
   return expectDefined(graph.getPages()[0], 'first page')
 }
@@ -386,51 +359,36 @@ describe('collab yjs-sync', () => {
     expect(Array.isArray(props.strokeGeometry)).toBe(true)
   })
 
-  test('a fresh peer reconstructs one ellipse, no duplicate childIds, order-independent', () => {
-    const host = new SceneGraph()
-    const hostPage = firstPage(host)
-    const ellipse = host.createNode('ELLIPSE', hostPage.id, { width: 80, height: 60 })
-
-    const ynodes = seedHostIntoYjs(host)
-
-    const peer = new SceneGraph()
-    const ids = [...ynodes.keys()].reverse()
-    for (const id of ids) applyYnodeToGraph(peer, id, expectDefined(ynodes.get(id), `ynode ${id}`))
-
-    const peerEllipse = getNodeOrThrow(peer, ellipse.id)
-    expect(peerEllipse.type).toBe('ELLIPSE')
-    expect(peerEllipse.parentId).toBe(hostPage.id)
-
-    const peerPage = getNodeOrThrow(peer, hostPage.id)
-    const refs = peerPage.childIds.filter((c) => c === ellipse.id)
-    expect(refs).toHaveLength(1)
-    expect(peer.getPages().map((page) => page.id)).toContain(hostPage.id)
+  test('a fresh peer reconstructs one ellipse with no duplicate childIds through shared-tree sync', async () => {
+    await withSyncedStores(
+      ({ hostStore, peerStore, hostSync, hostDoc, peerDoc }) => {
+        const hostPage = firstPage(hostStore.graph)
+        const ellipse = hostStore.graph.createNode('ELLIPSE', hostPage.id, {
+          width: 80,
+          height: 60
+        })
+        hostSync.syncAllNodesToYjs()
+        Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(hostDoc))
+        const received = getNodeOrThrow(peerStore.graph, ellipse.id)
+        expect(received.type).toBe('ELLIPSE')
+        expect(received.parentId).toBe(hostPage.id)
+        expect(
+          getNodeOrThrow(peerStore.graph, hostPage.id).childIds.filter((id) => id === ellipse.id)
+        ).toHaveLength(1)
+      },
+      { connectImmediately: false }
+    )
   })
 
-  test('a live-created node links into its parent even when the parent childIds was not re-synced', () => {
-    const host = new SceneGraph()
-    const hostPage = firstPage(host)
-    const rect = host.createNode('RECTANGLE', hostPage.id, { width: 50, height: 50 })
-
-    const doc = new Y.Doc()
-    const ynodes = doc.getMap<Y.Map<unknown>>('nodes')
-    doc.transact(() => {
-      const pageYnode = new Y.Map<unknown>()
-      ynodes.set(hostPage.id, pageYnode)
-      syncNodePropsToYMap({ ...hostPage, childIds: [] } as SceneNode, pageYnode)
-
-      const rectYnode = new Y.Map<unknown>()
-      ynodes.set(rect.id, rectYnode)
-      syncNodePropsToYMap(rect, rectYnode)
+  test('a live-created node links into its shared parent without resyncing the parent childIds', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync }) => {
+      hostSync.syncAllNodesToYjs()
+      const page = firstPage(hostStore.graph)
+      const rect = hostStore.graph.createNode('RECTANGLE', page.id, { width: 50, height: 50 })
+      hostSync.syncNodeToYjs(rect.id)
+      expect(getNodeOrThrow(peerStore.graph, rect.id).parentId).toBe(page.id)
+      expect(getNodeOrThrow(peerStore.graph, page.id).childIds).toEqual([rect.id])
     })
-
-    const peer = new SceneGraph()
-    applyYnodeToGraph(peer, hostPage.id, expectDefined(ynodes.get(hostPage.id), 'page ynode'))
-    applyYnodeToGraph(peer, rect.id, expectDefined(ynodes.get(rect.id), 'rect ynode'))
-
-    const peerPage = getNodeOrThrow(peer, hostPage.id)
-    expect(peerPage.childIds).toEqual([rect.id])
-    expect(getNodeOrThrow(peer, rect.id).type).toBe('RECTANGLE')
   })
 
   test('deduplicates a pending page switch and handles its rejection', async () => {
@@ -1184,6 +1142,7 @@ describe('collab yjs-sync', () => {
 
   test('image fills sync image bytes', async () => {
     await withSyncedStores(({ hostStore, peerStore, hostSync }) => {
+      hostSync.syncAllNodesToYjs()
       const hostPage = firstPage(hostStore.graph)
       const imageHash = 'image-hash'
       const imageFill: Fill = {
@@ -1205,23 +1164,20 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('synced node does not crash the visual-bounds helper', () => {
-    const host = new SceneGraph()
-    const hostPage = firstPage(host)
-    const ellipse = host.createNode('ELLIPSE', hostPage.id, { width: 120, height: 90 })
-
-    const ynodes = seedHostIntoYjs(host)
-    const peer = new SceneGraph()
-    for (const id of ynodes.keys()) {
-      applyYnodeToGraph(peer, id, expectDefined(ynodes.get(id), `ynode ${id}`))
-    }
-
-    const peerEllipse = getNodeOrThrow(peer, ellipse.id)
-    expect(() =>
-      nodeVisualBounds(peerEllipse, (id) => {
-        const n = peer.getNode(id)
-        return { x: n?.x ?? 0, y: n?.y ?? 0 }
+  test('synced node does not crash the visual-bounds helper', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync }) => {
+      const ellipse = hostStore.graph.createNode('ELLIPSE', firstPage(hostStore.graph).id, {
+        width: 120,
+        height: 90
       })
-    ).not.toThrow()
+      hostSync.syncAllNodesToYjs()
+      const received = getNodeOrThrow(peerStore.graph, ellipse.id)
+      expect(() =>
+        nodeVisualBounds(received, (id) => {
+          const node = peerStore.graph.getNode(id)
+          return { x: node?.x ?? 0, y: node?.y ?? 0 }
+        })
+      ).not.toThrow()
+    })
   })
 })

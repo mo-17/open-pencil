@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
@@ -24,23 +24,43 @@ function pluginModuleItemTestId(pluginId: string, moduleType: string, mobile = f
   return `toolbar-plugin-module-${pluginId}-${moduleType}${mobile ? '-mobile' : ''}`
 }
 
+/** Normal native-select interaction captures this field's current module owner. */
+async function selectModuleOption(control: Locator, value: string): Promise<void> {
+  await control.blur()
+  await control.focus()
+  await control.selectOption(value)
+}
+
 async function canvasPluginModules(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph
       .getChildren(store.state.currentPageId)
-      .flatMap((node) => (node.interactiveProps?.module ? [node.interactiveProps.module] : []))
+      .flatMap((node) => {
+        const module = readModuleInstance(node.interactiveProps?.module)
+        return module ? [module] : []
+      })
       .map(({ pluginId, moduleType }) => ({ pluginId, moduleType }))
   })
 }
 
 async function selectedModuleJSON(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const selectedId = [...store.state.selectedIds][0]
-    const module = selectedId ? store.graph.getNode(selectedId)?.interactiveProps?.module : null
+    const module = selectedId
+      ? readModuleInstance(store.graph.getNode(selectedId)?.interactiveProps?.module)
+      : null
     return module ? JSON.stringify(module) : null
   })
 }
@@ -366,11 +386,11 @@ test('configures a four-direction Slide Menu only while its plugin is enabled', 
   const presentation = page
     .getByTestId('module-property-input')
     .and(page.locator('[data-module-path="presentation"]'))
-  await presentation.selectOption('dialog')
-  await page
-    .getByTestId('module-property-input')
-    .and(page.locator('[data-module-path="direction"]'))
-    .selectOption('bottom')
+  await selectModuleOption(presentation, 'dialog')
+  await selectModuleOption(
+    page.getByTestId('module-property-input').and(page.locator('[data-module-path="direction"]')),
+    'bottom'
+  )
   const trigger = page
     .getByTestId('module-property-input')
     .and(page.locator('[data-module-path="triggerLabel"]'))
@@ -485,8 +505,8 @@ test('installs and edits a flat accessible Dropdown Menu only while enabled', as
     'Rechts mittig',
     'Rechts unten'
   ])
-  await triggerModeInput.selectOption('hover')
-  await placementInput.selectOption('rightBottom')
+  await selectModuleOption(triggerModeInput, 'hover')
+  await selectModuleOption(placementInput, 'rightBottom')
 
   const separators = page.getByTestId('dropdown-menu-separator-row')
   await page.getByTestId('dropdown-menu-add-separator').click()

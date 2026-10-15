@@ -18,6 +18,8 @@ test('Chinese VR plugin installs its 8K pack and embeds reusable samples with at
   const canvas = new CanvasHelper(page)
   const settle = () =>
     page.evaluate(async () => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
       const navigation = window.openPencil?.test?.navigation
       if (!navigation) throw new Error('Canvas settlement hook not initialized')
       await navigation.waitForSettlement()
@@ -58,7 +60,10 @@ test('Chinese VR plugin installs its 8K pack and embeds reusable samples with at
     '住宅示例 A'
   )
   const imageHashes = () =>
-    page.evaluate(() => [...(window.openPencil?.getStore?.().graph.images.keys() ?? [])])
+    page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().graph.images.keys() ?? [])]
+    })
   expect(await imageHashes()).toEqual(VR_TOUR_SAMPLE_ASSETS.map((asset) => asset.graphImageHash))
   expect(requests).toHaveLength(2)
   await settle()

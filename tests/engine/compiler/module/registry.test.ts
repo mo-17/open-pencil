@@ -16,6 +16,7 @@ import type { CompilerModuleLowerer } from '#compiler/modules/types'
 
 import { MAP_MODULE_TYPE, MAP_PLUGIN_ID } from '@open-pencil/core/plugins'
 
+import { repoPath } from '#tests/helpers/paths'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 const MAP_IR_MODULE: IRModule = {
@@ -117,10 +118,7 @@ describe('compiler module registry boundaries', () => {
       BUILTIN_REACT_MODULE_REGISTRY.getTarget('react', MAP_PLUGIN_ID, MAP_MODULE_TYPE)
     ).toBeDefined()
 
-    const source = readFileSync(
-      new URL('../../../../packages/compiler/src/modules/builtin.ts', import.meta.url),
-      'utf8'
-    )
+    const source = readFileSync(repoPath('packages/compiler/src/modules/builtin.ts'), 'utf8')
     expect(source).not.toContain('adapters/react')
   })
 

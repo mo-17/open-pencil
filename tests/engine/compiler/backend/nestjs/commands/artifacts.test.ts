@@ -14,7 +14,7 @@ test('emits a complete deterministic command, protected internal ledger and type
   expect(files).toEqual(second)
   const file = (name: string) => {
     const found = files.get('backend/nestjs/' + name)
-    if (!found) throw new Error('Missing generated file ' + name)
+    if (typeof found !== 'string') throw new Error('Missing generated text file ' + name)
     return found
   }
   expect(file('src/command.controller.ts')).toContain('@HttpCode(200)')

@@ -22,6 +22,7 @@ import {
   type UIMessage,
   type UIMessageChunk
 } from 'ai'
+import { compact } from 'es-toolkit/array'
 
 import { decodeBase64, encodeBase64 } from '@open-pencil/core/bytes'
 import type { ACPAgentDef } from '@open-pencil/core/constants'
@@ -624,7 +625,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const consumedSystemContext = !this.sentContext
     const consumedRuntimeContext = this.runtimeContextDirty
     const runtimeContext = formatACPRuntimeContext(getACPDiagnostics())
-    const promptText = [
+    const promptText = compact([
       ...(consumedSystemContext ? [designSystemPromptFor('delegated')] : []),
       ...(consumedRuntimeContext
         ? [
@@ -634,9 +635,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         : []),
       text,
       visualReferenceSourceContext
-    ]
-      .filter(Boolean)
-      .join('\n\n')
+    ]).join('\n\n')
     this.sentContext = true
     this.runtimeContextDirty = false
 

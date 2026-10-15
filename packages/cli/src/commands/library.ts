@@ -2,6 +2,7 @@ import { isIP } from 'node:net'
 import { extname, resolve } from 'node:path'
 
 import { defineCommand } from 'citty'
+import * as v from 'valibot'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { REMOTE_FIG_ARCHIVE_LIMITS } from '@open-pencil/fig'
@@ -25,7 +26,7 @@ import {
   type SceneNode
 } from '@open-pencil/scene-graph'
 
-import { requireFile } from '#cli/app-client'
+import { requireFile } from '#cli/app/client'
 import { bold, fmtList, ok, printError } from '#cli/format'
 import { loadDocument, saveDocument } from '#cli/headless'
 
@@ -65,15 +66,35 @@ function documentFormat(file: string): string {
   return ext || 'fig'
 }
 
+const LibraryManifestSchema: v.GenericSchema<unknown, LibraryManifest> = v.object({
+  libraryId: v.string(),
+  name: v.string(),
+  source: v.optional(v.object({ kind: v.picklist(['file', 'url']), ref: v.string() })),
+  components: v.array(
+    v.object({
+      key: v.string(),
+      name: v.string(),
+      version: v.string(),
+      nodeId: v.string(),
+      type: v.picklist(['COMPONENT', 'COMPONENT_SET'])
+    })
+  )
+})
+
 async function readManifest(file: string): Promise<LibraryManifest> {
-  return JSON.parse(await Bun.file(file).text()) as LibraryManifest
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), LibraryManifestSchema),
+    await Bun.file(file).text()
+  )
 }
 
 async function readRemoteLibraryDescriptor(
   file: string
 ): Promise<RemoteComponentLibraryDescriptor> {
   const value = JSON.parse(await Bun.file(file).text()) as unknown
-  return parseRemoteComponentLibraryDescriptor(value, 'manifest', { allowExtraKeys: true })
+  return parseRemoteComponentLibraryDescriptor(value, 'manifest', {
+    allowExtraKeys: true
+  })
 }
 
 async function writeManifest(file: string, manifest: LibraryManifest): Promise<void> {
@@ -311,7 +332,9 @@ async function finishConsumerMutation(
 }
 
 const publish = defineCommand({
-  meta: { description: 'Publish a component manifest entry from a library document' },
+  meta: {
+    description: 'Publish a component manifest entry from a library document'
+  },
   args: {
     file: {
       type: 'positional',
@@ -451,7 +474,9 @@ const check = defineCommand({
 })
 
 const accept = defineCommand({
-  meta: { description: 'Accept a library component update into a consumer document' },
+  meta: {
+    description: 'Accept a library component update into a consumer document'
+  },
   args: {
     file: consumerFileArg,
     library: libraryFileArg,
@@ -559,7 +584,10 @@ const remotePrepare = defineCommand({
         format,
         mediaType: remoteArtifactMediaType(format),
         byteLength: bytes.byteLength,
-        integrity: { algorithm: 'SHA-256', digest: await artifactDigest(bytes) }
+        integrity: {
+          algorithm: 'SHA-256',
+          digest: await artifactDigest(bytes)
+        }
       }
     }
     const output = resolve(args.output)
@@ -573,12 +601,16 @@ const remotePrepare = defineCommand({
 })
 
 const remote = defineCommand({
-  meta: { description: 'Prepare remote component-library distribution artifacts' },
+  meta: {
+    description: 'Prepare remote component-library distribution artifacts'
+  },
   subCommands: { prepare: remotePrepare }
 })
 
 export default defineCommand({
-  meta: { description: 'Publish, import, check, accept, and distribute library components' },
+  meta: {
+    description: 'Publish, import, check, accept, and distribute library components'
+  },
   subCommands: {
     publish,
     import: importCmd,

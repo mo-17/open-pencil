@@ -5,6 +5,8 @@ import { join } from 'node:path'
 
 import { emitNestJSClient } from '#compiler/backend/nestjs/client'
 
+import { asDouble } from '#tests/helpers/doubles'
+
 import { commandApplication } from '../browser-client/command/helpers'
 
 interface GeneratedClientModule {
@@ -131,10 +133,9 @@ describe('generated NestJS command SDK', () => {
     const client = module.createNestJSClient({
       baseUrl: '/api',
       getAccessToken: () => Promise.resolve('access-token'),
-      fetch: (() =>
-        Promise.resolve(
-          Response.json({ message: 'SQL private detail' }, { status })
-        )) as typeof fetch
+      fetch: asDouble<typeof fetch>(() =>
+        Promise.resolve(Response.json({ message: 'SQL private detail' }, { status }))
+      )
     })
     await expect(
       client.commands['save-note']({ title: 'Tea' }, { idempotencyKey: key })

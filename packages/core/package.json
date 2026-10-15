@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/core",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -45,14 +45,31 @@
     "#core/vector": "./src/vector/index.ts",
     "#core/vector/vectorize": "./src/vector/vectorize/index.ts",
     "#core/geometry": "./src/geometry/index.ts",
-    "#core-tests/*": "./tests/*.ts"
+    "#core-tests/*": "./tests/*.ts",
+    "#core/openpencil-api": "./src/openpencil-api/index.ts",
+    "#core/io/formats/design-tokens": "./src/io/formats/design-tokens/index.ts",
+    "#core/lint": "./src/lint/index.ts",
+    "#core/rpc": "./src/rpc/index.ts",
+    "#core/figma-api/text": "./src/figma-api/text/index.ts",
+    "#core/canvas/text/layout": "./src/canvas/text/layout/index.ts",
+    "#core/canvas/text/paragraph": "./src/canvas/text/paragraph/index.ts",
+    "#core/plugins/vr-tour": "./src/plugins/vr-tour/index.ts",
+    "#core/plugins/effect-pick": "./src/plugins/effect-pick/index.ts",
+    "#core/editor/components/slots": "./src/editor/components/slots/index.ts",
+    "#core/editor/components/variants": "./src/editor/components/variants/index.ts"
   },
   "exports": {
     "./package.json": "./package.json",
+    "./assets/*": "./assets/*",
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./geometry": {
+      "types": "./dist/geometry/index.d.ts",
+      "import": "./dist/geometry/index.js",
+      "default": "./dist/geometry/index.js"
     },
     "./text": {
       "types": "./dist/text/index.d.ts",
@@ -68,6 +85,11 @@
       "types": "./dist/vector/index.d.ts",
       "import": "./dist/vector/index.js",
       "default": "./dist/vector/index.js"
+    },
+    "./openpencil-api": {
+      "types": "./dist/openpencil-api/index.d.ts",
+      "import": "./dist/openpencil-api/index.js",
+      "default": "./dist/openpencil-api/index.js"
     },
     "./figma-api": {
       "types": "./dist/figma-api/index.d.ts",
@@ -94,25 +116,10 @@
       "import": "./dist/editor/index.js",
       "default": "./dist/editor/index.js"
     },
-    "./motion": {
-      "types": "./dist/motion/index.d.ts",
-      "import": "./dist/motion/index.js",
-      "default": "./dist/motion/index.js"
-    },
-    "./plugins": {
-      "types": "./dist/plugins/index.d.ts",
-      "import": "./dist/plugins/index.js",
-      "default": "./dist/plugins/index.js"
-    },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js",
       "default": "./dist/tools/index.js"
-    },
-    "./ai-draft": {
-      "types": "./dist/ai-draft/index.d.ts",
-      "import": "./dist/ai-draft/index.js",
-      "default": "./dist/ai-draft/index.js"
     },
     "./profiler": {
       "types": "./dist/profiler/index.d.ts",
@@ -125,8 +132,8 @@
       "default": "./dist/rpc/index.js"
     },
     "./library": {
-      "types": "./dist/library/index.d.ts",
       "bun": "./src/library/index.ts",
+      "types": "./dist/library/index.d.ts",
       "import": "./dist/library/index.js",
       "default": "./dist/library/index.js"
     },
@@ -134,21 +141,6 @@
       "types": "./dist/lint/index.d.ts",
       "import": "./dist/lint/index.js",
       "default": "./dist/lint/index.js"
-    },
-    "./lowcode-validation": {
-      "types": "./dist/lowcode-validation/index.d.ts",
-      "import": "./dist/lowcode-validation/index.js",
-      "default": "./dist/lowcode-validation/index.js"
-    },
-    "./lowcode-validation/application-runtime": {
-      "types": "./dist/lowcode-validation/application-runtime.d.ts",
-      "import": "./dist/lowcode-validation/application-runtime.js",
-      "default": "./dist/lowcode-validation/application-runtime.js"
-    },
-    "./lowcode-deployment": {
-      "types": "./dist/lowcode-deployment.d.ts",
-      "import": "./dist/lowcode-deployment.js",
-      "default": "./dist/lowcode-deployment.js"
     },
     "./io": {
       "types": "./dist/io/index.d.ts",
@@ -160,15 +152,25 @@
       "import": "./dist/io/formats/fig/index.js",
       "default": "./dist/io/formats/fig/index.js"
     },
-    "./io/motion-export": {
-      "types": "./dist/io/motion-export/index.d.ts",
-      "import": "./dist/io/motion-export/index.js",
-      "default": "./dist/io/motion-export/index.js"
+    "./io/formats/html/import": {
+      "types": "./dist/io/formats/html/import.d.ts",
+      "import": "./dist/io/formats/html/import.js",
+      "default": "./dist/io/formats/html/import.js"
+    },
+    "./io/formats/html/layers": {
+      "types": "./dist/io/formats/html/layers.d.ts",
+      "import": "./dist/io/formats/html/layers.js",
+      "default": "./dist/io/formats/html/layers.js"
     },
     "./io/formats/raster": {
       "types": "./dist/io/formats/raster/index.d.ts",
       "import": "./dist/io/formats/raster/index.js",
       "default": "./dist/io/formats/raster/index.js"
+    },
+    "./io/formats/design-tokens": {
+      "types": "./dist/io/formats/design-tokens/index.d.ts",
+      "import": "./dist/io/formats/design-tokens/index.js",
+      "default": "./dist/io/formats/design-tokens/index.js"
     },
     "./io/formats/svg": {
       "types": "./dist/io/formats/svg/index.d.ts",
@@ -190,11 +192,6 @@
       "import": "./dist/constants.js",
       "default": "./dist/constants.js"
     },
-    "./random": {
-      "types": "./dist/random.d.ts",
-      "import": "./dist/random.js",
-      "default": "./dist/random.js"
-    },
     "./xpath": {
       "types": "./dist/xpath.d.ts",
       "import": "./dist/xpath.js",
@@ -210,10 +207,40 @@
       "import": "./dist/layout.js",
       "default": "./dist/layout.js"
     },
-    "./geometry": {
-      "types": "./dist/geometry/index.d.ts",
-      "import": "./dist/geometry/index.js",
-      "default": "./dist/geometry/index.js"
+    "./motion": {
+      "types": "./dist/motion/index.d.ts",
+      "import": "./dist/motion/index.js",
+      "default": "./dist/motion/index.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "import": "./dist/plugins/index.js",
+      "default": "./dist/plugins/index.js"
+    },
+    "./ai-draft": {
+      "types": "./dist/ai-draft/index.d.ts",
+      "import": "./dist/ai-draft/index.js",
+      "default": "./dist/ai-draft/index.js"
+    },
+    "./lowcode-validation": {
+      "types": "./dist/lowcode-validation/index.d.ts",
+      "import": "./dist/lowcode-validation/index.js",
+      "default": "./dist/lowcode-validation/index.js"
+    },
+    "./lowcode-validation/application-runtime": {
+      "types": "./dist/lowcode-validation/application-runtime.d.ts",
+      "import": "./dist/lowcode-validation/application-runtime.js",
+      "default": "./dist/lowcode-validation/application-runtime.js"
+    },
+    "./lowcode-deployment": {
+      "types": "./dist/lowcode-deployment.d.ts",
+      "import": "./dist/lowcode-deployment.js",
+      "default": "./dist/lowcode-deployment.js"
+    },
+    "./io/motion-export": {
+      "types": "./dist/io/motion-export/index.d.ts",
+      "import": "./dist/io/motion-export/index.js",
+      "default": "./dist/io/motion-export/index.js"
     },
     "./color": {
       "types": "./dist/color/index.d.ts",
@@ -247,7 +274,7 @@
   "dependencies": {
     "@chenglou/pretext": "^0.0.7",
     "@iconify/utils": "^3.1.4",
-    "@noble/hashes": "^1.8.0",
+    "@noble/hashes": "^2.4.0",
     "@open-pencil/design-jsx": "workspace:*",
     "@open-pencil/dom-css": "workspace:*",
     "@open-pencil/fig": "workspace:*",
@@ -263,7 +290,6 @@
     "acorn": "^8.18.0",
     "canvaskit-wasm": "^0.41.1",
     "culori": "^4.0.2",
-    "dedent": "^1.7.2",
     "destr": "^2.0.5",
     "diff": "^8.0.4",
     "es-toolkit": "^1.52.0",
@@ -284,7 +310,7 @@
     "svg-path-properties": "^2.0.2",
     "svg2pdf.js": "^2.8.1",
     "svgpath": "^2.6.0",
-    "twirlwind": "^0.4.0",
+    "twirlwind": "^0.4.1",
     "unifont": "0.7.4",
     "valibot": "^1.5.0",
     "yoga-layout": "npm:@open-pencil/yoga-layout@3.3.0-grid.3"
@@ -297,5 +323,17 @@
     "@types/rbush": "^4.0.0",
     "typescript": "~5.8.3",
     "unplugin-raw": "^0.7.0"
+  },
+  "peerDependencies": {
+    "@ai-sdk/valibot": "^3.0.53",
+    "ai": "^7.0.127"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/valibot": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    }
   }
 }

@@ -3,8 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
 
 import { SceneGraph } from '@open-pencil/core'
-import { collectSubtrees } from '@open-pencil/core/editor/clipboard/subtree-history'
 import { createInstanceOverrideState } from '@open-pencil/scene-graph'
+
+import { collectSubtrees } from '#core/editor/history/subtree'
 
 function pageId(graph: SceneGraph): string {
   return graph.getPages()[0].id
@@ -39,7 +40,14 @@ describe('cloneTree deep-copies boundVariables, overrides, and styleRuns', () =>
     setupColorVars(graph, 'v1', 'v2')
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Original',
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     graph.bindVariable(node.id, 'fills/0/color', 'v1')
     const original = getNodeOrThrow(graph, node.id)
@@ -58,7 +66,14 @@ describe('cloneTree deep-copies boundVariables, overrides, and styleRuns', () =>
     setupColorVars(graph, 'v1', 'v2')
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Original',
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     graph.bindVariable(node.id, 'fills/0/color', 'v1')
     const original = getNodeOrThrow(graph, node.id)
@@ -119,7 +134,14 @@ describe('cloneTree deep-copies boundVariables, overrides, and styleRuns', () =>
     const graph = new SceneGraph()
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Original',
-      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     const original = getNodeOrThrow(graph, node.id)
 
@@ -154,7 +176,14 @@ describe('instance child bindings are independent from component', () => {
       name: 'Bg',
       width: 100,
       height: 40,
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
 
     graph.bindVariable(child.id, 'fills/0/color', 'v1')
@@ -186,7 +215,14 @@ describe('instance child bindings are independent from component', () => {
       name: 'Bg',
       width: 100,
       height: 40,
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
 
     graph.bindVariable(child.id, 'fills/0/color', 'v1')
@@ -297,8 +333,18 @@ describe('set_fill/set_stroke clean up stale bindings', () => {
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Rect',
       fills: [
-        { type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 },
-        { type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2, a: 1 }, visible: true, opacity: 1 }
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        },
+        {
+          type: 'SOLID',
+          color: { r: 0.2, g: 0.2, b: 0.2, a: 1 },
+          visible: true,
+          opacity: 1
+        }
       ]
     })
     // Bind both fills
@@ -326,7 +372,14 @@ describe('set_fill/set_stroke clean up stale bindings', () => {
 
     // Replace fills via updateNode (same path tools use)
     graph.updateNode(node.id, {
-      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
 
     // Top-level 'fills' binding should be cleaned up
@@ -342,7 +395,14 @@ describe('collectSubtrees deep-copies nodes', () => {
     setupColorVars(graph, 'v1')
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Rect',
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     graph.bindVariable(node.id, 'fills/0/color', 'v1')
     const original = getNodeOrThrow(graph, node.id)
@@ -361,7 +421,14 @@ describe('undo of binding on clone restores original state', () => {
     setupColorVars(graph, 'v1', 'v2')
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Original',
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     graph.bindVariable(node.id, 'fills/0/color', 'v1')
     const clone = expectDefined(graph.cloneTree(node.id, pageId(graph)), 'clone')
@@ -380,7 +447,14 @@ describe('variable deletion and re-clone safety', () => {
     setupColorVars(graph, 'v1', 'v2')
     const node = graph.createNode('RECTANGLE', pageId(graph), {
       name: 'Original',
-      fills: [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1, a: 1 }, visible: true, opacity: 1 }]
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+          visible: true,
+          opacity: 1
+        }
+      ]
     })
     graph.bindVariable(node.id, 'fills/0/color', 'v1')
     const clone1 = expectDefined(graph.cloneTree(node.id, pageId(graph)), 'clone')

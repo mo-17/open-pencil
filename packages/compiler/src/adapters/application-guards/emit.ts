@@ -1,4 +1,5 @@
 import type { IRTree } from '#compiler/ir/types'
+import { uniq } from 'es-toolkit'
 
 import { derivePagePaths } from '../react/route-paths'
 
@@ -28,7 +29,7 @@ export function guardDocumentNames(pages: readonly IRTree[]): string[] {
     ...(page.applicationLeaveConfirm?.references ?? []),
     ...(page.requiresAuth ? ['$currentUser'] : [])
   ])
-  return [...new Set(references.filter((name) => declared.has(name)))].sort()
+  return uniq(references.filter((name) => declared.has(name))).sort()
 }
 
 export function reactGuardPageImports(ir: IRTree, prefix: string, navigate: boolean): string {

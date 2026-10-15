@@ -1,10 +1,13 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/scene-graph'
-import type { Fill, SceneNode } from '@open-pencil/scene-graph'
+import { SceneGraph, createDefaultNode } from '@open-pencil/scene-graph'
+import type { Fill } from '@open-pencil/scene-graph'
 
 import { applyFill } from '#core/canvas/fills'
-import type { SkiaRenderer } from '#core/canvas/renderer'
+
+import { canvasMock } from '#tests/engine/render/canvas/effects/helpers'
+
+import { asRenderer } from './helpers'
 
 function createRenderer() {
   // A real CanvasKit shader is a WASM handle the caller deletes once the paint holds it.
@@ -15,18 +18,18 @@ function createRenderer() {
   }
   const recorder = {
     beginRecording: mock(() => ({
-      drawRect: mock(() => undefined),
-      drawRRect: mock(() => undefined),
-      restore: mock(() => undefined),
-      save: mock(() => undefined),
-      scale: mock(() => undefined),
-      translate: mock(() => undefined)
+      drawRect: canvasMock('drawRect'),
+      drawRRect: canvasMock('drawRRect'),
+      restore: canvasMock('restore'),
+      save: canvasMock('save'),
+      scale: canvasMock('scale'),
+      translate: canvasMock('translate')
     })),
     finishRecordingAsPicture: mock(() => picture),
     delete: mock(() => undefined)
   }
 
-  return {
+  return asRenderer({
     fillPaint: {
       setShader: mock(() => undefined),
       setColor: mock(() => undefined),
@@ -44,10 +47,10 @@ function createRenderer() {
     resolveFillColor: mock((fill: Fill) => fill.color),
     makeRRect: mock(() => 'rrect'),
     testShader: patternShader
-  } as SkiaRenderer & { testShader: typeof patternShader }
+  })
 }
 
-const node = { id: '1:2', source: { id: '' }, width: 100, height: 100 } as SceneNode
+const node = createDefaultNode(() => '1:2', 'RECTANGLE', { width: 100, height: 100 })
 
 describe('schema fill fallback rendering', () => {
   test('renders pattern fills from referenced source nodes', () => {

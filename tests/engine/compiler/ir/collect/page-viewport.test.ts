@@ -170,6 +170,7 @@ describe('page viewport collection and semantic layout', () => {
       responsiveOverrides: { compact: { layoutMode: 'VERTICAL' } }
     })
     const instance = graph.createInstance(master.id, frame.id)
+    if (!instance) throw new Error('Expected an instance')
     const ir = collectTree(graph, page.id, buildComponentRegistry(graph))
     const root = ir.children.find(
       (entry) => entry.kind === 'element' && entry.sourceId === frame.id

@@ -313,6 +313,31 @@ describe('validatePackedTarballs', () => {
     ).resolves.toBeUndefined()
   })
 
+  test('keeps valid runtime import maps and rejects missing or private targets', async () => {
+    const root = await fixtureRoot()
+    const plan: PreparedPublishPlan = {
+      packages: [expected],
+      repository: expectedRepository,
+      version: expected.version
+    }
+    const manifest = {
+      name: expected.name,
+      version: expected.version,
+      repository: expectedRepository,
+      imports: { '#core/*': './src/*.ts' }
+    }
+    const files = { LICENSE: LICENSE_BYTES.toString(), 'src/index.ts': 'export {}\n' }
+    await writeTarballFixture(root, manifest, files)
+    await expect(validatePackedTarballs(root, plan, LICENSE_BYTES)).resolves.toBeUndefined()
+
+    for (const target of ['./missing/*.ts', './../escape.js', '@open-pencil/compiler']) {
+      await writeTarballFixture(root, { ...manifest, imports: { '#core/*': target } }, files)
+      await expect(validatePackedTarballs(root, plan, LICENSE_BYTES)).rejects.toThrow(
+        'imports["#core/*"]'
+      )
+    }
+  })
+
   test('rejects a missing or byte-different repository license', async () => {
     const plan: PreparedPublishPlan = {
       packages: [expected],

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uniq, compact } from 'es-toolkit/array'
 import { computed } from 'vue'
 
 import type {
@@ -34,7 +35,7 @@ function setOperation(
   checked: boolean
 ): void {
   resource.operations = checked
-    ? [...new Set([...resource.operations, operation])]
+    ? uniq([...resource.operations, operation])
     : resource.operations.filter((entry) => entry !== operation)
   pruneHTTPAPIQuery(resource)
   if (operation === 'list') {
@@ -49,7 +50,7 @@ function setProjection(
   checked: boolean
 ): void {
   resource[key] = checked
-    ? [...new Set([...(resource[key] ?? []), field])]
+    ? uniq([...(resource[key] ?? []), field])
     : (resource[key] ?? []).filter((entry) => entry !== field)
   if (key === 'readFields') pruneHTTPAPIQuery(resource)
 }
@@ -69,7 +70,7 @@ function serverField(resource: BackendHttpAPIResourceIRV1, id: string): boolean 
 }
 function setScopes(value: string): void {
   const authentication = application.httpApi?.browserClient?.authentication
-  if (authentication) authentication.scopes = value.trim().split(/\s+/u).filter(Boolean)
+  if (authentication) authentication.scopes = compact(value.trim().split(/\s+/u))
 }
 </script>
 

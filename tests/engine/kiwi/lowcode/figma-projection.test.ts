@@ -4,11 +4,11 @@ import {
   exportFigFileWithOptions,
   importNodeChanges,
   parseFigFile,
-  SceneGraph,
-  type GUID
+  SceneGraph
 } from '@open-pencil/core'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import {
   collapseFigmaProjectionChildren,
@@ -23,6 +23,8 @@ import {
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_NODE_TYPE_KEY
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 
 type ProjectionNode = Pick<NodeChange, 'pluginData' | 'textData' | 'type'>
 
@@ -302,7 +304,7 @@ describe('Figma-compatible lowcode projection import', () => {
     })
 
     const bytes = await exportFigFileWithOptions(source, { profile: 'figma-compatible' })
-    const imported = await parseFigFile(bytes.buffer)
+    const imported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const byName = (name: string) =>
       [...imported.getAllNodes()].find((candidate) => candidate.name === name)
 

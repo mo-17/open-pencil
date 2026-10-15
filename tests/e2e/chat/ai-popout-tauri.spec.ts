@@ -151,7 +151,12 @@ export async function listen(event, handler) {
           if (typeof eventId === 'number') eventListeners.delete(eventId)
           return null
         }
-        if (command === 'list_system_fonts' || command === 'take_pending_open') return []
+        if (
+          command === 'list_system_fonts' ||
+          command === 'take_pending_open' ||
+          command === 'take_pending_rooms'
+        )
+          return []
         return null
       }
     }

@@ -52,6 +52,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
       upload: createUploadButtonModuleInstance({ triggerLabel: '选择文件 File' })
     }
     const ids = await page.evaluate(async (modules) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       const fontURL = performance
         .getEntriesByType('resource')
@@ -178,7 +180,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
       return { root: root.id, accordion: accordion.id }
     }, modules)
     const capture = async (name: string) => {
-      await page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+      await page.evaluate(() => {
+        if (!window.openPencil) throw new Error('Editor test API is unavailable')
+        return window.openPencil.test?.navigation?.waitForSettlement()
+      })
       const live = await canvas.screenshotCanvas()
       expect(live).toMatchSnapshot(`${renderer}-lowcode-${name}-live.png`, { threshold: 0.2 })
       await info.attach(`${renderer}-${name}-live`, {
@@ -186,6 +191,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
         contentType: 'image/png'
       })
       const png = await page.evaluate(async (id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const image = await window.openPencil.getStore().renderExportImage([id], 1, 'PNG')
         if (!image) throw new Error('Lowcode canvas export failed')
         return Array.from(image)
@@ -199,6 +206,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const initial = await capture('initial')
     await page.evaluate(
       async ({ ids, module }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         editor.graph.updateNode(editor.state.currentPageId, {
           state: [

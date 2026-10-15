@@ -37,6 +37,12 @@ import {
 } from '@/app/properties/motion/v2-capabilities'
 import { motionV2ColorDefault, motionV2NumericDefault } from '@/app/properties/motion/v2-defaults'
 
+function pathPoints(spec: MotionSpec) {
+  const path = spec.tracks[0]?.path
+  if (!path || !('points' in path)) throw new Error('Expected authored point path')
+  return path.points
+}
+
 describe('MotionSpec v2 timeline authoring', () => {
   test('requires an explicit version upgrade before advanced channel edits', () => {
     const preset = createMotionPreset('slide-up')
@@ -151,11 +157,11 @@ describe('MotionSpec v2 timeline authoring', () => {
     spec = setMotionPathProgress(spec, trackId, 0, 0.35)
     spec = setMotionPathAutoRotate(spec, trackId, true)
     spec = addMotionPathPoint(spec, trackId)
-    expect(spec.tracks[0]?.path?.points).toHaveLength(3)
+    expect(pathPoints(spec)).toHaveLength(3)
     spec = setMotionPathPoint(spec, trackId, 2, 'y', 1_000_000)
-    expect(spec.tracks[0]?.path?.points[2]?.y).toBe(MOTION_LIMITS.translate.max)
+    expect(pathPoints(spec)[2]?.y).toBe(MOTION_LIMITS.translate.max)
     spec = removeMotionPathPoint(spec, trackId, 2)
-    expect(spec.tracks[0]?.path?.points).toHaveLength(2)
+    expect(pathPoints(spec)).toHaveLength(2)
     expect(() => removeMotionPathPoint(spec, trackId, 1)).toThrow(RangeError)
 
     spec = setMotionPathEnabled(spec, trackId, false)

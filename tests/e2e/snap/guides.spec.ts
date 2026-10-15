@@ -24,6 +24,8 @@ test.afterAll(async () => {
 async function createRects() {
   await canvas.clearCanvas()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences = { geometry: true, objects: true, pixelGrid: false }
@@ -36,6 +38,8 @@ async function createRects() {
 
 async function selectedPosition(): Promise<Vector> {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.state.selectedIds.values().next().value
@@ -46,7 +50,10 @@ async function selectedPosition(): Promise<Vector> {
 }
 
 async function snapGuides() {
-  return page.evaluate(() => window.openPencil?.getStore?.().state.snapGuides ?? [])
+  return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().state.snapGuides ?? []
+  })
 }
 
 // Snap guide visual tests compare the canvas at a snap position vs a non-snap position
@@ -118,6 +125,8 @@ test('center snap guide: canvas differs at snap vs non-snap position', async () 
 test('pixel snapping preference controls fractional object movement', async () => {
   await canvas.clearCanvas()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences = { geometry: true, objects: false, pixelGrid: false }
@@ -134,6 +143,8 @@ test('pixel snapping preference controls fractional object movement', async () =
   expect(await selectedPosition()).toEqual({ x: 126.25, y: 107.25 })
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences.pixelGrid = true
@@ -143,6 +154,7 @@ test('pixel snapping preference controls fractional object movement', async () =
   await page.mouse.move(box.x + 172.8, box.y + 155.05, { steps: 5 })
   expect(await snapGuides()).toEqual([])
   if (process.platform === 'darwin') {
+    await canvas.waitForRender()
     expect(await canvas.screenshotCanvas()).toMatchSnapshot('pixel-rounding-without-guides.png')
   }
   await page.mouse.up()
@@ -153,6 +165,8 @@ test('pixel snapping preference controls fractional object movement', async () =
 test('Control bypasses object and pixel snapping during a real pointer drag', async () => {
   await canvas.clearCanvas()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences = { geometry: true, objects: true, pixelGrid: true }

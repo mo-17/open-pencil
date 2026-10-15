@@ -194,7 +194,7 @@ describe('Supabase V2 backfill inspection subject', () => {
       authority: { pluginId: string; contractVersion: number; capabilities: string[] }
     }
     forgedAuthority.authority.pluginId = 'evil.provider'
-    forgedAuthority.authority.contractVersion = 99
+    Reflect.set(forgedAuthority.authority, 'contractVersion', 99)
     forgedAuthority.authority.capabilities = []
     forgedAuthority.planDigest = backendProviderPlanDigestV2(forgedAuthority)
     expect(() =>

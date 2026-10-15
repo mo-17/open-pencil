@@ -1,35 +1,19 @@
-import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
-
-import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { switchAppearanceFixture } from '#tests/helpers/compiler/components/switch-appearance'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
 import { mockFontsource } from '#tests/helpers/fonts/fontsource'
 
-interface Fixture {
-  files: [string, string][]
-  warnings: unknown[]
-  root: SceneNode
-  nodes: SceneNode[]
-}
-
-function fixture(target: 'react' | 'vue', kit = false): Fixture {
-  return JSON.parse(
-    execFileSync(
-      'bun',
-      [
-        '-e',
-        `import { switchAppearanceFixture } from './tests/helpers/compiler/components/switch-appearance'; process.stdout.write(JSON.stringify(switchAppearanceFixture('${target}', ${kit})))`
-      ],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-        maxBuffer: 16 * 1024 * 1024
-      }
-    )
-  ) as Fixture
+function fixture(target: 'react' | 'vue', kit = false) {
+  const result = switchAppearanceFixture(target, kit)
+  const files: [string, string][] = result.files.map(([path, source]) => {
+    if (typeof source !== 'string')
+      throw new Error(`Switch browser fixture contains binary source: ${path}`)
+    return [path, source]
+  })
+  return { ...result, files }
 }
 
 test.use({ viewport: { width: 1200, height: 800 }, colorScheme: 'light' })
@@ -42,6 +26,8 @@ test('canvas uses authored switch sizes and the shared off/on palette', async ({
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const result = await page.evaluate(async (data) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const graph = editor.graph
     const root = graph.createNode('FRAME', editor.state.currentPageId, {
@@ -91,7 +77,10 @@ test('canvas uses authored switch sizes and the shared off/on palette', async ({
     if (!png) throw new Error('Canvas export unavailable')
     return { png: Array.from(png), sizes: nodes.map(({ width, height }) => [width, height]) }
   }, data)
-  await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+  await page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.test?.navigation?.waitForSettlement()
+  })
   await canvas.canvas.screenshot({ path: info.outputPath('canvas-live.png') })
   writeFileSync(info.outputPath('canvas.png'), Buffer.from(result.png))
   expect(Buffer.from(result.png)).toMatchSnapshot('canvas.png', {

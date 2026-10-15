@@ -13,6 +13,7 @@ import { createCommerceOperationsApplication } from '@/app/lowcode/backend/comme
 import { createNestJSNotesApplication } from '@/app/lowcode/backend/nestjs-draft'
 
 import { ESTABLISHED_BUSINESS_KINDS } from '#tests/engine/app/lowcode/backend/business/composition/helpers'
+import { expectDefined } from '#tests/helpers/assert'
 
 const authentication = {
   kind: 'oidc-pkce' as const,
@@ -78,7 +79,7 @@ describe('strictly additive managed module migrations', () => {
     expect(plan.sql).not.toContain('ALTER TABLE "public"."customers"')
     expect(plan.requiresReview).toBe(true)
     expect(plan.warnings?.[0]).toContain('Complete outstanding commands')
-    expect(plan.summary).toContain(plan.warnings?.[0])
+    expect(plan.summary).toContain(expectDefined(plan.warnings?.[0], 'migration warning'))
     expect(plan.transactionRequired).toBe(true)
     expect(plan.scope).toBe('owned-local-preview')
     expect(plan.highestRisk).toBe('medium')

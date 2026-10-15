@@ -6,6 +6,7 @@ import ClipContentControl from '@/components/properties/layout/ClipContentContro
 import FlexControls from '@/components/properties/layout/flex/FlexControls.vue'
 import GridControls from '@/components/properties/layout/grid/GridControls.vue'
 import LayoutFlowControl from '@/components/properties/layout/LayoutFlowControl.vue'
+import LayoutWrapToggle from '@/components/properties/layout/LayoutWrapToggle.vue'
 import PaddingControls from '@/components/properties/layout/padding/PaddingControls.vue'
 import ParentLayoutControl from '@/components/properties/layout/ParentLayoutControl.vue'
 import SizeControls from '@/components/properties/layout/size/SizeControls.vue'
@@ -35,7 +36,9 @@ const CONTAINER_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE', 'FOR
           />
         </template>
 
-        <LayoutFlowControl v-if="CONTAINER_TYPES.includes(ctx.node.type)" />
+        <LayoutFlowControl v-if="CONTAINER_TYPES.includes(ctx.node.type)">
+          <LayoutWrapToggle v-if="ctx.isFlex" />
+        </LayoutFlowControl>
         <div v-if="ctx.node.type !== 'TEXT'" class="mt-2 mb-1 text-[11px] text-muted">
           {{ panels.dimensions }}
         </div>

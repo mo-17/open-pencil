@@ -12,6 +12,7 @@ import { useRetainedPopup } from '@open-pencil/vue'
 
 import { useInputUI } from '@/components/ui/input/input'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
+import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
 interface ExportScaleInputProps {
@@ -64,7 +65,7 @@ function isActive(scale: number) {
 <template>
   <Tip :label="label" :disabled="!label">
     <div
-      class="flex min-w-0 flex-1 overflow-hidden rounded border border-border bg-input focus-within:border-accent"
+      class="flex min-w-0 flex-1 overflow-hidden rounded border border-border bg-input focus-within:border-panel-focus"
     >
       <input
         ref="inputRef"
@@ -94,15 +95,17 @@ function isActive(scale: number) {
         </DropdownMenuTrigger>
         <DropdownMenuPortal v-if="portalActive">
           <DropdownMenuContent side="bottom" align="end" :side-offset="4" :class="menuCls.content">
-            <DropdownMenuItem
-              v-for="scale in presets"
-              :key="scale"
-              :class="itemCls"
-              @select="pick(scale)"
-            >
-              <span>{{ scale }}x</span>
-              <icon-lucide-check v-if="isActive(scale)" class="size-3 text-accent" />
-            </DropdownMenuItem>
+            <MenuScrollArea>
+              <DropdownMenuItem
+                v-for="scale in presets"
+                :key="scale"
+                :class="itemCls"
+                @select="pick(scale)"
+              >
+                <span>{{ scale }}x</span>
+                <icon-lucide-check v-if="isActive(scale)" class="size-3 text-primary" />
+              </DropdownMenuItem>
+            </MenuScrollArea>
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>

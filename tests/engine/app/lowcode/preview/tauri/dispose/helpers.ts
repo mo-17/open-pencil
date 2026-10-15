@@ -1,6 +1,8 @@
 // A per-invocation native adapter keeps lifecycle tests independent of the module registry.
 import assert from 'node:assert/strict'
 
+import * as v from 'valibot'
+
 import type { CreatePreviewNativeCommand } from '@/app/lowcode/preview-pane/host/native-command'
 
 export async function verifyImmediateDisconnect(): Promise<void> {
@@ -31,7 +33,11 @@ export async function verifyImmediateDisconnect(): Promise<void> {
   const { promise: written, resolve: markWritten } = Promise.withResolvers<undefined>()
   const child = {
     write: async (message: string) => {
-      if ((JSON.parse(message) as { type: string }).type === 'update') markWritten(undefined)
+      if (
+        v.parse(v.pipe(v.string(), v.parseJson(), v.looseObject({ type: v.string() })), message)
+          .type === 'update'
+      )
+        markWritten(undefined)
       // Deliberately never acknowledge this update.
     },
     kill: async () => {

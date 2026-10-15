@@ -28,6 +28,7 @@ import {
   type RuntimeCommandQuery
 } from '#tests/engine/compiler/backend/nestjs/commands/helpers'
 import { QUERY_SPEC, queryRuntime } from '#tests/engine/compiler/backend/nestjs/query/helpers'
+import { expectString } from '#tests/helpers/assert'
 
 function application() {
   return createCommerceApplication('order-history', {
@@ -234,7 +235,7 @@ describe('commerce order history model', () => {
     }
   })
 
-  test.each(['react', 'vue'] as const)(
+  test.each([...(['react', 'vue'] as const)])(
     '%s exports the snapshot and server timestamp through the provider',
     async (target) => {
       const { application: app, descriptor, editor, store } = await fixture()
@@ -258,7 +259,9 @@ describe('commerce order history model', () => {
       )
       expect(sql).toContain('("owner_id" DESC, "created_at" DESC, "id" DESC)')
       const client = output.files.get('backend/nestjs/client.ts')
-      const rowTypes = client?.split('\n').filter((line) => line.startsWith('export type '))
+      const rowTypes = expectString(client)
+        .split('\n')
+        .filter((line) => line.startsWith('export type '))
       expect(rowTypes?.some((line) => line.includes('"product_title": string'))).toBe(true)
       expect(rowTypes?.some((line) => line.includes('"created_at": string'))).toBe(true)
     }

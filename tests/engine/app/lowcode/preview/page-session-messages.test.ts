@@ -32,13 +32,13 @@ test('page-session messages remain source, origin, channel and exact-shape bound
     snapshot: snapshot()
   }
   const source = {} as MessageEventSource
-  expect(parsePreviewInboundMessage(data, CHANNEL)).toEqual(data)
-  expect(
+  expect<unknown>(parsePreviewInboundMessage(data, CHANNEL)).toEqual(data)
+  expect<unknown>(
     createPreviewEditorMessage(CHANNEL, { type: 'pageSession', snapshot: data.snapshot })
   ).toEqual({ ...data, source: 'op-lowcode-editor' })
   expect(parsePreviewInboundMessage({ ...data, extra: true }, CHANNEL)).toBeNull()
   expect(parsePreviewInboundMessage({ ...data, channel: 'wrong' }, CHANNEL)).toBeNull()
-  expect(
+  expect<unknown>(
     parsePreviewMessageEvent({ source, origin: 'null', data }, source, 'null', CHANNEL)
   ).toEqual(data)
   expect(

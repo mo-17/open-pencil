@@ -114,7 +114,7 @@ const phaseLabel = computed(
         {{ messages.flutterPreviewRevision }}: {{ state.revision }}
       </p>
       <p v-if="progress" class="mt-2 text-[11px] text-muted" role="status">{{ progress }}</p>
-      <details v-if="warnings.length" class="mt-2 text-[11px] text-amber-500">
+      <details v-if="warnings.length" class="mt-2 text-[11px] text-warning">
         <summary>{{ messages.flutterPreviewWarnings }} ({{ warnings.length }})</summary>
         <ul class="mt-1 space-y-1">
           <li v-for="(warning, index) in warnings" :key="index">
@@ -124,7 +124,7 @@ const phaseLabel = computed(
       </details>
       <p
         v-if="error"
-        class="mt-2 text-[11px] text-red-500"
+        class="mt-2 text-[11px] text-error"
         role="alert"
         data-test-id="flutter-preview-error"
       >

@@ -3,6 +3,8 @@ import { chmod, copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, posix, resolve, win32 } from 'node:path'
 
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
+
 import {
   BACKEND_COMPILER_SIDECAR_LIMITS,
   canonicalBackendCompilerSidecarJSON
@@ -24,9 +26,9 @@ const MAXIMUM_STDERR_BYTES = 64 * 1024
 const DEFAULT_TIMEOUT_MS = 30_000
 const MAXIMUM_TIMEOUT_MS = 30_000
 const HARD_KILL_WAIT_MS = 5_000
-const FIXTURE_PATH = resolve(
-  import.meta.dir,
-  '../../../tests/fixtures/backend/supabase/backfill-compiler-sidecar-v1.json'
+const FIXTURE_PATH = join(
+  await resolveWorkspaceRoot(import.meta.dir),
+  'tests/fixtures/backend/supabase/backfill-compiler-sidecar-v1.json'
 )
 const UTF8_ENCODER = new TextEncoder()
 

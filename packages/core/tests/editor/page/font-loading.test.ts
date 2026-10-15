@@ -1,11 +1,16 @@
 import { afterEach, expect, mock, spyOn, test } from 'bun:test'
 
 import { repoPath } from '#core-tests/helpers/paths'
-import { createRendererProbe, disposeRendererProbes } from '#core-tests/helpers/renderer'
+import {
+  createRendererProbe,
+  createRendererTestEditor as createEditor,
+  disposeRendererProbes
+} from '#core-tests/helpers/renderer'
 
-import { createEditor, type EditorEvents } from '@open-pencil/core/editor'
-import { fontManager } from '@open-pencil/core/text'
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import type { EditorEvents } from '#core/editor'
+import { fontManager } from '#core/text'
 
 afterEach(disposeRendererProbes)
 
@@ -147,7 +152,7 @@ test('an already registered font result does not schedule a duplicate refresh', 
   fontManager.markLoaded(
     family,
     'Regular',
-    await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
   )
   const text = textPage(graph, page.id, family)
   const loadFont = mock(async () => new ArrayBuffer(8))
@@ -244,7 +249,7 @@ test('all required fallback scripts count as one progress task', async () => {
   fontManager.markLoaded(
     coverageFamily,
     'Regular',
-    await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
   )
   graph.createNode('TEXT', page.id, {
     text: '中文 العربية',

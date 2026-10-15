@@ -19,7 +19,7 @@ OpenPencil ouvre et enregistre directement les fichiers `.fig`. L’import et l�
 
 ## Panneau de propriétés
 
-Les onglets Design, Code et AI s’adaptent à la sélection :
+Les onglets Design, Code, IA et Vérifier s’adaptent à la sélection :
 
 - **Apparence :** opacité, rayon uniforme ou par coin et visibilité.
 - **Remplissage :** couleur unie, dégradés linéaire, radial, angulaire et diamant, et images.
@@ -28,6 +28,8 @@ Les onglets Design, Code et AI s’adaptent à la sélection :
 - **Typographie :** choix de police avec recherche et défilement virtuel, style, taille, alignement et mise en forme.
 - **Disposition :** réglages de la disposition automatique.
 - **Export :** échelle, PNG/JPG/WEBP/SVG et aperçu.
+- **Code :** Design JSX et Tailwind JSX pour la sélection, avec édition bidirectionnelle en direct du Design JSX qui met à jour votre code à mesure que les calques changent ; l’élément situé sous le curseur met en évidence son calque sur la zone de travail, et les problèmes de design sont soulignés sur la propriété qui les cause.
+- **Vérifier :** analyse de design en direct pour la page ou la sélection : contraste insuffisant, cibles tactiles trop petites, couleurs non liées, espacements hors échelle, avec des repères de problèmes sur la zone de travail et une liaison à une variable en un clic ([Checking Designs](/user-guide/checking-designs)).
 
 ## Rendu
 
@@ -92,7 +94,7 @@ Toutes les commandes acceptent `--json`. Installation : `npm install -g @open-pe
 
 ## Collaboration en temps réel
 
-La collaboration fonctionne directement entre participants via WebRTC et ne nécessite aucun serveur central. Il suffit de partager un lien. Elle comprend les curseurs, la présence et le suivi de la vue d’un autre participant.
+La collaboration fonctionne directement entre participants via WebRTC et ne nécessite aucun serveur central. Il suffit de partager un lien. Elle comprend les curseurs, la présence, le suivi de la vue d’un autre participant et les appels vocaux avec les personnes présentes dans la salle.
 
 ## Bureau et Web
 

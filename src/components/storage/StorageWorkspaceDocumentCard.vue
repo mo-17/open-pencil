@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
@@ -8,6 +9,7 @@ import type { LocalSyncStatus } from '@/app/storage/local-store'
 
 const {
   document,
+  previewImage = null,
   syncStatus,
   progress = null,
   preservedCopy = false,
@@ -15,6 +17,7 @@ const {
   disabled = false
 } = defineProps<{
   document: StorageDocument
+  previewImage?: string | null
   syncStatus: LocalSyncStatus
   progress?: number | null
   preservedCopy?: boolean
@@ -40,9 +43,11 @@ const statusLabel = computed(() => {
   return dialogs.value.storageStatusSynced
 })
 const accessibleLabel = computed(() =>
-  [document.name, preservedCopy ? dialogs.value.storageStatusConflict : null, statusLabel.value]
-    .filter(Boolean)
-    .join('. ')
+  compact([
+    document.name,
+    preservedCopy ? dialogs.value.storageStatusConflict : null,
+    statusLabel.value
+  ]).join('. ')
 )
 const deleteLabel = computed(() =>
   dialogs.value.storageDeleteDocumentButton({ name: document.name })
@@ -51,7 +56,7 @@ const deleteLabel = computed(() =>
 
 <template>
   <article
-    class="group relative overflow-hidden rounded-xl border border-border bg-panel transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-panel-focus hover:bg-hover data-[status=conflict]:border-warning/50 data-[status=error]:border-danger/40"
+    class="group relative overflow-hidden rounded-xl border border-border bg-panel transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-panel-focus hover:bg-hover data-[status=conflict]:border-warning/50 data-[status=error]:border-error/40"
     :data-status="syncStatus"
     :data-preserved-copy="preservedCopy || undefined"
     :aria-busy="busy"
@@ -66,23 +71,25 @@ const deleteLabel = computed(() =>
       @click="$emit('open')"
     >
       <div
-        class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-panel-field"
+        class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-panel-field bg-cover bg-center"
+        :style="previewImage ? { backgroundImage: `url(&quot;${previewImage}&quot;)` } : undefined"
       >
         <div class="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-hover/70" />
         <span
           v-if="preservedCopy"
-          class="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-warning/30 bg-app/85 px-1.5 py-0.5 text-[8px] font-medium text-warning backdrop-blur"
+          class="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-warning/30 bg-canvas/85 px-1.5 py-0.5 text-[8px] font-medium text-warning backdrop-blur"
         >
           <icon-lucide-copy-check class="size-2.5" />
           {{ dialogs.storageStatusConflict }}
         </span>
         <div
+          v-if="!previewImage"
           class="relative flex size-11 items-center justify-center rounded-xl border border-border/70 bg-panel/90 text-muted shadow-sm transition-colors group-hover:text-surface"
         >
           <icon-lucide-file-pen-line class="size-5" />
         </div>
         <span
-          class="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-app/85 px-1.5 py-0.5 text-[8px] font-medium text-muted backdrop-blur data-[status=synced]:text-success data-[status=conflict]:text-warning data-[status=error]:text-danger"
+          class="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-canvas/85 px-1.5 py-0.5 text-[8px] font-medium text-muted backdrop-blur data-[status=synced]:text-success data-[status=conflict]:text-warning data-[status=error]:text-error"
           :data-status="syncStatus"
         >
           <icon-lucide-loader-circle v-if="boundedProgress != null" class="size-2.5 animate-spin" />
@@ -114,7 +121,7 @@ const deleteLabel = computed(() =>
     </button>
     <button
       type="button"
-      class="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md text-muted opacity-70 transition-colors hover:bg-danger/10 hover:text-danger focus-visible:bg-danger/10 focus-visible:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger disabled:cursor-wait disabled:opacity-40"
+      class="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error focus-visible:bg-error/10 focus-visible:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error disabled:cursor-wait disabled:opacity-40"
       :aria-label="deleteLabel"
       :disabled="busy || disabled"
       data-test-id="storage-delete-document"

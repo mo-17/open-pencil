@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
 
 import { StorageFigImportError, prepareStorageFigImport } from '@/app/storage/workspace/import-fig'
 
-const fixturePath = resolve(import.meta.dir, '../../../../fixtures/gold-preview.fig')
+import { repoPath } from '#tests/helpers/paths'
+
+const fixturePath = repoPath('tests/fixtures/gold-preview.fig')
 
 describe('prepareStorageFigImport', () => {
   test('validates a Chinese-named FIG and preserves its original bytes', async () => {

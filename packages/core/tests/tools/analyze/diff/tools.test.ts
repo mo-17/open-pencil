@@ -13,7 +13,12 @@ type ApplyResult = {
   error?: string
   applied?: number
   failed?: number
-  results?: { status: string; id: string | null; error?: string; changes?: string[] }[]
+  results?: {
+    status: string
+    id: string | null
+    error?: string
+    changes?: string[]
+  }[]
 }
 
 function tool(name: string) {
@@ -74,7 +79,12 @@ describe('diff_create and diff_apply', () => {
     // Updates and moves keep their nodes; only the added note is new.
     expect(getNodeOrThrow(graph, card.id).childIds.slice(0, 2)).toEqual([badge.id, label.id])
     expect(getNodeOrThrow(graph, label.id).width).toBe(120)
-    expect(await run<DiffResult>(figma, 'diff_create', { from: card.id, to: copy.id })).toEqual({
+    expect(
+      await run<DiffResult>(figma, 'diff_create', {
+        from: card.id,
+        to: copy.id
+      })
+    ).toEqual({
       diff: null,
       message: 'No differences found'
     })
@@ -117,7 +127,10 @@ describe('diff_create and diff_apply', () => {
       expectDefined(copy.children[0], 'copied label').resize(120, 24)
       const patch = (await createPatch(figma, card.id, copy.id)).replace('+w={120}', '+w={wide}')
 
-      const applied = await run<ApplyResult>(figma, 'diff_apply', { patch, force })
+      const applied = await run<ApplyResult>(figma, 'diff_apply', {
+        patch,
+        force
+      })
       expect(applied.error).toBe('Patch does not apply')
       // The card's change was valid, but it must not land without the label's.
       expect(getNodeOrThrow(graph, card.id).opacity).toBe(1)
@@ -196,7 +209,9 @@ describe('diff_create and diff_apply', () => {
 
   test('reports a hunk it cannot read', async () => {
     const { figma } = setup()
-    const applied = await run<ApplyResult>(figma, 'diff_apply', { patch: 'w={1}' })
+    const applied = await run<ApplyResult>(figma, 'diff_apply', {
+      patch: 'w={1}'
+    })
     expect(applied.error).toBe('Line 1: unexpected line: w={1}')
   })
 })
@@ -227,7 +242,10 @@ describe('diff_show', () => {
     ['opacity={half}', 'expression type Identifier is not allowed']
   ])('rejects %p', async (attributes, error) => {
     const { figma, card } = setup()
-    const shown = await run<DiffResult>(figma, 'diff_show', { id: card.id, attributes })
+    const shown = await run<DiffResult>(figma, 'diff_show', {
+      id: card.id,
+      attributes
+    })
     expect(shown.error).toContain(error)
   })
 })

@@ -12,6 +12,7 @@ import type {
   IRStateDecl,
   IRTree
 } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { emitExpression } from '@open-pencil/lowcode'
 
@@ -153,8 +154,8 @@ export function emitExpoPage(ir: IRTree, exportName: string, environment: EmitEn
       })
     )
     .join('\n')
-  const declarations = [stateLines, docStateLines, routerLines].filter(Boolean).join('\n')
-  const imports = [
+  const declarations = compact([stateLines, docStateLines, routerLines]).join('\n')
+  const imports = compact([
     `import { useMemo, useState } from 'react'`,
     `import {\n  Image,\n  ImageBackground,\n  KeyboardAvoidingView,\n  Linking,\n  Platform,\n  Pressable,\n  ScrollView,\n  StyleSheet,\n  Switch,\n  Text,\n  TextInput,\n  View\n} from 'react-native'`,
     `import { SafeAreaView } from 'react-native-safe-area-context'`,
@@ -162,9 +163,7 @@ export function emitExpoPage(ir: IRTree, exportName: string, environment: EmitEn
     docStateImport.trimEnd(),
     expoVRTourImport(ir.children, environment.vrTourIds, vrTourSymbol),
     componentImports
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ]).join('\n')
   return `${imports}\n\n${EXTERNAL_LINK_HELPER}\n\nexport default function ${exportName}() {
 ${declarations}${declarations ? '\n' : ''}  return (
     <SafeAreaView style={styles.safeArea}>
@@ -249,7 +248,7 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
           })
         )
         .join('\n')
-  const imports = [
+  const imports = compact([
     `import type { ReactNode } from 'react'`,
     `import type { ImageStyle, StyleProp, TextStyle, ViewStyle } from 'react-native'`,
     `import { Image, ImageBackground, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native'`,
@@ -257,9 +256,7 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
     docStateImport.trimEnd(),
     expoVRTourImport(nodes, environment.vrTourIds, vrTourSymbol),
     nestedImports
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ]).join('\n')
   const variantBody = definition.variants
     ? `${content}\n  return <View style={style} testID={testID}>{__content}</View>`
     : `  return (\n    <View style={style} testID={testID}>\n${content}\n    </View>\n  )`
@@ -270,7 +267,7 @@ ${propsType}
 }
 
 export default function ${definition.name}({ style, testID${destructured ? `, ${destructured}` : ''} }: ${definition.name}Props) {
-${[docStateLines, routerLine].filter(Boolean).join('\n')}${docStateLines || routerLine ? '\n' : ''}${variantBody}
+${compact([docStateLines, routerLine]).join('\n')}${docStateLines || routerLine ? '\n' : ''}${variantBody}
 }
 `
 }
@@ -877,7 +874,7 @@ function splitPressableStyle(
 
 function componentStyleExpression(node: IRElement, style: Record<string, ExpoStyleValue>): string {
   const base = serializeStyle(style)
-  const overrides = [node.classNameProp, node.styleProp].filter(Boolean)
+  const overrides = compact([node.classNameProp, node.styleProp])
   if (overrides.length === 0) return base
   return `[${base}, ${overrides.join(', ')}]`
 }

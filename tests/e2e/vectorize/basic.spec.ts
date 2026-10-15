@@ -13,6 +13,8 @@ const MOCK_SVG = readFileSync(
 async function rightClickSelected(): Promise<void> {
   const box = expectDefined(await editor.canvas.canvas.boundingBox(), 'canvas bounds')
   const point = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store || store.state.selectedIds.size !== 1) return null
     const node = store.graph.getNode([...store.state.selectedIds][0])
@@ -30,6 +32,8 @@ async function rightClickSelected(): Promise<void> {
 
 async function createImageNode(): Promise<string> {
   return editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -103,17 +107,22 @@ test('missing key opens Media settings and saves through the credential manager'
 
   await rightClickSelected()
   await editor.page.getByTestId('context-vectorize').click()
-  const section = editor.page.locator('[data-vectorize-settings]')
-  await expect(section).toBeVisible()
+  const dialog = editor.page.getByTestId('app-settings-dialog')
+  const vectorizeRow = dialog.locator('[data-vectorize-settings]')
+  await expect(vectorizeRow).toBeVisible()
 
-  await section.getByTestId('provider-settings-api-key').fill('test-recraft-key')
+  // The provider row opens its key editor; saving returns to the Media list.
+  await vectorizeRow.click()
+  await dialog.getByTestId('provider-settings-api-key').fill('test-recraft-key')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(vectorizeRow).toBeVisible()
   await editor.page.getByTestId('app-settings-done').click()
   await expect(editor.page.getByTestId('app-settings-dialog')).toHaveCount(0)
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.type,
-      nodeId
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.type
+    }, nodeId)
   ).toBe('RECTANGLE')
 })
 
@@ -125,14 +134,16 @@ test('vectorize replaces an image with editable vectors and undo restores it', a
   await editor.page.getByTestId('context-vectorize').click()
   await expect
     .poll(() =>
-      editor.page.evaluate(
-        (id) => window.openPencil?.getStore?.().graph.getNode(id)?.type ?? null,
-        nodeId
-      )
+      editor.page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(id)?.type ?? null
+      }, nodeId)
     )
     .toBeNull()
 
   const replacement = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store || store.state.selectedIds.size !== 1) return null
     const frameId = [...store.state.selectedIds][0]
@@ -150,10 +161,10 @@ test('vectorize replaces an image with editable vectors and undo restores it', a
   await editor.canvas.undo()
   await editor.canvas.waitForRender()
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.type,
-      nodeId
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.type
+    }, nodeId)
   ).toBe('RECTANGLE')
   editor.canvas.assertNoErrors()
 })

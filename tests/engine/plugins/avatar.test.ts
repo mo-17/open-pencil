@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 
 import * as avatar from '#core/plugins/avatar'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('Avatar produces independent strict FRAME config and readable Unicode initials', () => {
   const first = avatar.createAvatarModuleInstance(),
     second = avatar.createAvatarModuleInstance()
@@ -11,9 +13,10 @@ test('Avatar produces independent strict FRAME config and readable Unicode initi
   expect(avatar.avatarFallbackText({ name: '张小明', fallbackText: '' })).toBe('张小')
   expect(avatar.avatarFallbackText({ name: '张小明', fallbackText: '我' })).toBe('我')
   expect(avatar.avatarFallbackText({ name: '😀Smile', fallbackText: '' })).toBe('😀S')
-  expect(avatar.createAvatarModuleFrameOverrides().interactiveProps?.module?.pluginId).toBe(
-    'open-pencil.avatar'
-  )
+  expect(
+    expectModuleInstance(avatar.createAvatarModuleFrameOverrides().interactiveProps?.module)
+      .pluginId
+  ).toBe('open-pencil.avatar')
 })
 test('Avatar rejects URL authority, unknown config, versions and invalid geometry', () => {
   const instance = avatar.createAvatarModuleInstance()

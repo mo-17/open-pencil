@@ -27,7 +27,9 @@ function expectCascaderTextFits(graph: SceneGraph, rootId: string, renderer: Ski
   expect(root.primaryAxisSizing).toBe('HUG')
   for (const text of [description, footer]) {
     const measured = expectDefined(renderer.measureTextNode(text, text.width), 'Canvas text size')
-    expect(measured.height, text.text + ' wraps to multiple lines').toBeGreaterThan(text.lineHeight)
+    expect(measured.height, text.text + ' wraps to multiple lines').toBeGreaterThan(
+      expectDefined(text.lineHeight, 'Authored line height')
+    )
     expect(text.height, text.text + ' fits its authored bounds').toBeGreaterThanOrEqual(
       measured.height
     )

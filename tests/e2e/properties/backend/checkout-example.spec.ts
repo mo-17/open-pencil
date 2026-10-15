@@ -43,6 +43,8 @@ test('creates and reviews the checkout example, then edits its declared command 
   await page.keyboard.press('Meta+Shift+z')
   await expect(pages.getByTestId('pages-item')).toHaveCount(5)
   await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Missing editor')
     const shop = editor.graph.getPages().find((value) => value.lowcodeRoutePattern === '/shop')
@@ -77,6 +79,8 @@ test('creates and reviews the checkout example, then edits its declared command 
   await command.scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('checkout-command-editor.png') })
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     const button =
       editor &&

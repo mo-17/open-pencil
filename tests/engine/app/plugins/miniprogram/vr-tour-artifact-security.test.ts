@@ -17,6 +17,7 @@ import {
 } from '@/app/plugins/host/miniprogram/compiler/protocol'
 
 import { tourFixture } from '#tests/engine/compiler/vr-tour/helpers'
+import { parseVRTourArchiveManifest } from '#tests/helpers/plugins/vr-tour-manifest'
 
 type Files = Map<string, string | Uint8Array>
 interface Manifest {
@@ -45,7 +46,7 @@ function output(bytes = PNG, url = '/assets/vr-tour/living-room.png', label?: st
 function manifest(files: Files): Manifest {
   const source = files.get('vr-tour-web/manifest.json')
   if (typeof source !== 'string') throw new Error('Missing VR manifest')
-  return JSON.parse(source) as Manifest
+  return parseVRTourArchiveManifest(source)
 }
 
 function setManifest(files: Files, value: unknown): Files {

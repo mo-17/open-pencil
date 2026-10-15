@@ -108,9 +108,10 @@ test('disabled date-time stays visible and offline render captures initial, seco
   const darkness = () => {
     harness.canvas.clear(harness.ck.WHITE)
     renderTextInputContent(harness.renderer, harness.canvas, node, graph)
-    return harness
-      .pixels()
-      .reduce((sum, channel, index) => sum + (index % 4 === 0 ? 255 - channel : 0), 0)
+    return Array.from(harness.pixels()).reduce(
+      (sum, channel, index) => sum + (index % 4 === 0 ? 255 - channel : 0),
+      0
+    )
   }
   try {
     const enabled = darkness()

@@ -116,7 +116,11 @@ describe('create instance undo/redo', () => {
     )
     const instance = expectDefined(editor.graph.getNode(instanceId), 'instance')
 
-    expect({ x: instance.x, y: instance.y, parentId: instance.parentId }).toEqual({
+    expect({
+      x: instance.x,
+      y: instance.y,
+      parentId: instance.parentId
+    }).toEqual({
       x: 25,
       y: 35,
       parentId: frame.id
@@ -132,7 +136,9 @@ describe('create instance undo/redo', () => {
       height: 40,
       internalOnly: true
     })
-    const previous = editor.graph.createNode('RECTANGLE', pageId, { name: 'Previous selection' })
+    const previous = editor.graph.createNode('RECTANGLE', pageId, {
+      name: 'Previous selection'
+    })
 
     editor.select([previous.id])
     const instanceId = expectDefined(
@@ -167,7 +173,9 @@ describe('create instance undo/redo', () => {
         motion: { driverId: '0:999' }
       }
     }
-    editor.graph.updateNode(instanceId, { overrides: structuredClone(legacyOverrides) })
+    editor.graph.updateNode(instanceId, {
+      overrides: structuredClone(legacyOverrides)
+    })
     setInstanceOverride(instance.instanceOverrides, instanceId, instanceId, 'opacity', 0.5)
 
     editor.select([instanceId])

@@ -17,6 +17,8 @@ test('VR tour shows an offline room diagram on the design canvas', async () => {
   config.scenes[0].panoramaUrl = 'https://media.example.com/room.jpg'
   const overrides = createVRTourModuleFrameOverrides(config)
   await editor.page.evaluate((overrides) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.createNode('FRAME', store.state.currentPageId, {
@@ -33,6 +35,8 @@ test('VR tour shows an offline room diagram on the design canvas', async () => {
   }, overrides)
   await editor.canvas.waitForRender()
   await editor.page.evaluate(async () => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     const navigation = window.openPencil?.test?.navigation
     if (!navigation) throw new Error('Canvas settlement hook not initialized')
     await navigation.waitForSettlement()

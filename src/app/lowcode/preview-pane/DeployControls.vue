@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
             v-if="runtimeError"
             role="alert"
             data-test-id="lowcode-deploy-runtime-error"
-            class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+            class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
           >
             {{ runtimeError }}
           </p>
@@ -515,7 +515,7 @@ onBeforeUnmount(() => {
         </p>
         <p
           v-if="status.kind === 'frontend-deployed'"
-          class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-muted"
+          class="mt-2 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-muted"
           data-test-id="lowcode-deploy-frontend-only"
         >
           <span class="font-medium text-surface">
@@ -539,7 +539,7 @@ onBeforeUnmount(() => {
             (status.kind === 'done' || status.kind === 'frontend-deployed') &&
             status.result.serverDeployment
           "
-          class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-muted"
+          class="mt-2 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-muted"
           data-test-id="lowcode-deploy-server-manual"
         >
           <div class="font-medium text-surface">Manual server deployment required</div>
@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
         </div>
         <p
           v-else-if="status.kind === 'error'"
-          class="mt-2 break-words text-xs text-red-500"
+          class="mt-2 break-words text-xs text-error"
           data-test-id="lowcode-deploy-error"
         >
           {{ status.message }}
@@ -571,7 +571,7 @@ onBeforeUnmount(() => {
             <li
               v-for="issue in runtimeAudit.issues"
               :key="issue.code"
-              :class="issue.severity === 'error' ? 'text-red-500' : ''"
+              :class="issue.severity === 'error' ? 'text-error' : ''"
             >
               {{ issue.message }}
             </li>

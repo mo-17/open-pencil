@@ -4,12 +4,20 @@
   "type": "module",
   "exports": {
     "./ack": "./src/tauri-lowcode-preview-ack.ts",
-    "./onboarding-demo": "./src/make/onboarding-demo.ts"
+    "./onboarding-demo": "./src/make/onboarding-demo.ts",
+    "./native-command": "./src/native-command.ts"
+  },
+  "scripts": {
+    "test": "bun test ./tests"
   },
   "dependencies": {
+    "@open-pencil/cli": "workspace:*",
     "@open-pencil/compiler": "workspace:*",
     "@open-pencil/core": "workspace:*",
-    "@open-pencil/scene-graph": "workspace:*"
+    "@open-pencil/scene-graph": "workspace:*",
+    "citty": "^0.1.6",
+    "es-toolkit": "^1.52.0",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@open-pencil/package-artifacts-tools": "workspace:*",

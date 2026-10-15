@@ -89,9 +89,8 @@ describe('resolveActions — discriminated kind dispatch', () => {
   test('unknown kind from a future .fig file is dropped with a warning', () => {
     // A future .fig saved by a newer build could carry an action kind this
     // build has never heard of. The unsupported-kind branch is the backstop.
-    // `Partial<ActionDef>` is the narrowest type that lets the test express
-    // "shape that won't ever satisfy the current union".
-    const future = { id: 'a1', kind: 'teleport' } as Partial<ActionDef> as ActionDef
+    const future: ActionDef = { id: 'a1', kind: 'back', fallback: '/safe' }
+    Reflect.set(future, 'kind', 'teleport')
     const { graph, pageId } = makeButtonWith({ onClick: [future] })
     const ir = collectTree(graph, pageId)
     expect(ir.warnings.some((w) => w.code === 'action-unsupported-kind')).toBe(true)

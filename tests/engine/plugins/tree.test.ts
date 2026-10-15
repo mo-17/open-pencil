@@ -82,8 +82,7 @@ test('Tree validates initial selection and expansion including inherited disable
   ).toEqual(['root', 'child'])
 })
 test('Tree search reveals matching descendants with ancestors without mutating expansion', () => {
-  const config = structuredClone(TREE_MODULE_DEFAULT_CONFIG)
-  config.initialExpandedIds = []
+  const config = { ...structuredClone(TREE_MODULE_DEFAULT_CONFIG), initialExpandedIds: [] }
   expect(treeVisibleRows(config).map((row) => row.item.id)).toEqual(['project', 'archive'])
   expect(treeVisibleRows(config, [], 'design').map((row) => row.item.id)).toEqual([
     'project',

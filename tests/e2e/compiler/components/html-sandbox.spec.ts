@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
 
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerFiles } from '#tests/helpers/compiler/output'
 
 test('Vue HTML module renders inert srcdoc and blocks active content and network escape', async ({
   page
@@ -10,13 +11,13 @@ test('Vue HTML module renders inert srcdoc and blocks active content and network
   test.setTimeout(90000)
   const source = `import {vueHTMLFixture} from './tests/helpers/compiler/modules/html/fixture';const out=vueHTMLFixture();if(out.warnings.length)throw new Error(JSON.stringify(out.warnings));process.stdout.write(JSON.stringify([...out.files]));`
   const files = new Map(
-    JSON.parse(
+    parseCompilerFiles(
       execFileSync('bun', ['-e', source], {
         cwd: process.cwd(),
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024
       })
-    ) as [string, string][]
+    )
   )
   const attemptedRequests: string[] = []
   await page.route('https://blocked.openpencil.invalid/**', (route) => {

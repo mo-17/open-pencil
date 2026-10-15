@@ -48,11 +48,22 @@ function handleSubmit(event: Event) {
   emit('submit', text)
   triggerResize()
 }
+/**
+ * Puts back a message that could not be sent, unless something new was typed meanwhile.
+ * Returns whether it did.
+ */
+function restoreDraft(text: string): boolean {
+  if (input.value.trim()) return false
+  input.value = text
+  triggerResize()
+  return true
+}
+defineExpose({ restoreDraft })
 </script>
 <template>
   <TooltipProvider>
     <div class="shrink-0 border-t border-border p-2.5">
-      <form @submit="handleSubmit" @paste.stop="emit('paste', $event)">
+      <form class="relative" @submit="handleSubmit" @paste.stop="emit('paste', $event)">
         <InputGroup :disabled="inputDisabled">
           <template v-if="$slots.attachment" #attachment><slot name="attachment" /></template>
 
@@ -108,13 +119,15 @@ function handleSubmit(event: Event) {
               size="sm"
               type="submit"
               data-test-id="chat-send-button"
-              class="bg-accent text-white hover:bg-accent/90 hover:text-white"
+              class="bg-accent text-on-accent hover:bg-accent/90 hover:text-on-accent"
               :disabled="inputDisabled || (!input.trim() && !allowEmpty)"
             >
               <icon-lucide-send class="size-3.5" />
             </IconButton>
           </template>
         </InputGroup>
+        <!-- Over the input while files are dragged onto the chat. -->
+        <slot name="overlay" />
       </form>
     </div>
   </TooltipProvider>

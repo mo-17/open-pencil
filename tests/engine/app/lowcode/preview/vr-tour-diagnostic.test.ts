@@ -18,6 +18,7 @@ import {
 
 import { browserPreviewInput } from '#tests/engine/compiler/browser-preview/helpers'
 import { compileTour, tourFixture } from '#tests/engine/compiler/vr-tour/helpers'
+import { repoPath } from '#tests/helpers/paths'
 
 const code = 'browser-preview-vr-tour-runtime-unsupported'
 const english =
@@ -35,9 +36,7 @@ test('persisted 8K samples retain the browser size limit and display actionable 
   graph.updateNode(node.id, { interactiveProps: { module: createVRTourModuleInstance(config) } })
   for (const sample of VR_TOUR_SAMPLE_ASSETS) {
     const bytes = new Uint8Array(
-      readFileSync(
-        new URL(`../../../../../packages/demos/vr-tour/${sample.fileName}`, import.meta.url)
-      )
+      readFileSync(repoPath(`packages/demos/vr-tour/${sample.fileName}`))
     )
     graph.images.set(sample.graphImageHash, bytes)
   }

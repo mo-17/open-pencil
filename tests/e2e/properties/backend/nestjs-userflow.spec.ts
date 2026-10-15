@@ -14,6 +14,8 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const initial = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     return {
@@ -28,6 +30,8 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
   })
   await closeBackendPreviewIfOpen(page)
   const authored = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const root = editor.graph.getNode(editor.graph.rootId)
@@ -74,17 +78,23 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
   await canvas.undo()
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        window.openPencil
+      page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil
           ?.getStore?.()
           .graph.getPages()
           .map((entry) => entry.id)
-      )
+      })
     )
     .toEqual(initial.pages)
   await canvas.redo()
   await expect
-    .poll(() => page.evaluate(() => window.openPencil?.getStore?.().graph.getPages().length))
+    .poll(() =>
+      page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getPages().length
+      })
+    )
     .toBe(initial.pages.length + 2)
 
   await panel.getByRole('button', { name: 'Data model', exact: true }).click()
@@ -109,6 +119,8 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
   await panel.getByTestId('lowcode-backend-save').click()
 
   const bindingNodes = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const notes = editor.graph.getPages().find((entry) => entry.lowcodeRoutePattern === '/notes')
@@ -118,7 +130,20 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
     if (!notes || !list || !remove) throw new Error('Authored notes controls unavailable')
     await editor.switchPage(notes.id)
     editor.select([list.id])
-    return { listId: list.id, deleteId: remove.id }
+    const clickActions = structuredClone(remove.events?.onClick ?? [])
+    const guard = clickActions[0]
+    if (guard?.kind !== 'condition') throw new Error('Missing protected delete condition')
+    const confirmation = guard.consequent.find((action) => action.kind === 'confirm')
+    if (!confirmation) throw new Error('Missing protected delete confirmation')
+    const requests = confirmation.consequent.filter((action) => action.kind === 'backendRequest')
+    const request = requests[0]
+    if (requests.length !== 1 || !request) throw new Error('Missing unique delete request')
+    return {
+      listId: list.id,
+      deleteId: remove.id,
+      deleteActionId: request.id,
+      clickActions
+    }
   })
   const listPanel = page.getByTestId('lowcode-list-section')
   await listPanel.scrollIntoViewIfNeeded()
@@ -138,40 +163,85 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
     .getByRole('combobox', { name: 'Error document state', exact: true })
     .selectOption('notesError')
 
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), bindingNodes.deleteId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, bindingNodes.deleteId)
   const eventsPanel = page.getByTestId('lowcode-events-section')
   await eventsPanel.scrollIntoViewIfNeeded()
-  await eventsPanel
-    .getByRole('combobox', { name: 'Action kind', exact: true })
-    .selectOption('backendRequest')
-  await eventsPanel
+  const deleteFields = eventsPanel
+    .getByTestId('lowcode-action-kind')
+    .and(
+      eventsPanel.locator(
+        `[data-lowcode-action-id="${bindingNodes.deleteActionId}"] > div > select`
+      )
+    )
+    .locator('..')
+  await expect(
+    deleteFields.getByRole('combobox', { name: 'Action kind', exact: true })
+  ).toHaveValue('backendRequest')
+  await deleteFields
     .getByRole('combobox', { name: 'Backend resource', exact: true })
     .selectOption('notes')
-  await eventsPanel.getByRole('combobox', { name: 'Operation', exact: true }).selectOption('read')
-  await eventsPanel.getByLabel('Record ID expression', { exact: true }).fill('item.id')
-  await eventsPanel.getByLabel('Record ID expression', { exact: true }).blur()
-  await eventsPanel.getByRole('combobox', { name: 'Operation', exact: true }).selectOption('delete')
-  await eventsPanel.getByLabel('Record ID expression', { exact: true }).fill('item.id')
-  await eventsPanel.getByLabel('Record ID expression', { exact: true }).blur()
-  await eventsPanel
+  await deleteFields.getByRole('combobox', { name: 'Operation', exact: true }).selectOption('read')
+  await deleteFields.getByLabel('Record ID expression', { exact: true }).fill('item.id')
+  await deleteFields.getByLabel('Record ID expression', { exact: true }).blur()
+  await deleteFields
+    .getByRole('combobox', { name: 'Operation', exact: true })
+    .selectOption('delete')
+  await deleteFields.getByLabel('Record ID expression', { exact: true }).fill('item.id')
+  await deleteFields.getByLabel('Record ID expression', { exact: true }).blur()
+  await deleteFields
     .getByRole('combobox', { name: 'Error document state', exact: true })
     .selectOption('notesError')
 
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), bindingNodes.listId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, bindingNodes.listId)
   await expect(source).toHaveValue('backend:notes')
   await expect(listPanel.getByLabel('Maximum page size', { exact: true })).toHaveValue('7')
-  await page.evaluate((id) => window.openPencil?.getStore?.().select([id]), bindingNodes.deleteId)
-  await expect(eventsPanel.getByRole('combobox', { name: 'Operation', exact: true })).toHaveValue(
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, bindingNodes.deleteId)
+  await expect(deleteFields.getByRole('combobox', { name: 'Operation', exact: true })).toHaveValue(
     'delete'
   )
-  await expect(eventsPanel.getByLabel('Record ID expression', { exact: true })).toHaveValue(
+  await expect(deleteFields.getByLabel('Record ID expression', { exact: true })).toHaveValue(
     'item.id'
   )
   const bound = await page.evaluate((ids) => {
-    const graph = window.openPencil?.getStore?.().graph
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+    const graph = window.openPencil.getStore().graph
+    const actions = structuredClone(graph.getNode(ids.deleteId)?.events?.onClick ?? [])
+    const guard = actions[0]
+    const originalGuard = ids.clickActions[0]
+    if (guard?.kind !== 'condition' || originalGuard?.kind !== 'condition')
+      throw new Error('Missing protected delete condition')
+    const confirmation = guard.consequent.find((action) => action.kind === 'confirm')
+    const originalConfirmation = originalGuard.consequent.find(
+      (action) => action.kind === 'confirm'
+    )
+    if (!confirmation || !originalConfirmation)
+      throw new Error('Missing protected delete confirmation')
+    const requests = confirmation.consequent.filter((action) => action.kind === 'backendRequest')
+    const request = requests[0]
+    if (requests.length !== 1 || !request || request.id !== ids.deleteActionId)
+      throw new Error('Request action identity changed')
+    const originalRequest = originalConfirmation.consequent.find(
+      (action) => action.kind === 'backendRequest' && action.id === request.id
+    )
+    if (!originalRequest) throw new Error('Original delete request unavailable')
+    const authoredRequest = structuredClone(request)
+    confirmation.consequent = confirmation.consequent.map((action) =>
+      action.id === request.id ? originalRequest : action
+    )
     return {
-      source: graph?.getNode(ids.listId)?.interactiveProps?.dataSourceRef,
-      action: graph?.getNode(ids.deleteId)?.events?.onClick?.[0]
+      source: graph.getNode(ids.listId)?.interactiveProps?.dataSourceRef,
+      action: authoredRequest,
+      protectedActions: actions
     }
   }, bindingNodes)
   expect(bound.source).toEqual({
@@ -182,6 +252,7 @@ test('authors NestJS login and notes pages through the Backend panel with undo a
     nextCursorTarget: 'notesCursor',
     errorTarget: 'notesError'
   })
+  expect(bound.protectedActions).toEqual(bindingNodes.clickActions)
   expect(bound.action).toMatchObject({
     kind: 'backendRequest',
     resourceId: 'notes',

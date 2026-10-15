@@ -39,7 +39,7 @@ const text = computed(() => diagnosticCopy(locale.value))
       <li v-for="item in items" :key="item.code">
         <div class="flex justify-between gap-2">
           <span>{{ text[item.code][0] }}</span
-          ><span :class="item.status === 'passed' ? 'text-emerald-500' : 'text-amber-500'">{{
+          ><span :class="item.status === 'passed' ? 'text-success' : 'text-warning'">{{
             text[item.status]
           }}</span>
         </div>

@@ -1,11 +1,16 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
+import { expect, test } from '#tests/e2e/fixtures'
+import { CanvasHelper } from '#tests/helpers/canvas'
 
-const editor = useEditorSetup('/?test&no-rulers')
+test.describe.configure({ mode: 'serial' })
+
+let editor: { page: Page; canvas: CanvasHelper }
 
 function buildScene(page: Page): Promise<void> {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -47,6 +52,8 @@ function codeLine(page: Page, text: string) {
 /** The layer under the pointer on the canvas, which is separate from the code's layer. */
 function hoveredLayer(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const id = store?.state.hoveredNodeId
     return id ? (store.graph.getNode(id)?.name ?? null) : null
@@ -55,14 +62,18 @@ function hoveredLayer(page: Page) {
 
 function focusedLayer(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const id = store?.state.codeFocusNodeId
     return id ? (store.graph.getNode(id)?.name ?? null) : null
   })
 }
 
-test.beforeEach(async () => {
-  await editor.page.reload()
+test.beforeEach(async ({ page }) => {
+  // Playwright owns a fresh page/context per case and closes both during fixture teardown.
+  editor = { page, canvas: new CanvasHelper(page) }
+  await page.goto('/?test&no-rulers')
   await editor.canvas.waitForInit()
 })
 
@@ -82,6 +93,8 @@ async function leaveCode(page: Page) {
 
 function cardSize(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const card = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Card')
     return card ? `${card.width}x${card.height}` : null
@@ -127,6 +140,27 @@ test('design issues are underlined on the property that causes them', async () =
   await expect(warning).toHaveText('size={10}')
 })
 
+for (const [format, swatch, finePrint] of [
+  ['React', 'styles.card__swatch', 'className={styles["card__fine-print"]}'],
+  ['Vue', 'class="card__swatch"', 'class="card__fine-print"'],
+  ['HTML', '<div class="card__swatch">', 'class="card__fine-print"']
+] as const) {
+  test(`generated ${format} links its elements and issues to their layers`, async ({ page }) => {
+    const editor = { page }
+    await buildScene(editor.page)
+    await openCode(editor.page)
+    await editor.page.getByTestId('code-panel-source').click()
+    await editor.page.getByRole('option', { name: format, exact: true }).click()
+
+    // Clicks the class, which is inside the element whatever the indentation.
+    await codeLine(editor.page, swatch).getByText('card__swatch').click()
+    await expect.poll(() => focusedLayer(editor.page)).toBe('Swatch')
+    // Generated markup names each layer by its class, which carries the offending style.
+    const warning = editor.page.locator('[data-slot="code-editor"] .cm-lintRange-warning')
+    await expect(warning).toHaveText(finePrint)
+  })
+}
+
 test('links follow the code after a live edit', async () => {
   await buildScene(editor.page)
   await openCode(editor.page)
@@ -148,6 +182,8 @@ test('links follow the code after a live edit', async () => {
 function editLayer(page: Page, name: string, changes: Record<string, unknown>) {
   return page.evaluate(
     ({ name, changes }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       const node = [...(store?.graph.getAllNodes() ?? [])].find((n) => n.name === name)
       if (!store || !node) throw new Error(`${name} not found`)
@@ -159,6 +195,8 @@ function editLayer(page: Page, name: string, changes: Record<string, unknown>) {
 
 function layerId(page: Page, name: string) {
   return page.evaluate((name) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     return [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === name)?.id ?? null
   }, name)
@@ -189,10 +227,10 @@ test('code edits update the layers in place', async () => {
 
   await expect
     .poll(() =>
-      editor.page.evaluate(
-        (id) => (id ? window.openPencil?.getStore?.().graph.getNode(id)?.width : null),
-        swatchId
-      )
+      editor.page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return id ? window.openPencil?.getStore?.().graph.getNode(id)?.width : null
+      }, swatchId)
     )
     .toBe(120)
 })
@@ -216,12 +254,49 @@ test('canvas edits patch code a person wrote and keep the rest as written', asyn
   )
 })
 
+function richText(page: Page, name: string) {
+  return page.evaluate((name) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
+    const store = window.openPencil?.getStore?.()
+    const node = [...(store?.graph.getAllNodes() ?? [])].find((n) => n.name === name)
+    return node ? { styleRuns: node.styleRuns, textParagraphs: node.textParagraphs } : null
+  }, name)
+}
+
+test('rich text styled on the canvas is written into the code and kept by code edits', async () => {
+  await buildScene(editor.page)
+  await openCode(editor.page)
+  await personalizeCode(editor.page)
+
+  const styleRuns = [{ start: 6, length: 5, style: { fontWeight: 700 } }]
+  await editLayer(editor.page, 'Fine print', { styleRuns })
+  await expect(codeLine(editor.page, 'name="Fine print"')).toContainText(
+    'Terms <Span weight="bold">apply</Span></Text>'
+  )
+
+  const textParagraphs = [{ listType: 'UNORDERED', indentation: 1 }]
+  await editLayer(editor.page, 'Fine print', { textParagraphs })
+  await expect(
+    codeLine(editor.page, '<Paragraph list="unordered">Terms <Span weight="bold">apply</Span>')
+  ).toBeVisible()
+  expect(await codeText(editor.page)).toContain('// Pricing card')
+
+  // Code edited after that renders the text with its spans and paragraphs, not as plain text.
+  await codeLine(editor.page, 'name="Card"').locator('span', { hasText: /^320$/ }).dblclick()
+  await editor.page.keyboard.type('360')
+  await expect.poll(() => cardSize(editor.page)).toBe('360x160')
+  expect(await richText(editor.page, 'Fine print')).toEqual({ styleRuns, textParagraphs })
+})
+
 test('layers added or deleted on the canvas are written into the code', async () => {
   await buildScene(editor.page)
   await openCode(editor.page)
   await personalizeCode(editor.page)
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const card = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Card')
     const note = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Fine print')
@@ -255,9 +330,15 @@ test('undo reverts a code edit on the canvas and in the code', async () => {
   await editLayer(editor.page, 'Card', { height: 200 })
   await expect(codeLine(editor.page, 'name="Card"')).toContainText('h={200}')
 
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   await expect(codeLine(editor.page, 'name="Card"')).toContainText('h={160}')
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   await expect.poll(() => cardSize(editor.page)).toBe('320x160')
   await expect(codeLine(editor.page, 'name="Card"')).toContainText('w={320}')
 })
@@ -284,6 +365,8 @@ test('reordering layers on the canvas moves their elements and keeps them linked
   await codeLine(editor.page, 'name="Swatch"').click({ position: { x: 24, y: 8 } })
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const swatch = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Swatch')
     if (!store || !swatch?.parentId) throw new Error('Swatch not found')
@@ -339,6 +422,8 @@ test('a reorder that cannot move the code still writes layers added with it', as
   await expect.poll(() => cardSize(editor.page)).toBe('320x170')
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const swatch = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Swatch')
     if (!store || !swatch?.parentId) throw new Error('Swatch not found')
@@ -368,7 +453,10 @@ test('a canvas edit right after replacing all the code survives its preview', as
   await expect(codeLine(editor.page, 'name="Card"')).toContainText('h={170}')
 
   // The edit applied again belongs to the code's undo step, which leaves the canvas edit.
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   await expect.poll(() => cardSize(editor.page)).toBe('400x160')
 })
 
@@ -377,6 +465,8 @@ test('code follows a value while it is dragged and goes back when the drag is ca
   await openCode(editor.page)
 
   const [during, after] = await editor.page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const card = [...(store?.graph.getAllNodes() ?? [])].find((node) => node.name === 'Card')
     if (!store || !card) throw new Error('Card not found')

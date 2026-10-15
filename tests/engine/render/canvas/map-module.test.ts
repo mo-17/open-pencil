@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { createMapModuleFrameOverrides } from '@open-pencil/core/plugins'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
 import { renderMapModulePreview } from '#core/canvas/lowcode'
 import { renderShapeUncached } from '#core/canvas/scene'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer } from './effects/helpers'
 
@@ -29,7 +29,7 @@ describe('map module canvas preview', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer({ zoom: 1 })
 
-    const rendered = renderMapModulePreview(renderer, canvas as Canvas, node)
+    const rendered = renderMapModulePreview(renderer, asCanvas(canvas), node)
 
     expect(rendered).toBe(true)
     expect(canvas.save).toHaveBeenCalledTimes(1)
@@ -47,7 +47,7 @@ describe('map module canvas preview', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer({ zoom: 2 })
 
-    renderShapeUncached(renderer, canvas as Canvas, node, new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), node, new SceneGraph())
 
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(renderer.renderEffects).toHaveBeenCalledTimes(2)
@@ -70,7 +70,7 @@ describe('map module canvas preview', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer({ zoom: 1 })
 
-    expect(renderMapModulePreview(renderer, canvas as Canvas, node)).toBe(false)
+    expect(renderMapModulePreview(renderer, asCanvas(canvas), node)).toBe(false)
     expect(canvas.save).not.toHaveBeenCalled()
     expect(canvas.drawRect).not.toHaveBeenCalled()
   })

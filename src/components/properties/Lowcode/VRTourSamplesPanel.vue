@@ -72,6 +72,6 @@ async function applySamples() {
     </button>
     <p :class="ui.hint">{{ bound ? copy.samplesBound : copy.samplesHint }}</p>
     <p :class="ui.hint">{{ copy.samplesCredit }}</p>
-    <p v-if="error" role="alert" class="text-xs text-orange-400">{{ error }}</p>
+    <p v-if="error" role="alert" class="text-xs text-warning">{{ error }}</p>
   </div>
 </template>

@@ -254,7 +254,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
           <button
             type="button"
             :aria-label="panels.lowcodeBackendRemoveEnum"
-            class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
+            class="rounded px-1 text-muted hover:bg-hover hover:text-error"
             @click="removeEnum(dataEnum.id)"
           >
             ×
@@ -276,7 +276,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
           <button
             type="button"
             :aria-label="panels.lowcodeBackendRemoveEnumValue"
-            class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
+            class="rounded px-1 text-muted hover:bg-hover hover:text-error"
             @click="removeEnumValue(dataEnum, index)"
           >
             ×
@@ -360,7 +360,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
         <button
           type="button"
           :aria-label="panels.lowcodeBackendRemoveEntity"
-          class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
+          class="rounded px-1 text-muted hover:bg-hover hover:text-error"
           @click="removeEntity(entity.id)"
         >
           ×
@@ -408,7 +408,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
               type="button"
               :disabled="protectedField(entity, field)"
               :aria-label="panels.lowcodeBackendRemoveField"
-              class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
+              class="rounded px-1 text-muted hover:bg-hover hover:text-error"
               @click="removeField(entity, field.id)"
             >
               ×
@@ -524,6 +524,6 @@ function updateLiteral(field: DataFieldIR, value: string): void {
         </button>
       </div>
     </div>
-    <p v-if="operationError" class="text-[10px] text-red-500">{{ operationError }}</p>
+    <p v-if="operationError" class="text-[10px] text-error">{{ operationError }}</p>
   </div>
 </template>

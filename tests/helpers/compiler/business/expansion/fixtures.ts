@@ -26,7 +26,7 @@ function record(
       let value: BusinessTestRow[string] = 'Record ' + name
       if (field.type === 'uuid') value = expansionId(name === 'id' ? index : 800 + fieldIndex)
       else if (field.type === 'datetime') value = expansionDate
-      else if (field.type === 'integer' || field.type === 'decimal') value = 7
+      else if (field.type === 'integer' || field.type === 'number') value = 7
       else if (field.type === 'boolean') value = true
       else if (field.type === 'enum')
         value =

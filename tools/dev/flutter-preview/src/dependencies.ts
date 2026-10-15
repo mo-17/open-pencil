@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import { FlutterPreviewError } from './errors'
 import type { GeneratedFiles } from './owned-project'
 
@@ -10,10 +12,7 @@ export function validateOfflineDependencies(files: GeneratedFiles): void {
       'Generated pubspec must be text.'
     )
   const block = /^dependencies:\s*\n((?:[ \t].*\n|\s*\n)*)/m.exec(pubspec)?.[1]
-  const entries = block
-    ?.split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const entries = block ? compact(block.split('\n').map((line) => line.trim())) : undefined
   if (entries?.join('\n') !== 'flutter:\nsdk: flutter' || /^dependency_overrides:/m.test(pubspec)) {
     throw new FlutterPreviewError(
       'flutter-preview-native-plugin-unsupported',

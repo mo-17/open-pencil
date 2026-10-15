@@ -63,7 +63,18 @@ export {
 
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
-export const TRYSTERO_APP_ID = 'openpencil'
+/**
+ * The collaboration namespace. It names the shared document format and how peers send it, so
+ * builds that sync the layer tree or variables differently, or encode what they send
+ * differently, never join each other's rooms; change it with either.
+ */
+export const COLLAB_APP_ID = 'openpencil/5'
+
+/**
+ * The most a room message may decode to, compressed or not. A peer's update past it is dropped
+ * before it is decoded, so a small compressed reply cannot expand without bound.
+ */
+export const MAX_COLLAB_MESSAGE_BYTES = 256 * 1024 * 1024
 // 32 base36 characters provide roughly 165 bits of entropy. The room ID is a
 // bearer credential and must resist offline enumeration from public signaling topics.
 export const ROOM_ID_LENGTH = 32
@@ -73,8 +84,35 @@ export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
 // it can't connect even with the right appId + roomId. 26 chars over the
 // 36-symbol alphabet ≈ 134 bits, far beyond the 8-char roomId.
 export const ROOM_KEY_LENGTH = 48
+/** How long a room tab tries to reach the service that introduces peers before saying it cannot. */
+export const ROOM_UNREACHABLE_MS = 20_000
+/** How often a room tab rechecks its connection while it waits for the file. */
+export const ROOM_STATUS_TICK_MS = 500
 
 export const WEB_APP_ORIGIN = 'https://app.openpencil.dev'
+/** The privacy page: every request the app makes, and every usage event and field. */
+export const PRIVACY_URL = 'https://openpencil.dev/overview/privacy'
+/** The OpenPencil Cloud section of the website, with its waitlist form. */
+export const CLOUD_WAITLIST_URL = 'https://openpencil.dev/#cloud'
+/** Where the desktop app's installers are published. */
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/open-pencil/open-pencil/releases/latest'
+export const NODE_DOWNLOAD_URL = 'https://nodejs.org/en/download'
+
+/**
+ * Published guides. Settings links each integration section to its guide with one "Learn more"
+ * at the end of the section description; alerts link only to the fix, never to docs.
+ */
+const DOCS_ORIGIN = 'https://openpencil.dev'
+export const MCP_SERVER_DOCS_URL = `${DOCS_ORIGIN}/programmable/mcp-server`
+export const WEBMCP_DOCS_URL = `${MCP_SERVER_DOCS_URL}#webmcp`
+export const MCP_CONNECTIONS_DOCS_URL = `${DOCS_ORIGIN}/programmable/ai-chat#external-mcp-connections`
+export const CODING_AGENTS_GUIDE_URL = `${DOCS_ORIGIN}/programmable/coding-agents`
+export const PI_GUIDE_URL = `${CODING_AGENTS_GUIDE_URL}#pi`
+
+/** The published release page, with its full notes, for a desktop version. */
+export function releaseNotesURL(version: string): string {
+  return `https://github.com/open-pencil/open-pencil/releases/tag/v${version}`
+}
 
 export function getShareURL(roomId: string, roomKey?: string): string {
   const base = IS_TAURI || !IS_BROWSER ? WEB_APP_ORIGIN : window.location.origin
@@ -129,8 +167,6 @@ export const YJS_JSON_FIELDS = new Set([
 export {
   DEFAULT_SHAPE_FILL,
   DEFAULT_FRAME_FILL,
-  SECTION_DEFAULT_FILL,
-  SECTION_DEFAULT_STROKE,
   ZOOM_DIVISOR,
   ZOOM_SCALE_MIN,
   ZOOM_SCALE_MAX
@@ -154,11 +190,8 @@ export const ACTION_TOAST_DURATION = 800
 export const DRAG_DEAD_ZONE = 4
 export const PEN_CLOSE_THRESHOLD = 8
 export const ROTATION_SNAP_DEGREES = 15
-export const CORNER_ROTATE_ZONE = 16
 export const DEFAULT_TEXT_WIDTH = 200
 export const DEFAULT_TEXT_HEIGHT = 24
-export const AUTO_LAYOUT_BREAK_THRESHOLD = 8
-export const HANDLE_HIT_RADIUS = 6
 
 export const ACP_PERMISSION_TIMEOUT_MS = 60_000
 

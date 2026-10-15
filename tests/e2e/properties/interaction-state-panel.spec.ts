@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear()
 
 async function selectButton() {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('BUTTON', 120, 120, 180, 48)
@@ -16,6 +18,8 @@ async function selectButton() {
 
 function selectedStateOverrides() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -36,10 +40,9 @@ test('button interaction-state panel authors and clears hover overrides', async 
   const panel = editor.page.getByTestId('lowcode-interaction-states')
   await panel.scrollIntoViewIfNeeded()
   await expect(panel).toBeVisible()
-  await expect(editor.page.getByTestId('lowcode-interaction-state-hover')).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
+  await expect(
+    editor.page.locator('[data-slot="interaction-state"][data-state="hover"]')
+  ).toHaveAttribute('aria-selected', 'true')
 
   await editor.page.getByTestId('lowcode-interaction-fill-enabled').check()
   await editor.page.getByTestId('lowcode-interaction-fill-color').fill('#123456')
@@ -64,11 +67,11 @@ test('button interaction-state panel authors and clears hover overrides', async 
   expect(hover?.opacity).toBe(0.8)
   expect(hover?.cornerRadius).toBe(12)
 
-  await editor.page.getByTestId('lowcode-interaction-state-disabled').click()
+  await editor.page.locator('[data-slot="interaction-state"][data-state="disabled"]').click()
   await fillAndCommit('lowcode-interaction-opacity', '50')
   expect((await selectedStateOverrides())?.disabled?.opacity).toBe(0.5)
 
-  await editor.page.getByTestId('lowcode-interaction-state-hover').click()
+  await editor.page.locator('[data-slot="interaction-state"][data-state="hover"]').click()
   await editor.page.getByTestId('lowcode-interaction-clear').click()
   await editor.canvas.waitForRender()
   expect(await selectedStateOverrides()).toEqual({ disabled: { opacity: 0.5 } })

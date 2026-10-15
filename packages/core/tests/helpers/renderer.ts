@@ -1,15 +1,25 @@
 import { spyOn } from 'bun:test'
 
-import { SkiaRenderer } from '@open-pencil/core/canvas'
-import { initCanvasKit } from '@open-pencil/core/io'
-import { getTextMeasurer, setTextMeasurer } from '@open-pencil/core/layout'
+import { SkiaRenderer } from '#core/canvas'
+import { createEditor as createCoreEditor, type Editor } from '#core/editor'
+import { initCanvasKit } from '#core/io'
+import { getTextMeasurer, setTextMeasurer } from '#core/layout'
 
 import { expectDefined } from './assert'
 
 const ck = await initCanvasKit()
 const probes: Array<{ renderer: SkiaRenderer; restore(): void }> = []
+const editors: Editor[] = []
+
+/** Editors release their installed text measurer before their renderer is destroyed. */
+export function createRendererTestEditor(...options: Parameters<typeof createCoreEditor>): Editor {
+  const editor = createCoreEditor(...options)
+  editors.push(editor)
+  return editor
+}
 
 export function disposeRendererProbes(): void {
+  for (const editor of editors.splice(0).reverse()) editor.dispose()
   for (const probe of probes.splice(0).reverse()) {
     probe.restore()
     probe.renderer.destroy()

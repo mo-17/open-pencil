@@ -8,6 +8,8 @@ import type {
   SetSessionConfigOptionRequest
 } from '@agentclientprotocol/sdk'
 
+import type { ACPAgentDef } from '@open-pencil/core/constants'
+
 import {
   beginACPDiagnostics,
   getACPDiagnostics,
@@ -446,7 +448,12 @@ describe('mapUpdate', () => {
   test('agent_message_chunk with non-text content produces no chunks', () => {
     const update: SessionUpdate = {
       sessionUpdate: 'agent_message_chunk',
-      content: { type: 'image', url: 'https://example.com/img.png' }
+      content: {
+        type: 'image',
+        mimeType: 'image/png',
+        data: '',
+        uri: 'https://example.com/img.png'
+      }
     }
     const result = mapUpdate(update, TEXT_ID, false)
     expect(result.textStarted).toBe(false)
@@ -465,13 +472,13 @@ describe('mapUpdate', () => {
 })
 
 describe('formatConnectionError', () => {
-  const claudeAgent = {
+  const claudeAgent: ACPAgentDef = {
     id: 'claude-code',
     name: 'Claude Code',
     command: 'claude-agent-acp',
     args: [],
     installCommand: 'npm i -g @agentclientprotocol/claude-agent-acp'
-  } as const
+  }
 
   test('ECONNREFUSED maps to MCP not running', () => {
     const msg = formatConnectionError(new Error('connect ECONNREFUSED 127.0.0.1:7600'))

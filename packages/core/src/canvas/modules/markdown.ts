@@ -79,7 +79,7 @@ export function renderMarkdownModulePreview(
               renderer.fillPaint
             )
           }
-          canvas.drawParagraph(paragraph, inset + textInset, y)
+          paragraph.draw(canvas, inset + textInset, y)
           y += blockHeight + (block.kind === 'heading' ? config.fontSize * 0.5 : 0)
         } finally {
           paragraph.delete()

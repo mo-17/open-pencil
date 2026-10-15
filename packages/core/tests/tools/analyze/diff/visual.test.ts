@@ -76,18 +76,32 @@ describe('diff_visual', () => {
     const copiedSwatch = expectDefined(copy.children[0], 'copied swatch')
     copiedSwatch.fills = [{ type: 'SOLID', color: RED, opacity: 1, visible: true }]
 
-    const result = await visualDiff(figma, { from: card.id, to: copy.id, scale: 2 })
+    const result = await visualDiff(figma, {
+      from: card.id,
+      to: copy.id,
+      scale: 2
+    })
     expect(result.width).toBe(200)
     expect(result.changedPixels).toBeGreaterThan(0)
     expect(result.changedRatio).toBeCloseTo((40 * 40) / (200 * 120), 2)
-    expect(result.changedBounds).toEqual({ x: 60, y: 20, width: 20, height: 20 })
+    expect(result.changedBounds).toEqual({
+      x: 60,
+      y: 20,
+      width: 20,
+      height: 20
+    })
   })
 
   test('applies the same max-edge bound as export_image', async () => {
     const { figma, card } = setup()
     const copy = card.clone()
 
-    const result = await visualDiff(figma, { from: card.id, to: copy.id, scale: 4, maxEdge: 64 })
+    const result = await visualDiff(figma, {
+      from: card.id,
+      to: copy.id,
+      scale: 4,
+      maxEdge: 64
+    })
     expect(result.width).toBe(64)
   })
 })

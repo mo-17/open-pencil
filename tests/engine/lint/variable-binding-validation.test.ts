@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/core'
-import noHardcodedColors from '@open-pencil/core/lint/rules/no-hardcoded-colors'
+import { allRules, type LintNode } from '@open-pencil/core/lint'
+
+import { expectDefined, getNodeOrThrow } from '#tests/helpers/assert'
+
+const noHardcodedColors = expectDefined(allRules['no-hardcoded-colors'])
 
 function pageId(graph: SceneGraph): string {
   return graph.getPages()[0].id
@@ -64,7 +68,7 @@ const GRAY_VARIABLES = {
 
 describe('no-hardcoded-colors lint checks indexed bindings', () => {
   test('node with fills/0/color binding passes lint (no false positive)', () => {
-    const node = {
+    const node: LintNode = {
       id: 'n1',
       name: 'Rect',
       type: 'RECTANGLE',
@@ -92,6 +96,7 @@ describe('no-hardcoded-colors lint checks indexed bindings', () => {
       text: '',
       fontSize: 14,
       styleRunCount: 0,
+      fillGeometryCount: 0,
       boundVariables: { 'fills/0/color': 'v1' },
       fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 0.5, g: 0.5, b: 0.5 } }],
       strokes: [],
@@ -113,7 +118,7 @@ describe('no-hardcoded-colors lint checks indexed bindings', () => {
   })
 
   test('node with top-level fills binding still reports violation (no false negative)', () => {
-    const node = {
+    const node: LintNode = {
       id: 'n2',
       name: 'Rect',
       type: 'RECTANGLE',
@@ -141,6 +146,7 @@ describe('no-hardcoded-colors lint checks indexed bindings', () => {
       text: '',
       fontSize: 14,
       styleRunCount: 0,
+      fillGeometryCount: 0,
       boundVariables: { fills: 'v1' }, // top-level — renderer-ignored
       fills: [{ type: 'SOLID', visible: true, opacity: 1, color: { r: 0.5, g: 0.5, b: 0.5 } }],
       strokes: [],
@@ -201,7 +207,7 @@ describe('bindVariable validation', () => {
     expect(() => {
       graph.bindVariable(node.id, 'fills/0/color', 'nonexistent')
     }).toThrow()
-    expect(graph.getNode(node.id).boundVariables['fills/0/color']).toBeUndefined()
+    expect(getNodeOrThrow(graph, node.id).boundVariables['fills/0/color']).toBeUndefined()
   })
 
   test('bindVariable rejects FLOAT variable on color field', () => {
@@ -210,7 +216,7 @@ describe('bindVariable validation', () => {
     expect(() => {
       graph.bindVariable(node.id, 'fills/0/color', 'v-float')
     }).toThrow()
-    expect(graph.getNode(node.id).boundVariables['fills/0/color']).toBeUndefined()
+    expect(getNodeOrThrow(graph, node.id).boundVariables['fills/0/color']).toBeUndefined()
   })
 
   test('bindVariable rejects COLOR variable on scalar field', () => {
@@ -219,7 +225,7 @@ describe('bindVariable validation', () => {
     expect(() => {
       graph.bindVariable(node.id, 'opacity', 'v-color')
     }).toThrow()
-    expect(graph.getNode(node.id).boundVariables['opacity']).toBeUndefined()
+    expect(getNodeOrThrow(graph, node.id).boundVariables['opacity']).toBeUndefined()
   })
 
   test('bindVariable rejects binding to fills that do not yet exist', () => {
@@ -237,7 +243,7 @@ describe('bindVariable validation', () => {
       name: 'Rect',
       fills: [{ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5, a: 1 }, visible: true, opacity: 1 }]
     })
-    const n = graph.getNode(node.id)
+    const n = getNodeOrThrow(graph, node.id)
     // Set top-level dead data first
     n.boundVariables['fills'] = 'v-color'
     // Now set a proper indexed binding — should auto-remove top-level
@@ -264,7 +270,9 @@ describe('bindVariable validation', () => {
       ]
     })
     graph.bindVariable(node.id, 'fills/0/gradientStops/1/color', 'v-color')
-    expect(graph.getNode(node.id).boundVariables['fills/0/gradientStops/1/color']).toBe('v-color')
+    expect(getNodeOrThrow(graph, node.id).boundVariables['fills/0/gradientStops/1/color']).toBe(
+      'v-color'
+    )
     expect(() => {
       graph.bindVariable(node.id, 'fills/0/gradientStops/2/color', 'v-color')
     }).toThrow(/gradientStops/)

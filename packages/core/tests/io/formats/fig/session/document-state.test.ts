@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { TestFigWorker } from '#core-tests/helpers/fig/worker'
+import { inertPopulationWorker } from '#core-tests/helpers/fig/population-worker'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { exportFigFile } from '@open-pencil/core/io'
@@ -26,7 +26,9 @@ test('rejected worker response cannot mark an unloaded page loaded in recovery',
   await initCodec()
   const source = new SceneGraph()
   source.createNode('RECTANGLE', source.getPages()[0].id, { name: 'First' })
-  source.createNode('RECTANGLE', source.addPage('Second').id, { name: 'Second node' })
+  source.createNode('RECTANGLE', source.addPage('Second').id, {
+    name: 'Second node'
+  })
   const bytes = await exportFigFile(source)
   const backend = openReaderSession(bytes.buffer as ArrayBuffer, 'first-page')
   const graph = deserializeSceneGraph(serializeSceneGraph(backend.graph))
@@ -80,8 +82,12 @@ test('page preparation recovers an invalidated replacement worker without replac
   await initCodec()
   const source = new SceneGraph()
   source.createNode('RECTANGLE', source.getPages()[0].id, { name: 'First' })
-  source.createNode('RECTANGLE', source.addPage('Second').id, { name: 'Second node' })
-  source.createNode('RECTANGLE', source.addPage('Third').id, { name: 'Third node' })
+  source.createNode('RECTANGLE', source.addPage('Second').id, {
+    name: 'Second node'
+  })
+  source.createNode('RECTANGLE', source.addPage('Third').id, {
+    name: 'Third node'
+  })
   const bytes = await exportFigFile(source)
   const backend = openReaderSession(bytes.buffer as ArrayBuffer, 'first-page')
   const graph = deserializeSceneGraph(serializeSceneGraph(backend.graph))
@@ -91,8 +97,7 @@ test('page preparation recovers an invalidated replacement worker without replac
   if (!secondResult.checkpoint) throw new Error('Missing checkpoint')
   updateReaderRecovery(graph, structuredClone(secondResult.checkpoint))
   const secondNode = graph.getChildren(graph.getPages()[1].id)[0]
-  const worker = new TestFigWorker()
-  registerFigPopulationWorker(graph, worker)
+  registerFigPopulationWorker(graph, inertPopulationWorker())
   const editor = createEditor({ graph })
   const first = graph.getChildren(graph.getPages()[0].id)[0]
   graph.updateNode(first.id, { name: 'Edited' })

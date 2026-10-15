@@ -25,6 +25,10 @@ export const packageManifestSchema = v.looseObject({
   name: nonempty,
   version: nonempty,
   private: v.optional(v.boolean()),
+  peerDependenciesMeta: v.optional(
+    v.pipe(objectInput, v.record(v.string(), v.looseObject({ optional: v.optional(v.boolean()) })))
+  ),
+  repository: v.optional(v.union([v.string(), v.looseObject({ url: v.optional(v.string()) })])),
   files: v.optional(v.array(nonempty)),
   main: v.optional(nonempty),
   types: v.optional(nonempty),
@@ -42,7 +46,7 @@ export const packageManifestSchema = v.looseObject({
       provenance: v.optional(v.boolean()),
       registry: v.optional(nonempty),
       exports: v.optional(packageTargetSchema),
-      imports: v.optional(v.record(v.string(), packageTargetSchema)),
+      imports: v.optional(v.pipe(objectInput, v.record(v.string(), packageTargetSchema))),
       main: v.optional(nonempty),
       types: v.optional(nonempty),
       bin: v.optional(v.union([nonempty, strings]))

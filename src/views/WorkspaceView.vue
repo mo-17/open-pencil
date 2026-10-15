@@ -1,23 +1,32 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue'
-import { useEventListener } from '@vueuse/core'
+import { useEventListener, whenever } from '@vueuse/core'
 import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useI18n } from '@open-pencil/vue'
 
+import {
+  aiSetupDialogOpen,
+  offerAISetupOnFirstRun
+} from '@/app/ai/models/settings/onboarding/dialog'
+import { exposeAutomationTestRequests } from '@/app/automation/bridge/test-hooks'
 import { startMCPRuntime, stopMCPRuntime } from '@/app/automation/mcp/runtime'
 import { startWebMCP } from '@/app/automation/webmcp/runtime'
 import { exposeCollaborationActions } from '@/app/browser-bridge'
+import { useJoinRoom } from '@/app/collab/join'
+import { bindDesktopRoomLinks } from '@/app/collab/room/links'
+import { syncRoomRoute } from '@/app/collab/route'
 import { usesTestCollabTransport } from '@/app/collab/transport/policy'
 import { COLLAB_KEY, useCollab } from '@/app/collab/use'
-import { createDemoShapes } from '@/app/demo/document'
+import { openDemoDocument } from '@/app/demo/document'
 import type { PendingOpenFile } from '@/app/document/io/pending-open'
 import { openPendingFiles } from '@/app/document/io/pending-open'
 import { openWebLinkFromLocation, withoutWebLinkParams } from '@/app/document/io/web-link'
 import { focusNodesByName } from '@/app/editor/selection/focus'
 import { notificationMessages } from '@/app/i18n/notifications'
 import { appRuntimeConfig } from '@/app/runtime/config'
+import { useDocumentDrop } from '@/app/shell/document-drop'
 import { useKeyboard } from '@/app/shell/keyboard/use'
 import { useEditorMenu } from '@/app/shell/menu/use'
 import { toast } from '@/app/shell/ui'
@@ -28,9 +37,11 @@ import {
   createTab,
   getActiveStore,
   getTabsSnapshot,
-  tabCount
+  tabCount,
+  type Tab
 } from '@/app/tabs'
 import { isTauri } from '@/app/tauri/env'
+import { offerUsageStatsPrompt, startSharing } from '@/app/telemetry'
 import ColorSpaceBanner from '@/components/canvas/ColorSpaceBanner.vue'
 import CommandPalette from '@/components/commands/CommandPalette.vue'
 import EditorWorkspace from '@/components/editor/EditorWorkspace.vue'
@@ -50,22 +61,66 @@ const shouldCreateHome =
   !appRuntimeConfig.test &&
   !route.meta.demo &&
   (isTauri() || appRuntimeConfig.recentFiles)
-let firstTab = activeTab.value
-if (!firstTab) firstTab = shouldCreateHome ? createHomeTab() : createTab()
+const { collaboration } = useI18n()
+const joinRoomFromInput = useJoinRoom()
 
-if (createdInitialTab && route.meta.demo && !appRuntimeConfig.test) {
-  void createDemoShapes(firstTab.store)
+/** A share link opens its room in a tab of its own, so nothing editable shows before it. */
+function openFirstTab(): Tab {
+  const roomId = typeof route.params.roomId === 'string' ? route.params.roomId : null
+  if (roomId) {
+    if (joinRoomFromInput(`${roomId}${route.hash}`) && activeTab.value) return activeTab.value
+    toast.error(collaboration.value.invalidRoomLink)
+  }
+  return shouldCreateHome ? createHomeTab() : createTab()
+}
+
+// Block-scoped so the view does not keep the first tab's store after that tab closes.
+{
+  const firstTab = activeTab.value ?? openFirstTab()
+  if (createdInitialTab && route.meta.demo && !appRuntimeConfig.test) {
+    openDemoDocument(firstTab.store).catch((error: unknown) => {
+      console.error('[Demo] Could not open the demo document:', error)
+      toast.error(
+        notificationMessages.get().openFileFailed({
+          name: 'Demo',
+          error: error instanceof Error ? error.message : String(error)
+        })
+      )
+    })
+  }
+}
+
+// A first visit to the demo link is a first run too; the welcome there skips the tour offer.
+const welcomeShown =
+  createdInitialTab && (route.path === '/' || route.meta.demo) && !appRuntimeConfig.test
+    ? offerAISetupOnFirstRun({ inTour: route.meta.demo === true })
+    : false
+const sharingStarted = startSharing()
+// One question per surface: a first run is asked about usage stats once the welcome closes.
+if (welcomeShown) {
+  whenever(
+    () => !aiSetupDialogOpen.value,
+    async () => {
+      await sharingStarted
+      offerUsageStatsPrompt('welcome')
+    },
+    { once: true }
+  )
+} else {
+  void sharingStarted.then(() => offerUsageStatsPrompt('prompt'))
 }
 
 useHead({ title: route.meta.demo ? 'Demo' : undefined })
 useKeyboard()
 useEditorMenu()
+useDocumentDrop()
 
-const collab = useCollab(getActiveStore)
+const collab = useCollab()
 provide(COLLAB_KEY, collab)
-exposeCollaborationActions(collab)
+exposeCollaborationActions(collab, joinRoomFromInput)
+exposeAutomationTestRequests()
+syncRoomRoute(router, route)
 const { dialogs } = useI18n()
-
 collab.onDocStateConflict((kind) => {
   const target =
     kind === 'state' ? dialogs.value.presenceTargetState : dialogs.value.presenceTargetDocState
@@ -83,6 +138,7 @@ useEventListener(
 
 const fileAssociationCleanup = ref<(() => void) | null>(null)
 const mcpRuntimeEnabled = import.meta.env.MODE !== 'native-test' && !usesTestCollabTransport()
+const roomLinksCleanup = ref<(() => void) | null>(null)
 
 /**
  * A drain that fails wholesale — the `take_pending_open` invoke, the event binding —
@@ -165,6 +221,14 @@ onMounted(async () => {
     reportOpenFailure(error)
   }
 
+  try {
+    roomLinksCleanup.value = await bindDesktopRoomLinks((invite) => {
+      if (!joinRoomFromInput(invite)) toast.error(collaboration.value.invalidRoomLink)
+    })
+  } catch (error) {
+    console.error('[Room link]', error)
+  }
+
   // The browser twin of the deep link: the desktop build takes its links through the
   // deep-link plugin above, so only a real browser reads them off the address bar.
   if (IS_BROWSER && !isTauri()) {
@@ -183,6 +247,7 @@ onUnmounted(() => {
   stopWebMCP?.()
   if (mcpRuntimeEnabled) void stopMCPRuntime()
   fileAssociationCleanup.value?.()
+  roomLinksCleanup.value?.()
 })
 </script>
 
@@ -199,6 +264,10 @@ onUnmounted(() => {
       :key="activeTab.id"
     />
     <HomeWorkspace v-show="activeTab?.kind === 'home'" @new-document="createDocumentInCurrentTab" />
-    <EditorWorkspace v-if="activeTab?.kind !== 'home'" />
+    <EditorWorkspace
+      v-if="activeTab && activeTab.kind !== 'home'"
+      :key="activeTab.id"
+      :tab="activeTab"
+    />
   </div>
 </template>

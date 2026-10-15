@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { unzipSync, zipSync, type Zippable } from 'fflate'
+import * as v from 'valibot'
 
 import { compile } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -126,11 +127,18 @@ describe('Vue source project release archive', () => {
     const directory = mkdtempSync(join(tmpdir(), 'openpencil-vue-release-'))
     try {
       const files = writeArchive(directory, archive)
-      const packageJSON = JSON.parse(new TextDecoder().decode(files['package.json'])) as {
-        scripts: Record<string, string>
-        dependencies: Record<string, string>
-        devDependencies: Record<string, string>
-      }
+      const packageJSON = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({
+            scripts: v.record(v.string(), v.string()),
+            dependencies: v.record(v.string(), v.string()),
+            devDependencies: v.record(v.string(), v.string())
+          })
+        ),
+        new TextDecoder().decode(files['package.json'])
+      )
       expect(packageJSON.scripts.build).toBe('vue-tsc --noEmit && vite build')
       expect(packageJSON.dependencies.vue).toBeDefined()
       for (const dependency of [

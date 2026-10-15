@@ -614,7 +614,7 @@ describe('backend provider plugin host boundary', () => {
     const { store } = await activeProvider()
     const descriptor = onlyDescriptor(store)
     const graph = providerDocumentGraph(descriptor)
-    const declaration = graph.getNode(graph.rootId).pluginData?.[0]
+    const declaration = graph.getNode(graph.rootId)?.pluginData?.[0]
     if (!declaration) throw new Error('Expected Backend Provider declaration')
     graph.updateNode(graph.rootId, { pluginData: [declaration, structuredClone(declaration)] })
 

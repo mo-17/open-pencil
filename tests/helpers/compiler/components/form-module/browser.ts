@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import { moduleFormDiagnostics } from './diagnostics'
 import { withModuleFormCleanup } from './lifecycle'
@@ -15,13 +16,14 @@ export async function withModuleForm(
   radixSelect = false
 ): Promise<void> {
   const source = `import {moduleFormFixture} from './tests/helpers/compiler/components/form-module/fixtures'; process.stdout.write(JSON.stringify([...moduleFormFixture(${JSON.stringify(target)}, ${JSON.stringify(remote)}, ${JSON.stringify(kit)}, ${JSON.stringify(radixSelect)}).files]));`
-  const files = JSON.parse(
+  const files = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
     execFileSync('bun', ['-e', source], {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 8 * 1024 * 1024
     })
-  ) as [string, string][]
+  )
   const server = await startFormPreviewSidecar(target, files)
   const diagnostics = moduleFormDiagnostics(page, new URL(server.url).origin)
   const errors: string[] = []

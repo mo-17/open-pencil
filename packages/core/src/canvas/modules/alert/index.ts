@@ -73,7 +73,7 @@ function drawText(
     renderer.color4f(color.r, color.g, color.b, color.a),
     { halfLeading: true },
     (paragraph) => {
-      canvas.drawParagraph(paragraph, box.x, box.y)
+      paragraph.draw(canvas, box.x, box.y)
       return paragraph.getHeight()
     }
   )
@@ -85,7 +85,11 @@ export function alertContentGeometry(
   config: Pick<AlertModuleConfigV1, 'showIcon' | 'closable'>
 ) {
   const x = 16 + (config.showIcon ? 32 : 0)
-  return { x, width: Math.max(0, width - x - 16 - (config.closable ? 40 : 0)), closeX: width - 40 }
+  return {
+    x,
+    width: Math.max(0, width - x - 16 - (config.closable ? 40 : 0)),
+    closeX: width - 40
+  }
 }
 
 export function renderAlertModulePreview(
@@ -99,7 +103,11 @@ export function renderAlertModulePreview(
     const geometry = alertContentGeometry(width, config)
     const rounded = {
       ...frame,
-      node: { ...node, cornerRadius: config.borderRadius, independentCorners: false }
+      node: {
+        ...node,
+        cornerRadius: config.borderRadius,
+        independentCorners: false
+      }
     }
     withModulePreviewSurface(renderer, canvas, rounded, appearance.background, () => {
       configureControlPaint(renderer, appearance.border, 1, 1)
@@ -115,7 +123,12 @@ export function renderAlertModulePreview(
         drawIcon(renderer, canvas, ALERT_ICON_PATHS[config.tone], 16, 16, appearance.foreground)
       if (config.closable)
         drawIcon(renderer, canvas, ALERT_CLOSE_PATH, geometry.closeX, 16, appearance.foreground)
-      const box = { x: geometry.x, y: 16, width: geometry.width, color: appearance.foreground }
+      const box = {
+        x: geometry.x,
+        y: 16,
+        width: geometry.width,
+        color: appearance.foreground
+      }
       const titleHeight = drawText(renderer, canvas, node, config.fontSize, {
         ...box,
         text: config.title,

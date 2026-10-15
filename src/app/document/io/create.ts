@@ -29,10 +29,7 @@ export function createDocumentIOActions(
     state,
     getFilePath: sourceState.getFilePath,
     getFileHandle: sourceState.getFileHandle,
-    setSavedVersion: (version) => {
-      sourceState.setSavedVersion(version)
-      sourceActions.markDocumentSaved()
-    },
+    setSavedVersion: () => sourceActions.markDocumentSaved(),
     preparationController
   })
   const { startWatchingFile, stopWatchingFile } = createFileWatcher({
@@ -43,10 +40,8 @@ export function createDocumentIOActions(
       void reloadFromDisk()
     }
   })
-  const { setViewportSize, fitCurrentPageToViewport } = createDocumentViewportActions(
-    editor,
-    viewportSize
-  )
+  const { setViewportSize, getViewportSize, fitCurrentPageToViewport } =
+    createDocumentViewportActions(editor, viewportSize)
   const sourceActions = createDocumentSourceActions({
     editor,
     state,
@@ -73,6 +68,7 @@ export function createDocumentIOActions(
   return {
     downloadBlob,
     setViewportSize,
+    getViewportSize,
     fitCurrentPageToViewport,
     // Phase 3 §5: the lowcode deploy flow needs the on-disk path of the saved
     // .fig so it can hand it to the `open-pencil deploy` CLI.
@@ -83,6 +79,11 @@ export function createDocumentIOActions(
     getStorageBinding: sourceState.getStorageBinding,
     getSaveStatus: sourceActions.getSaveStatus,
     getRecoveryStatus: sourceActions.getRecoveryStatus,
+    /** Whether saving writes in place rather than asking for a location. */
+    hasWritableSource: () =>
+      !!sourceState.getFilePath() ||
+      !!sourceState.getFileHandle() ||
+      !!sourceState.getStorageBinding(),
     getRecoveryId: sourceActions.getRecoveryId,
     adoptRecoverySnapshot: sourceActions.adoptRecoverySnapshot,
     persistRecoveryNow: sourceActions.persistRecoveryNow,
@@ -91,12 +92,15 @@ export function createDocumentIOActions(
     setDocumentSource: sourceActions.setDocumentSource,
     setStorageDocumentSource: sourceActions.setStorageDocumentSource,
     setPlannedFilePath: sourceActions.setPlannedFilePath,
+    saveFigFileToPath: sourceActions.saveFigFileToPath,
+    saveFigFileToStorage: sourceActions.saveFigFileToStorage,
     startWatchingCurrentFile: sourceActions.startWatchingCurrentFile,
     disposeDocumentIO: sourceActions.disposeDocumentIO,
     openFigFile,
     openDOMFile,
     importDOMText,
     hasUnsavedChanges: sourceActions.hasUnsavedChanges,
+    markDocumentSaved: () => sourceActions.markDocumentSaved(),
     saveFigFile: sourceActions.saveFigFile,
     saveFigFileAs: sourceActions.saveFigFileAs
   }

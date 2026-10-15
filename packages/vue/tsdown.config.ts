@@ -39,8 +39,7 @@ export default defineConfig({
   format: ['esm'],
   dts: {
     vue: true,
-    sourcemap: true,
-    resolver: 'tsc'
+    sourcemap: true
   },
   sourcemap: true,
   hash: false,
@@ -50,6 +49,7 @@ export default defineConfig({
     moduleSideEffects: false
   },
   deps: {
+    dts: { neverBundle: [/^@open-pencil\//] },
     alwaysBundle: [
       '@atlaskit/pragmatic-drag-and-drop',
       /^@atlaskit\/pragmatic-drag-and-drop\//,
@@ -69,7 +69,6 @@ export default defineConfig({
       '@nanostores/vue',
       '@nanostores/i18n',
       'nanostores',
-      '@tanstack/vue-table',
       'reka-ui'
     ],
     onlyBundle: false

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { AI_PROVIDERS } from '@open-pencil/core/constants'
+
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 const LOOPBACK_MCP_URL = 'http://127.0.0.1:4711/mcp'
@@ -86,9 +88,17 @@ test('configures a remote MCP server and enables it for one model', async ({ pag
   await page.getByTestId('settings-add-model').click()
   await page.getByLabel('Name').fill('MCP model')
   await page.getByTestId('settings-model-provider').click()
-  await page.getByRole('option', { name: 'Google AI' }).click()
+  const provider = AI_PROVIDERS.find((definition) => definition.id === 'google')
+  const model = provider?.models.find((definition) => definition.id === provider.defaultModel)
+  if (!provider || !model) throw new Error('The Google provider must declare its default model')
+  await page.getByRole('option', { name: provider.name, exact: true }).click()
   await page.getByLabel('Model ID').click()
-  await page.getByRole('option', { name: 'Gemini 3 Flash' }).click()
+  const modelOption = page
+    .getByRole('listbox')
+    .getByRole('option')
+    .filter({ has: page.getByText(model.id, { exact: true }) })
+  await expect(modelOption).toHaveCount(1)
+  await modelOption.click()
   const modelRemoteMCP = page.getByTestId('settings-model-remote-mcp')
   await expect(modelRemoteMCP).toContainText('Local MCP')
   const serverSwitch = modelRemoteMCP.getByRole('switch', { name: 'Local MCP' })

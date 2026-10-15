@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import type { MotionVisualState } from '@open-pencil/motion'
 import { SceneGraph, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
 import Matrix from '@open-pencil/scene-graph/matrix'
@@ -15,6 +13,8 @@ import { renderNode } from '#core/canvas/scene'
 import { renderNodesToSVG } from '#core/io/formats/svg'
 import { computeMotionLayoutPreview, setTextMeasurer } from '#core/layout'
 
+import { canvasMock } from '#tests/engine/render/canvas/effects/helpers'
+import { asRenderer, asCanvas } from '#tests/engine/render/canvas/helpers'
 import { fixed, gridFrame, rect } from '#tests/helpers/layout'
 
 function pageId(graph: SceneGraph) {
@@ -40,18 +40,18 @@ function authoredMotion(): MotionSpec {
 
 function createCanvas() {
   return {
-    concat: mock(() => undefined),
-    save: mock(() => undefined),
-    restore: mock(() => undefined),
-    translate: mock(() => undefined),
-    rotate: mock(() => undefined),
-    scale: mock(() => undefined),
+    concat: canvasMock('concat'),
+    save: canvasMock('save'),
+    restore: canvasMock('restore'),
+    translate: canvasMock('translate'),
+    rotate: canvasMock('rotate'),
+    scale: canvasMock('scale'),
     saveLayer: mock(() => undefined)
   }
 }
 
 function createRenderer() {
-  return {
+  return asRenderer({
     _nodeCount: 0,
     _culledCount: 0,
     worldViewport: { x: -1_000, y: -1_000, w: 2_000, h: 2_000 },
@@ -77,33 +77,14 @@ function createRenderer() {
     renderShape: mock(() => undefined),
     renderSection: mock(() => undefined),
     renderComponentSet: mock(() => undefined),
-    renderNode(
-      canvas,
-      graph,
-      nodeId,
-      overlays,
-      parentAbsX,
-      parentAbsY,
-      hasTransformedAncestor,
-      hasTransientTransformedAncestor
-    ) {
-      renderNode(
-        this as SkiaRenderer,
-        canvas,
-        graph,
-        nodeId,
-        overlays,
-        parentAbsX,
-        parentAbsY,
-        hasTransformedAncestor,
-        hasTransientTransformedAncestor
-      )
+    renderNode(...args: Parameters<SkiaRenderer['renderNode']>) {
+      renderNode(asRenderer(this), ...args)
     }
-  } as SkiaRenderer
+  })
 }
 
 function rendererFixture(value: object): SkiaRenderer {
-  return value as SkiaRenderer
+  return asRenderer(value)
 }
 
 function isolatedRendererFixture(value: object): SkiaRenderer {
@@ -166,7 +147,7 @@ describe('CanvasKit motion preview', () => {
     const renderer = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, node.id, {
+    renderNode(renderer, asCanvas(canvas), graph, node.id, {
       motionVisualStates: new Map([[node.id, visual]])
     })
 
@@ -190,7 +171,7 @@ describe('CanvasKit motion preview', () => {
     const renderer = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, line.id, {
+    renderNode(renderer, asCanvas(canvas), graph, line.id, {
       motionVisualStates: new Map([
         [line.id, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 45, opacity: 1 }]
       ])
@@ -212,7 +193,7 @@ describe('CanvasKit motion preview', () => {
       const renderer = createRenderer()
       const canvas = createCanvas()
 
-      renderNode(renderer, canvas as Canvas, graph, node.id, {
+      renderNode(renderer, asCanvas(canvas), graph, node.id, {
         motionVisualStates: new Map([[node.id, visual({ width: 80, height: 10 })]])
       })
 
@@ -245,7 +226,7 @@ describe('CanvasKit motion preview', () => {
       const renderer = createRenderer()
       const canvas = createCanvas()
 
-      renderNode(renderer, canvas as Canvas, graph, child.id, { motionLayoutNodes: preview })
+      renderNode(renderer, asCanvas(canvas), graph, child.id, { motionLayoutNodes: preview })
 
       expect(calls(canvas.scale)).toContainEqual([8, 1])
     }
@@ -272,7 +253,7 @@ describe('CanvasKit motion preview', () => {
     const renderer = createRenderer()
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, bounded.id, {
+    renderNode(renderer, asCanvas(canvas), graph, bounded.id, {
       motionVisualStates: new Map([
         [moving.id, { x: 50, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 1 }]
       ])
@@ -298,7 +279,7 @@ describe('CanvasKit motion preview', () => {
     renderer.worldViewport = { x: 0, y: 0, w: 100, h: 100 }
     const canvas = createCanvas()
 
-    renderNode(renderer, canvas as Canvas, graph, frame.id, {
+    renderNode(renderer, asCanvas(canvas), graph, frame.id, {
       motionVisualStates: new Map([
         [frame.id, { x: 0, y: 0, scaleX: 0.1, scaleY: 1, rotate: 0, opacity: 1 }]
       ])
@@ -332,7 +313,7 @@ describe('CanvasKit motion preview', () => {
       renderNode: mock((_canvas, _graph, _nodeId, overlays) => seen.push(overlays))
     })
 
-    renderSceneToCanvas(renderer, {} as Canvas, graph, pageId(graph))
+    renderSceneToCanvas(renderer, asCanvas({}), graph, pageId(graph))
 
     expect(seen).toEqual([{}])
     expect(renderer.worldViewport).toEqual({ x: 1, y: 2, w: 3, h: 4 })
@@ -398,11 +379,12 @@ describe('CanvasKit motion preview', () => {
       },
       compColor: mock(() => 'component'),
       selColor: mock(() => 'selection'),
+      outlineColor: mock(() => 'selection'),
       drawNodeSelection: mock(() => undefined),
       drawSelectionLabels: mock(() => undefined)
     })
 
-    drawSelection(renderer, {} as Canvas, graph, new Set([node.id]), {
+    drawSelection(renderer, asCanvas({}), graph, new Set([node.id]), {
       motionVisualStates: new Map([
         [node.id, { x: 500, y: 500, scaleX: 2, scaleY: 2, rotate: 45, opacity: 1 }]
       ])
@@ -493,7 +475,7 @@ describe('CanvasKit motion preview', () => {
       )
       expect(preview.get(text.id)).toMatchObject({ width: 40, height: 20 })
       expect(graph.getNode(text.id)).toEqual(authored)
-      expect(graph.getNode(text.id).textAutoResize).toBe('WIDTH_AND_HEIGHT')
+      expect(graph.getNode(text.id)?.textAutoResize).toBe('WIDTH_AND_HEIGHT')
     } finally {
       setTextMeasurer(null)
     }
@@ -533,7 +515,7 @@ describe('CanvasKit motion preview', () => {
     const authored = structuredClone(graph.getNode(vector.id))
     const projected = (state: MotionVisualState): SceneNode => {
       const renderer = createRenderer()
-      renderNode(renderer, createCanvas() as Canvas, graph, vector.id, {
+      renderNode(renderer, asCanvas(createCanvas()), graph, vector.id, {
         motionVisualStates: new Map([[vector.id, state]])
       })
       return calls(renderer.renderShape)[0]?.[1] as SceneNode
@@ -576,7 +558,7 @@ describe('CanvasKit motion preview', () => {
       })
       const renderer = createRenderer()
 
-      renderNode(renderer, createCanvas() as Canvas, graph, node.id, {
+      renderNode(renderer, asCanvas(createCanvas()), graph, node.id, {
         motionVisualStates: new Map([[node.id, visual({ trimStart: 0, trimEnd: 1 })]])
       })
 
@@ -650,7 +632,7 @@ describe('CanvasKit motion preview', () => {
       resolveStrokeColor: (stroke: SceneNode['strokes'][number]) => stroke.color,
       strokePaint
     })
-    const canvas = { drawPath: mock(() => undefined) } as Canvas
+    const canvas = asCanvas({ drawPath: mock(() => undefined) })
 
     renderBooleanOperation(renderer, canvas, projected, graph)
 

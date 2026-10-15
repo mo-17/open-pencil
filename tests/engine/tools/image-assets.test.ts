@@ -68,7 +68,7 @@ function imageFill(imageHash?: string): Fill {
   }
 }
 
-function audit(args: Record<string, number | boolean> = {}): ImageAssetAuditResult {
+function audit(args: Record<string, number | boolean | undefined> = {}): ImageAssetAuditResult {
   const { figma } = setupToolTest()
   return getTool('audit_image_assets').execute(figma, args) as ImageAssetAuditResult
 }

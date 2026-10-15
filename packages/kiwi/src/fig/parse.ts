@@ -5,7 +5,8 @@ import {
   compileSchema,
   decodeBinarySchema,
   KIWI_RUNTIME_LIMITS,
-  type KiwiRuntimeLimits
+  type KiwiRuntimeLimits,
+  type HeaderFields
 } from '../schema-runtime'
 import type { FigmaMessage, FigmaObjectAnimationList, NodeChange } from './codec'
 import { extractFigPageManifest, type FigPageManifestEntry } from './page-manifest'
@@ -367,10 +368,14 @@ export interface FigKiwiDecodeResult {
 export function decodeFigKiwiCanvas(
   data: Uint8Array,
   limitsOrOnPages?: FigKiwiDecodeLimits | ((pages: FigPageManifestEntry[]) => void),
-  onPages?: (pages: FigPageManifestEntry[]) => void
+  onPagesOrHeaders?: ((pages: FigPageManifestEntry[]) => void) | HeaderFields,
+  headerFields?: HeaderFields
 ): FigKiwiDecodeResult {
   const limits = typeof limitsOrOnPages === 'function' ? undefined : limitsOrOnPages
-  const pageCallback = typeof limitsOrOnPages === 'function' ? limitsOrOnPages : onPages
+  let pageCallback = typeof onPagesOrHeaders === 'function' ? onPagesOrHeaders : undefined
+  if (typeof limitsOrOnPages === 'function') pageCallback = limitsOrOnPages
+  const headers =
+    headerFields ?? (typeof onPagesOrHeaders === 'object' ? onPagesOrHeaders : undefined)
   const payload = parseFigKiwiContainer(data, limits)
   if (!payload) throw new Error('Invalid fig-kiwi container')
 
@@ -388,10 +393,14 @@ export function decodeFigKiwiCanvas(
       console.warn('Failed to scan FIG page manifest; continuing with full decode:', error)
     }
   }
-  const compiled = compileSchema(schema, {
-    limits: runtimeLimits,
-    validateDynamicSchema: runtimeLimits !== undefined
-  }) as CompiledKiwiSchema
+  const compiled = compileSchema(
+    schema,
+    {
+      limits: runtimeLimits,
+      validateDynamicSchema: runtimeLimits !== undefined
+    },
+    headers
+  ) as CompiledKiwiSchema
   const message = compiled.decodeMessage(payload.dataRaw) as FigmaMessage
 
   const nodeChanges = message.nodeChanges

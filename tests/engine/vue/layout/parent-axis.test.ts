@@ -30,7 +30,7 @@ function fixture(parentMode: 'HORIZONTAL' | 'VERTICAL' | 'GRID', child: Partial<
     ...child
   })
   const node = computed(() => editor.graph.getNode(field.id) ?? null)
-  const actions = createLayoutActions({ editor, node, isInAutoLayout: computed(() => true) })
+  const actions = createLayoutActions({ editor, node })
   const read = () =>
     createLayoutSizingState(editor, node, {
       value: { sizingFixed: 'Fixed', sizingHug: 'Hug', sizingFill: 'Fill' }
@@ -121,8 +121,9 @@ describe('physical axis sizing in parent layout', () => {
     expect(read().widthSizing.value).toBe('HUG')
   })
 
-  test('grid shared stretch is displayed on both axes and explicit resizing preserves the other pixel size', () => {
+  test('grid independent Fill is displayed on both axes and resizing preserves the other axis', () => {
     const { editor, parent, field, actions, read } = fixture('GRID', {
+      layoutGrow: 1,
       layoutAlignSelf: 'STRETCH'
     })
     editor.runLayoutForNode(parent.id)
@@ -131,7 +132,7 @@ describe('physical axis sizing in parent layout', () => {
     actions.updateAxisSize('width', 120)
     actions.commitAxisSize('width', 120, 300)
     expect([field.width, field.height]).toEqual([120, 200])
-    expect([read().widthSizing.value, read().heightSizing.value]).toEqual(['FIXED', 'FIXED'])
+    expect([read().widthSizing.value, read().heightSizing.value]).toEqual(['FIXED', 'FILL'])
   })
 
   test('fixing an auto-layout grid child keeps its other stretched pixel size', () => {
@@ -140,6 +141,7 @@ describe('physical axis sizing in parent layout', () => {
       layoutMode: 'VERTICAL',
       primaryAxisSizing: 'HUG',
       counterAxisSizing: 'HUG',
+      layoutGrow: 1,
       layoutAlignSelf: 'STRETCH'
     })
     editor.graph.createNode('RECTANGLE', field.id, { width: 40, height: 20 })
@@ -148,7 +150,7 @@ describe('physical axis sizing in parent layout', () => {
     actions.updateAxisSize('width', 120)
     actions.commitAxisSize('width', 120, 300)
     expect([field.width, field.height]).toEqual([120, 200])
-    expect([read().widthSizing.value, read().heightSizing.value]).toEqual(['FIXED', 'FIXED'])
+    expect([read().widthSizing.value, read().heightSizing.value]).toEqual(['FIXED', 'FILL'])
     editor.runLayoutForNode(parent.id)
     expect([field.width, field.height]).toEqual([120, 200])
   })
@@ -158,7 +160,8 @@ describe('physical axis sizing in parent layout', () => {
       type: 'FRAME',
       layoutMode: 'VERTICAL',
       primaryAxisSizing: 'FIXED',
-      counterAxisSizing: 'FIXED'
+      counterAxisSizing: 'FIXED',
+      layoutGrow: 1
     })
     editor.runLayoutForNode(parent.id)
     expect([read().widthSizing.value, read().heightSizing.value]).toEqual(['FILL', 'FIXED'])

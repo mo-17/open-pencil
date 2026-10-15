@@ -2,6 +2,9 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
+import { compact } from 'es-toolkit/array'
+import * as v from 'valibot'
+
 export interface Options {
   port: string
   selector: string
@@ -91,15 +94,13 @@ function run(command: string[], deps: AckDeps): string {
   const stderr = proc.stderr.toString()
   if (!proc.success) {
     throw new Error(
-      [
+      compact([
         `$ ${commandText(command)}`,
         stdout.trim(),
         stderr.trim(),
         '',
         'Make sure `bun run tauri:automation:dev` is running and the Tauri MCP bridge is listening.'
-      ]
-        .filter(Boolean)
-        .join('\n')
+      ]).join('\n')
     )
   }
   return stdout.trim()
@@ -117,11 +118,15 @@ function runTauriMCP(args: string[], deps: AckDeps): string {
   }
 }
 
-function parseJSON<T>(label: string, output: string): T {
+function parseJSON<S extends v.GenericSchema>(
+  label: string,
+  output: string,
+  schema: S
+): v.InferOutput<S> {
   const start = output.indexOf('{')
   const end = output.lastIndexOf('}')
   if (start === -1 || end < start) throw new Error(`${label} did not return JSON:\n${output}`)
-  return JSON.parse(output.slice(start, end + 1)) as T
+  return v.parse(v.pipe(v.string(), v.parseJson(), schema), output.slice(start, end + 1))
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -134,7 +139,7 @@ function logStep(message: string, deps: AckDeps): void {
 
 function readElementStyles(selector: string, deps: AckDeps): Record<string, string> {
   try {
-    return parseJSON<Record<string, string>>(
+    return parseJSON(
       'webview-get-styles',
       runTauriMCP(
         [
@@ -145,13 +150,15 @@ function readElementStyles(selector: string, deps: AckDeps): Record<string, stri
           'display,visibility,width,height'
         ],
         deps
-      )
+      ),
+      v.record(v.string(), v.string())
     )
   } catch {
     const styleScript = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { display: 'none', visibility: 'hidden', width: '0px', height: '0px' }; const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return { display: s.display, visibility: s.visibility, width: s.width || String(r.width) + 'px', height: s.height || String(r.height) + 'px' }; })()`
-    return parseJSON<Record<string, string>>(
+    return parseJSON(
       'webview-execute-js styles fallback',
-      runTauriMCP(['webview-execute-js', '--script', styleScript], deps)
+      runTauriMCP(['webview-execute-js', '--script', styleScript], deps),
+      v.record(v.string(), v.string())
     )
   }
 }
@@ -165,9 +172,10 @@ function waitForSelector(selector: string, deps: AckDeps): void {
     assert(waitOutput.includes('Element found'), `Selector wait failed:\n${waitOutput}`)
   } catch {
     const waitScript = `(() => ({ found: Boolean(document.querySelector(${JSON.stringify(selector)})) }))()`
-    const fallback = parseJSON<{ found?: boolean }>(
+    const fallback = parseJSON(
       'webview-execute-js selector wait fallback',
-      runTauriMCP(['webview-execute-js', '--script', waitScript], deps)
+      runTauriMCP(['webview-execute-js', '--script', waitScript], deps),
+      v.looseObject({ found: v.optional(v.boolean()) })
     )
     assert(fallback.found, `Selector wait failed: ${selector} was not found.`)
   }
@@ -178,9 +186,14 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
 
   runTauriMCP(['driver-session', 'start', '--port', options.port], deps)
 
-  const status = parseJSON<{ connected?: boolean; identifier?: string; port?: number }>(
+  const status = parseJSON(
     'driver-session status',
-    runTauriMCP(['driver-session', 'status'], deps)
+    runTauriMCP(['driver-session', 'status'], deps),
+    v.looseObject({
+      connected: v.optional(v.boolean()),
+      identifier: v.optional(v.string()),
+      port: v.optional(v.number())
+    })
   )
   assert(status.connected, 'Tauri MCP driver session is not connected.')
   assert(
@@ -189,12 +202,20 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   )
   logStep(`driver session connected to ${status.identifier} on ${status.port}`, deps)
 
-  const backend = parseJSON<{
-    app?: { name?: string; version?: string }
-    environment?: { debug?: boolean; os?: string }
-    tauri?: { version?: string }
-    window_count?: number
-  }>('ipc-get-backend-state', runTauriMCP(['ipc-get-backend-state'], deps))
+  const backend = parseJSON(
+    'ipc-get-backend-state',
+    runTauriMCP(['ipc-get-backend-state'], deps),
+    v.looseObject({
+      app: v.optional(
+        v.looseObject({ name: v.optional(v.string()), version: v.optional(v.string()) })
+      ),
+      environment: v.optional(
+        v.looseObject({ debug: v.optional(v.boolean()), os: v.optional(v.string()) })
+      ),
+      tauri: v.optional(v.looseObject({ version: v.optional(v.string()) })),
+      window_count: v.optional(v.number())
+    })
+  )
   assert(backend.app?.name === 'OpenPencil', `Unexpected Tauri app: ${backend.app?.name}`)
   assert(backend.environment?.debug, 'Expected a debug Tauri automation build.')
   assert((backend.window_count ?? 0) > 0, 'Expected at least one Tauri window.')
@@ -203,9 +224,21 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
     deps
   )
 
-  const windows = parseJSON<{
-    windows?: Array<{ label?: string; url?: string; visible?: boolean }>
-  }>('manage-window list', runTauriMCP(['manage-window', '--action', 'list'], deps))
+  const windows = parseJSON(
+    'manage-window list',
+    runTauriMCP(['manage-window', '--action', 'list'], deps),
+    v.looseObject({
+      windows: v.optional(
+        v.array(
+          v.looseObject({
+            label: v.optional(v.string()),
+            url: v.optional(v.string()),
+            visible: v.optional(v.boolean())
+          })
+        )
+      )
+    })
+  )
   const mainWindow = windows.windows?.find((window) => window.label === 'main')
   assert(mainWindow?.visible, 'Main Tauri window is not visible.')
   assert(
@@ -222,11 +255,15 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   logStep(`${options.selector} present in webview DOM snapshot`, deps)
 
   const probeScript = `(() => ({ hasTauri: Boolean(window.__TAURI__), hasLowcodePreview: Boolean(document.querySelector('${options.selector}')), toolbarText: document.querySelector('${options.selector}')?.textContent?.slice(0, 200) ?? null }))()`
-  const probe = parseJSON<{
-    hasTauri?: boolean
-    hasLowcodePreview?: boolean
-    toolbarText?: string | null
-  }>('webview-execute-js', runTauriMCP(['webview-execute-js', '--script', probeScript], deps))
+  const probe = parseJSON(
+    'webview-execute-js',
+    runTauriMCP(['webview-execute-js', '--script', probeScript], deps),
+    v.looseObject({
+      hasTauri: v.optional(v.boolean()),
+      hasLowcodePreview: v.optional(v.boolean()),
+      toolbarText: v.optional(v.nullable(v.string()))
+    })
+  )
   assert(probe.hasTauri, 'window.__TAURI__ is not available in the webview.')
   assert(probe.hasLowcodePreview, `${options.selector} was not found by webview JS.`)
   assert(

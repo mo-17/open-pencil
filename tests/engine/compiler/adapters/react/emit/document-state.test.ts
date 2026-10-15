@@ -302,9 +302,9 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
 
     const irs = graph.getPages().map((p) => collectTree(graph, p.id))
     const out = reactAdapter.emit(irs, BASE_OPTIONS)
-    const page = [...out.files.values()].find((content) => content.includes('summary')) as
-      | string
-      | undefined
+    const page = [...out.files.values()].find(
+      (content) => typeof content === 'string' && content.includes('summary')
+    ) as string | undefined
 
     expect(page).toBeDefined()
     expect(page).toContain(`import { useMemo } from 'react'`)

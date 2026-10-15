@@ -59,9 +59,11 @@ async function libraryFixture() {
 
 describe('module library review and unsaved draft preservation', () => {
   test.each([
-    ['rental-viewing', 'open-pencil.vr-tour'],
-    ['video-live', 'open-pencil.video']
-  ] as const)(
+    ...([
+      ['rental-viewing', 'open-pencil.vr-tour'],
+      ['video-live', 'open-pencil.video']
+    ] as const)
+  ])(
     'refreshes %s when its required module changes in the same panel',
     async (kind, pluginId) => {
       const fixture = await libraryFixture()
@@ -95,7 +97,7 @@ describe('module library review and unsaved draft preservation', () => {
     const fixture = await libraryFixture()
     const first = fixture.installer.reviews().find((review) => review.kind === 'service-desk')
     expect(first?.status).toBe('ready')
-    expect(fixture.installer.reviews()).toContainEqual(first)
+    expect<unknown>(fixture.installer.reviews()).toContainEqual(first)
     if (!first) throw new Error('Missing review')
     expect(await fixture.installer.add('service-desk', first.reviewKey)).toBe(true)
     expect(

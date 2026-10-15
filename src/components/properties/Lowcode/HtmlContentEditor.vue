@@ -84,7 +84,7 @@ function commitShortcut(event: KeyboardEvent): void {
       class="pointer-events-none h-32 w-full rounded border border-border bg-white"
     />
 
-    <p v-if="errorMessage" data-test-id="html-content-error" class="text-[10px] text-red-400">
+    <p v-if="errorMessage" data-test-id="html-content-error" class="text-[10px] text-error">
       {{ errorMessage }}
     </p>
   </div>

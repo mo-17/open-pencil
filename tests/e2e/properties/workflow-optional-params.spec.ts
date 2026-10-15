@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear()
 
 async function setupWorkflowWithCaller() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -38,6 +40,8 @@ async function setupWorkflowWithCaller() {
 
 async function setupWorkflowGraphDiagnostics() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -87,6 +91,8 @@ async function setupWorkflowGraphDiagnostics() {
 
 async function setupWorkflowGraphEntrypointOnly() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -118,6 +124,8 @@ async function setupWorkflowGraphEntrypointOnly() {
 
 async function workflowSnapshot() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(store.graph.rootId)?.lowcodeWorkflows ?? []
@@ -146,6 +154,8 @@ test('workflow panel authors optional callWorkflow params', async () => {
   ])
 
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -288,6 +298,8 @@ test('workflow graph details expand and issue jump focuses the source action row
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]
@@ -303,6 +315,8 @@ test('workflow graph details expand and issue jump focuses the source action row
     )
     .toBe('onClick[0]')
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([])
@@ -444,6 +458,8 @@ test('workflow graph details expand and issue jump focuses the source action row
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]
@@ -459,6 +475,8 @@ test('workflow graph details expand and issue jump focuses the source action row
     )
     .toBe('onClick[0]')
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([])
@@ -516,6 +534,8 @@ test('workflow graph details expand and issue jump focuses the source action row
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]

@@ -53,7 +53,7 @@ describe('selection visual attachment capture', () => {
       normalize: async (file, options) => {
         normalizedName = file.name
         normalizedBytes = new Uint8Array(await file.arrayBuffer())
-        expect(options.source).toBe('selection')
+        expect(options?.source).toBe('selection')
         return attachment()
       }
     })

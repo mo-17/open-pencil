@@ -11,9 +11,13 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 
+import { runCommand } from 'citty'
+
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { CodegenDependencies } from '#cli/codegen'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const COMMANDS = ['compile', 'build', 'deploy'] as const
 const TARGETS = ['react', 'vue'] as const
@@ -32,12 +36,15 @@ type CodegenCommand = (typeof COMMANDS)[number]
 type CodegenTarget = (typeof TARGETS)[number]
 type CodegenScenario = (typeof SCENARIOS)[number]
 
-const ROOT = resolve(import.meta.dir, '../../../..')
+const ROOT = repoPath()
 const SENTINEL = 'preserve this existing output file'
 
 function readLines(path: string): string[] {
   if (!existsSync(path)) return []
-  return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean)
+  return readFileSync(path, 'utf8')
+    .trim()
+    .split('\n')
+    .filter((line) => line.length > 0)
 }
 
 /** Actual command/compiler/build in an isolated process; only document loading
@@ -101,7 +108,7 @@ export async function runCodegenScenario(
       requests: readLines(requestsPath),
       outputDirectory,
       temporaryDirectory,
-      outputEntries: readdirSync(outputDirectory, { recursive: true })
+      outputEntries: readdirSync(outputDirectory, { recursive: true, encoding: 'utf8' })
         .map((entry) => entry.split(sep).join('/'))
         .sort(),
       sentinelPreserved:
@@ -181,28 +188,34 @@ async function runIsolatedCommand(): Promise<void> {
     build: async () => (await import('#cli/commands/build')).createBuildCommand(dependencies),
     deploy: async () => (await import('#cli/commands/deploy')).createDeployCommand(dependencies)
   }
-  const command = await loaders[name]()
-  if (!command.run) throw new Error('CLI codegen command run is missing')
+  // An empty positional value exercises the command's own missing-path diagnostic,
+  // while Citty supplies the public argument shape and defaults in every case.
+  const rawArgs = [
+    scenario === 'missing-file' ? '' : join(directory, 'fixture.fig'),
+    '--out',
+    join(directory, 'output'),
+    '--target',
+    target,
+    '--json',
+    '--provider',
+    'netlify',
+    '--environment',
+    'production',
+    '--token',
+    'local-codegen-fixture-token',
+    '--site',
+    'local-codegen-fixture-site',
+    ...(scenario === 'bad-page' ? ['--page', 'Missing page'] : []),
+    ...(scenario === 'unsupported-feature' ? ['--i18n'] : []),
+    ...(scenario === 'compiler-policy-error'
+      ? ['--packaging', 'microfrontend', '--app-id', 'fixture-app']
+      : [])
+  ]
   try {
-    await command.run({
-      args: {
-        _: [],
-        file: scenario === 'missing-file' ? undefined : join(directory, 'fixture.fig'),
-        out: join(directory, 'output'),
-        page: scenario === 'bad-page' ? 'Missing page' : undefined,
-        target,
-        json: true,
-        i18n: scenario === 'unsupported-feature',
-        packaging: scenario === 'compiler-policy-error' ? 'microfrontend' : undefined,
-        'app-id': scenario === 'compiler-policy-error' ? 'fixture-app' : undefined,
-        provider: 'netlify',
-        environment: 'production',
-        token: 'local-codegen-fixture-token',
-        site: 'local-codegen-fixture-site'
-      },
-      rawArgs: [],
-      cmd: command
-    })
+    const options = { rawArgs }
+    if (name === 'compile') await runCommand(await loaders.compile(), options)
+    else if (name === 'build') await runCommand(await loaders.build(), options)
+    else await runCommand(await loaders.deploy(), options)
     appendFileSync(eventsPath, 'command-returned\n')
   } catch (cause) {
     appendFileSync(eventsPath, 'command-rejected\n')

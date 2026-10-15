@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -10,6 +12,7 @@ import type { IRElement } from '@open-pencil/compiler/ir/types'
 import { buildChartLayout, createChartModuleFrameOverrides } from '@open-pencil/core/plugins'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
 import { chartFixture } from '#tests/helpers/compiler/modules/chart/fixture'
 import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -64,9 +67,14 @@ describe('compiler trusted chart module adapter', () => {
     })
     const app = out.files.get('src/App.tsx') as string
     const runtime = out.files.get('src/__openpencil_chart.tsx') as string
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilChart from './__openpencil_chart'")
     expect(app).toContain('<OpenPencilChart config={{')
@@ -181,7 +189,7 @@ for (const target of ['react', 'vue'] as const) {
     const graph = new SceneGraph(),
       page = graph.getPages()[0]
     const frame = graph.createNode('FRAME', page.id, createChartModuleFrameOverrides())
-    const module = frame.interactiveProps?.module
+    const module = expectModuleInstance(frame.interactiveProps?.module)
     if (!module) throw new Error('Missing chart module')
     graph.updateNode(frame.id, {
       interactiveProps: {

@@ -1,8 +1,7 @@
-import { resolve } from 'node:path'
-
 import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { repoPath } from '#tests/helpers/paths'
 
 const FONTSOURCE_VERSION = '5.3.0'
 
@@ -71,7 +70,7 @@ async function installFontsourceRoutes(page: Page): Promise<string[]> {
     assetRequests.push(route.request().url())
     return route.fulfill({
       contentType: 'font/ttf',
-      path: resolve('public/Inter-Regular.ttf')
+      path: repoPath('packages/core/assets/Inter-Regular.ttf')
     })
   })
   return assetRequests
@@ -98,6 +97,8 @@ test('migrates legacy provider settings and clears affected Fontsource banner fa
   await canvas.waitForInit()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const faces = [

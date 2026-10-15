@@ -6,6 +6,8 @@ import type { ServerWorkflowDef } from '@open-pencil/scene-graph'
 
 import { LOWCODE_SERVER_WORKFLOWS_KEY } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 setDefaultTimeout(30_000)
 
 describe('server workflow .fig round-trip', () => {
@@ -42,7 +44,7 @@ describe('server workflow .fig round-trip', () => {
     graph.updateNode(graph.rootId, { lowcodeServerWorkflows: workflows })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeServerWorkflows).toEqual(workflows)
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toBeUndefined()
@@ -51,7 +53,7 @@ describe('server workflow .fig round-trip', () => {
   test('leaves the field undefined when no server workflows were authored', async () => {
     const graph = new SceneGraph()
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeServerWorkflows).toBeUndefined()
   })
@@ -78,7 +80,7 @@ describe('server workflow .fig round-trip', () => {
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const root = reimported.getNode(reimported.rootId)
 
     expect(root?.lowcodeServerWorkflows).toBeUndefined()

@@ -6,6 +6,8 @@ import {
   resolveDateRangeModule
 } from '#core/plugins/date-range'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('date range preserves empty and partial values in a portable strict FRAME contract', () => {
   const empty = createDateRangeModuleInstance(),
     partial = createDateRangeModuleInstance({ initialEnd: '2024-02-29' })
@@ -18,7 +20,7 @@ test('date range preserves empty and partial values in a portable strict FRAME c
     min: '2024-02-29',
     max: '2024-02-29'
   })
-  expect(frame.interactiveProps?.module?.version).toBe(1)
+  expect(expectModuleInstance(frame.interactiveProps?.module).version).toBe(1)
   const serialized = JSON.stringify(frame.interactiveProps?.module)
   expect(resolveDateRangeModule(JSON.parse(serialized))?.ok).toBe(true)
   expect(resolveDateRangeModule({ ...empty, configVersion: 2 })?.ok).toBe(false)

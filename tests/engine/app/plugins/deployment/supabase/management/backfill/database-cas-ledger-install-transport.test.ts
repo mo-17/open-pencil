@@ -131,7 +131,7 @@ async function createTestingTransport(
     permitConsumer: durable.permitConsumer,
     credentialIssuer: credentials.issuer,
     ...overrides
-  } as CreateSupabaseManagementBackfillDatabaseCASLedgerInstallTransportForTestingOptionsV1)
+  })
   return Object.freeze({ credentials, durable, transport })
 }
 
@@ -437,12 +437,13 @@ describe('Supabase Management backfill database CAS ledger install transport', (
       createSupabaseManagementBackfillDatabaseCASLedgerInstallTransportForTestingV1({
         ...base,
         permitConsumer: {
+          ...durable.permitConsumer,
           format: durable.permitConsumer.format,
           version: 1,
           provenance: 'testing',
           consume: async () => true
         }
-      } as CreateSupabaseManagementBackfillDatabaseCASLedgerInstallTransportForTestingOptionsV1)
+      })
     ).toThrow(SupabaseManagementBackfillDatabaseCASLedgerInstallTransportError)
   })
 
@@ -548,7 +549,9 @@ describe('Supabase Management backfill database CAS ledger install transport', (
   })
 
   test('drops the probe and releases the credential gate while the POST promise is pending', async () => {
-    let resolvePost: ((response: Response) => void) | null = null
+    let resolvePost: (response: Response) => void = () => {
+      throw new TypeError('Missing pending POST resolver')
+    }
     let reportPostStarted: (() => void) | null = null
     const postStarted = new Promise<void>((resolve) => {
       reportPostStarted = resolve
@@ -592,7 +595,7 @@ describe('Supabase Management backfill database CAS ledger install transport', (
     ).toMatchObject({ code: 'dispatch-already-used', outcome: 'outcome-unknown' })
     expect(requests.map(({ init }) => init.method)).toEqual(['GET', 'GET', 'POST'])
 
-    resolvePost?.(jsonResponse({}, 200, MIGRATION_URL))
+    resolvePost(jsonResponse({}, 200, MIGRATION_URL))
     expect(await dispatch).toMatchObject({
       status: 'verification-required',
       managementRequestReturned200: true

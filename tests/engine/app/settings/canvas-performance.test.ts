@@ -49,6 +49,6 @@ describe('canvas runtime performance targets', () => {
       setLayoutTimeSliceMs: (value) => applied.push(value)
     })
 
-    expect(applied).toEqual(expected)
+    expect(applied).toEqual([...expected])
   })
 })

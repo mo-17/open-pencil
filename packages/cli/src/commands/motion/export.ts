@@ -2,6 +2,7 @@ import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { defineCommand } from 'citty'
+import { uniq, compact } from 'es-toolkit'
 
 import {
   exportGraphMotion,
@@ -148,16 +149,7 @@ function findPage(graph: SceneGraph, nodeIds: readonly string[]): string {
 }
 
 function parseNodeIds(value: string | undefined): string[] {
-  return value
-    ? [
-        ...new Set(
-          value
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-        )
-      ]
-    : []
+  return value ? uniq(compact(value.split(',').map((item) => item.trim()))) : []
 }
 
 export default defineCommand({

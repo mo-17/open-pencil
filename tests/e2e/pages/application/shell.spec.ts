@@ -7,6 +7,7 @@ import {
   waitForApplicationDocument
 } from '#tests/helpers/compiler/application-mode/editor'
 import { chooseAppSelect } from '#tests/helpers/properties'
+import { parseJSONBytes } from '#tests/helpers/serialization'
 
 const editor = useEditorSetup()
 test.setTimeout(120_000)
@@ -14,7 +15,7 @@ test.setTimeout(120_000)
 // eslint-disable-next-line no-empty-pattern -- useEditorSetup owns the persistent editor.
 test('shared layout drafts, atomic undo, navigation and real FIG save/reopen', async ({}, info) => {
   await editor.page.setViewportSize({ width: 2200, height: 1100 })
-  const bytes = JSON.parse(
+  const bytes = parseJSONBytes(
     execFileSync(
       'bun',
       [
@@ -23,7 +24,7 @@ test('shared layout drafts, atomic undo, navigation and real FIG save/reopen', a
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as number[]
+  )
   await reopenApplicationModeDocument(editor.page, bytes)
   const settings = editor.page.getByTestId('application-shell-settings')
   const frame = settings.getByRole('combobox', { name: 'Shared shell frame', exact: true })
@@ -78,13 +79,12 @@ test('shared layout drafts, atomic undo, navigation and real FIG save/reopen', a
   await expect(slot).toContainText('Page content')
   await expect(runtime.getByText('Home screen', { exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(runtime.getByRole('button', { name: 'Products', exact: true })).toBeVisible()
-  const slotChildren = await editor.page.evaluate(
-    () =>
-      window.openPencil
-        ?.getStore?.()
-        .graph.getAllNodes()
-        .find((node) => node.name === 'Page content')?.childIds.length
-  )
+  const slotChildren = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return [...(window.openPencil?.getStore?.().graph.getAllNodes() ?? [])].find(
+      (node) => node.name === 'Page content'
+    )?.childIds.length
+  })
   expect(slotChildren).toBe(0)
   await editor.page.screenshot({
     path: info.outputPath('application-shell-editor.png'),

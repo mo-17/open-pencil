@@ -100,7 +100,8 @@ describe('calc', () => {
     const tooMany = JSON.stringify(Array.from({ length: 65 }, () => '1'))
     expect(calculate(tooMany)).toEqual({ error: 'Calculator batch exceeds 64 expressions' })
     expect(calculate('["1", 2]')).toEqual({
-      error: 'Calculator batch entries must all be strings'
+      expr: '["1", 2]',
+      error: 'A JSON array of expressions must contain only strings'
     })
   })
 })

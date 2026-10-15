@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 
 import type { FigmaComponentNode, FigmaNodeProxy } from '#core/figma-api'
+import { toolNumber } from '#core/tools/input'
 import { defineTool, nodeSummary, requireNodes } from '#core/tools/schema'
 import { hasComponentInstanceReferencePath } from '#core/tools/structure/hierarchy'
 
@@ -9,7 +10,7 @@ export const createComponent = defineTool({
 
   description: 'Convert a frame/group into a component.',
   execution: { kind: 'sync', mutation: 'document' },
-  input: v.object({
+  input: v.strictObject({
     id: v.pipe(v.string(), v.description('Node ID to convert'))
   }),
   execute: (figma, { id }) => {
@@ -25,19 +26,27 @@ export const createInstance = defineTool({
 
   description: 'Create an instance of a component.',
   execution: { kind: 'sync', mutation: 'document' },
-  params: {
-    component_id: { type: 'string', description: 'Component node ID', required: true },
-    parent_id: {
-      type: 'string',
-      description: 'Parent node for the new instance; defaults to the current page'
-    },
-    insert_index: {
-      type: 'number',
-      description: 'Exact sibling index under parent_id; omit to append'
-    },
-    x: { type: 'number', description: 'X position' },
-    y: { type: 'number', description: 'Y position' }
-  },
+  input: v.strictObject({
+    component_id: v.pipe(v.string(), v.description('Component node ID')),
+    parent_id: v.optional(
+      v.pipe(
+        v.string(),
+        v.description('Parent node for the new instance; defaults to the current page')
+      )
+    ),
+    insert_index: v.optional(
+      toolNumber(
+        v.pipe(
+          v.number(),
+          v.integer(),
+          v.minValue(0),
+          v.description('Exact sibling index under parent_id; omit to append')
+        )
+      )
+    ),
+    x: v.optional(toolNumber(v.pipe(v.number(), v.description('X position')))),
+    y: v.optional(toolNumber(v.pipe(v.number(), v.description('Y position'))))
+  }),
   execute: (figma, args) => {
     const component = figma.getNodeById(args.component_id)
     if (!component) return { error: `Component "${args.component_id}" not found` }
@@ -64,9 +73,15 @@ export const createInstance = defineTool({
       }
     }
     const rawInstance = figma.graph.createInstance(component.id, parent.id)
-    if (!rawInstance) return { error: `Failed to create instance of component "${component.id}"` }
+    if (!rawInstance)
+      return {
+        error: `Failed to create instance of component "${component.id}"`
+      }
     const instance = figma.getNodeById(rawInstance.id)
-    if (!instance) return { error: `Created instance "${rawInstance.id}" could not be resolved` }
+    if (!instance)
+      return {
+        error: `Created instance "${rawInstance.id}" could not be resolved`
+      }
     if (args.insert_index !== undefined) {
       figma.graph.reorderChild(instance.id, parent.id, args.insert_index)
     }
@@ -82,9 +97,10 @@ export const combineAsVariants = defineTool({
 
   description:
     'Combine components sharing a parent into a component set (variant set). Components named ' +
-    '"Category/Value" (e.g. "Button/Primary") derive variant properties from the name segments.',
+    'as Figma names variants, "State=On, Size=Large", get those variant properties; names like ' +
+    '"Button/Primary" derive a Variant property from the segments after the first slash.',
   execution: { kind: 'sync', mutation: 'document' },
-  input: v.object({
+  input: v.strictObject({
     ids: v.pipe(v.array(v.string()), v.minLength(1), v.description('Component node IDs to combine'))
   }),
   execute: (figma, { ids }) => {
@@ -96,7 +112,9 @@ export const combineAsVariants = defineTool({
     }
     const parent = nodes[0].parent ?? figma.currentPage
     if (!nodes.every((node) => node.parent?.id === parent.id)) {
-      return { error: 'combineAsVariants requires components to share a parent' }
+      return {
+        error: 'combineAsVariants requires components to share a parent'
+      }
     }
     try {
       const componentSet = figma.combineAsVariants(nodes, parent)
@@ -112,7 +130,7 @@ export const exposeInstanceSwap = defineTool({
 
   description: 'Expose nested instances as an instance-swap slot on their component.',
   execution: { kind: 'sync', mutation: 'document' },
-  input: v.object({
+  input: v.strictObject({
     instance_ids: v.pipe(v.array(v.string()), v.minLength(1), v.description('Instance node IDs')),
     candidate_ids: v.pipe(
       v.array(v.string()),

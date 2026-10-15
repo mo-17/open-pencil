@@ -31,6 +31,8 @@ test('Inspector preserves a thrown staging unknown outcome across framework, con
   await page.goto('/')
   await canvas.waitForInit()
   await page.evaluate((projectRef) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('App editor is not initialized')
     editor.graph.updateNode(editor.graph.rootId, {

@@ -5,7 +5,7 @@ import SettingsLink from './SettingsLink.vue'
 type Args = Pick<HTMLAnchorElement, 'href'> & { label: string }
 
 const meta = {
-  title: 'Settings/Layout/Link',
+  title: 'App/Settings/Layout/Link',
   component: SettingsLink,
   args: {
     href: 'https://openpencil.dev/programmable/mcp-server#webmcp',

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import {
   TooltipContent,
   TooltipPortal,
@@ -14,10 +15,9 @@ import { useDesignCheckMessages } from '@open-pencil/vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import { issueDetail, ruleTitle } from '@/app/editor/design-check/format'
 import { compareIssueSeverity, type DesignIssue } from '@/app/editor/design-check/issues'
-import { nodeIcon } from '@/app/editor/icons'
+import { sceneNodeIcon } from '@/app/editor/icons'
+import SeverityIcon from '@/components/ui/feedback/SeverityIcon.vue'
 import { issueTooltip } from '@/theme/design/check'
-
-import SeverityIcon from './SeverityIcon.vue'
 
 /** Issues listed before the tooltip summarizes the rest. */
 const MAX_ITEMS = 4
@@ -73,7 +73,7 @@ const items = computed(() =>
       id: issue.id,
       severity: issue.severity,
       title: ruleTitle(issue.ruleId, messages.value),
-      detail: [layer, detail].filter(Boolean).join(' · ')
+      detail: compact([layer, detail]).join(' · ')
     }
   })
 )
@@ -124,7 +124,7 @@ const edgeHeading = computed(() => {
             <span v-if="edgeHeading" :class="styles.headerText()">{{ edgeHeading }}</span>
             <template v-else-if="singleNode">
               <component
-                :is="nodeIcon(singleNode)"
+                :is="sceneNodeIcon(singleNode)"
                 :class="styles.headerIcon()"
                 aria-hidden="true"
               />

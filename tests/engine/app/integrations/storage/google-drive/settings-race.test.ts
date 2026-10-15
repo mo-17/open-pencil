@@ -2,35 +2,28 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const componentRoot = resolve(import.meta.dir, '../../../../../../src/components/settings/storage')
-const envSource = readFileSync(resolve(componentRoot, '../../../env.d.ts'), 'utf8')
-const nativeBridgeSource = readFileSync(
-  resolve(componentRoot, '../../../app/tauri/google-drive.ts'),
-  'utf8'
-)
+import { repoPath } from '#tests/helpers/paths'
+
+const componentRoot = repoPath('src/components/settings/storage')
+const envSource = readFileSync(repoPath('src/env.d.ts'), 'utf8')
+const nativeBridgeSource = readFileSync(repoPath('src/app/tauri/google-drive.ts'), 'utf8')
 const oauthSessionSource = readFileSync(
-  resolve(componentRoot, '../../../app/integrations/storage/google-drive/oauth/session.ts'),
+  repoPath('src/app/integrations/storage/google-drive/oauth/session.ts'),
   'utf8'
 )
 const googleRuntimeSource = readFileSync(
-  resolve(componentRoot, '../../../app/integrations/storage/google-drive/runtime.ts'),
+  repoPath('src/app/integrations/storage/google-drive/runtime.ts'),
   'utf8'
 )
 const storageProvidersSource = readFileSync(
-  resolve(componentRoot, '../../../app/integrations/storage/providers.ts'),
+  repoPath('src/app/integrations/storage/providers.ts'),
   'utf8'
 )
 const desktopCredentialsSource = readFileSync(
-  resolve(
-    componentRoot,
-    '../../../app/integrations/storage/google-drive/oauth/desktop-credentials.ts'
-  ),
+  repoPath('src/app/integrations/storage/google-drive/oauth/desktop-credentials.ts'),
   'utf8'
 )
-const dialogsSource = readFileSync(
-  resolve(componentRoot, '../../../../packages/vue/src/i18n/messages/dialogs.ts'),
-  'utf8'
-)
+const dialogsSource = readFileSync(repoPath('packages/vue/src/i18n/messages/dialogs.ts'), 'utf8')
 const panelSource = readFileSync(resolve(componentRoot, 'StorageSettingsPanel.vue'), 'utf8')
 const googleSource = readFileSync(
   resolve(componentRoot, 'GoogleDriveStorageConnection.vue'),

@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { FigmaAPI, SceneGraph } from '@open-pencil/core'
+import { FigmaAPI, SceneGraph } from '#core/index'
 import {
   analyzeOverlaps,
   computeOverlaps,
-  findPageId
-} from '@open-pencil/core/tools/analyze/overlaps'
+  findPageId,
+  type AnalyzeOverlapsResult
+} from '#core/tools/analyze/overlaps/index'
 
 import { pageId, rect } from './helpers'
 
@@ -61,12 +62,12 @@ describe('analyze overlaps page scope', () => {
     const api = new FigmaAPI(graph)
     expect(api.currentPageId).toBe(page1)
 
-    const defaultResult = analyzeOverlaps.execute(api, {})
+    const defaultResult = analyzeOverlaps.execute(api, {}) as AnalyzeOverlapsResult
     expect(defaultResult.summary.overlapCount).toBe(0)
     expect(defaultResult.overlaps).toHaveLength(0)
 
     api.currentPage = api.wrapNode(page2.id)
-    const currentResult = analyzeOverlaps.execute(api, {})
+    const currentResult = analyzeOverlaps.execute(api, {}) as AnalyzeOverlapsResult
     expect(currentResult.summary.overlapCount).toBeGreaterThan(0)
   })
 

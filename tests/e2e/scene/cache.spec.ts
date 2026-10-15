@@ -12,6 +12,8 @@ test.describe('SkPicture scene caching', () => {
     await page.goto('/?test&no-chrome&no-rulers')
     await helper.waitForInit()
     await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const pageId = store.state.currentPageId
@@ -62,6 +64,8 @@ test.describe('SkPicture scene caching', () => {
   async function cycleHover({ realMouse = false, mutate = false } = {}) {
     const framePoint = await helper.page.evaluate(
       ({ mutate, realMouse }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         const page = store.graph.getNode(store.state.currentPageId)
@@ -83,19 +87,27 @@ test.describe('SkPicture scene caching', () => {
       const box = expectDefined(await helper.canvas.boundingBox(), 'canvas bounds')
       await helper.page.mouse.move(box.x + 800, box.y + 600)
     }
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.setHoveredNode(null))
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.setHoveredNode(null)
+    })
     await helper.waitForRender()
   }
 
   test('stale scene picture is invalidated after font load', async () => {
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store?.renderer) throw new Error('Renderer not initialized')
       store.renderer.invalidateScenePicture()
       store.requestRender()
     })
     await helper.waitForRender()
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.requestRender())
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.requestRender()
+    })
     await helper.waitForRender()
     const baseline = await helper.screenshotCanvas()
     await cycleHover()
@@ -103,7 +115,10 @@ test.describe('SkPicture scene caching', () => {
   })
 
   test('text survives hover on/off cycle', async () => {
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.requestRender())
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.requestRender()
+    })
     await helper.waitForRender()
     const baseline = await helper.screenshotCanvas()
     await cycleHover()
@@ -111,7 +126,10 @@ test.describe('SkPicture scene caching', () => {
   })
 
   test('text survives multiple hover cycles', async () => {
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.setHoveredNode(null))
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.setHoveredNode(null)
+    })
     await helper.waitForRender()
     const baseline = await helper.screenshotCanvas()
     for (let i = 0; i < 10; i++) await cycleHover()
@@ -119,7 +137,10 @@ test.describe('SkPicture scene caching', () => {
   })
 
   test('text survives real mouse hover on/off', async () => {
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.setHoveredNode(null))
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.setHoveredNode(null)
+    })
     await helper.waitForRender()
     const baseline = await helper.screenshotCanvas()
     await cycleHover({ realMouse: true })
@@ -127,7 +148,10 @@ test.describe('SkPicture scene caching', () => {
   })
 
   test('text survives scene change then hover cycle', async () => {
-    await helper.page.evaluate(() => window.openPencil?.getStore?.()?.requestRender())
+    await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.()?.requestRender()
+    })
     await helper.waitForRender()
     await cycleHover({ mutate: true })
     const afterHover = await helper.screenshotCanvas()

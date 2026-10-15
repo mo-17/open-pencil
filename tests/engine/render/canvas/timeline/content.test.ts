@@ -101,7 +101,7 @@ test('Timeline canvas wraps large mixed text before placing the next event and c
   const buildSpy = spyOn(h.renderer, 'buildParagraph').mockImplementation(
     (label, color, options) => {
       const paragraph = build(label, color, options)
-      names.set(paragraph, label.text)
+      for (const block of paragraph.blocks) names.set(block.paragraph, label.text)
       return paragraph
     }
   )

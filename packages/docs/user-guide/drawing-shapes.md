@@ -13,8 +13,8 @@ The bottom toolbar provides tools for creating shapes, frames, and sections. Sel
 | Rectangle | <kbd>R</kbd> | Draws a rectangle |
 | Ellipse | <kbd>O</kbd> | Draws an ellipse |
 | Line | <kbd>L</kbd> | Draws a line |
-| Frame | <kbd>F</kbd> | Draws a frame (container for other nodes) |
-| Section | <kbd>S</kbd> | Draws a section (auto-adopts overlapping siblings) |
+| Frame | <kbd>F</kbd> or <kbd>A</kbd> | Draws a frame (container for other nodes) |
+| Section | <kbd>Shift</kbd> + <kbd>S</kbd> | Draws a section (takes in the siblings it fully covers) |
 
 ## Shapes Flyout
 
@@ -24,6 +24,17 @@ The shapes flyout (accessible from the toolbar) includes additional shapes:
 - **Star** — creates a 5-pointed star with 0.38 inner radius
 
 Polygon and Star have no keyboard shortcut — access them from the shapes flyout in the toolbar.
+
+## Customizing the Toolbar
+
+Right-click the toolbar and choose **Customize toolbar…**, or open **Settings → Toolbar**, to change it:
+
+- Turn a tool's switch off to hide it. Hidden tools keep their keyboard shortcuts. **Move** is always shown.
+- Drag a tool to reorder it. Dropped inside a box it joins that flyout; dropped in the gap between boxes it becomes a button of its own; dropped onto another tool, the two share a flyout.
+- A tool's **⋯** menu moves it up or down, groups it with the tool above, or ungroups it from its flyout. Its grip also moves it with <kbd>↑</kbd> and <kbd>↓</kbd>.
+- **Insert icon** runs a command rather than picking a tool, so it can move and hide but not join a flyout.
+
+**Reset to default** restores the original layout. Tools added in later versions join their default flyout, so a customized toolbar still gets them.
 
 ## Constrained Drawing
 
@@ -42,7 +53,7 @@ After drawing a shape, select it to edit its properties in the Design tab of the
 Every shape can have a fill. The fill section supports:
 
 - **Solid color** — pick via the HSV color picker or type a hex value
-- **Gradient** — Linear, Radial, Angular, or Diamond with editable gradient stops
+- **Gradient** — Linear, Radial, Angular, or Diamond with editable gradient stops. While the gradient's picker is open, the canvas shows its handles: drag an end or a radius dot to move it, hold <kbd>Shift</kbd> to turn it in 15° steps, and drag a stop's square to slide the stop along the line
 - **Image** — select an image file as the fill
 
 ### Stroke
@@ -58,7 +69,9 @@ Add an outline to any shape. Stroke properties include:
 
 ### Corner Radius
 
-Available for rectangles, frames, components, and instances. Click the independent corners toggle to set each corner (top-left, top-right, bottom-left, bottom-right) separately.
+Available for rectangles, frames, components, instances, polygons, and stars. Click the independent corners toggle to set each corner (top-left, top-right, bottom-left, bottom-right) separately; a polygon's or star's corners share one radius, which rounds its inner corners too.
+
+On the canvas, hover a selected rectangle to show a handle inside each corner and drag one to round the corners. Equal corners change together and differing ones one at a time; hold <kbd>⌥</kbd> to swap the two and <kbd>⇧</kbd> to round to tens. A polygon or star has one radius handle, below its top point, which rounds all of its corners; drag the handle on its next point around the centre to change the point count, and a star's handle on its first inner point towards or away from the centre to change its ratio. The handles hide while the shape is under 108 pixels across on screen; zoom in to reach them.
 
 ### Effects
 
@@ -74,11 +87,11 @@ Click **+** to add an effect. Each effect row is collapsible with inline control
 
 ## Frames and Sections
 
-**Frames** are containers. Drag shapes into a frame to make them children. Frames can clip their content (off by default) and support [auto layout](./auto-layout).
+**Frames** are containers. Drag shapes into a frame to make them children, or start drawing inside one: a new shape goes into the frame under the point where you start, except locked frames, and joins the end of an auto-layout flow. Drawing a frame over existing nodes puts the unlocked ones it fully covers inside it. New frames clip their content, as in Figma (turn off **Clip content** to let children show outside), and frames support [auto layout](./auto-layout).
 
 Select the Frame tool to browse collapsible presets for phones, tablets, desktops, presentations, watches, paper, social media, Figma Community assets, and archived devices in the Design panel. Choosing a preset creates a named frame centered in the viewport and returns to the Select tool. With an existing frame selected, use its Frame preset dropdown to resize it without changing its name.
 
-**Sections** are top-level containers that automatically adopt overlapping sibling nodes when drawn. They're useful for organizing large canvases into logical areas. Sections display a title pill that you can drag.
+**Sections** are top-level containers that take in the sibling nodes they fully cover when drawn, moved, or resized. They're useful for organizing large canvases into logical areas. Sections display a title pill that you can drag.
 
 ## Keyboard Shortcuts
 
@@ -87,8 +100,8 @@ Select the Frame tool to browse collapsible presets for phones, tablets, desktop
 | Rectangle tool | <kbd>R</kbd> | <kbd>R</kbd> |
 | Ellipse tool | <kbd>O</kbd> | <kbd>O</kbd> |
 | Line tool | <kbd>L</kbd> | <kbd>L</kbd> |
-| Frame tool | <kbd>F</kbd> | <kbd>F</kbd> |
-| Section tool | <kbd>S</kbd> | <kbd>S</kbd> |
+| Frame tool | <kbd>F</kbd> or <kbd>A</kbd> | <kbd>F</kbd> or <kbd>A</kbd> |
+| Section tool | <kbd>⇧</kbd><kbd>S</kbd> | <kbd>Shift</kbd> + <kbd>S</kbd> |
 | Constrain to square/circle | <kbd>Shift</kbd> + drag | <kbd>Shift</kbd> + drag |
 
 ## Tips

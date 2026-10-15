@@ -33,7 +33,7 @@ test('CodeBlock shapes Chinese source, its authored title and Copy label, with n
   const buildSpy = spyOn(h.renderer, 'buildParagraph').mockImplementation(
     (label, color, options) => {
       const paragraph = build(label, color, options)
-      paragraphs.set(paragraph, label.text)
+      for (const block of paragraph.blocks) paragraphs.set(block.paragraph, label.text)
       missing.push(...missingGlyphCharacters(label.text, paragraph.getShapedLines()))
       return paragraph
     }

@@ -1,6 +1,7 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
-import { hitTest, hitTestDeep, hitTestFrame } from '@open-pencil/scene-graph/hit-test'
+import { hitTestFrame } from '@open-pencil/scene-graph/hit-test'
 
+import { LAYER_HIT_PAD } from '#core/constants'
 import type { EditorContext } from '#core/editor/types'
 import { createSceneGeometry } from '#core/geometry/scene'
 
@@ -22,13 +23,17 @@ export function createSelectionHitTestActions(
       ctx.state.tabsPreview
     )
   ): SceneNode | null {
+    const pad = LAYER_HIT_PAD / ctx.state.zoom
     const hit = deep
-      ? hitTestDeep(ctx.graph, cx, cy, scopeId, presentation)
-      : hitTest(ctx.graph, cx, cy, scopeId, presentation)
+      ? ctx.graph.hitTestDeep(cx, cy, scopeId, pad, presentation)
+      : ctx.graph.hitTestSelectable(cx, cy, scopeId, ctx.state.selectedIds, pad, presentation)
     if (hit || scopeId !== ctx.state.contentEdit?.rootId) return hit
     const root = ctx.graph.getNode(scopeId)
     if (!root || !isPresentedNode(ctx.graph, root, presentation)) return null
-    const local = createSceneGeometry(ctx.graph).toLocal(root, { x: cx, y: cy })
+    const local = createSceneGeometry(ctx.graph).toLocal(root, {
+      x: cx,
+      y: cy
+    })
     return local && local.x >= 0 && local.y >= 0 && local.x <= root.width && local.y <= root.height
       ? root
       : null
@@ -94,8 +99,13 @@ export function createSelectionHitTestActions(
       .filter((child) => isPresentedNode(ctx.graph, child, presentation))
   }
 
+  /**
+   * Selects what a right-click is over, as Figma does: the layer a click would select, or else the
+   * frame or section whose empty area is under the point, which a click leaves for a marquee.
+   */
   function selectAtPoint(cx: number, cy: number) {
-    const hit = hitTestAtPoint(cx, cy)
+    const scopeId = ctx.state.enteredContainerId ?? ctx.state.currentPageId
+    const hit = hitTestAtPoint(cx, cy) ?? ctx.graph.hitTestOpenContainer(cx, cy, scopeId)
     if (hit) {
       if (!ctx.state.selectedIds.has(hit.id)) select([hit.id])
     } else {

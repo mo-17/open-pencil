@@ -2,8 +2,6 @@
 /// <reference types="vite-plugin-pwa/vanillajs" />
 /// <reference types="unplugin-icons/types/vue" />
 
-// Phase 3 §4.3 — self-host collab signaling relays + TURN. Typed here so the
-// VITE_COLLAB_* reads in src/app/collab/network-config.ts aren't `any`.
 interface ImportMetaEnv {
   readonly VITE_COLLAB_STRATEGY?: string
   readonly VITE_COLLAB_APP_ID?: string
@@ -13,18 +11,14 @@ interface ImportMetaEnv {
   readonly VITE_COLLAB_TURN_URL?: string
   readonly VITE_COLLAB_TURN_USERNAME?: string
   readonly VITE_COLLAB_TURN_CREDENTIAL?: string
-  /** Build-time, non-secret signed plugin catalog trust roots and publisher public keys. */
   readonly VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?: string
-  /** Build-time root trust anchor for a signed Phase 3 marketplace snapshot. */
   readonly VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?: string
-  /** Public OAuth client ID for the reviewed desktop Google Drive integration. */
   readonly VITE_GOOGLE_DRIVE_CLIENT_ID?: string
-  /** Public Microsoft Entra application client ID for the desktop OneDrive integration. */
   readonly VITE_ONEDRIVE_CLIENT_ID?: string
-  /** Public OAuth client ID for the desktop Aliyun Drive integration. */
   readonly VITE_ALIYUN_DRIVE_CLIENT_ID?: string
-  /** Public Baidu OAuth application key for the desktop Baidu Netdisk integration. */
   readonly VITE_BAIDU_NETDISK_APP_KEY?: string
+  /** Enabled only in official release builds. */
+  readonly VITE_OPENPENCIL_FEEDBACK?: string
 }
 
 declare const __OPENPENCIL_APP_VERSION__: string

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agent-lookup"
+description = "Enables the agent_lookup command without any pre-configured scope."
+commands.allow = ["agent_lookup"]
+
+[[permission]]
+identifier = "deny-agent-lookup"
+description = "Denies the agent_lookup command without any pre-configured scope."
+commands.deny = ["agent_lookup"]

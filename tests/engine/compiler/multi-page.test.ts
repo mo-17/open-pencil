@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/core'
 
@@ -57,9 +59,14 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
     expect(app).toContain(`<div className="relative min-h-screen" data-node-id="${pageId}">`)
     expect(app).not.toContain('BrowserRouter')
 
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
     expect(pkg.dependencies['react-router-dom']).toBeUndefined()
   })
 
@@ -106,9 +113,14 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
     expect(aboutPage).toContain('export default function PageAbout')
     expect(aboutPage).toContain('>about-btn</button>')
 
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
     expect(pkg.dependencies['react-router-dom']).toBe('^7.18.3')
   })
 

@@ -1,14 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 
+import { expectDefined } from '#fig-tests/helpers/assert'
+import { componentPropDefsOf, componentPropRefsOf } from '#fig-tests/helpers/component-props'
+import { symbolDataOf } from '#fig/instance-overrides/types'
 import {
   buildComponentPropIndex,
-  fractionalPosition,
   mapToFigmaType,
   sceneNodeToKiwi,
   type FigNodeChangeExportRuntime
 } from '#fig/node-change/index'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 const ALIGNMENT_RUNTIME: FigNodeChangeExportRuntime = {
@@ -16,7 +19,11 @@ const ALIGNMENT_RUNTIME: FigNodeChangeExportRuntime = {
     { commands: [{ type: 'M', x: 0, y: 0 }], x: 0, advance: 10 },
     { commands: [{ type: 'M', x: 0, y: 0 }], x: 10, advance: 10 }
   ],
-  getFontVerticalMetrics: () => ({ ascent: 14, descent: 2, naturalLineHeight: 16 })
+  getFontVerticalMetrics: () => ({
+    ascent: 14,
+    descent: 2,
+    naturalLineHeight: 16
+  })
 }
 
 function required<T>(value: T | null | undefined, label: string): T {
@@ -60,9 +67,8 @@ function expectGeneratedTextAlignment(
 }
 
 describe('@open-pencil/fig SceneGraph export policy', () => {
-  test('maps node types and sibling positions deterministically', () => {
+  test('maps node types deterministically', () => {
     expect(mapToFigmaType('COMPONENT')).toBe('SYMBOL')
-    expect([0, 93, 94, 188].map(fractionalPosition)).toEqual(['!', '~', '~!', '~~!'])
   })
 
   test('exports one ordering scheme when preserved and generated siblings are mixed', () => {
@@ -106,32 +112,32 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       overrideKey: '2:20',
       text: 'Default'
     })
-    const instance = graph.createInstance(component.id, page.id)
-    expect(instance).toBeDefined()
-    if (!instance) throw new Error('Expected instance')
-    const targetText = graph.getChildren(instance?.id ?? '')[0]
+    const created = graph.createInstance(component.id, page.id)
+    expect(created).toBeDefined()
+    const instance = expectDefined(created, 'instance')
+    const targetText = graph.getChildren(instance.id)[0]
     expect(targetText).toBeDefined()
     const originalOverride = {
       guidPath: { guids: [{ sessionID: 2, localID: 20 }] },
       textData: { characters: 'Stale' },
       opacity: 0.5
     }
-    graph.updateNode(instance?.id ?? '', {
+    graph.updateNode(instance.id, {
       instanceOverrides: {
         self: new Map(),
-        descendants: new Map([[targetText?.id ?? '', new Map([['text', 'Edited']])]])
+        descendants: new Map([[targetText.id, new Map([['text', 'Edited']])]])
       },
       source: {
-        ...instance?.source,
+        ...instance.source,
         fig: {
-          ...instance?.source.fig,
+          ...instance.source.fig,
           symbolOverrides: [originalOverride]
         }
       }
     })
 
     const [change] = sceneNodeToKiwi(
-      required(graph.getNode(instance.id), 'instance'),
+      graph.getNode(instance.id) ?? instance,
       { sessionID: 1, localID: 1 },
       0,
       { value: 2 },
@@ -140,15 +146,152 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     )
 
     expect(sourceText.overrideKey).toBe('2:20')
-    expect(change.symbolData?.symbolOverrides).toEqual([
+    // Figma writes a text claim with its lines, as the layer's own record has them.
+    expect(symbolDataOf(change)?.symbolOverrides).toEqual([
       {
         ...originalOverride,
-        textData: { characters: 'Edited' }
+        textData: {
+          characters: 'Edited',
+          lines: [
+            {
+              indentationLevel: 0,
+              isFirstLineOfList: false,
+              lineType: 'PLAIN',
+              listStartOffset: 0,
+              sourceDirectionality: 'AUTO',
+              styleId: 0
+            }
+          ]
+        }
       }
     ])
   })
 
-  test('injects runtime glyph outlines into derived text data', () => {
+  test('writes styled ranges with the characters of a text claim, as Figma does', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const component = graph.createNode('COMPONENT', page.id)
+    graph.createNode('TEXT', component.id, {
+      overrideKey: '2:20',
+      text: 'Hello world',
+      fontSize: 12
+    })
+    const instance = expectDefined(graph.createInstance(component.id, page.id), 'instance')
+    const [text] = graph.getChildren(instance.id)
+    // Recorded by a script that restyles the first word only; the characters are unchanged.
+    graph.updateNode(text.id, {
+      styleRuns: [{ start: 0, length: 5, style: { fontSize: 30 } }]
+    })
+    graph.updateNode(instance.id, {
+      instanceOverrides: {
+        self: new Map(),
+        descendants: new Map([[text.id, new Map<string, unknown>([['styleRuns', text.styleRuns]])]])
+      }
+    })
+
+    const [change] = sceneNodeToKiwi(
+      instance,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      []
+    )
+
+    const [claim] = symbolDataOf(change)?.symbolOverrides ?? []
+    // The first word takes style 1; the rest keep the layer's own style, 0.
+    expect(claim.textData).toMatchObject({
+      characters: 'Hello world',
+      characterStyleIDs: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+      styleOverrideTable: [expect.objectContaining({ styleID: 1, fontSize: 30 })]
+    })
+  })
+
+  test('writes style overrides as the layer’s own record claims them, in the component’s scale', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const component = graph.createNode('COMPONENT', page.id)
+    graph.createNode('RECTANGLE', component.id, {
+      overrideKey: '2:20',
+      strokeWeight: 2
+    })
+    graph.createNode('TEXT', component.id, {
+      overrideKey: '2:21',
+      text: 'A',
+      lineHeight: 30
+    })
+    const instance = expectDefined(graph.createInstance(component.id, page.id), 'instance')
+    const [rect, text] = graph.getChildren(instance.id)
+    // Placed at twice the component's size, as a scaled instance is.
+    graph.updateNode(instance.id, { componentScale: 2 })
+    graph.updateNode(rect.id, {
+      strokeWeight: 8,
+      strokeAlign: 'CENTER',
+      cornerSmoothing: 0.6
+    })
+    graph.updateNode(text.id, { lineHeight: null, letterSpacing: 4 })
+    graph.updateNode(instance.id, {
+      instanceOverrides: {
+        self: new Map(),
+        descendants: new Map([
+          [
+            rect.id,
+            new Map<string, unknown>([
+              ['strokeWeight', 8],
+              ['strokeAlign', 'CENTER'],
+              ['cornerSmoothing', 0.6]
+            ])
+          ],
+          [
+            text.id,
+            new Map<string, unknown>([
+              ['lineHeight', null],
+              ['letterSpacing', 4]
+            ])
+          ]
+        ])
+      },
+      source: {
+        ...instance.source,
+        fig: {
+          ...instance.source.fig,
+          // A stale claim read from the file, replaced by the edit.
+          symbolOverrides: [
+            {
+              guidPath: { guids: [{ sessionID: 2, localID: 20 }] },
+              strokeWeight: 1
+            }
+          ]
+        }
+      }
+    })
+
+    const [change] = sceneNodeToKiwi(
+      graph.getNode(instance.id) ?? instance,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      []
+    )
+
+    expect(symbolDataOf(change)?.symbolOverrides).toEqual([
+      {
+        guidPath: { guids: [{ sessionID: 2, localID: 20 }] },
+        strokeWeight: 4,
+        // Figma reads a missing alignment as centred, so the claim spells it out.
+        strokeAlign: 'CENTER',
+        cornerSmoothing: 0.6
+      },
+      {
+        guidPath: { guids: [{ sessionID: 2, localID: 21 }] },
+        lineHeight: { value: 100, units: 'PERCENT' },
+        letterSpacing: { value: 2, units: 'PIXELS' }
+      }
+    ])
+  })
+
+  test('writes text shaped by the runtime as derived text data', () => {
     const graph = new SceneGraph()
     const text = graph.createNode('TEXT', graph.getPages()[0].id, {
       text: 'A',
@@ -158,13 +301,31 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     })
     const blobs: Uint8Array[] = []
     const runtime: FigNodeChangeExportRuntime = {
-      getGlyphOutlineMetrics: () => [
-        {
-          commands: [{ type: 'M', x: 0, y: 0 }, { type: 'L', x: 8, y: 16 }, { type: 'Z' }],
-          x: 0,
-          advance: 10
-        }
-      ]
+      textDecorations: () => [],
+      shapeText: () => ({
+        glyphs: [
+          {
+            commands: [{ type: 'M', x: 0, y: 0 }, { type: 'L', x: 8, y: 16 }, { type: 'Z' }],
+            x: 0,
+            y: 15,
+            fontSize: 16,
+            firstCharacter: 0,
+            advance: 10
+          }
+        ],
+        baselines: [
+          {
+            firstCharacter: 0,
+            endCharacter: 1,
+            position: { x: 0, y: 15 },
+            width: 10,
+            lineY: 0,
+            lineHeight: 19,
+            lineAscent: 15
+          }
+        ],
+        logicalIndexToCharacterOffsetMap: [0]
+      })
     }
 
     const [change] = sceneNodeToKiwi(
@@ -182,6 +343,7 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     )
 
     expect(change.derivedTextData?.glyphs).toHaveLength(1)
+    expect(change.derivedTextData?.baselines?.[0]?.position.y).toBe(15)
     expect(blobs).toHaveLength(1)
   })
 
@@ -278,12 +440,14 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       { value: 2 },
       graph,
       blobs,
-      { fontDigestMap: new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]]) }
+      {
+        fontDigestMap: new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]])
+      }
     )
 
     expect(change.textData?.characters).toBe('整理行囊')
     expect(change.derivedTextData).toBeDefined()
-    expect(Object.hasOwn(change.derivedTextData ?? {}, 'glyphs')).toBe(false)
+    expect(change.derivedTextData?.glyphs).toEqual([])
     expect(change.derivedTextData?.fontMetaData).toHaveLength(1)
     expect(change.derivedTextData?.layoutSize).toEqual({ x: 80, y: 20 })
     expect(blobs).toHaveLength(0)
@@ -309,7 +473,9 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       { value: 2 },
       graph,
       blobs,
-      { fontDigestMap: new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]]) }
+      {
+        fontDigestMap: new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]])
+      }
     )
 
     expect(change.derivedTextData?.glyphs).toHaveLength(1)
@@ -342,10 +508,13 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     )
 
     expect(change.componentPropDefs).toHaveLength(1)
-    expect(change.componentPropDefs?.[0].id).toEqual(
-      expect.objectContaining({ sessionID: expect.any(Number), localID: expect.any(Number) })
+    expect(componentPropDefsOf(change)?.[0].id).toEqual(
+      expect.objectContaining({
+        sessionID: expect.any(Number),
+        localID: expect.any(Number)
+      })
     )
-    expect(change.componentPropDefs?.[0].name).toBe('Style')
+    expect(componentPropDefsOf(change)?.[0].name).toBe('Style')
   })
 
   test('reuses the same synthetic GUID for a def and the ref that points at it', () => {
@@ -353,7 +522,12 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     const page = graph.getPages()[0]
     const component = graph.createNode('COMPONENT', page.id, {
       componentPropertyDefinitions: [
-        { id: 'prop:icon1234', name: 'Icon', type: 'INSTANCE_SWAP', defaultValue: '' }
+        {
+          id: 'prop:icon1234',
+          name: 'Icon',
+          type: 'INSTANCE_SWAP',
+          defaultValue: ''
+        }
       ]
     })
     const slot = graph.createNode('INSTANCE', component.id, {
@@ -374,19 +548,16 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     )
     const slotChange = sceneNodeToKiwi(
       slot,
-      required(componentChange.guid, 'component GUID'),
+      expectDefined(componentChange.guid, 'component guid'),
       0,
       localIdCounter,
       graph,
       [],
-      {
-        nodeIdToGuid,
-        propertyIdToGuid
-      }
+      { nodeIdToGuid, propertyIdToGuid }
     )[0]
 
-    expect(componentChange.componentPropDefs?.[0].id).toEqual(
-      slotChange.componentPropRefs?.[0].defID
+    expect(componentPropDefsOf(componentChange)?.[0].id).toEqual(
+      componentPropRefsOf(slotChange)?.[0].defID
     )
   })
 
@@ -399,7 +570,12 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     })
     const button = graph.createNode('COMPONENT', page.id, {
       componentPropertyDefinitions: [
-        { id: 'prop:iconswap1', name: 'Icon', type: 'INSTANCE_SWAP', defaultValue: icon.id }
+        {
+          id: 'prop:iconswap1',
+          name: 'Icon',
+          type: 'INSTANCE_SWAP',
+          defaultValue: icon.id
+        }
       ]
     })
 
@@ -425,8 +601,10 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       { nodeIdToGuid, propertyIdToGuid }
     )
 
-    expect(buttonChange.componentPropDefs?.[0].initialValue).toEqual({ guidValue: iconChange.guid })
-    expect(buttonChange.componentPropDefs?.[0].preferredValues).toBeUndefined()
+    expect(componentPropDefsOf(buttonChange)?.[0].initialValue).toEqual({
+      guidValue: iconChange.guid
+    })
+    expect(componentPropDefsOf(buttonChange)?.[0].preferredValues).toBeUndefined()
   })
 
   test('exports INSTANCE_SWAP preferred values as component keys', () => {
@@ -457,7 +635,7 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       []
     )
 
-    expect(buttonChange.componentPropDefs?.[0].preferredValues?.instanceSwapValues).toEqual([
+    expect(componentPropDefsOf(buttonChange)?.[0].preferredValues?.instanceSwapValues).toEqual([
       { type: 'COMPONENT', key: 'icon-tune-key' },
       { type: 'COMPONENT', key: 'external-library-key' }
     ])
@@ -468,7 +646,12 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     const page = graph.getPages()[0]
     const component = graph.createNode('COMPONENT', page.id, {
       componentPropertyDefinitions: [
-        { id: 'prop:iconswap3', name: 'Icon', type: 'INSTANCE_SWAP', defaultValue: '70:1' }
+        {
+          id: 'prop:iconswap3',
+          name: 'Icon',
+          type: 'INSTANCE_SWAP',
+          defaultValue: '70:1'
+        }
       ]
     })
 
@@ -481,7 +664,7 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       []
     )
 
-    expect(change.componentPropDefs?.[0].initialValue).toEqual({
+    expect(componentPropDefsOf(change)?.[0].initialValue).toEqual({
       guidValue: { sessionID: 70, localID: 1 }
     })
   })
@@ -491,7 +674,12 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     const page = graph.getPages()[0]
     const component = graph.createNode('COMPONENT', page.id, {
       componentPropertyDefinitions: [
-        { id: 'prop:recursive', name: 'Label', type: 'TEXT', defaultValue: 'Default' }
+        {
+          id: 'prop:recursive',
+          name: 'Label',
+          type: 'TEXT',
+          defaultValue: 'Default'
+        }
       ]
     })
     graph.createNode('TEXT', component.id, {
@@ -507,7 +695,9 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       []
     )
 
-    expect(changes[0].componentPropDefs?.[0].id).toEqual(changes[1].componentPropRefs?.[0].defID)
+    expect(componentPropDefsOf(changes[0])?.[0].id).toEqual(
+      componentPropRefsOf(changes[1])?.[0].defID
+    )
   })
 
   test('keeps colorVar bindings on imported nodes with stale raw paints', () => {
@@ -619,7 +809,10 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       []
     )
 
-    expect(change.fillPaints?.[0]).toMatchObject({ type: 'SOLID', blendMode: 'NORMAL' })
+    expect(change.fillPaints?.[0]).toMatchObject({
+      type: 'SOLID',
+      blendMode: 'NORMAL'
+    })
     expect(change.fillPaints?.[0]?.colorVar).toBeUndefined()
   })
 
@@ -632,7 +825,11 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       height: 40,
       boundVariables: {},
       pluginData: [
-        { pluginId: 'open-pencil', key: 'boundVariables', value: '{"fills/0/color":"0:12"}' },
+        {
+          pluginId: 'open-pencil',
+          key: 'boundVariables',
+          value: '{"fills/0/color":"0:12"}'
+        },
         { pluginId: 'other-plugin', key: 'boundVariables', value: 'kept' }
       ]
     })
@@ -645,5 +842,40 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
     expect(bindingEntries).toEqual([
       { pluginID: 'other-plugin', key: 'boundVariables', value: 'kept' }
     ])
+  })
+})
+
+function expectStrictlyIncreasing(keys: string[]) {
+  for (let i = 1; i < keys.length; i++) expect(keys[i] > keys[i - 1]).toBe(true)
+}
+
+describe('Figma export order keys', () => {
+  test('a layer added before imported siblings does not share their keys', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, { name: 'Frame' })
+    for (const [name, orderKey] of [
+      ['A', '!'],
+      ['B', '"'],
+      ['C', '#']
+    ]) {
+      const child = graph.createNode('RECTANGLE', frame.id, { name })
+      child.source.format = 'fig'
+      child.source.orderKey = orderKey
+    }
+    const inserted = graph.createNode('RECTANGLE', frame.id, {
+      name: 'Inserted'
+    })
+    frame.childIds = [inserted.id, ...frame.childIds.filter((id) => id !== inserted.id)]
+
+    const changes = sceneNodeToKiwi(frame, { sessionID: 1, localID: 1 }, 0, { value: 2 }, graph, [])
+    const children = changes.slice(1)
+    const positions = children.map((change) => change.parentIndex?.position ?? '')
+
+    expect(children.map((change) => change.name)).toEqual(['Inserted', 'A', 'B', 'C'])
+    // Nothing sorts before '!', so A is re-keyed; B and C keep their imported keys.
+    expect(positions.slice(2)).toEqual(['"', '#'])
+    expect(new Set(positions).size).toBe(4)
+    expectStrictlyIncreasing(positions)
   })
 })

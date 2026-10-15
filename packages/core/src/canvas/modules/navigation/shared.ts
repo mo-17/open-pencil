@@ -54,9 +54,7 @@ export function drawNavigationLabel(
     { halfLeading: true },
     (paragraph) => {
       if (draw)
-        withModulePreviewRectClip(renderer, canvas, box, () =>
-          canvas.drawParagraph(paragraph, box.x, box.y)
-        )
+        withModulePreviewRectClip(renderer, canvas, box, () => paragraph.draw(canvas, box.x, box.y))
       return Math.min(box.width, Math.ceil(paragraph.getMaxIntrinsicWidth()))
     }
   )

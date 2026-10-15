@@ -326,7 +326,9 @@ describe('plugin runtime policy manager', () => {
       declarativeDigest: declarative.verifiedDigest
     })
     let gate: Promise<void> | null = null
-    let releaseGate: (() => void) | null = null
+    let releaseGate: () => void = () => {
+      throw new Error('Gate is not initialized')
+    }
     const manager = createPluginRuntimeManager({
       publisherPrivilegeLock: async (operation) => {
         if (gate) await gate
@@ -352,7 +354,7 @@ describe('plugin runtime policy manager', () => {
     const grant = manager.grant('acme.analytics', reviewed)
     Reflect.set(reviewed, 'runtimePackageDigest', declarative.verifiedDigest)
     Reflect.set(reviewed, 'capabilities', ['document.nodes.read'])
-    releaseGate?.()
+    releaseGate()
 
     await expect(grant).resolves.toMatchObject({
       runtimePackageDigest: runtime.verifiedRuntimePackage.verifiedDigest,

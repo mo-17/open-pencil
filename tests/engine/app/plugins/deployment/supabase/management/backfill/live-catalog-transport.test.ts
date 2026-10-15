@@ -19,10 +19,8 @@ import {
   type SupabaseManagementBackfillLiveCatalogFetch
 } from '@/app/plugins/host/deployment/supabase/management/backfill/live-catalog-transport'
 
-import type {
-  QueryBody,
-  RecordedRequest
-} from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
+import { parseQueryBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
+import type { RecordedRequest } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 const PROJECT_REF = 'abcdefghijklmnopqrst'
 const ACCOUNT_ID = 'account-1'
@@ -197,7 +195,7 @@ describe('Supabase Management backfill live catalog transport', () => {
 
     const serializedBody = requests[1]?.init.body
     if (typeof serializedBody !== 'string') throw new TypeError('Expected an exact JSON body')
-    const body = JSON.parse(serializedBody) as QueryBody
+    const body = parseQueryBody(serializedBody)
     expect(Object.keys(body)).toEqual(['query', 'parameters'])
     expect(body.query).toBe(SUPABASE_BACKFILL_LIVE_CATALOG_SQL)
     expect(body.parameters).toEqual(

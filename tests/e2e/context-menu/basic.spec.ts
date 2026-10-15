@@ -5,6 +5,8 @@ const editor = useEditorSetup()
 
 function getPageChildren() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getChildren(store.state.currentPageId).map((n) => ({
@@ -19,6 +21,8 @@ function getPageChildren() {
 
 function getSelectedCount() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.selectedIds.size
@@ -34,13 +38,14 @@ function contextMenu() {
   return editor.page.locator('[role="menu"]')
 }
 
-function contextItem(testId: string) {
-  return editor.page.getByTestId(testId)
+/** Close the menu and wait until it is gone, so the next test's keys reach the canvas. */
+async function closeMenu() {
+  await editor.page.keyboard.press('Escape')
+  await expect(contextMenu()).toHaveCount(0)
 }
 
-async function closeContextMenu() {
-  await editor.page.keyboard.press('Escape')
-  await expect(contextMenu()).toBeHidden()
+function contextItem(testId: string) {
+  return editor.page.getByTestId(testId)
 }
 
 test('right-click on empty canvas shows context menu without selection items disabled', async () => {
@@ -51,7 +56,7 @@ test('right-click on empty canvas shows context menu without selection items dis
   const copyItem = contextItem('context-copy')
   await expect(copyItem).toBeVisible()
 
-  await closeContextMenu()
+  await closeMenu()
 })
 
 test('draw shape and right-click selects it', async () => {
@@ -59,7 +64,7 @@ test('draw shape and right-click selects it', async () => {
   await editor.canvas.waitForRender()
 
   // Deselect first
-  await editor.page.keyboard.press('Escape')
+  await closeMenu()
   await editor.canvas.waitForRender()
 
   // Right-click the shape
@@ -67,7 +72,7 @@ test('draw shape and right-click selects it', async () => {
 
   expect(await getSelectedCount()).toBe(1)
   await expect(contextMenu()).toBeVisible()
-  await closeContextMenu()
+  await closeMenu()
 })
 
 test('context menu shows expected items', async () => {
@@ -89,7 +94,7 @@ test('context menu shows expected items', async () => {
   await expect(contextItem('context-outline-stroke')).toBeVisible()
   await expect(contextItem('context-boolean-union')).toHaveCount(0)
 
-  await closeContextMenu()
+  await closeMenu()
 })
 
 test('duplicate via context menu works', async () => {
@@ -113,6 +118,8 @@ test('toggle visibility via context menu', async () => {
   await editor.canvas.waitForRender()
 
   const nodeId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.state.selectedIds][0]
@@ -123,6 +130,8 @@ test('toggle visibility via context menu', async () => {
   await editor.canvas.waitForRender()
 
   const hidden = await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const n = store.graph.getNode(id)
@@ -132,6 +141,8 @@ test('toggle visibility via context menu', async () => {
 
   // Toggle back: select via store since invisible nodes can't be hit-tested
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.toggleVisibility()
@@ -139,6 +150,8 @@ test('toggle visibility via context menu', async () => {
   await editor.canvas.waitForRender()
 
   const restored = await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const n = store.graph.getNode(id)
@@ -195,6 +208,8 @@ test('group via context menu', async () => {
 test('ungroup via store after context-menu group', async () => {
   // Groups are click-through, so ungroup via store instead
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const group = store.graph.getChildren(store.state.currentPageId).find((n) => n.type === 'GROUP')
@@ -235,7 +250,7 @@ test('outline stroke is disabled for fill-only shapes', async () => {
   const item = contextItem('context-outline-stroke')
   await expect(item).toBeVisible()
   await expect(item).toHaveAttribute('data-disabled', '')
-  await closeContextMenu()
+  await closeMenu()
 })
 
 test('Copy/Paste as submenu exists', async () => {
@@ -252,5 +267,5 @@ test('Copy/Paste as submenu exists', async () => {
   await expect(contextItem('context-copy-as-svg')).toBeVisible()
   await expect(contextItem('context-copy-as-jsx')).toBeVisible()
 
-  await closeContextMenu()
+  await closeMenu()
 })

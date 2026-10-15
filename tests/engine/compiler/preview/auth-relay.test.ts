@@ -5,6 +5,7 @@ import { createServer, type Server } from 'node:http'
 import { createPreviewAuthRelay } from '#compiler/local-backend-preview/auth-relay'
 import { previewAuthCallbackURL } from '#compiler/local-backend-preview/auth-relay/validation'
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 const BASE = '/_openpencil/preview-auth'
 const CALLBACK = '/_openpencil/auth/callback'
@@ -75,7 +76,14 @@ async function fixture() {
   const register = async (url = authorization()): Promise<Ticket> => {
     const result = await begin(url)
     expect(result.status).toBe(201)
-    return result.json() as Promise<Ticket>
+    return v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ requestId: v.string(), pollToken: v.string() })
+      ),
+      await result.text()
+    )
   }
   const start = (ticket: Ticket, headers: Record<string, string> = {}) =>
     fetch(origin + BASE + '/start/' + ticket.requestId, {

@@ -5,6 +5,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function selectedNodeSnapshot(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const selectedId = [...store.state.selectedIds][0]
@@ -32,6 +34,8 @@ test('assets panel groups component sets and inserts the default variant', async
   await canvas.waitForInit()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
 
@@ -198,6 +202,8 @@ test('assets panel supports Figma-style views, component actions, and canvas dra
   await canvas.waitForInit()
 
   const setup = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.panX = 0
@@ -231,6 +237,8 @@ test('assets panel supports Figma-style views, component actions, and canvas dra
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         return {
@@ -260,6 +268,8 @@ test('assets insertion accounts for entered container coordinates', async ({ pag
   await canvas.waitForInit()
 
   const setup = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.panX = 0
@@ -293,6 +303,8 @@ test('assets insertion accounts for entered container coordinates', async ({ pag
   await canvas.waitForRender()
 
   const inserted = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const selectedId = [...store.state.selectedIds][0]
@@ -322,14 +334,74 @@ test('demo exposes component set assets', async ({ page }) => {
   await page.goto('/demo')
   await canvas.waitForInit()
 
+  const model = await page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const nodes = [...store.graph.nodes.values()]
+    const variantIds = new Set(
+      nodes.flatMap((node) => (node.type === 'COMPONENT_SET' ? node.childIds : []))
+    )
+    const sets = nodes
+      .filter((node) => node.type === 'COMPONENT_SET' && !node.librarySource?.readOnly)
+      .map((node) => ({
+        id: node.id,
+        name: node.name,
+        variantIds: node.childIds.filter((id) => store.graph.getNode(id)?.type === 'COMPONENT')
+      }))
+    const components = nodes
+      .filter(
+        (node) =>
+          node.type === 'COMPONENT' && !variantIds.has(node.id) && !node.librarySource?.readOnly
+      )
+      .map((node) => ({ id: node.id, name: node.name }))
+    return { sets, components }
+  })
+  expect(model.sets.length).toBeGreaterThan(0)
+  expect(model.components.length).toBeGreaterThan(0)
+  const insertSet = expectDefined(
+    model.sets.find((set) => set.variantIds.length > 1),
+    'demo component set with variant choices'
+  )
+
   await page.getByTestId('left-panel-assets-tab').click()
   await page.getByRole('button', { name: 'List view' }).click()
   const assetsPanel = page.getByTestId('assets-panel')
+  await expect
+    .poll(() =>
+      assetsPanel
+        .locator('[data-asset-id]')
+        .evaluateAll((items) => items.map((item) => item.getAttribute('data-asset-id')).sort())
+    )
+    .toEqual([...model.sets, ...model.components].map((asset) => asset.id).sort())
+  for (const set of model.sets) {
+    const asset = assetsPanel.locator(`[data-asset-id="${set.id}"]`)
+    await expect(asset.getByTestId('asset-name')).toHaveText(set.name)
+    await expect(asset.getByTestId('asset-variant-summary')).toHaveText(
+      new RegExp(`^\\s*${set.variantIds.length}(?!\\d)`)
+    )
+    for (const id of set.variantIds) {
+      await expect(assetsPanel.locator(`[data-asset-id="${id}"]`)).toHaveCount(0)
+    }
+  }
+  for (const component of model.components) {
+    await expect(
+      assetsPanel.locator(`[data-asset-id="${component.id}"]`).getByTestId('asset-name')
+    ).toHaveText(component.name)
+  }
 
-  await expect(assetsPanel).toContainText('Button')
-  await expect(assetsPanel).toContainText('2 variants · Variant')
-  await expect(assetsPanel).toContainText('Avatar')
-  await expect(assetsPanel).not.toContainText('Button/Primary')
+  await assetsPanel.locator(`[data-asset-id="${insertSet.id}"]`).getByTestId('asset-insert').click()
+  await canvas.waitForRender()
+  const inserted = expectDefined(await selectedNodeSnapshot(page), 'inserted demo instance')
+  expect(inserted.type).toBe('INSTANCE')
+  expect(insertSet.variantIds).toContain(expectDefined(inserted.componentId, 'source variant'))
+  await canvas.undo()
+  expect(
+    await page.evaluate((id) => {
+      const store = window.openPencil?.getStore?.()
+      if (!store) throw new Error('OpenPencil store not initialized')
+      return store.graph.getNode(id)?.id
+    }, inserted.id)
+  ).toBeUndefined()
 
   canvas.assertNoErrors()
 })

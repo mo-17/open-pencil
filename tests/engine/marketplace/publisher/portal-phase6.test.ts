@@ -3,7 +3,7 @@ import { chmod, link, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { encode, fromUint8Array } from 'js-base64'
+import { fromUint8Array } from 'js-base64'
 
 import {
   MARKETPLACE_PUBLISHER_REQUEST_OPERATIONS,
@@ -41,6 +41,25 @@ import {
   pluginPayloadV2,
   pluginStorageProviderContribution
 } from '#tests/engine/plugins/helpers'
+
+async function declaredCommand(
+  value: ReturnType<typeof declaredSubCommands> extends Promise<infer Commands>
+    ? Commands[keyof Commands]
+    : never
+) {
+  return typeof value === 'function' ? await value() : await value
+}
+
+async function declaredMeta(command: Awaited<ReturnType<typeof declaredCommand>>) {
+  const value = command.meta
+  return typeof value === 'function' ? await value() : await value
+}
+
+async function declaredSubCommands(command: typeof marketplaceCommand) {
+  const value = command.subCommands
+  if (!value) throw new Error('Expected declared CLI subcommands')
+  return typeof value === 'function' ? await value() : await value
+}
 
 const NOW = '2026-08-22T08:00:00.000Z'
 const BEFORE = '2026-08-22T07:59:00.000Z'
@@ -484,10 +503,14 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
     await expect(verification(parsedTampered.body)).rejects.toThrow('signature')
   })
 
-  test('registers a runnable request sign CLI without exposing publish or yank operations', () => {
-    const request = marketplaceCommand.subCommands?.request
-    expect(request?.subCommands?.sign.meta?.name).toBe('sign')
-    expect(request?.subCommands?.sign.args?.operation).toMatchObject({ required: true })
+  test('registers a runnable request sign CLI without exposing publish or yank operations', async () => {
+    const commands = await declaredSubCommands(marketplaceCommand)
+    const request = await declaredCommand(commands.request)
+    const requestCommands = await declaredSubCommands(request)
+    expect((await declaredMeta(await declaredCommand(requestCommands.sign)))?.name).toBe('sign')
+    expect((await declaredCommand(requestCommands.sign)).args?.operation).toMatchObject({
+      required: true
+    })
   })
 
   test('CLI accepts a named local key reference without printing the key or exact request body', async () => {
@@ -777,14 +800,15 @@ describe('Phase 6 Publisher-scoped audit', () => {
       subject: `ownership:${fixture.beta.pluginId}`,
       payload: { status: 'active' }
     })
-    const repository = {
+    const repository: MarketplaceRepository = {
+      ...createMemoryMarketplaceRepository(),
       async snapshot() {
         return Object.freeze({ ...state, auditEvents: contaminated.events })
       },
       async transaction() {
         throw new Error('read-only test repository')
       }
-    } as MarketplaceRepository
+    }
     const result = await createMarketplaceControlReader(repository).publisherAudit(
       fixture.acme.id,
       { limit: 100 }

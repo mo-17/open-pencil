@@ -1,46 +1,55 @@
 import { tryOnScopeDispose, useEventListener } from '@vueuse/core'
 import { watch } from 'vue'
 
-import { canvasPerformanceProfile, type CanvasPerformanceMode } from '@open-pencil/core/canvas'
+import {
+  canvasPerformanceProfile,
+  DEFAULT_CANVAS_PERFORMANCE_MODE,
+  type CanvasPerformanceMode
+} from '@open-pencil/core/canvas'
 
-import type { useCollabInjected } from '@/app/collab/use'
-import type { EditorStore } from '@/app/editor/active-store'
+import { roomForStore } from '@/app/collab/rooms'
+import { getActiveEditorStore, type EditorStore } from '@/app/editor/active-store'
 
-type Collaboration = ReturnType<typeof useCollabInjected>
-
+/**
+ * Publishes a canvas's cursor and selection to the room its own tab is in, and no other.
+ *
+ * Canvases read the editor through a proxy that follows the active tab, which no room is keyed
+ * by. Every canvas is keyed by its tab, so the tab's own store is the active one while it mounts.
+ */
 export function useCanvasCollaborationAwareness(
   store: EditorStore,
-  collab: Collaboration,
-  getPerformanceMode: () => CanvasPerformanceMode
+  performanceMode: () => CanvasPerformanceMode = () => DEFAULT_CANVAS_PERFORMANCE_MODE
 ) {
+  const tabStore = getActiveEditorStore()
+
   function updateCursor(cx: number, cy: number) {
     store.state.cursorCanvasX = cx
     store.state.cursorCanvasY = cy
-    const fpsCap = canvasPerformanceProfile(getPerformanceMode()).collaborationCursorFpsCap
-    collab?.updateCursor(cx, cy, store.state.currentPageId, fpsCap)
+    roomForStore(tabStore)?.updateCursor(
+      cx,
+      cy,
+      tabStore.state.currentPageId,
+      canvasPerformanceProfile(performanceMode()).collaborationCursorFpsCap
+    )
   }
 
-  function flushCursor() {
-    collab?.flushCursor()
-  }
-
-  const stopSelection = store.onEditorEvent('selection:changed', (ids) =>
-    collab?.updateSelection(ids)
+  const stopSelection = tabStore.onEditorEvent('selection:changed', (ids) =>
+    roomForStore(tabStore)?.updateSelection(ids)
   )
-  const stopPage = store.onEditorEvent('page:changed', flushCursor)
-  const stopEditing = watch(() => store.state.editingTextId, flushCursor, { flush: 'sync' })
-
+  function flushCursor() {
+    roomForStore(tabStore)?.flushCursor()
+  }
+  const stopPage = tabStore.onEditorEvent('page:changed', flushCursor)
+  watch(() => store.state.editingTextId, flushCursor, { flush: 'sync' })
   if (typeof document !== 'undefined') {
     useEventListener(document, 'visibilitychange', () => {
       if (document.hidden) flushCursor()
     })
   }
-
   tryOnScopeDispose(() => {
     flushCursor()
     stopSelection()
     stopPage()
-    stopEditing()
   })
 
   return { updateCursor, flushCursor }

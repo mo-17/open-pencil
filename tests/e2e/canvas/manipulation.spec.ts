@@ -88,6 +88,8 @@ test('resize corner handle drag increases node dimensions', async () => {
   expect(before).not.toBeNull()
 
   const viewport = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -129,6 +131,8 @@ test('resize corner handle drag increases node dimensions', async () => {
 test('resize snapping preferences control pixel alignment and Control bypass', async () => {
   await canvas.clearCanvas()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences = { geometry: true, objects: false, pixelGrid: false }
@@ -146,6 +150,8 @@ test('resize snapping preferences control pixel alignment and Control bypass', a
   expect(await getSelectedNode(page)).toMatchObject({ width: 106, height: 107 })
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.snappingPreferences.pixelGrid = true
@@ -177,6 +183,8 @@ test('rotation handle drag rotates node', async () => {
   const initialRotation = expectDefined(before, 'selected node before').rotation ?? 0
 
   const viewport = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -230,6 +238,8 @@ async function setupFrameChild(rotation: number) {
   await canvas.clearCanvas()
 
   const setup = await page.evaluate((frameRotation) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const frameId = store.createShape('FRAME', 180, 160, 240, 160)
@@ -248,6 +258,8 @@ async function setupFrameChild(rotation: number) {
   await canvas.waitForRender()
 
   const state = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -290,6 +302,8 @@ test('frame children keep correct hover and click hit area without rotation', as
   await canvas.hover(state.hitX, state.hitY)
   const hoveredId = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.hoveredNodeId
@@ -305,6 +319,8 @@ test('frame children keep correct hover and click hit area without rotation', as
   await canvas.hover(state.missX, state.missY)
   const hoveredMiss = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.hoveredNodeId
@@ -320,6 +336,8 @@ test('rotated frame children keep correct hover and click hit area', async () =>
   await canvas.hover(state.hitX, state.hitY)
   const hoveredId = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.hoveredNodeId
@@ -335,6 +353,8 @@ test('rotated frame children keep correct hover and click hit area', async () =>
   await canvas.hover(state.missX, state.missY)
   const hoveredMiss = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.hoveredNodeId
@@ -351,6 +371,8 @@ test('rotation drag exposes live rotation preview state', async () => {
   await canvas.waitForRender()
 
   const viewport = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -380,6 +402,8 @@ test('rotation drag exposes live rotation preview state', async () => {
 
   const preview = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.rotationPreview
@@ -392,6 +416,8 @@ test('rotation drag exposes live rotation preview state', async () => {
 
   const clearedPreview = await page.evaluate(() =>
     (() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return store.state.rotationPreview

@@ -17,6 +17,8 @@ test.beforeAll(async ({ browser }) => {
   await canvas.clearCanvas()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -97,6 +99,8 @@ test('advanced typography controls update case, alignment, truncation, and featu
   await canvas.waitForRender()
 
   const node = await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const current = store?.graph.getNode(id)
     return current
@@ -128,6 +132,8 @@ test('bold button toggles fontWeight to 700 then back to 400', async () => {
 
   // ensure starting weight is 400 via undo-safe store method
   await page.evaluate(async (id: string) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.updateNodeWithUndo(id, { fontWeight: 400 }, 'reset')

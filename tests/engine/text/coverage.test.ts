@@ -1,13 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/core'
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import {
   collectGraphFontKeys,
   collectGraphFontRequirements,
   fontManager,
   missingGraphFontScripts,
   textNeededFallbackScripts
-} from '@open-pencil/core/text'
+} from '#core/text'
+
+import { repoPath } from '#tests/helpers/paths'
 
 function pageId(graph: SceneGraph): string {
   return graph.getPages()[0].id
@@ -22,7 +25,7 @@ describe('font fallback coverage indexing', () => {
 
   test('includes a lowcode BUTTON label in font and fallback preflight', async () => {
     const family = `ButtonLatin_${Date.now()}`
-    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const data = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     fontManager.markLoaded(family, 'Regular', data)
     const graph = new SceneGraph()
     const node = graph.createNode('BUTTON', pageId(graph), {
@@ -40,7 +43,7 @@ describe('font fallback coverage indexing', () => {
   })
 
   test('includes INPUT placeholders and TEXTAREA values in font and fallback preflight', async () => {
-    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const data = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     const inputFamily = `InputPlaceholderLatin_${Date.now()}`
     const textareaFamily = `TextareaValueLatin_${Date.now()}`
     fontManager.markLoaded(inputFamily, 'Regular', data)
@@ -79,7 +82,7 @@ describe('font fallback coverage indexing', () => {
     fontManager.markLoaded(
       family,
       'Regular',
-      await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+      await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     )
     const graph = new SceneGraph()
     const radio = graph.createNode('RADIO', pageId(graph), {
@@ -119,7 +122,7 @@ describe('font fallback coverage indexing', () => {
 
   test('detects supplementary-plane Han code points', async () => {
     const family = `SupplementaryHan_${Date.now()}`
-    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const data = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     fontManager.markLoaded(family, 'Regular', data)
     const graph = new SceneGraph()
     const node = graph.createNode('TEXT', pageId(graph), {
@@ -133,7 +136,7 @@ describe('font fallback coverage indexing', () => {
 
   test('uses BCP-47 language hints for Han fallback selection', async () => {
     const family = `LanguageHint_${Date.now()}`
-    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const data = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     fontManager.markLoaded(family, 'Regular', data)
     const graph = new SceneGraph()
     const node = graph.createNode('TEXT', pageId(graph), {
@@ -155,7 +158,9 @@ describe('font fallback coverage indexing', () => {
 
   test('uses UTF-16 style-run indices after a surrogate pair', async () => {
     const cjkData = await Bun.file('tests/fixtures/fonts/NotoSansSC-Regular.ttf').arrayBuffer()
-    const latinData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const latinData = await Bun.file(
+      repoPath('packages/core/assets/Inter-Regular.ttf')
+    ).arrayBuffer()
     const cjkFamily = `CJKRunBase_${Date.now()}`
     const latinFamily = `CJKRunOverride_${Date.now()}`
     fontManager.markLoaded(cjkFamily, 'Regular', cjkData)

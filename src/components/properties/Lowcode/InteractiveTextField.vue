@@ -82,7 +82,7 @@ function commit(): void {
       @enter="commit"
       @keydown.esc="draft = modelValue"
     />
-    <p v-if="invalid" role="alert" class="text-[10px] text-danger">
+    <p v-if="invalid" role="alert" class="text-[10px] text-error">
       {{
         validationMessage ||
         (dateTimeValue ? panels.lowcodeDateTimeInvalid : panels.lowcodeTimeInvalid)

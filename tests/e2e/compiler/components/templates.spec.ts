@@ -9,34 +9,6 @@ import { prepareFieldTemplateEvidence } from '#tests/helpers/compiler/components
 import { prepareInputTemplateEvidence } from '#tests/helpers/compiler/components/templates/inputs-evidence'
 
 for (const target of ['react', 'vue'] as const) {
-  test(`${target} English template copy fits desktop and compact viewports`, async ({
-    page
-  }, info) => {
-    test.setTimeout(120000)
-    for (const id of COMPONENT_TEMPLATE_IDS) {
-      await test.step(id, async () => {
-        await withComponentTemplate(
-          page,
-          target,
-          id,
-          async () => {
-            await recordTemplateLayout(page, info, id, target, 'en')
-            if (id === 'dialog-form') {
-              await page.getByRole('button', { name: 'Edit profile', exact: true }).click()
-              await expect(page.getByRole('dialog')).toBeVisible()
-              await recordTemplateLayout(page, info, id, target, 'en', 'dialog')
-            }
-            if (id === 'tabs-details') {
-              await page.getByRole('tab', { name: 'Details', exact: true }).click()
-              await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible()
-              await recordTemplateLayout(page, info, id, target, 'en', 'details')
-            }
-          },
-          'en'
-        )
-      })
-    }
-  })
   test(`${target} repeated input templates keep their runtime values independent`, async ({
     page
   }) => {
@@ -63,22 +35,45 @@ for (const target of ['react', 'vue'] as const) {
       page
     }, info) => {
       test.setTimeout(90000)
-      await withComponentTemplate(
-        page,
-        target,
-        id,
-        async () => {
-          await page.setViewportSize({ width: 375, height: 1000 })
-          await exerciseTemplate(page, id)
-          await recordTemplateLayout(page, info, id, target)
-          if (
-            (await prepareInputTemplateEvidence(page, id)) ||
-            (await prepareFieldTemplateEvidence(page, id))
-          )
-            await recordTemplateLayout(page, info, id, target, 'zh-CN', 'active')
-        },
-        'zh-CN'
-      )
+      await test.step('English template copy', async () => {
+        await withComponentTemplate(
+          page,
+          target,
+          id,
+          async () => {
+            await recordTemplateLayout(page, info, id, target, 'en')
+            if (id === 'dialog-form') {
+              await page.getByRole('button', { name: 'Edit profile', exact: true }).click()
+              await expect(page.getByRole('dialog')).toBeVisible()
+              await recordTemplateLayout(page, info, id, target, 'en', 'dialog')
+            }
+            if (id === 'tabs-details') {
+              await page.getByRole('tab', { name: 'Details', exact: true }).click()
+              await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible()
+              await recordTemplateLayout(page, info, id, target, 'en', 'details')
+            }
+          },
+          'en'
+        )
+      })
+      await test.step('Chinese template behavior', async () => {
+        await withComponentTemplate(
+          page,
+          target,
+          id,
+          async () => {
+            await page.setViewportSize({ width: 375, height: 1000 })
+            await exerciseTemplate(page, id)
+            await recordTemplateLayout(page, info, id, target)
+            if (
+              (await prepareInputTemplateEvidence(page, id)) ||
+              (await prepareFieldTemplateEvidence(page, id))
+            )
+              await recordTemplateLayout(page, info, id, target, 'zh-CN', 'active')
+          },
+          'zh-CN'
+        )
+      })
     })
   }
 }

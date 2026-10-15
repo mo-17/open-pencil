@@ -14,7 +14,7 @@ import {
 import type { SceneNode, Vector } from '@open-pencil/scene-graph'
 
 import { createCanvasPointer } from '#vue/canvas/pointer/use'
-import { handleMoveMove, handleMoveUp } from '#vue/shared/input/move'
+import { handleMoveMove, handleMoveUp, type MoveModifiers } from '#vue/shared/input/move'
 import { handleSelectDown } from '#vue/shared/input/select'
 import type { DragMove, DragState } from '#vue/shared/input/types'
 
@@ -105,7 +105,13 @@ function nodeCenter(editor: Editor, node: SceneNode): Vector {
   })
 }
 
-function movePointer(editor: Editor, drag: DragMove, start: Vector, delta: Vector) {
+function movePointer(
+  editor: Editor,
+  drag: DragMove,
+  start: Vector,
+  delta: Vector,
+  modifiers: MoveModifiers = { ctrlKey: true }
+) {
   handleMoveMove(
     drag,
     start.x + delta.x,
@@ -113,7 +119,7 @@ function movePointer(editor: Editor, drag: DragMove, start: Vector, delta: Vecto
     drag.startScreenX + delta.x * editor.state.zoom,
     drag.startScreenY + delta.y * editor.state.zoom,
     editor,
-    true
+    modifiers
   )
 }
 
@@ -148,7 +154,9 @@ describe('EffectPick canvas selection and dragging', () => {
     const { drag, screen } = selectDown(editor, start)
     const move = requireMove(drag)
     expect([...editor.state.selectedIds]).toEqual([node.id])
-    handleMoveMove(move, start.x + 31, start.y + 17, screen.x + 31, screen.y + 17, editor, true)
+    handleMoveMove(move, start.x + 31, start.y + 17, screen.x + 31, screen.y + 17, editor, {
+      ctrlKey: true
+    })
     expect(node).toMatchObject({ x: before.x + 31, y: before.y + 17 })
     expectUnpainted(node)
     handleMoveUp(move, editor)
@@ -247,10 +255,16 @@ describe('EffectPick canvas selection and dragging', () => {
     const move = requireMove(drag)
     expect(move.autoLayoutParentId).toBe(parent.id)
     const destination = { x: parent.x + parent.width - 10, y: start.y }
-    movePointer(editor, move, start, {
-      x: destination.x - start.x,
-      y: destination.y - start.y
-    })
+    movePointer(
+      editor,
+      move,
+      start,
+      {
+        x: destination.x - start.x,
+        y: destination.y - start.y
+      },
+      {}
+    )
     expect(editor.state.layoutInsertIndicator?.parentId).toBe(parent.id)
     expect(node).toMatchObject(before)
     handleMoveUp(move, editor)

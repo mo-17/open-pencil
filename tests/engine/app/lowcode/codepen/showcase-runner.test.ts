@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   createCodePenSidecarCommand,
   runCodePenSidecarRequest,
@@ -157,7 +159,7 @@ describe('CodePen sidecar runner lifecycle', () => {
     const harness = runnerHarness()
     const pending = runCodePenSidecarRequest(
       REQUEST,
-      (raw) => JSON.parse(raw) as { ok: boolean },
+      (raw) => v.parse(v.pipe(v.string(), v.parseJson(), v.looseObject({ ok: v.boolean() })), raw),
       undefined,
       harness.dependencies
     )
@@ -174,7 +176,15 @@ describe('CodePen sidecar runner lifecycle', () => {
     const harness = runnerHarness()
     const pending = runCodePenSidecarRequest(
       REQUEST,
-      (raw) => JSON.parse(raw) as { ok: false; error: { code: string } },
+      (raw) =>
+        v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({ ok: v.literal(false), error: v.looseObject({ code: v.string() }) })
+          ),
+          raw
+        ),
       undefined,
       harness.dependencies
     )
@@ -183,7 +193,7 @@ describe('CodePen sidecar runner lifecycle', () => {
       '{"version":1,"requestId":"request-1","ok":false,"error":{"code":"unsafe-import"}}\n'
     )
     harness.command.emitClose(1)
-    await expect(pending).resolves.toEqual({
+    await expect<unknown>(pending).resolves.toEqual({
       version: 1,
       requestId: 'request-1',
       ok: false,
@@ -195,7 +205,8 @@ describe('CodePen sidecar runner lifecycle', () => {
     const harness = runnerHarness()
     const pending = runCodePenSidecarRequest(
       REQUEST,
-      (raw) => JSON.parse(raw) as { message: string },
+      (raw) =>
+        v.parse(v.pipe(v.string(), v.parseJson(), v.looseObject({ message: v.string() })), raw),
       undefined,
       harness.dependencies
     )

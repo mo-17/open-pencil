@@ -14,6 +14,7 @@ import {
   type SupabaseMigrationReviewEnvironmentV1
 } from '#compiler/backend/supabase/migration-review'
 import { stableSQLName } from '#compiler/backend/supabase/migration-review/common'
+import { compact } from 'es-toolkit'
 
 import {
   STAGED_MIGRATION_EXECUTION_FORMAT,
@@ -1281,21 +1282,21 @@ describe('Supabase inspected migration review', () => {
   })
 
   test('represents public schema ACL and fails closed for PUBLIC CREATE', async () => {
+    const invalidSchema = {
+      objectKind: 'schema',
+      schema: 'public',
+      objectName: 'public',
+      grantor: 'postgres',
+      grantee: 'PUBLIC',
+      privilege: 'CREATE',
+      isGrantable: false,
+      source: 'openpencil'
+    } as const
+    Reflect.set(invalidSchema, 'objectName', 'private')
     await expect(
       createSupabaseInspectedMigrationSnapshot(
         emptyInspection({
-          privileges: [
-            {
-              objectKind: 'schema',
-              schema: 'public',
-              objectName: 'private',
-              grantor: 'postgres',
-              grantee: 'PUBLIC',
-              privilege: 'CREATE',
-              isGrantable: false,
-              source: 'openpencil'
-            }
-          ]
+          privileges: [invalidSchema]
         })
       )
     ).rejects.toThrow('schema privileges must reference exactly public')
@@ -1325,12 +1326,7 @@ describe('Supabase inspected migration review', () => {
     expect(review.manifest.blockers.map((entry) => entry.code)).toContain(
       'supabase-public-acl-blocked'
     )
-    expect(
-      review.sql
-        .split('\n')
-        .filter(Boolean)
-        .every((line) => line.startsWith('--'))
-    ).toBe(true)
+    expect(compact(review.sql.split('\n')).every((line) => line.startsWith('--'))).toBe(true)
     expect(review.sql).not.toContain('BEGIN;')
   })
 

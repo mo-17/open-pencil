@@ -47,6 +47,8 @@ test('mixed SVG and raster drops share placement, selection, and undo', async ()
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store?.graph.getChildren(store.state.currentPageId).length ?? 0
       })
@@ -54,6 +56,8 @@ test('mixed SVG and raster drops share placement, selection, and undo', async ()
     .toBe(2)
 
   const placed = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return {
@@ -75,20 +79,30 @@ test('mixed SVG and raster drops share placement, selection, and undo', async ()
   await editor.canvas.waitForRender()
   expect(await editor.canvas.screenshotCanvasRegion()).toMatchSnapshot('dropped-svg-multicolor.png')
 
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store?.graph.getChildren(store.state.currentPageId).length ?? 0
       })
     )
     .toBe(0)
 
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().redoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().redoAction()
+  })
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store?.graph.getChildren(store.state.currentPageId).length ?? 0
       })

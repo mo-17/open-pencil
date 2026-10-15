@@ -4,11 +4,14 @@ import { mkdir, rm, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { REMOTE_PEN_PARSE_LIMITS } from '@open-pencil/pen'
 import { REMOTE_COMPONENT_LIBRARY_DESCRIPTOR_LIMITS, SceneGraph } from '@open-pencil/scene-graph'
 import type { LibraryManifest, SceneNode } from '@open-pencil/scene-graph'
 
+import { parseCLILibraryManifest } from '#tests/helpers/cli-reports'
 import { cliSourcePath } from '#tests/helpers/paths'
 import { heavy } from '#tests/helpers/test-utils'
 
@@ -17,6 +20,7 @@ setDefaultTimeout(30_000)
 const CLI = cliSourcePath('index.ts')
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const UNSAFE_IMAGE_HASH = 'ab'.repeat(20)
+const UNSAFE_IMAGE_FIG_HASH = '7037807198c22a7d2b0807371d763779a84fdfcf'
 
 async function run(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(['bun', CLI, ...args], {
@@ -73,7 +77,10 @@ function updateCardTitle(graph: SceneGraph, text: string): void {
 }
 
 async function readManifest(path: string): Promise<LibraryManifest> {
-  return JSON.parse(await Bun.file(path).text()) as LibraryManifest
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), v.pipe(v.unknown(), v.transform(parseCLILibraryManifest))),
+    await Bun.file(path).text()
+  )
 }
 
 heavy('library CLI (§14)', () => {
@@ -114,7 +121,14 @@ heavy('library CLI (§14)', () => {
         manifest1Path
       ])
       expect(publish1.exitCode).toBe(0)
-      const published1 = JSON.parse(publish1.stdout) as { manifest: LibraryManifest }
+      const published1 = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({ manifest: v.pipe(v.unknown(), v.transform(parseCLILibraryManifest)) })
+        ),
+        publish1.stdout
+      )
       expect(published1.manifest.components[0]?.key).toBe('component-card')
       expect(await Bun.file(manifest1Path).exists()).toBe(true)
 
@@ -133,19 +147,26 @@ heavy('library CLI (§14)', () => {
         remoteManifestPath
       ])
       expect(remotePrepare.exitCode).toBe(0)
-      const prepared = JSON.parse(remotePrepare.stdout) as {
-        manifest: {
-          format: string
-          schemaVersion: number
-          source: { kind: string; ref: string }
-          artifact: {
-            format: string
-            mediaType: string
-            byteLength: number
-            integrity: { algorithm: string; digest: string }
-          }
-        }
-      }
+      const prepared = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({
+            manifest: v.looseObject({
+              format: v.string(),
+              schemaVersion: v.number(),
+              source: v.looseObject({ kind: v.string(), ref: v.string() }),
+              artifact: v.looseObject({
+                format: v.string(),
+                mediaType: v.string(),
+                byteLength: v.number(),
+                integrity: v.looseObject({ algorithm: v.string(), digest: v.string() })
+              })
+            })
+          })
+        ),
+        remotePrepare.stdout
+      )
       const publishedBytes = new Uint8Array(await Bun.file(libPublished1).arrayBuffer())
       expect(prepared.manifest).toMatchObject({
         format: 'openpencil.component-library',
@@ -211,9 +232,16 @@ heavy('library CLI (§14)', () => {
 
       const check = await run(['library', 'check', imported, '--manifest', manifest2Path, '--json'])
       expect(check.exitCode).toBe(0)
-      const checks = JSON.parse(check.stdout) as {
-        checks: Array<{ status: string; componentKey: string }>
-      }
+      const checks = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({
+            checks: v.array(v.looseObject({ status: v.string(), componentKey: v.string() }))
+          })
+        ),
+        check.stdout
+      )
       expect(checks.checks).toMatchObject([{ componentKey: 'component-card', status: 'outdated' }])
 
       const accept = await run([
@@ -324,7 +352,14 @@ heavy('library CLI (§14)', () => {
         manifestPath
       ])
       expect(publish.exitCode).toBe(0)
-      const manifest = JSON.parse(await Bun.file(manifestPath).text()) as LibraryManifest
+      const manifest = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.pipe(v.unknown(), v.transform(parseCLILibraryManifest))
+        ),
+        await Bun.file(manifestPath).text()
+      )
       const invalidDescriptors = [
         { ...manifest, components: [] },
         {
@@ -426,7 +461,7 @@ heavy('library CLI (§14)', () => {
       ])
       expect(result.exitCode).toBe(1)
       expect(result.stderr).toMatch(
-        new RegExp(`image "${UNSAFE_IMAGE_HASH}".*complete PNG, JPEG, or WebP`)
+        new RegExp(`image "${UNSAFE_IMAGE_FIG_HASH}".*complete PNG, JPEG, or WebP`)
       )
       expect(await Bun.file(output).exists()).toBe(false)
     } finally {

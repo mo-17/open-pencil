@@ -39,7 +39,8 @@ function onToggle(event: Event): void {
     <div
       class="space-y-1.5"
       :class="{ 'cursor-not-allowed opacity-50': disabled }"
-      :data-test-id="propertyPrefix"
+      data-slot="motion-color-channel"
+      :data-property="propertyPrefix"
       :data-capability-disabled="disabled || undefined"
     >
       <label class="flex h-6 items-center gap-1.5 text-[10px] text-surface">

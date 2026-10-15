@@ -59,7 +59,13 @@ describe('tool approval routing', () => {
         [
           {
             ...pending,
-            parts: [{ ...pending.parts[0], state: 'approval-responded' as const }]
+            parts: [
+              {
+                ...pending.parts[0],
+                state: 'approval-responded' as const,
+                approval: { id: 'approval-1', approved: true }
+              }
+            ]
           }
         ],
         'assistant-1',

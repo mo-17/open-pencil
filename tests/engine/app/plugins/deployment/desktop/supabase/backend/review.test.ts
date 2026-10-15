@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
+import {
+  createSupabaseInspectedMigrationSnapshot,
+  createSupabaseInspectedMigrationReview
+} from '@open-pencil/compiler/backend'
 import type {
   BackendApplicationSpecV1,
   BackendReleaseProviderAuthorityV1,
@@ -36,7 +40,10 @@ import {
   type DesktopSupabaseBackendReviewDependencies,
   type DesktopSupabaseStrictReviewInput
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
-import type { SupabaseBackendReleaseReviewArtifactV1 } from '@/app/plugins/host/deployment/supabase/backend-release'
+import type {
+  SupabaseBackendReleaseReviewArtifactV1,
+  SupabaseBackendReleaseHostReviewManifestV1
+} from '@/app/plugins/host/deployment/supabase/backend-release'
 
 const PROJECT_REF = 'enekobitnhobuiuamvqj'
 const PROJECT_URL = `https://${PROJECT_REF}.supabase.co`
@@ -123,23 +130,74 @@ async function artifactFor(
     sql?: string
   }> = {}
 ): Promise<SupabaseBackendReleaseReviewArtifactV1> {
-  const inspectedSchemaDigest = 'inspected-schema-digest'
+  const snapshot = await createSupabaseInspectedMigrationSnapshot({
+    provenance: {
+      projectRef: input.projectRef,
+      accountId: 'organization-1',
+      querySchemaVersion: 'catalog-v1',
+      databaseRole: 'postgres',
+      observedAt: '2026-09-02T05:00:00.000Z',
+      completeness: 'complete',
+      truncated: false
+    },
+    currentModel: application().dataModel,
+    coverage: {
+      schemas: 'complete',
+      tables: 'complete',
+      columns: 'complete',
+      enums: 'complete',
+      constraints: 'complete',
+      indexes: 'complete',
+      sequences: 'complete',
+      views: 'complete',
+      functions: 'complete',
+      roles: 'complete',
+      roleMemberships: 'complete',
+      rls: 'complete',
+      policies: 'complete',
+      storageBuckets: 'complete',
+      storagePolicies: 'complete',
+      privileges: 'complete'
+    },
+    objects: [],
+    columns: [],
+    constraints: [],
+    indexes: [],
+    roles: [
+      { roleName: 'postgres', superuser: true, bypassRls: true, inherit: true },
+      { roleName: 'anon', superuser: false, bypassRls: false, inherit: true },
+      { roleName: 'authenticated', superuser: false, bypassRls: false, inherit: true }
+    ],
+    roleMemberships: [],
+    policies: [],
+    storageBuckets: [],
+    storagePolicies: [],
+    privileges: [],
+    defaultPrivileges: []
+  })
+  const baseReview = await createSupabaseInspectedMigrationReview({
+    application: application(),
+    snapshot
+  })
+  const inspectedSchemaDigest = snapshot.inspectedSchemaDigest
   const inspectedManifest = {
+    ...baseReview.manifest,
     inspectedSchemaDigest,
     stagedExecutionPlanDigest: input.stagedExecutionPlan
       ? await digestStagedMigrationExecutionPlan(input.stagedExecutionPlan)
       : null,
     reviewReady: true,
-    applyAllowed: false,
-    releaseReady: false,
+    applyAllowed: false as const,
+    releaseReady: false as const,
     blockers: []
   }
   const inspectedReview = {
+    ...baseReview,
     manifest: inspectedManifest,
     manifestDigest: 'inspected-review-manifest-digest',
     sql: overrides.sql ?? '-- Review only.\n'
   }
-  const manifest = {
+  const manifest: SupabaseBackendReleaseHostReviewManifestV1 = {
     format: 'openpencil.supabase-backend-host-review.v1',
     version: 1,
     documentDigest: input.documentDigest,
@@ -163,10 +221,11 @@ async function artifactFor(
       migrationPlanDigest: 'migration-plan-digest',
       targetModelDigest: 'target-model-digest',
       reviewReady: true,
-      applyAllowed: overrides.applyAllowed ?? false,
+      applyAllowed: false,
       releaseReady: false
     }
   }
+  if (overrides.applyAllowed) Reflect.set(manifest.inspectedReview, 'applyAllowed', true)
   const artifact: SupabaseBackendReleaseReviewArtifactV1 = {
     format: 'openpencil.supabase-backend-review-artifact.v1',
     version: 1,

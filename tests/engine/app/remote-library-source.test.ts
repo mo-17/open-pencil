@@ -17,6 +17,8 @@ import {
   type RemoteLibraryArtifactFormat
 } from '@/app/lowcode/remote-library-source'
 
+import { fetchStub } from '#tests/helpers/fetch'
+
 const MANIFEST_URL = 'https://libraries.openpencil.dev/brand/manifest.json'
 const ARTIFACT_URL = 'https://libraries.openpencil.dev/brand/library.pen'
 const FIG_ARTIFACT_URL = 'https://libraries.openpencil.dev/brand/library.fig'
@@ -108,7 +110,7 @@ function fixtureFetch(
   artifactResponse: () => Response,
   calls: FetchCall[] = []
 ): typeof globalThis.fetch {
-  return (async (input, init) => {
+  return fetchStub(async (input, init) => {
     const href = String(input)
     calls.push({ href, init })
     if (href === MANIFEST_URL) {
@@ -119,7 +121,7 @@ function fixtureFetch(
     }
     if (href === ARTIFACT_URL || href === FIG_ARTIFACT_URL) return artifactResponse()
     throw new Error(`Unexpected request: ${href}`)
-  }) as typeof globalThis.fetch
+  })
 }
 
 function artifactResponse(
@@ -128,7 +130,7 @@ function artifactResponse(
   mediaType = 'application/json',
   headers: Record<string, string> = {}
 ): Response {
-  return responseAt(url, bytes, {
+  return responseAt(url, webCryptoBuffer(bytes), {
     status: 200,
     headers: { 'content-type': mediaType, ...headers }
   })
@@ -390,7 +392,9 @@ describe('remote component library source', () => {
           artifactResponse(bytes, FIG_ARTIFACT_URL, 'application/octet-stream')
         )
       })
-    ).rejects.toThrow(new RegExp(`image "${UNSAFE_IMAGE_HASH}".*complete PNG, JPEG, or WebP`))
+    ).rejects.toThrow(
+      new RegExp(`image "7037807198c22a7d2b0807371d763779a84fdfcf".*complete PNG, JPEG, or WebP`)
+    )
   })
 
   test('rejects manifest status, content type, redirect, invalid UTF-8, and declared overflow', async () => {
@@ -440,7 +444,7 @@ describe('remote component library source', () => {
       }
     ]
     for (const current of cases) {
-      const fetchImpl = (async () => current.response()) as typeof globalThis.fetch
+      const fetchImpl = fetchStub(async () => current.response())
       await expect(loadRemoteLibraryCandidate(MANIFEST_URL, { fetchImpl })).rejects.toThrow(
         current.message
       )
@@ -452,12 +456,12 @@ describe('remote component library source', () => {
       artifactURL: 'https://cdn.openpencil.dev/brand/library.pen'
     })
     let calls = 0
-    const crossOriginFetch = (async () => {
+    const crossOriginFetch = fetchStub(async () => {
       calls += 1
       return responseAt(MANIFEST_URL, JSON.stringify(crossOrigin), {
         headers: { 'content-type': 'application/json' }
       })
-    }) as typeof globalThis.fetch
+    })
     await expect(
       loadRemoteLibraryCandidate(MANIFEST_URL, { fetchImpl: crossOriginFetch })
     ).rejects.toThrow('same origin')
@@ -573,10 +577,10 @@ describe('remote component library source', () => {
     const alreadyAborted = new AbortController()
     alreadyAborted.abort(new DOMException('already cancelled', 'AbortError'))
     let preAbortedCalls = 0
-    const unexpectedFetch = (async () => {
+    const unexpectedFetch = fetchStub(async () => {
       preAbortedCalls += 1
       throw new Error('A pre-aborted load must not fetch')
-    }) as typeof globalThis.fetch
+    })
     await expect(
       loadRemoteLibraryCandidate(MANIFEST_URL, {
         fetchImpl: unexpectedFetch,
@@ -599,10 +603,11 @@ describe('remote component library source', () => {
       }
     })
     const controller = new AbortController()
-    const fetchImpl = (async () =>
+    const fetchImpl = fetchStub(async () =>
       responseAt(MANIFEST_URL, pendingBody, {
         headers: { 'content-type': 'application/json' }
-      })) as typeof globalThis.fetch
+      })
+    )
     const pending = loadRemoteLibraryCandidate(MANIFEST_URL, {
       fetchImpl,
       signal: controller.signal
@@ -612,10 +617,12 @@ describe('remote component library source', () => {
     await expect(pending).rejects.toThrow('caller cancelled')
     expect(cancelled).toBe(true)
 
-    const neverFetch = (() =>
-      new Promise<Response>(() => {
-        void 0
-      })) as typeof globalThis.fetch
+    const neverFetch = fetchStub(
+      () =>
+        new Promise<Response>(() => {
+          void 0
+        })
+    )
     await expect(
       loadRemoteLibraryCandidate(MANIFEST_URL, { fetchImpl: neverFetch, timeoutMs: 5 })
     ).rejects.toMatchObject({ name: 'TimeoutError' })

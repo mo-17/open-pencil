@@ -18,6 +18,8 @@ import {
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 function drivers(targetNodeId = '0:10'): MotionDriverSpecV1 {
   return {
     version: 1,
@@ -58,10 +60,6 @@ function node(fields: Partial<SceneNode>): SceneNode {
 
 function entry(key: string, value: string) {
   return { pluginID: OPEN_PENCIL_PLUGIN_ID, key, value }
-}
-
-function exactBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
 }
 
 function named(graph: SceneGraph, name: string): SceneNode {
@@ -174,7 +172,7 @@ describe('Motion interaction pluginData persistence', () => {
       prototype: prototype(destination.id)
     })
 
-    const g1 = await parseFigFile(exactBuffer(await exportFigFile(graph)))
+    const g1 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(graph)))
     const g1Owner = named(g1, owner.name)
     const g1Target = named(g1, target.name)
     const g1Destination = named(g1, destination.name)
@@ -183,7 +181,7 @@ describe('Motion interaction pluginData persistence', () => {
     expect(named(g1, source.name).prototype).toEqual(prototype(g1Destination.id))
     expect(g1Owner.source.editedFields).toEqual([])
 
-    const g2 = await parseFigFile(exactBuffer(await exportFigFile(g1)))
+    const g2 = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(g1)))
     const g2Owner = named(g2, owner.name)
     const g2Target = named(g2, target.name)
     const g2Destination = named(g2, destination.name)

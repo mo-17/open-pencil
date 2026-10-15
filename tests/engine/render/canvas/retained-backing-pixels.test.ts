@@ -9,6 +9,8 @@ import { renderSceneBacking } from '#core/canvas/renderer/retained-backing'
 
 import { expectDefined } from '#tests/helpers/assert'
 
+import { expectRgbaPixels } from './helpers'
+
 let ck: Awaited<ReturnType<typeof initCanvasKit>>
 
 beforeAll(async () => {
@@ -90,7 +92,7 @@ function pixels(renderer: SkiaRenderer) {
   renderer.surface.flush()
   const image = renderer.surface.makeImageSnapshot()
   try {
-    return expectDefined(
+    return expectRgbaPixels(
       image.readPixels(0, 0, {
         width: 200,
         height: 220,
@@ -230,3 +232,171 @@ test('active edits draw directly without replacing the overscan backing', () => 
     renderer.destroy()
   }
 }, 30_000)
+
+test('tiled active edits release an unfinished backing build and preserve the completed image', () => {
+  const { graph, pageId } = createFixture()
+  const renderer = createRenderer(pageId)
+  try {
+    settleBacking(renderer, graph)
+    const backing = expectDefined(renderer.sceneBacking, 'completed backing')
+    const childId = expectDefined(graph.getNode(pageId)?.childIds[0], 'editable rectangle')
+    graph.updateNode(childId, { width: 8 })
+    renderer.tiledSceneEnabled = true
+    renderer.sceneBackingPreviewUntil = 0
+    expect(renderSceneBacking(renderer, renderer.surface.getCanvas(), graph, 2)).toBe('backing')
+    const build = expectDefined(renderer.sceneBackingBuild, 'unfinished backing build')
+    expect(build.index).toBeGreaterThan(0)
+    const releaseBuild = spyOn(build.surface, 'delete')
+    const releaseCompletedImage = spyOn(backing.image, 'delete')
+    try {
+      render(renderer, graph, new Set(), {}, 2, 'scene', true)
+      expect(releaseBuild).toHaveBeenCalledTimes(1)
+      expect(renderer.sceneBackingBuild).toBeNull()
+      expect(renderer.sceneBacking).toBe(backing)
+      expect(releaseCompletedImage).not.toHaveBeenCalled()
+      expect(renderer.sceneBackingNeedsCrispRender).toBe(false)
+      expect(renderer.tiledScenePending).toBe(false)
+      expect(renderer.profiler.stats.scenePictureMode).toBe('volatile')
+      expect(renderer.profiler.stats.scenePictureMissReason).toBe('active-edit')
+      const livePixels = pixels(renderer)
+      expect(livePixels).toEqual(directPixels(renderer, graph, pageId))
+      render(renderer, graph, new Set(), {}, 3, 'scene', true)
+      expect(releaseBuild).toHaveBeenCalledTimes(1)
+      expect(renderer.sceneBacking).toBe(backing)
+      settleBacking(renderer, graph, 3)
+      expect(renderer.sceneBackingBuild).toBeNull()
+      expect(renderer.sceneBacking?.sceneVersion).toBe(3)
+      expect(renderer.sceneBacking).not.toBe(backing)
+      expect(releaseCompletedImage).toHaveBeenCalledTimes(1)
+    } finally {
+      releaseBuild.mockRestore()
+      releaseCompletedImage.mockRestore()
+    }
+  } finally {
+    renderer.destroy()
+  }
+}, 30_000)
+
+/** Read the visible surface itself, including every intermediate flush during the bounded build. */
+function visibleCenterPixel(renderer: SkiaRenderer) {
+  const image = renderer.surface.makeImageSnapshot()
+  try {
+    return Array.from(
+      expectRgbaPixels(
+        image.readPixels(80, 80, {
+          width: 1,
+          height: 1,
+          colorType: ck.ColorType.RGBA_8888,
+          alphaType: ck.AlphaType.Unpremul,
+          colorSpace: ck.ColorSpace.SRGB
+        }),
+        'visible rectangle center'
+      )
+    )
+  } finally {
+    image.delete()
+  }
+}
+
+function assertLiveFrameSurvivesBackingRebuild(changed: 'scene' | 'position-preview'): void {
+  const graph = new SceneGraph()
+  const page = expectDefined(graph.getPages()[0], 'page')
+  const renderer = createRenderer(page.id)
+  renderer.setPerformanceMode('balanced')
+  const blue = {
+    type: 'SOLID' as const,
+    color: { r: 0, g: 0, b: 1, a: 1 },
+    opacity: 1,
+    visible: true
+  }
+  const grey = {
+    type: 'SOLID' as const,
+    color: { r: 217 / 255, g: 217 / 255, b: 217 / 255, a: 1 },
+    opacity: 1,
+    visible: true
+  }
+  const node =
+    changed === 'position-preview'
+      ? graph.createNode('RECTANGLE', page.id, {
+          x: 20,
+          y: 20,
+          width: 80,
+          height: 80,
+          fills: [blue]
+        })
+      : null
+  try {
+    settleBacking(renderer, graph, 1)
+    const previous = expectDefined(renderer.sceneBacking, 'completed old backing')
+    const previousImage = previous.image
+    expect(visibleCenterPixel(renderer)).toEqual(
+      changed === 'scene' ? [255, 255, 255, 255] : [0, 0, 255, 255]
+    )
+    const deletion = spyOn(previousImage, 'delete')
+    const originalFlush = renderer.surface.flush.bind(renderer.surface)
+    const observed: number[][] = []
+    const flush = spyOn(renderer.surface, 'flush').mockImplementation(() => {
+      originalFlush()
+      observed.push(visibleCenterPixel(renderer))
+    })
+    try {
+      if (node) graph.updateNodePreview(node.id, { x: 21, fills: [grey] })
+      else
+        graph.createNode('RECTANGLE', page.id, {
+          x: 20,
+          y: 20,
+          width: 80,
+          height: 80,
+          fills: [grey]
+        })
+      const liveVersion = changed === 'scene' ? 2 : 1
+      render(renderer, graph, new Set(), {}, liveVersion, 'scene', true)
+      expect(visibleCenterPixel(renderer)).toEqual([217, 217, 217, 255])
+      // A committed preview advances the canvas version, ending position-preview live policy.
+      // Its preceding live watermark still shares the OLD backing's scene version, so the
+      // position-preview component (not the scene-version comparison) must reject that image.
+      const committedVersion = changed === 'scene' ? 3 : 2
+      renderer.sceneBackingPreviewUntil = 0
+      renderer.render(graph, new Set(), {}, committedVersion, 'scene')
+      expect(renderer.sceneBackingBuild).not.toBeNull()
+      expect(renderer.sceneBacking).toBe(previous)
+      expect(deletion).not.toHaveBeenCalled()
+      // The old implementation presents the previous white/blue image here.
+      expect(visibleCenterPixel(renderer)).toEqual([217, 217, 217, 255])
+      settleBacking(renderer, graph, committedVersion)
+      expect(observed.length).toBeGreaterThan(4)
+      for (const rgba of observed) expect(rgba).toEqual([217, 217, 217, 255])
+      expect(renderer.sceneBackingBuild).toBeNull()
+      expect(renderer.sceneBacking?.sceneVersion).toBe(committedVersion)
+      expect(renderer.sceneBacking?.positionPreviewVersion).toBe(graph.positionPreviewVersion)
+      expect(renderer.sceneBacking).not.toBe(previous)
+      expect(deletion).toHaveBeenCalledTimes(1)
+    } finally {
+      flush.mockRestore()
+      deletion.mockRestore()
+    }
+    const completed = expectDefined(renderer.sceneBacking, 'new completed backing')
+    renderer.replaceSurface(expectDefined(ck.MakeSurface(2176, 2128), 'replacement surface'))
+    expect(renderer.lastLiveSceneContent).toBeNull()
+    expect(renderer.sceneBacking).toBe(completed)
+    const otherPage = graph.createNode('CANVAS', graph.rootId)
+    renderer.pageId = otherPage.id
+    renderer.render(graph, new Set(), {}, 1, 'scene')
+    expect(renderer.lastLiveSceneContent).toBeNull()
+    expect(visibleCenterPixel(renderer)).toEqual([255, 255, 255, 255])
+    renderer.clearDocumentCaches()
+    expect(renderer.lastLiveSceneContent).toBeNull()
+    expect(renderer.sceneBacking).toBeNull()
+  } finally {
+    renderer.destroy()
+  }
+  expect(renderer.lastLiveSceneContent).toBeNull()
+}
+
+for (const changed of ['scene', 'position-preview'] as const) {
+  test(
+    `a completed backing cannot erase a newer live ${changed} frame while rebuilding`,
+    () => assertLiveFrameSurvivesBackingRebuild(changed),
+    30_000
+  )
+}

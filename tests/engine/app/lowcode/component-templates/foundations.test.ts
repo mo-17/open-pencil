@@ -15,6 +15,7 @@ import {
 } from '@/app/lowcode/feedback-controls/properties'
 import { localizedAppPluginModulePropertyText } from '@/app/plugins/localization'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { componentTemplateFixture } from '#tests/helpers/compiler/components/templates/fixture'
 import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 
@@ -29,7 +30,7 @@ test('foundation inspector labels and choices are translated; hidden settings ar
     expect(feedbackControlHint(module.pluginId, 'zh-CN')).toBeTruthy()
     for (const field of module.fields) {
       expect(
-        localizedAppPluginModulePropertyText(field.i18nLabelKey, 'zh-CN'),
+        localizedAppPluginModulePropertyText(expectDefined(field.i18nLabelKey), 'zh-CN'),
         field.i18nLabelKey
       ).toBeTruthy()
       for (const value of field.options ?? [])
@@ -72,7 +73,7 @@ for (const lang of ['en', 'zh-CN'])
         const result = compile({
           graph: readback,
           pageIds: [readback.getPages()[0].id],
-          options: withDefaults({ target, router: 'none', lang, devMode: false })
+          options: withDefaults({ target, router: 'none', sourceLocale: lang, devMode: false })
         })
         expect(result.warnings).toEqual([])
         const files = new Map<string, string>()

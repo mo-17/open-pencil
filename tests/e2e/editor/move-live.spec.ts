@@ -24,6 +24,8 @@ test.beforeEach(async () => {
 
 test('scene canvas repaints selected node during drag', async () => {
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('RECTANGLE', 120, 120, 80, 80)

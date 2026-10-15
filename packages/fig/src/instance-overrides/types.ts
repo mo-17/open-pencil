@@ -1,4 +1,5 @@
 import type { GUID, NodeChange, VariableConsumptionEntry } from '@open-pencil/kiwi/fig/codec'
+import { isUnsetGuid, UNSET_GUID } from '@open-pencil/kiwi/fig/guid'
 import type { Matrix, Vector } from '@open-pencil/scene-graph/primitives'
 
 export interface VariableConsumptionMapFields {
@@ -25,6 +26,11 @@ export function symbolDataOf(record: NodeChange): SymbolData | undefined {
 
 export function symbolOverridesOf(record: NodeChange): readonly SymbolOverride[] {
   return symbolDataOf(record)?.symbolOverrides ?? []
+}
+
+/** The values an instance's record derives for its layers, by layer path. */
+export function derivedSymbolDataOf(record: NodeChange): readonly DerivedSymbolOverride[] {
+  return (record.derivedSymbolData as DerivedSymbolOverride[] | undefined) ?? []
 }
 
 export function uniformScaleOf(record: NodeChange): number {
@@ -59,16 +65,13 @@ export type ComponentPropValue = {
 }
 
 /** Figma's slot value for "the component's own content", the default of every slot property. */
-export const DEFAULT_SLOT_CONTENT: Readonly<GUID> = { sessionID: 0xffffffff, localID: 0xffffffff }
+export const DEFAULT_SLOT_CONTENT: Readonly<GUID> = UNSET_GUID
 
 /** The content frame a slot value names, unless it names the component's own content. */
 export function assignedSlotContent(value: ComponentPropValue | undefined): GUID | undefined {
   const guid = value?.slotContentIdValue?.guid
   if (!guid) return undefined
-  return guid.sessionID === DEFAULT_SLOT_CONTENT.sessionID &&
-    guid.localID === DEFAULT_SLOT_CONTENT.localID
-    ? undefined
-    : guid
+  return isUnsetGuid(guid) ? undefined : guid
 }
 
 export interface ComponentPropAssignment {

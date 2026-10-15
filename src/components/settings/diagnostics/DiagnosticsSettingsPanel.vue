@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { useClipboard } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
-import { diagnostics, summarizeDiagnosticEvent } from '@/app/diagnostics'
+import { diagnostics } from '@/app/diagnostics'
+import { diagnosticsEnvironment } from '@/app/diagnostics/environment'
+import { saveDiagnosticsReport } from '@/app/diagnostics/save'
 import {
   DIAGNOSTICS_RETENTION_MAX,
   DIAGNOSTICS_RETENTION_MIN,
@@ -11,8 +14,8 @@ import {
   pruneDiagnostics,
   useDiagnosticsSettings
 } from '@/app/diagnostics/settings'
-import { useRecentDiagnostics } from '@/app/diagnostics/settings/recent'
 import { toast } from '@/app/shell/ui'
+import DiagnosticsEventList from '@/components/settings/diagnostics/DiagnosticsEventList.vue'
 import SettingsGroup from '@/components/settings/layout/SettingsGroup.vue'
 import SettingsRow from '@/components/settings/layout/SettingsRow.vue'
 import SettingsSection from '@/components/settings/layout/SettingsSection.vue'
@@ -22,6 +25,7 @@ import PresetNumberField from '@/components/ui/input/PresetNumberField.vue'
 import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
 const { common, diagnostics: diagnosticMessages } = useI18n()
+const { copy: copyText, copied } = useClipboard({ copiedDuring: 1500 })
 const clearOpen = ref(false)
 
 const {
@@ -32,10 +36,6 @@ const {
   diagnosticsRetention,
   refreshDiagnosticsStats
 } = useDiagnosticsSettings()
-const { recentEvents } = useRecentDiagnostics(
-  (events) => events.map((event) => summarizeDiagnosticEvent(event, diagnosticMessages.value)),
-  refreshDiagnosticsStats
-)
 
 const retentionValue = computed({
   get: () => diagnosticsRetention.value,
@@ -58,12 +58,18 @@ async function clearDiagnostics() {
 }
 
 async function exportDiagnostics() {
-  const text = await diagnostics.export()
   try {
-    await navigator.clipboard.writeText(text)
-    toast.info(diagnosticMessages.value.copied)
+    await copyText(await diagnostics.export(diagnosticsEnvironment()))
   } catch {
     toast.error(diagnosticMessages.value.copyFailed)
+  }
+}
+
+async function saveDiagnostics() {
+  try {
+    await saveDiagnosticsReport()
+  } catch {
+    toast.error(diagnosticMessages.value.saveFailed)
   }
 }
 </script>
@@ -113,25 +119,7 @@ async function exportDiagnostics() {
         />
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup v-if="recentEvents.length">
-      <div
-        v-for="event in recentEvents"
-        :key="`${event.timestamp}-${event.label}`"
-        class="flex items-center justify-between gap-3 px-3 py-2 text-[11px]"
-      >
-        <span class="flex min-w-0 items-center gap-2">
-          <icon-lucide-circle-alert
-            v-if="event.level === 'error'"
-            class="size-3.5 shrink-0 text-error"
-          />
-          <icon-lucide-info v-else class="size-3.5 shrink-0 text-muted" />
-          <span class="truncate text-surface">{{ event.label }}</span>
-        </span>
-        <span class="shrink-0 text-muted">{{
-          new Date(event.timestamp).toLocaleTimeString()
-        }}</span>
-      </div>
-    </SettingsGroup>
+    <DiagnosticsEventList :refresh-stats="refreshDiagnosticsStats" />
     <div class="flex items-center justify-between text-[11px] text-muted">
       <span>{{
         diagnosticMessages.eventCount({
@@ -141,8 +129,13 @@ async function exportDiagnostics() {
       }}</span>
       <div class="flex items-center gap-1.5">
         <AppButton size="xs" color="neutral" variant="ghost" @click="exportDiagnostics"
-          ><template #leading><icon-lucide-copy /></template
-          >{{ diagnosticMessages.copy }}</AppButton
+          ><template #leading
+            ><icon-lucide-check v-if="copied" /><icon-lucide-copy v-else /></template
+          >{{ copied ? common.copied : diagnosticMessages.copy }}</AppButton
+        >
+        <AppButton size="xs" color="neutral" variant="ghost" @click="saveDiagnostics"
+          ><template #leading><icon-lucide-download /></template
+          >{{ diagnosticMessages.save }}</AppButton
         >
         <AppButton
           size="xs"

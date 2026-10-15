@@ -1,10 +1,11 @@
-import type { CSSFontFaceRule } from '@acemir/cssom'
 import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 import { parseFragment, serialize, type DefaultTreeAdapterTypes } from 'parse5'
 
 import { normalizeFontFamily } from '@open-pencil/scene-graph'
 
-import type { DesignDocument, DesignElement, DesignNode, DesignStyleDeclaration } from '../types'
+import { loadHeadlessCSSOM } from '../runtime/cssom'
+import { tokenStylesheet, type TokenStylesheetFormat } from '../tokens/stylesheet'
+import type { DesignDocument, DesignNode, DesignStyleDeclaration } from '../types'
 import { mergeClassNames, serializeHTML, splitWhitespace } from './html'
 
 /** A font face the exported text uses. */
@@ -29,7 +30,11 @@ export interface WebFontFaceAsset {
   path: string
   content: Uint8Array
   sourceProvider?: string
-  licenseEvidence?: { kind: 'provider_policy'; policyUrl: string; policyCheckedAt: string }
+  licenseEvidence?: {
+    kind: 'provider_policy'
+    policyUrl: string
+    policyCheckedAt: string
+  }
 }
 
 /** Finds font files for the requested faces; paths start with `assetBasePath`. */
@@ -90,7 +95,10 @@ function extractInlineStyles(
   rules.push(`.${className}{${styleToCSS(node.inlineStyle)}}`)
   return {
     ...node,
-    attrs: { ...node.attrs, class: mergeClassNames(node.attrs.class, className) ?? className },
+    attrs: {
+      ...node.attrs,
+      class: mergeClassNames(node.attrs.class, className) ?? className
+    },
     inlineStyle: undefined,
     children
   }
@@ -118,7 +126,22 @@ function classNamesFromHTML(html: string): string[] {
   return [...classes]
 }
 
-async function compileTailwindClasses(classNames: string[]): Promise<string> {
+/**
+ * The stylesheet for the tokens the document references, in the format the page needs: plain
+ * custom properties for inline styles, `@theme` for Tailwind, so token utilities compile.
+ */
+async function tokenCSS(document: DesignDocument, format: TokenStylesheetFormat): Promise<string> {
+  const { tokens, sourceGraph } = document
+  if (!tokens || !sourceGraph || tokens.used.size === 0) return ''
+  const variables = tokens.stylesheetVariables()
+  const { css } = await tokenStylesheet(sourceGraph, {
+    format,
+    include: (variable) => variables.has(variable.id)
+  })
+  return css
+}
+
+async function compileTailwindClasses(classNames: string[], tokens: string): Promise<string> {
   if (classNames.length === 0) return ''
   const [{ compile }, { readFile }] = await Promise.all([
     import('tailwindcss'),
@@ -128,7 +151,7 @@ async function compileTailwindClasses(classNames: string[]): Promise<string> {
     readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8'),
     readFile(new URL(import.meta.resolve('tailwindcss/utilities.css')), 'utf8')
   ])
-  const compiler = await compile(`${themeCSS}\n${utilitiesCSS}`)
+  const compiler = await compile(`${themeCSS}\n${tokens}\n${utilitiesCSS}`)
   return compiler.build(classNames)
 }
 
@@ -162,21 +185,34 @@ function serializeFontWeight(weight: string | number | [number, number]): string
   return Array.isArray(weight) ? weight.join(' ') : String(weight)
 }
 
-function fontSourceValue(asset: WebFontFaceAsset): string {
-  const url = new URL(asset.path, 'file:///')
+function fontSourceValue(asset: WebFontFaceAsset, from: string): string {
+  // Relative to the stylesheet's folder, which the asset's path may start with.
+  const path =
+    from && asset.path.startsWith(`${from}/`) ? asset.path.slice(from.length + 1) : asset.path
+  const url = new URL(path, 'file:///')
   const escapedPath = url.pathname.slice(1)
   return ['url(', JSON.stringify(escapedPath), ') format(', JSON.stringify(asset.format), ')'].join(
     ''
   )
 }
 
-function fontFaceCSS(FontFaceRule: typeof CSSFontFaceRule, asset: WebFontFaceAsset): string {
-  const rule = new FontFaceRule()
+interface FontFaceCSSOptions {
+  /** The folder the stylesheet is in, which font paths are written relative to. */
+  from: string
+  /** `font-display` for every face, rather than each face's own. */
+  display?: string
+}
+
+function fontFaceCSS(
+  rule: { readonly cssText: string; style: { setProperty(property: string, value: string): void } },
+  asset: WebFontFaceAsset,
+  options: FontFaceCSSOptions
+): string {
   rule.style.setProperty('font-family', JSON.stringify(asset.family))
-  rule.style.setProperty('src', fontSourceValue(asset))
+  rule.style.setProperty('src', fontSourceValue(asset, options.from))
   rule.style.setProperty('font-weight', serializeFontWeight(asset.weight))
   rule.style.setProperty('font-style', asset.style)
-  rule.style.setProperty('font-display', asset.display ?? 'swap')
+  rule.style.setProperty('font-display', options.display ?? asset.display ?? 'swap')
   if (asset.stretch) rule.style.setProperty('font-stretch', asset.stretch)
   if (asset.unicodeRange && asset.unicodeRange.length > 0) {
     rule.style.setProperty('unicode-range', asset.unicodeRange.join(','))
@@ -184,22 +220,48 @@ function fontFaceCSS(FontFaceRule: typeof CSSFontFaceRule, asset: WebFontFaceAss
   return rule.cssText
 }
 
+/** Every font face a document's text uses, once each. */
+export function designFontRequests(document: DesignDocument): WebFontFaceRequest[] {
+  const requests = new Map<string, WebFontFaceRequest>()
+  for (const child of document.children) collectFontRequests(child, requests)
+  return [...requests.values()]
+}
+
+/** `@font-face` rules for font files, as a stylesheet in the folder `options.from`. */
+export async function fontFaceStylesheet(
+  assets: readonly WebFontFaceAsset[],
+  options: FontFaceCSSOptions
+): Promise<string> {
+  if (assets.length === 0) return ''
+  if (typeof globalThis.CSSStyleSheet === 'function') {
+    const sheet = new globalThis.CSSStyleSheet()
+    return assets
+      .map((asset) => {
+        const index = sheet.insertRule('@font-face{}', sheet.cssRules.length)
+        const rule = sheet.cssRules[index]
+        if (!(rule instanceof CSSFontFaceRule)) throw new Error('Expected a font-face rule')
+        return fontFaceCSS(rule, asset, options)
+      })
+      .join('')
+  }
+  const cssom = await loadHeadlessCSSOM()
+  return assets
+    .map((asset) => {
+      const rule = new cssom.CSSFontFaceRule()
+      rule.style = new cssom.CSSStyleDeclaration()
+      return fontFaceCSS(rule, asset, options)
+    })
+    .join('')
+}
+
 async function fontFaceAssets(
   document: DesignDocument,
   options: Required<ExportHTMLBundleOptions>
 ): Promise<{ css: string; files: ExportHTMLFile[] }> {
   if (options.fonts === 'none' || options.assets !== 'external') return { css: '', files: [] }
-  const requests = new Map<string, WebFontFaceRequest>()
-  for (const child of document.children) collectFontRequests(child, requests)
-  // Loaded only when fonts ship as files; the CSS object model is not bundled for browsers.
-  const [assets, cssom] = await Promise.all([
-    options.fonts([...requests.values()], `${options.assetBasePath}/fonts`),
-    import('@acemir/cssom')
-  ])
-  return {
-    css: assets.map((asset) => fontFaceCSS(cssom.CSSFontFaceRule, asset)).join(''),
-    files: assets
-  }
+  const assets = await options.fonts(designFontRequests(document), `${options.assetBasePath}/fonts`)
+  // The page's stylesheet sits at the top, so font paths stay as they are.
+  return { css: await fontFaceStylesheet(assets, { from: '' }), files: assets }
 }
 
 function dataImageParts(value: string): { mime: string; base64: string } | undefined {
@@ -226,7 +288,8 @@ function extensionForMime(mime: string): string {
   return 'png'
 }
 
-function extractImageAssets(
+/** Inline images moved into files under `assetBasePath`, the HTML pointing at them. */
+export function extractImageAssets(
   html: string,
   assetBasePath: string
 ): { html: string; files: ExportHTMLFile[] } {
@@ -271,8 +334,12 @@ async function exportStandaloneHTML(
 
   if (options.style === 'tailwind') {
     body = serializeHTML(doc, { style: 'tailwind' })
-    css += await compileTailwindClasses(classNamesFromHTML(body))
+    css += await compileTailwindClasses(
+      classNamesFromHTML(body),
+      await tokenCSS(document, 'tailwind')
+    )
   } else {
+    css += await tokenCSS(document, 'css')
     const rules: string[] = []
     const index = { value: 0 }
     const styledDocument: DesignDocument = {
@@ -303,7 +370,10 @@ async function exportStandaloneHTML(
   }
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${styleTag(css)}</head><body><main data-open-pencil-html="standalone" class="op-stage">${body}</main></body></html>`
-  return { entrypoint: 'index.html', files: [{ path: 'index.html', content: html }] }
+  return {
+    entrypoint: 'index.html',
+    files: [{ path: 'index.html', content: html }]
+  }
 }
 
 export async function exportHTMLBundle(
@@ -323,7 +393,10 @@ export async function exportHTMLBundle(
   return {
     entrypoint: 'index.html',
     files: [
-      { path: 'index.html', content: serializeHTML(document, { style: resolvedOptions.style }) }
+      {
+        path: 'index.html',
+        content: serializeHTML(document, { style: resolvedOptions.style })
+      }
     ]
   }
 }

@@ -75,7 +75,7 @@ describe('application guard settings', () => {
         dirtyExpr: 'dirty === true',
         message: 'Leave without saving?'
       })
-      expect([
+      expect<unknown>([
         page.state,
         root.lowcodeApplication,
         root.lowcodeDocumentState,
@@ -86,11 +86,11 @@ describe('application guard settings', () => {
       expect(page.lowcodeApplicationPage?.leaveConfirm).toBeUndefined()
       expect(page.lowcodeApplicationPage?.enterGuard).toBeDefined()
       editor.undo.undo()
-      expect(page.lowcodeApplicationPage).toEqual(before[0])
+      expect<unknown>(page.lowcodeApplicationPage).toEqual(before[0])
       editor.undo.redo()
       expect(workflow.panel.value.enter.configured).toBe(true)
       expect(workflow.panel.value.enter.remove()).toBe(true)
-      expect(page.lowcodeApplicationPage).toEqual(before[0])
+      expect<unknown>(page.lowcodeApplicationPage).toEqual(before[0])
       editor.undo.undo()
       expect(page.lowcodeApplicationPage?.enterGuard).toBeDefined()
     } finally {

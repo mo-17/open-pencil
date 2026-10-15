@@ -38,7 +38,7 @@ describe('ephemeral preview viewport controls', () => {
     controls.viewport.value = 'landscape'
     for (const width of [844, 845, 700, 547]) {
       controls.width.value = width
-      expect(controls.viewport.value).toBe('custom')
+      expect<unknown>(controls.viewport.value).toBe('custom')
       expect(controls.width.value).toBe(width)
       expect(controls.height.value).toBe(390)
     }
@@ -49,7 +49,7 @@ describe('ephemeral preview viewport controls', () => {
     const controls = usePreviewViewport()
     controls.viewport.value = 'desktop'
     controls.height.value = 740
-    expect(controls.viewport.value).toBe('custom')
+    expect<unknown>(controls.viewport.value).toBe('custom')
     expect([controls.width.value, controls.height.value]).toEqual([1440, 740])
   })
 
@@ -61,7 +61,7 @@ describe('ephemeral preview viewport controls', () => {
     expect(controls.frameStyle.value).toEqual({ width: '100%', height: '100%' })
     expect([controls.width.value, controls.height.value]).toEqual([430, 932])
     controls.width.value = 431
-    expect(controls.viewport.value).toBe('custom')
+    expect<unknown>(controls.viewport.value).toBe('custom')
     expect(controls.height.value).toBe(932)
   })
 

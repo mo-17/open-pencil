@@ -11,6 +11,8 @@ for (const dpr of [1.25, 1.5, 2]) {
       const canvas = new CanvasHelper(page)
       await canvas.waitForInit()
       await page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         for (const x of [40, 60.25, 80.5, 100.75]) {
@@ -43,13 +45,20 @@ for (const dpr of [1.25, 1.5, 2]) {
         { pan: 0.3, zoom: 1.00001 }
       ]) {
         await page.evaluate(({ pan, zoom }) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const store = window.openPencil?.getStore?.()
           if (!store) throw new Error('Editor unavailable')
           store.setZoomAroundPoint(zoom, 0, 0)
           store.pan(pan - store.state.panX, pan - store.state.panY)
         }, viewport)
-        await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+        await page.evaluate(() => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.test?.navigation?.waitForSettlement()
+        })
         const backingZoom = await page.evaluate(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const renderer = window.openPencil
             ?.getStore?.()
             .canvasRenderers.find((r) => r.tracksSceneSettlement)
@@ -58,6 +67,8 @@ for (const dpr of [1.25, 1.5, 2]) {
         expect(backingZoom).toBe(viewport.zoom)
         const retained = await page.screenshot({ clip })
         const release = await page.evaluateHandle(() => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
           const store = window.openPencil?.getStore?.()
           if (!store) throw new Error('Editor unavailable')
           return store.beginInteractiveEdit()

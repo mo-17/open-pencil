@@ -193,3 +193,38 @@ describe('application shell copy references', () => {
     })
   })
 })
+
+for (const mode of ['copy', 'instance'] as const) {
+  test(`an explicit application receiver scope retains other references and default ${mode} behavior`, () => {
+    const { graph, root } = applicationNode()
+    const page = graph.getPages()[0]
+    const shell = graph.createNode('FRAME', page.id)
+    const slot = graph.createNode('FRAME', shell.id)
+    const target = graph.createNode('RECTANGLE', page.id)
+    root.events = {
+      onClick: [
+        { id: 'play', kind: 'playMotion', targetNodeId: 'source-target', trackId: 'fade-in' }
+      ]
+    }
+    const mapping = new Map([
+      ['source-root', root.id],
+      ['source-page', page.id],
+      ['source-shell', shell.id],
+      ['source-slot', slot.id],
+      ['source-target', target.id]
+    ])
+    const before = structuredClone(root.lowcodeApplication)
+    graph.remapClonedNodeReferences(mapping, mode, { applicationReferenceNodeIds: new Set() })
+    expect(root.lowcodeApplication).toEqual(before)
+    const action = root.events?.onClick?.[0]
+    if (action?.kind !== 'playMotion') throw new Error('Missing Motion action')
+    expect(action.targetNodeId).toBe(target.id)
+    graph.remapClonedNodeReferences(mapping, mode)
+    expect(root.lowcodeApplication).toEqual({
+      version: 1,
+      enabled: true,
+      startPageId: page.id,
+      shell: { frameNodeId: shell.id, slotNodeId: slot.id }
+    })
+  })
+}

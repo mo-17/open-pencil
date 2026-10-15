@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -15,9 +16,10 @@ export async function withLocalUpload(
   run: () => Promise<void>
 ): Promise<void> {
   const source = `import {localUploadFixture} from './tests/helpers/compiler/components/upload/fixtures'; const output = localUploadFixture(${JSON.stringify(target)}, ${JSON.stringify(scenario)}); if(output.warnings.length) throw new Error(JSON.stringify(output.warnings)); process.stdout.write(JSON.stringify([...output.files]));`
-  const files = JSON.parse(
+  const files = v.parse(
+    v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))),
     execFileSync('bun', ['-e', source], { cwd: process.cwd(), encoding: 'utf8' })
-  ) as [string, string][]
+  )
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

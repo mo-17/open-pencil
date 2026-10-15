@@ -11,6 +11,8 @@ test.beforeEach(async ({ page }) => {
 
 async function createConstrainedChildren(page: Parameters<typeof propertySection>[0]) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const frame = store.graph.createNode('FRAME', store.state.currentPageId, {
@@ -45,7 +47,10 @@ test('shows constraints only for eligible frame children', async ({ page }) => {
   const section = propertySection(page, 'Constraints')
   await expect(section).toBeVisible()
 
-  await page.evaluate((frameId) => window.openPencil?.getStore?.()?.select([frameId]), ids.frameId)
+  await page.evaluate((frameId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.select([frameId])
+  }, ids.frameId)
   await expect(section).toBeHidden()
 })
 
@@ -59,20 +64,20 @@ test('pin diagram and selects update constraint state', async ({ page }) => {
   await right.click()
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) => window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint,
-        ids.firstId
-      )
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint
+      }, ids.firstId)
     )
     .toBe('MAX')
 
   await left.click({ modifiers: ['Shift'] })
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) => window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint,
-        ids.firstId
-      )
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint
+      }, ids.firstId)
     )
     .toBe('STRETCH')
 
@@ -80,20 +85,20 @@ test('pin diagram and selects update constraint state', async ({ page }) => {
   await page.getByRole('option', { name: 'Scale', exact: true }).click()
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) => window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint,
-        ids.firstId
-      )
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.()?.graph.getNode(id)?.horizontalConstraint
+      }, ids.firstId)
     )
     .toBe('SCALE')
 })
 
 test('multi-selection constraint changes undo in one step', async ({ page }) => {
   const ids = await createConstrainedChildren(page)
-  await page.evaluate(
-    ({ firstId, secondId }) => window.openPencil?.getStore?.()?.select([firstId, secondId]),
-    ids
-  )
+  await page.evaluate(({ firstId, secondId }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.select([firstId, secondId])
+  }, ids)
   const section = propertySection(page, 'Constraints')
   const horizontal = section.getByRole('combobox', { name: 'Horizontal constraint' })
   await expect(horizontal).toContainText('Mixed')
@@ -103,6 +108,8 @@ test('multi-selection constraint changes undo in one step', async ({ page }) => 
   await expect
     .poll(() =>
       page.evaluate(({ firstId, secondId }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const graph = window.openPencil?.getStore?.()?.graph
         return [
           graph?.getNode(firstId)?.horizontalConstraint,
@@ -116,6 +123,8 @@ test('multi-selection constraint changes undo in one step', async ({ page }) => 
   await expect
     .poll(() =>
       page.evaluate(({ firstId, secondId }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const graph = window.openPencil?.getStore?.()?.graph
         return [
           graph?.getNode(firstId)?.horizontalConstraint,
@@ -128,11 +137,16 @@ test('multi-selection constraint changes undo in one step', async ({ page }) => 
 
 test('resizing a frame applies child constraints', async ({ page }) => {
   const ids = await createConstrainedChildren(page)
-  await page.evaluate((frameId) => window.openPencil?.getStore?.()?.select([frameId]), ids.frameId)
+  await page.evaluate((frameId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.select([frameId])
+  }, ids.frameId)
   const canvas = new CanvasHelper(page)
   await canvas.waitForRender()
 
   const handle = await page.evaluate((frameId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const frame = store?.graph.getNode(frameId)
     if (!store || !frame) throw new Error('Frame not found')
@@ -153,7 +167,10 @@ test('resizing a frame applies child constraints', async ({ page }) => {
 
   await expect
     .poll(() =>
-      page.evaluate((id) => window.openPencil?.getStore?.()?.graph.getNode(id)?.x, ids.secondId)
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.()?.graph.getNode(id)?.x
+      }, ids.secondId)
     )
     .toBeGreaterThan(150)
 })

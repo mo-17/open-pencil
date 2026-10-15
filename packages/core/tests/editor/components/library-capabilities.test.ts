@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import {
   assertNodeEditable,
   getNodeEditCapability,
   ReadOnlyLibraryDefinitionError
-} from '@open-pencil/core/editor'
-import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { updateNode } from '@open-pencil/core/tools/modify'
-import { SceneGraph } from '@open-pencil/scene-graph'
+} from '#core/editor'
+import { FigmaAPI } from '#core/figma-api'
+import { updateNode } from '#core/tools/modify'
 
 describe('library definition capabilities', () => {
   test('protects materialized definitions and descendants but not their instances', async () => {

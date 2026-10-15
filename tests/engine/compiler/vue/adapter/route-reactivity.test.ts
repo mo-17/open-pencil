@@ -46,7 +46,12 @@ function routingProject() {
       interactiveProps: { text: label },
       events: {
         onClick: [
-          { kind: 'navigate', to: `/products/:id?tab=${tab}#${tab}`, params: { id: '$params.id' } }
+          {
+            id: 'navigate-detail',
+            kind: 'navigate',
+            to: `/products/:id?tab=${tab}#${tab}`,
+            params: { id: '$params.id' }
+          }
         ]
       }
     })

@@ -49,12 +49,12 @@ function confirm() {
       data-test-id="managed-backend-sql"
       >{{ plan.sql }}</pre>
     <p v-else class="mt-2 text-xs text-muted">{{ text.noSQL }}</p>
-    <ul v-if="plan.diagnostics.length" class="mt-3 space-y-1 text-xs text-amber-500">
+    <ul v-if="plan.diagnostics.length" class="mt-3 space-y-1 text-xs text-warning">
       <li v-for="item in plan.diagnostics" :key="`${item.code}:${item.path}`">
         {{ item.message }}
       </li>
     </ul>
-    <p v-if="plan.kind === 'blocked'" class="mt-3 text-xs text-amber-500">{{ text.blockedHint }}</p>
+    <p v-if="plan.kind === 'blocked'" class="mt-3 text-xs text-warning">{{ text.blockedHint }}</p>
     <template #footer>
       <AppButton color="neutral" variant="ghost" @click="open = false">{{ text.cancel }}</AppButton>
       <AppButton

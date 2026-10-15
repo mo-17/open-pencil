@@ -5,6 +5,7 @@ import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
 import {
   orgChartFixture,
   orgChartGraph
@@ -28,7 +29,7 @@ for (const target of ['react', 'vue'] as const)
 for (const mutation of ['version', 'cycle', 'too-many', 'getter'] as const)
   test(`Org Chart rejects ${mutation} without gaining module authority`, () => {
     const { graph, page, main } = orgChartGraph()
-    const module = main.interactiveProps?.module
+    const module = expectModuleInstance(main.interactiveProps?.module)
     if (!module) throw new Error('Fixture has no module')
     const config = module.config
     let changed = { ...module }
@@ -89,7 +90,7 @@ test('Org Chart survives fig roundtrip as an ordinary FRAME with local declarati
 
 test('unknown module identities cannot acquire Org Chart runtime authority', () => {
   const { graph, page, main } = orgChartGraph()
-  const module = main.interactiveProps?.module
+  const module = expectModuleInstance(main.interactiveProps?.module)
   if (!module) throw new Error('Fixture has no module')
   graph.updateNode(main.id, {
     interactiveProps: { module: { ...module, pluginId: 'unknown.org-chart' } }

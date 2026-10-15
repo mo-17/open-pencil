@@ -1,7 +1,6 @@
 import {
   setInstanceOverride,
   type Color,
-  type ComponentPropertyDefinition,
   type NodeType,
   type SceneGraph,
   type SceneNode
@@ -9,15 +8,20 @@ import {
 import { parseColor } from '@open-pencil/scene-graph/color'
 
 import { throwIfAborted, yieldToHost } from './async-work'
+import type { RekaScope } from './behaviours'
+import { renderRekaNode } from './behaviours/render'
 import {
   assignComponentProperties,
   componentMetadata,
-  componentPropertyScope
+  assignNamedProperties,
+  componentPropertyScope,
+  inferComponentSetProperties
 } from './component-properties'
 import { LOWCODE_TYPE_MAP } from './lowcode'
 import { applySizeOverrides, propsToOverrides } from './props-overrides'
 import { prepareScalarBindings } from './scalar-bindings'
 import type { DesignJSXServices } from './services'
+import { isTextContent, TEXT_CONTENT_NAMES, textContentFields } from './text-content'
 import { FRAGMENT, isTreeNode } from './tree'
 import type { TreeNode } from './tree'
 import type { RenderOptions } from './types'
@@ -66,11 +70,6 @@ export interface RenderResult {
 }
 
 /** Component property ids only need to be unique within a document. */
-function randomHex(bytes: number): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
-    byte.toString(16).padStart(2, '0')
-  ).join('')
-}
 
 /** The nodes a tree renders as: a fragment's children, or the tree itself. */
 function treeRoots(tree: TreeNode): TreeNode[] {
@@ -105,8 +104,12 @@ export async function renderRoots<Artwork>(
       nodes.push(node)
     }
     throwIfAborted(options.signal, 'JSX render cancelled')
-    if (options.layout !== false)
-      await services.layout(graph, graph.getPageId(parentId) ?? parentId, options.signal)
+    if (options.layout !== false && !options.deferLayout)
+      await services.layout(
+        graph,
+        nodes.map((node) => node.id),
+        options.signal
+      )
     throwIfAborted(options.signal, 'JSX render cancelled')
     return nodes.map((node, index) => ({
       id: node.id,
@@ -276,7 +279,12 @@ function placeArtwork<Artwork>(
   if (props.label) overrides.name = props.label as string
   applyIconSize(props, overrides, parentLayout, size)
   const color = parseColor((props.color as string | undefined) ?? '#000000')
-  return services.createArtwork(graph, artwork, { parentId, size, color, overrides })
+  return services.createArtwork(graph, artwork, {
+    parentId,
+    size,
+    color,
+    overrides
+  })
 }
 
 /**
@@ -304,69 +312,6 @@ function renderSVGNode<Artwork>(
     throw new Error('<svg> requires SVG markup, a body prop, or supported SVG shape children')
   }
   return placeArtwork(services, graph, artwork, props, size, parentId)
-}
-
-function parseVariantValues(name: string): Record<string, string> {
-  const entries = name
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-  const values: Record<string, string> = {}
-  for (const entry of entries) {
-    const [key = '', ...rest] = entry.split('=')
-    const property = key.trim()
-    const value = rest.join('=').trim()
-    if (property && value) values[property] = value
-  }
-  return values
-}
-
-function inferComponentSetProperties(graph: SceneGraph, componentSetId: string): void {
-  const componentSet = graph.getNode(componentSetId)
-  if (componentSet?.type !== 'COMPONENT_SET') return
-  const existingDefinitions = componentSet.componentPropertyDefinitions
-
-  const variants = graph.getChildren(componentSetId).filter((node) => node.type === 'COMPONENT')
-  const options = new Map<string, Set<string>>()
-  const valuesById = new Map<string, Record<string, string>>()
-
-  for (const variant of variants) {
-    const values = parseVariantValues(variant.name)
-    valuesById.set(variant.id, values)
-    for (const [property, value] of Object.entries(values)) {
-      let set = options.get(property)
-      if (!set) {
-        set = new Set()
-        options.set(property, set)
-      }
-      set.add(value)
-    }
-  }
-
-  const definitions: ComponentPropertyDefinition[] = [...options.entries()]
-    .filter(
-      ([name]) =>
-        !existingDefinitions.some(
-          (definition) => definition.type === 'VARIANT' && definition.name === name
-        )
-    )
-    .map(([name, values]) => {
-      const variantOptions = [...values]
-      return {
-        id: `prop:${randomHex(8)}`,
-        name,
-        type: 'VARIANT',
-        defaultValue: variantOptions[0] ?? '',
-        variantOptions
-      }
-    })
-
-  for (const [id, values] of valuesById) {
-    graph.updateNode(id, { componentPropertyValues: values })
-  }
-  graph.updateNode(componentSetId, {
-    componentPropertyDefinitions: [...existingDefinitions, ...definitions]
-  })
 }
 
 function findComponentByName(graph: SceneGraph, name: string): SceneNode | undefined {
@@ -400,25 +345,36 @@ function findVariantInSet(
   )
 }
 
-function resolveComponent(
-  graph: SceneGraph,
-  props: Record<string, unknown>
-): SceneNode | undefined {
+/** The component or component set an element names by id or name. */
+function namedComponent(graph: SceneGraph, props: Record<string, unknown>): SceneNode | undefined {
   const ref = props.component ?? props.componentId ?? props.of
   if (typeof ref !== 'string') return undefined
 
   const byId = graph.getNode(ref)
-  if (byId?.type === 'COMPONENT') return byId
-  if (byId?.type === 'COMPONENT_SET') return findVariantInSet(graph, byId, props)
+  if (byId?.type === 'COMPONENT' || byId?.type === 'COMPONENT_SET') return byId
 
   const byName = findComponentByName(graph, ref)
   if (byName) return byName
 
   for (const node of graph.getAllNodes()) {
-    if (node.type === 'COMPONENT_SET' && node.name === ref)
-      return findVariantInSet(graph, node, props)
+    if (node.type === 'COMPONENT_SET' && node.name === ref) return node
   }
   return undefined
+}
+
+function resolveComponent(
+  graph: SceneGraph,
+  props: Record<string, unknown>
+): SceneNode | undefined {
+  const named = namedComponent(graph, props)
+  return named?.type === 'COMPONENT_SET' ? findVariantInSet(graph, named, props) : named
+}
+
+/** The component properties an element sets by name, such as `State` or `Title`. */
+export function componentPropNames(graph: SceneGraph, props: Record<string, unknown>): string[] {
+  const component = resolveComponent(graph, props)
+  if (!component) return []
+  return (componentPropertyScope(graph, component.id) ?? []).map((definition) => definition.name)
 }
 
 async function renderInstanceNode(
@@ -462,9 +418,12 @@ async function renderInstanceNode(
     for (const [field, value] of Object.entries(overrides)) {
       setInstanceOverride(instance.instanceOverrides, instance.id, instance.id, field, value)
     }
-    graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
+    graph.updateNode(instance.id, {
+      instanceOverrides: instance.instanceOverrides
+    })
     applyBindings(graph, instance.id, bindings)
     applyInstanceOverrides(graph, instance, tree.props.overrides)
+    assignNamedProperties(graph, instance, props)
     assignComponentProperties(graph, instance, props.properties)
     return instance
   } catch (error) {
@@ -511,7 +470,9 @@ function applyInstanceOverrides(
     mutated = true
   }
   if (mutated) {
-    graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
+    graph.updateNode(instance.id, {
+      instanceOverrides: instance.instanceOverrides
+    })
   }
 }
 
@@ -553,11 +514,10 @@ export function elementOverrides(
   }
 
   if (isText) {
-    const childText = tree.children.filter((c): c is string => typeof c === 'string').join('')
-    const propText =
-      props.text ?? props.characters ?? props.content ?? props.label ?? props.value ?? props.title
-    if (childText) overrides.text = childText
-    else if (typeof propText === 'string') overrides.text = propText
+    // A span's variables give their values; characters keep no bindings of their own.
+    const spanOverrides = (spanProps: Record<string, unknown>) =>
+      propsToOverrides(preparePropsForRender(graph, spanProps, true, parentId).props, true, 'NONE')
+    Object.assign(overrides, textContentFields(tree, props, overrides, spanOverrides))
   }
   return { overrides, bindings }
 }
@@ -576,11 +536,12 @@ async function renderNode<Artwork>(
   tree: TreeNode,
   parentId: string,
   execution: RenderExecution,
-  onNode?: RenderOptions['onNode']
+  onNode?: RenderOptions['onNode'],
+  scope?: RekaScope
 ): Promise<SceneNode> {
   throwIfAborted(execution.signal, 'JSX render cancelled')
   if (++execution.work % 32 === 0) await yieldToHost(execution.signal, 'JSX render cancelled')
-  const node = await renderNodeContent(services, graph, tree, parentId, execution, onNode)
+  const node = await renderNodeContent(services, graph, tree, parentId, execution, onNode, scope)
   if (parentId === execution.parentId) execution.roots.add(node.id)
   throwIfAborted(execution.signal, 'JSX render cancelled')
   onNode?.(tree, node)
@@ -593,13 +554,29 @@ async function renderNodeContent<Artwork>(
   tree: TreeNode,
   parentId: string,
   execution: RenderExecution,
-  onNode?: RenderOptions['onNode']
+  onNode?: RenderOptions['onNode'],
+  scope?: RekaScope
 ): Promise<SceneNode> {
-  const type = tree.type.toLowerCase()
-  if (type === 'icon' || type === 'svg')
+  if (tree.type === 'icon' || tree.type === 'svg')
     return renderArtworkNode(services, graph, tree, parentId, execution.signal)
-  if (type === 'instance') return renderInstanceNode(graph, tree, parentId)
-  const nodeType = TYPE_MAP[type]
+  if (tree.type === 'instance') return renderInstanceNode(graph, tree, parentId)
+  const reka = await renderRekaNode(graph, tree, parentId, scope, {
+    render: (child, childParentId, childScope) =>
+      renderNode(services, graph, child, childParentId, execution, onNode, childScope),
+    create: (nodeType, element, elementParentId) => {
+      const { overrides, bindings } = elementOverrides(graph, nodeType, element, elementParentId)
+      const created = graph.createNode(nodeType, elementParentId, overrides)
+      applyBindings(graph, created.id, bindings)
+      return created
+    },
+    instance: (element, elementParentId) => renderInstanceNode(graph, element, elementParentId),
+    finishSet: (setId) => inferComponentSetProperties(graph, setId)
+  })
+  if (reka) return reka
+
+  if (isTextContent(tree))
+    throw new Error(`<${TEXT_CONTENT_NAMES[tree.type]}> must be inside <Text>`)
+  const nodeType = TYPE_MAP[tree.type] ?? TYPE_MAP[tree.type.toLowerCase()]
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
   const { overrides, bindings } = elementOverrides(graph, nodeType, tree, parentId)
   const prepared = services.prepareNodeProps?.(tree)
@@ -610,15 +587,20 @@ async function renderNodeContent<Artwork>(
     graph.updateNode(node.id, {
       ...prepared.props,
       ...(prepared.props.interactiveProps
-        ? { interactiveProps: { ...node.interactiveProps, ...prepared.props.interactiveProps } }
+        ? {
+            interactiveProps: {
+              ...node.interactiveProps,
+              ...prepared.props.interactiveProps
+            }
+          }
         : {})
     })
   }
   applyBindings(graph, node.id, bindings)
   for (const child of tree.children)
-    if (isTreeNode(child)) {
+    if (isTreeNode(child) && !(node.type === 'TEXT' && isTextContent(child))) {
       for (const root of treeRoots(child))
-        await renderNode(services, graph, root, node.id, execution, onNode)
+        await renderNode(services, graph, root, node.id, execution, onNode, scope)
     }
   if (node.type === 'COMPONENT_SET') inferComponentSetProperties(graph, node.id)
   return node

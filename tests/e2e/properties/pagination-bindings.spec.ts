@@ -15,6 +15,8 @@ test('pagination bindings reject read-only page state and stale expression edits
   const canvas = await prepareExpansionModules(page, 'retained', ['pagination'])
   await insertExpansionModule(page, 'pagination')
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const first = [...editor.state.selectedIds][0]
     const module = editor.graph.getNode(first)?.interactiveProps?.module
@@ -43,7 +45,10 @@ test('pagination bindings reject read-only page state and stale expression edits
   const binding = (key: string) => page.locator(`[data-pagination-binding="${key}"]`)
   const expression = page.locator('[data-pagination-expression="total"]')
   const saved = (id: string) =>
-    page.evaluate((nodeId) => window.openPencil.getStore().graph.getNode(nodeId)?.bindings, id)
+    page.evaluate((nodeId) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(nodeId)?.bindings
+    }, id)
 
   await expect(binding('currentPage').locator('option[value="state:computed-count"]')).toHaveCount(
     0

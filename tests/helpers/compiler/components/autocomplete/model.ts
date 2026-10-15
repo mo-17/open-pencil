@@ -28,7 +28,16 @@ export function autocompleteGraph() {
     paddingTop: 16,
     paddingLeft: 16,
     paddingRight: 16,
-    events: { onSubmit: [{ kind: 'setState', targetStateId: 'submitted', valueExpr: '$prev + 1' }] }
+    events: {
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submitted',
+          valueExpr: '$prev + 1'
+        }
+      ]
+    }
   })
   const input = graph.createNode('INPUT', form.id, {
     name: 'City',
@@ -41,7 +50,16 @@ export function autocompleteGraph() {
       suggestions: INPUT_SUGGESTIONS,
       validation: { required: true, messages: { required: '请输入城市' } }
     },
-    events: { onChange: [{ kind: 'setState', targetStateId: 'changes', valueExpr: '$prev + 1' }] }
+    events: {
+      onChange: [
+        {
+          id: 'fixture-action-2',
+          kind: 'setState',
+          targetStateId: 'changes',
+          valueExpr: '$prev + 1'
+        }
+      ]
+    }
   })
   graph.createNode('INPUT', form.id, {
     name: 'Independent',

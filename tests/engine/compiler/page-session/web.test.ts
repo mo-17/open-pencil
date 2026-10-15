@@ -163,7 +163,7 @@ function rootSessionFiles(retention: 'reset' | 'preserve' | 'absent') {
       events: {
         ...node.events,
         onClick: actions.map((action) => {
-          if (action.kind === 'navigate')
+          if (action.kind === 'navigate' && action.to)
             return { ...action, to: action.to.replace(/^\/home(?=[?#]|$)/, '/') }
           if (action.kind === 'back')
             return { ...action, fallback: action.fallback.replace(/^\/home(?=[?#]|$)/, '/') }

@@ -10,6 +10,8 @@ test('changing only the text paint preserves native glyph pixels', async ({ page
   await canvas.waitForInit()
   await canvas.clearCanvas()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const black = { r: 0, g: 0, b: 0, a: 1 }
@@ -50,6 +52,8 @@ test('changing only the text paint preserves native glyph pixels', async ({ page
   expect(pixels.some(([r, g, b, a]) => r < 32 && g < 32 && b < 32 && a === 255)).toBe(true)
   const gradient = await canvas.screenshotCanvasRegion()
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     window.openPencil?.getStore?.().updateNode(id, {
       fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
     })

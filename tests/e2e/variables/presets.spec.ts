@@ -1,7 +1,30 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
+import { escapeRegExp } from 'es-toolkit/string'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 import { propertyField } from '#tests/helpers/properties'
+
+/** The same collection entry is a sidebar button in wide dialogs and a tab in medium ones. */
+function collectionEntry(variables: Locator, name: string) {
+  return variables.getByTestId('variables-collection-tab').filter({
+    hasText: new RegExp(`^${escapeRegExp(name)}(?:\\s*\\d+)?$`)
+  })
+}
+
+async function expectActiveCollection(variables: Locator, name: string): Promise<void> {
+  const entry = collectionEntry(variables, name)
+  await expect(entry).toBeVisible()
+  await expect
+    .poll(() =>
+      entry.evaluate((element) =>
+        element.getAttribute('role') === 'tab'
+          ? element.getAttribute('aria-selected')
+          : element.getAttribute('aria-current')
+      )
+    )
+    .toBe('true')
+  await expect(variables.getByRole('listbox', { name, exact: true })).toBeVisible()
+}
 
 test('preview, cancel, import and revisit an optional design preset', async ({ page }) => {
   await page.goto('/')
@@ -28,10 +51,7 @@ test('preview, cancel, import and revisit an optional design preset', async ({ p
   await presets.getByRole('radio', { name: /^Business/ }).click()
   await presets.getByRole('button', { name: 'Import as new collection' }).click()
   await expect(presets).toBeHidden()
-  await expect(variables.getByRole('tab', { name: 'Business', exact: true })).toHaveAttribute(
-    'data-state',
-    'active'
-  )
+  await expectActiveCollection(variables, 'Business')
   await expect(variables.getByTestId('variable-row')).toHaveCount(12)
   await expect(variables.getByText('Preset imported', { exact: true })).toBeVisible()
   await expect(variables.getByRole('button', { name: 'Design system presets' })).toBeFocused()
@@ -39,27 +59,21 @@ test('preview, cancel, import and revisit an optional design preset', async ({ p
   await variables.getByRole('button', { name: 'Design system presets' }).click()
   await expect(presets.getByRole('heading', { name: 'New collection: Business (2)' })).toBeVisible()
   await presets.getByRole('button', { name: 'Import as new collection' }).click()
-  await expect(variables.getByRole('tab', { name: 'Business (2)', exact: true })).toHaveAttribute(
-    'data-state',
-    'active'
-  )
-  await variables.getByRole('tab', { name: 'Business', exact: true }).click()
+  await expectActiveCollection(variables, 'Business (2)')
+  await collectionEntry(variables, 'Business').click()
   await expect(variables.getByTestId('variable-row')).toHaveCount(12)
   await page.keyboard.press('Escape')
   await expect(variables).toBeHidden()
   await openVariables.click()
-  await expect(variables.getByRole('tab', { name: 'Business', exact: true })).toBeVisible()
-  await expect(variables.getByRole('tab', { name: 'Business (2)', exact: true })).toBeVisible()
+  await expect(collectionEntry(variables, 'Business')).toBeVisible()
+  await expect(collectionEntry(variables, 'Business (2)')).toBeVisible()
   await page.keyboard.press('Escape')
   // Editor shortcuts stay blocked while Reka's closing dialog still owns its layer.
   await expect(variables).toHaveCount(0)
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
   await openVariables.click()
-  await expect(variables.getByRole('tab', { name: 'Business (2)', exact: true })).toHaveCount(0)
-  await expect(variables.getByRole('tab', { name: 'Business', exact: true })).toHaveAttribute(
-    'data-state',
-    'active'
-  )
+  await expect(collectionEntry(variables, 'Business (2)')).toHaveCount(0)
+  await expectActiveCollection(variables, 'Business')
   await expect(variables.getByTestId('variable-row')).toHaveCount(12)
   canvas.assertNoErrors()
 })
@@ -79,7 +93,7 @@ test('a preset becomes active only after binding and can be detached', async ({ 
   await presets.getByRole('radio', { name: /^Soft/ }).click()
   await presets.getByRole('button', { name: 'Import as new collection' }).click()
   await expect(presets).toHaveCount(0)
-  await expect(variables.getByRole('tab', { name: 'Soft', exact: true })).toBeVisible()
+  await expect(collectionEntry(variables, 'Soft')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(variables).toHaveCount(0)
   await canvas.drawRect(200, 200, 160, 100)
@@ -96,9 +110,10 @@ test('a preset becomes active only after binding and can be detached', async ({ 
   await page.getByRole('button', { name: 'Detach variable', exact: true }).click()
   await expect(radius).not.toHaveAttribute('data-bound')
   await expect(radius).toHaveAttribute('aria-valuenow', '16')
-  const selectedId = await page.evaluate(
-    () => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])][0]
-  )
+  const selectedId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])][0]
+  })
   expect(selectedId).toBeTruthy()
   const preview = page.getByTestId('lowcode-preview-pane')
   await expect(preview).toHaveAttribute('data-preview-host', 'browser-worker')

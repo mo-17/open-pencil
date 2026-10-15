@@ -17,6 +17,8 @@ import {
   type WalktourStep
 } from '#core/plugins/walktour'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 const step = (id = 'welcome', targetChildName = ''): WalktourStep => ({
   id,
   title: 'Welcome',
@@ -193,7 +195,9 @@ test('Walktour FIG roundtrip preserves guide config and every ordinary child lay
   const data = await exportFigFile(graph),
     restored = await parseFigFile(data.slice().buffer)
   const result = [...restored.getAllNodes()].find(
-    (node) => node.interactiveProps?.module?.pluginId === WALKTOUR_PLUGIN_ID
+    (node) =>
+      node.interactiveProps?.module !== undefined &&
+      expectModuleInstance(node.interactiveProps.module).pluginId === WALKTOUR_PLUGIN_ID
   )
   expect(result?.type).toBe('FRAME')
   expect(result?.interactiveProps?.module).toEqual(before)

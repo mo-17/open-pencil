@@ -1,12 +1,14 @@
 import { mock } from 'bun:test'
 
-import type { Paragraph } from 'canvaskit-wasm'
+import type { Canvas, Paragraph } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 
 import { createMockRenderer } from '../effects/helpers'
+import { asDouble } from '../helpers'
 
 /** Deterministic shaping stand-in for geometry/resource tests; actual glyph coverage is tested with CanvasKit. */
 function paragraph(node: SceneNode) {
@@ -14,11 +16,19 @@ function paragraph(node: SceneNode) {
   const letters = Array.from(node.text)
   const text =
     letters.length > slots ? letters.slice(0, Math.max(0, slots - 1)).join('') + '…' : node.text
-  return {
+  const prepared = {
     text,
     getAlphabeticBaseline: () => 0,
     getLongestLine: () => text.length * 6,
+    getMaxIntrinsicWidth: () => text.length * 6,
+    getHeight: () => 11,
+    layout: () => undefined,
     delete: mock(() => undefined)
+  }
+  return {
+    ...prepared,
+    draw: (canvas: Canvas, x: number, y: number) =>
+      canvas.drawParagraph(asDouble<Paragraph>(prepared), x, y)
   }
 }
 
@@ -34,12 +44,12 @@ export function moduleTextRenderer(overrides: Partial<SkiaRenderer> = {}) {
     labelFont: { getSize: () => 11 } as SkiaRenderer['labelFont'],
     fontProvider: {} as SkiaRenderer['fontProvider'],
     fontsLoaded: true,
-    nodeFontReadiness: mock(() => 'ready'),
+    nodeFontReadiness: mock(() => 'ready' as const),
     measureTextNode: mock((node: SceneNode) => ({
       width: paragraph(node).getLongestLine(),
       height: 11
     })),
-    buildParagraph: mock((node: SceneNode) => paragraph(node) as Paragraph),
+    buildParagraph: mock((node: SceneNode) => asDouble<TextLayout>(paragraph(node))),
     ...overrides
   })
 }

@@ -32,7 +32,15 @@ export const SWITCH_VISUAL_CASES: Partial<SceneNode>[] = [
     y: 222,
     width: 84,
     height: 44,
-    strokes: [{ color: { r: 0.09, g: 0.17, b: 0.3, a: 1 }, weight: 2, opacity: 1, visible: true }],
+    strokes: [
+      {
+        color: { r: 0.09, g: 0.17, b: 0.3, a: 1 },
+        weight: 2,
+        opacity: 1,
+        visible: true,
+        align: 'CENTER'
+      }
+    ],
     interactiveProps: { checked: true }
   }
 ]

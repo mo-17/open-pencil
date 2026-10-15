@@ -6,6 +6,7 @@ import {
   buildOpenPencilLottieComponent
 } from '#compiler/adapters/react/modules/lottie'
 import { LOTTIE_COMPILER_MODULE_LOWERER } from '#compiler/modules/lottie'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -101,9 +102,14 @@ describe('compiler trusted Lottie module adapter', () => {
     })
     const app = output.files.get('src/App.tsx') as string
     const runtime = output.files.get('src/__openpencil_lottie.tsx') as string
-    const packageJSON = JSON.parse(output.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      output.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilLottie from './__openpencil_lottie'")
     expect(app).toContain('<OpenPencilLottie config={{')

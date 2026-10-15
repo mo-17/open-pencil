@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
 
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerFiles } from '#tests/helpers/compiler/output'
 
 for (const scenario of ['blur', 'submit', 'cancelled reset'] as const)
   test(`React module ${scenario} remote validation respects reset without stale errors or business submission`, async ({
@@ -10,13 +11,13 @@ for (const scenario of ['blur', 'submit', 'cancelled reset'] as const)
   }) => {
     const source = `import {remoteModuleResetFixture} from './tests/helpers/compiler/components/form-modules/remote-reset';const output=remoteModuleResetFixture();if(output.warnings.length)throw new Error(JSON.stringify(output.warnings));process.stdout.write(JSON.stringify([...output.files]));`
     const files = new Map(
-      JSON.parse(
+      parseCompilerFiles(
         execFileSync('bun', ['-e', source], {
           cwd: process.cwd(),
           encoding: 'utf8',
           maxBuffer: 16 * 1024 * 1024
         })
-      ) as [string, string][]
+      )
     )
     let release: (() => void) | undefined,
       finish: (() => void) | undefined,

@@ -18,3 +18,15 @@ export async function readMotionActionSnapshot(page: Page, buttonId: string) {
     }
   }, buttonId)
 }
+
+export async function readSelectedPositions(page: Page) {
+  return page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    return [...store.state.selectedIds].map((id) => {
+      const node = store.graph.getNode(id)
+      if (!node) throw new Error('Selected node is unavailable')
+      return { id, x: node.x, y: node.y }
+    })
+  })
+}

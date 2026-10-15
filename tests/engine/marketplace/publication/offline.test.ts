@@ -41,6 +41,7 @@ import { signPluginManifest } from '@open-pencil/plugin-contracts'
 import { canonicalManifestJSON, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
+import { expectDefined } from '#tests/helpers/assert'
 
 const MARKETPLACE_ID = 'offline-marketplace'
 const ROOT_KEY_ID = 'offline-root-2026'
@@ -1166,7 +1167,9 @@ describe('offline Root marketplace publication', () => {
       actor: 'offline-test'
     })
 
-    expect(replayed.publication).toEqual(beforeReplay.publications.at(-1))
+    expect(replayed.publication).toEqual(
+      expectDefined(beforeReplay.publications.at(-1), 'publication before replay')
+    )
     expect(replayed.verified.requestDigest).toBe(marketplacePublicationRequestDigest(request))
     expect(putCount).toBe(0)
     expect(await fixture.repository.snapshot()).toEqual(beforeReplay)

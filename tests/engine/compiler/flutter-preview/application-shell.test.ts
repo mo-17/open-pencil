@@ -35,6 +35,7 @@ describe('Flutter application shell snapshot metadata', () => {
     expect(editSnapshotNode(parsed, slot.id).childIds).toEqual([])
     expect(parsed.graph.nodes.length).toBe(graph.nodes.size)
     expect([...graph.nodes]).toEqual(before)
+    if (!root.lowcodeApplication.shell) throw new Error('Expected application shell')
     root.lowcodeApplication.shell.slotNodeId = 'edited'
     expect(editSnapshotNode(parsed, root.id).lowcodeApplication?.shell?.slotNodeId).toBe(slot.id)
   })

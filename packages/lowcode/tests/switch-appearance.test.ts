@@ -38,7 +38,9 @@ describe('switch visual geometry', () => {
       paddingRight: 6,
       paddingTop: 4,
       paddingBottom: 2,
-      strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, opacity: 1, visible: true }]
+      strokes: [
+        { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, opacity: 1, visible: true, align: 'INSIDE' }
+      ]
     })
     const off = lowcodeSwitchGeometry(node, false)
     const on = lowcodeSwitchGeometry(node, true)

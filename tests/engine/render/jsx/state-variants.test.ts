@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, type SceneNode } from '@open-pencil/core'
-import { collectStateTailwindClasses } from '@open-pencil/core/io/formats/jsx'
+import { SceneGraph, type SceneNode } from '#core/index'
+import { collectStateTailwindClasses } from '#core/io/formats/jsx/index'
 
 /**
  * Phase 4 §20 — `collectStateTailwindClasses` derives interaction-state-prefixed
@@ -68,7 +68,7 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
 
     expect(out).toContain('hover:bg-[#123456]')
     expect(out).not.toContain('hover:bg-transparent')
-    expect(node.stateOverrides?.hover?.fills).toEqual(legacyFill)
+    expect<unknown>(node.stateOverrides?.hover?.fills).toEqual(legacyFill)
   })
 
   test('legacy solid hover stroke receives canonical defaults', () => {

@@ -156,7 +156,8 @@ function forwardColorUpdate(
           <div
             class="flex min-w-0 items-center gap-1"
             :class="{ 'cursor-not-allowed opacity-50': !channelSupported(item.channel) }"
-            :data-test-id="`motion-v2-channel-${item.channel}`"
+            data-slot="motion-channel"
+            :data-channel="item.channel"
             :data-capability-disabled="!channelSupported(item.channel) || undefined"
           >
             <input
@@ -166,7 +167,8 @@ function forwardColorUpdate(
               :disabled="numericToggleDisabled(item.channel)"
               :aria-label="item.label"
               :aria-description="capabilityReason(item.channel) || undefined"
-              :data-test-id="`motion-v2-toggle-${item.channel}`"
+              data-slot="motion-channel-toggle"
+              :data-channel="item.channel"
               @change="onNumericToggle(item.channel, $event)"
               @keydown.stop
             />

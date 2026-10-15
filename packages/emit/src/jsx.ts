@@ -1,7 +1,7 @@
 import { print } from 'esrap'
 import tsx from 'esrap/languages/tsx'
 
-import type { SyntaxNode } from './estree'
+import { isNode, type SyntaxNode } from './estree'
 
 /**
  * JSX attribute strings end at `"`, decode `&` entities, and keep backslashes literally,
@@ -13,6 +13,15 @@ const LITERAL_ATTRIBUTE = /^[^"&\\\r\n]*$/
 const LITERAL_TEXT = /^[^{}<>&\r\n]*$/
 
 export const identifier = (name: string): SyntaxNode => ({ type: 'JSXIdentifier', name })
+
+/** A tag name; a dotted one such as `Switch.Root` is a member of a namespace. */
+function tagName(tag: string): SyntaxNode {
+  const [first = tag, ...rest] = tag.split('.')
+  return rest.reduce<SyntaxNode>(
+    (object, property) => ({ type: 'JSXMemberExpression', object, property: identifier(property) }),
+    identifier(first)
+  )
+}
 
 export const literal = (value: string | number | boolean): SyntaxNode => ({
   type: 'Literal',
@@ -31,6 +40,12 @@ export const whitespace = (value: string): SyntaxNode => ({ type: 'JSXText', val
 export const stringValue = (value: string): SyntaxNode =>
   LITERAL_ATTRIBUTE.test(value) ? literal(value) : container(literal(value))
 
+/** `{...expression}`, passing an object's properties on as attributes. */
+export const spread = (argument: SyntaxNode): SyntaxNode => ({
+  type: 'JSXSpreadAttribute',
+  argument
+})
+
 /** An attribute; a null value prints the bare name, as for `true`. */
 export const attribute = (name: string, value: SyntaxNode | null): SyntaxNode => ({
   type: 'JSXAttribute',
@@ -41,6 +56,15 @@ export const attribute = (name: string, value: SyntaxNode | null): SyntaxNode =>
 /** Text content: plain JSX text when it survives as written, a string expression otherwise. */
 export function text(value: string): SyntaxNode {
   const plain = LITERAL_TEXT.test(value) && value.trim() === value && value.length > 0
+  return plain ? whitespace(value) : container(literal(value))
+}
+
+/**
+ * Text that shares a line with elements, as beside a span. JSX trims whitespace only at line
+ * edges, so text without a line break is kept as written, spaces at its ends included.
+ */
+export function inlineText(value: string): SyntaxNode {
+  const plain = LITERAL_TEXT.test(value) && value.length > 0
   return plain ? whitespace(value) : container(literal(value))
 }
 
@@ -64,7 +88,7 @@ export function element(
   depth: number,
   inline = false
 ): SyntaxNode {
-  const name = identifier(tag)
+  const name = tagName(tag)
   const content = inline || children.length === 0 ? children : indented(children, depth)
   return {
     type: 'JSXElement',
@@ -79,6 +103,36 @@ export function element(
   }
 }
 
+/** `<>…</>`: children without an element around them, laid out as an element's are. */
+export function fragment(children: SyntaxNode[], depth: number): SyntaxNode {
+  return {
+    type: 'JSXFragment',
+    openingFragment: { type: 'JSXOpeningFragment' },
+    closingFragment: { type: 'JSXClosingFragment' },
+    children: children.length === 0 ? [] : indented(children, depth)
+  }
+}
+
 export function printJSX(node: SyntaxNode): string {
   return print(node, tsx({ quotes: 'double' }), { indent: '  ' }).code
+}
+
+/** A copy without strings' source spelling, so the printer quotes every string the same way. */
+function withoutRawStrings(node: SyntaxNode): SyntaxNode {
+  const copy: SyntaxNode = { ...node }
+  if (node.type === 'Literal' && typeof node.value === 'string') delete copy.raw
+  for (const [key, value] of Object.entries(node)) {
+    if (Array.isArray(value))
+      copy[key] = value.map((item: unknown) => (isNode(item) ? withoutRawStrings(item) : item))
+    else if (isNode(value)) copy[key] = withoutRawStrings(value)
+  }
+  return copy
+}
+
+/**
+ * A TSX module, such as a component built with `es` templates and JSX from this module. Strings
+ * parsed from a template and strings built here print with the same double quotes.
+ */
+export function printModule(program: SyntaxNode): string {
+  return print(withoutRawStrings(program), tsx({ quotes: 'double' }), { indent: '  ' }).code
 }

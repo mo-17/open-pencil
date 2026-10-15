@@ -1,21 +1,15 @@
-// eval injects only `figma` (FigmaAPI) into the wrapped async function;
-// `tools` is NOT a global. To invoke a ToolDef from a CLI eval script:
-//   const { ALL_TOOLS } = await import('@open-pencil/core/tools')
-//   const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node')
-//   return t.execute(figma, args)
-// (lowcode mutate tools intentionally hit the no-undo fallback path here
-// because the editor is not injected outside `src/app/ai/**` — §3.v2.2 #b.)
-
 import { defineCommand } from 'citty'
 
-import { FigmaAPI } from '@open-pencil/core/figma-api'
+import { FigmaAPI, flushPendingLayout } from '@open-pencil/core/figma-api'
+import { compileScript } from '@open-pencil/core/tools'
 
-import { isAppMode, requireFile, rpc } from '#cli/app-client'
-import { appTargetOptions, appTargetRPCArgs } from '#cli/app-target'
+import { isAppMode, requireFile, rpc } from '#cli/app/client'
+import { appTargetOptions, appTargetRPCArgs } from '#cli/app/target'
 import { printError } from '#cli/format'
 import {
   documentWriteOptions,
   loadDocument,
+  measureTextHeadlessly,
   populateWholeDocument,
   writeDocumentForPath
 } from '#cli/headless'
@@ -45,7 +39,11 @@ export default defineCommand({
       description: 'Document file path (omit to connect to running app)',
       required: false
     },
-    code: { type: 'string', alias: 'c', description: 'JavaScript code to execute' },
+    code: {
+      type: 'string',
+      alias: 'c',
+      description: 'JavaScript code to execute'
+    },
     stdin: { type: 'boolean', description: 'Read code from stdin' },
     ...documentWriteOptions,
     ...appTargetOptions,
@@ -77,21 +75,12 @@ export default defineCommand({
     const file = requireFile(args.file)
     const graph = await loadDocument(file)
     populateWholeDocument(graph)
+    await measureTextHeadlessly()
     const figma = new FigmaAPI(graph)
-
-    type AsyncFunctionConstructor = new (
-      ...args: string[]
-    ) => (...args: unknown[]) => Promise<unknown>
-    const AsyncFunction = Object.getPrototypeOf(async () => undefined)
-      .constructor as AsyncFunctionConstructor
-    const wrappedCode = code.trim().startsWith('return')
-      ? code
-      : `return (async () => { ${code} })()`
 
     let result: unknown
     try {
-      const fn = new AsyncFunction('figma', wrappedCode)
-      result = await fn(figma)
+      result = await compileScript(code)(figma)
     } catch (err) {
       printError(err instanceof Error ? err.message : String(err))
       process.exit(1)
@@ -103,6 +92,8 @@ export default defineCommand({
 
     if (args.write || args.output) {
       const outPath = args.output ? args.output : file
+      // Lay out pending script edits before the owned native writer saves them.
+      flushPendingLayout(graph)
       await writeDocumentForPath(graph, outPath)
       if (!args.quiet) {
         console.error(`Written to ${outPath}`)

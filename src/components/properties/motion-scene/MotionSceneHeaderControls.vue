@@ -48,7 +48,7 @@ const scene = useMotionSceneTimelineView()
       <IconButton
         :label="scene.panels.motionSceneDeleteSequence"
         :disabled="!scene.canRemoveSequence"
-        class="hover:bg-danger/10 hover:text-danger focus-visible:ring-danger"
+        class="hover:bg-error/10 hover:text-error focus-visible:ring-error"
         data-test-id="motion-scene-delete-sequence"
         @click="scene.deleteSequence"
       >

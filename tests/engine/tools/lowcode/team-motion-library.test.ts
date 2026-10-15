@@ -4,13 +4,13 @@ import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { CORE_TOOLS, EXTENDED_TOOLS } from '@open-pencil/core/tools'
 import {
+  parseTeamMotionLibraryManifest,
   TEAM_MOTION_LIBRARY_FORMAT,
   TEAM_MOTION_LIBRARY_LIMITS,
   TEAM_MOTION_LIBRARY_SCHEMA_VERSION,
   exportTeamMotionPublicKey,
   parseTeamMotionLibraryRegistryState,
   signTeamMotionLibraryManifest,
-  type TeamMotionLibraryManifest,
   type TeamMotionLibraryPayload,
   SceneGraph
 } from '@open-pencil/scene-graph'
@@ -164,42 +164,38 @@ describe('Team Motion library tools', () => {
     })
   })
 
-  test(
-    'accepts manifest JSON at the raw byte limit and fails closed one byte beyond it',
-    { timeout: 15_000 },
-    async () => {
-      const fixture = await signedFixture(await keyPair())
-      const currentBytes = new TextEncoder().encode(fixture.manifestJson).byteLength
-      const boundaryManifest = `${fixture.manifestJson}${' '.repeat(
-        TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes - currentBytes
-      )}`
-      const tool = getTool('verify_team_motion_library')
-      const args = {
-        publicKeyPem: fixture.publicKeyPem,
-        engineVersion: '0.13.2',
-        expectedKeyId: 'toolTeamKey'
-      }
-
-      expect(new TextEncoder().encode(boundaryManifest)).toHaveLength(
-        TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes
-      )
-      expect(
-        (await tool.execute(new FigmaAPI(new SceneGraph()), {
-          ...args,
-          manifestJson: boundaryManifest
-        })) as Result<{ libraryId: string }>
-      ).toMatchObject({ ok: true, data: { libraryId: 'toolTeamMotion' } })
-
-      const overflow = (await tool.execute(new FigmaAPI(new SceneGraph()), {
-        ...args,
-        manifestJson: `${boundaryManifest} `
-      })) as Result<never>
-      expect(overflow).toEqual({
-        ok: false,
-        error: `manifestJson must not exceed ${TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes} UTF-8 bytes`
-      })
+  test('accepts manifest JSON at the raw byte limit and fails closed one byte beyond it', async () => {
+    const fixture = await signedFixture(await keyPair())
+    const currentBytes = new TextEncoder().encode(fixture.manifestJson).byteLength
+    const boundaryManifest = `${fixture.manifestJson}${' '.repeat(
+      TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes - currentBytes
+    )}`
+    const tool = getTool('verify_team_motion_library')
+    const args = {
+      publicKeyPem: fixture.publicKeyPem,
+      engineVersion: '0.13.2',
+      expectedKeyId: 'toolTeamKey'
     }
-  )
+
+    expect(new TextEncoder().encode(boundaryManifest)).toHaveLength(
+      TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes
+    )
+    expect(
+      (await tool.execute(new FigmaAPI(new SceneGraph()), {
+        ...args,
+        manifestJson: boundaryManifest
+      })) as Result<{ libraryId: string }>
+    ).toMatchObject({ ok: true, data: { libraryId: 'toolTeamMotion' } })
+
+    const overflow = (await tool.execute(new FigmaAPI(new SceneGraph()), {
+      ...args,
+      manifestJson: `${boundaryManifest} `
+    })) as Result<never>
+    expect(overflow).toEqual({
+      ok: false,
+      error: `manifestJson must not exceed ${TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes} UTF-8 bytes`
+    })
+  }, 15_000)
 
   test('reviews only verified same-identity updates and returns the deterministic diff', async () => {
     const keys = await keyPair()
@@ -419,7 +415,7 @@ describe('Team Motion library tools', () => {
     expect(staleReview).toMatchObject({ ok: false })
     if (!staleReview.ok) expect(staleReview.error).toContain('cannot downgrade')
 
-    const staleManifest = JSON.parse(stale.manifestJson) as TeamMotionLibraryManifest
+    const staleManifest = parseTeamMotionLibraryManifest(JSON.parse(stale.manifestJson) as unknown)
     const stalePending = JSON.parse(review.data.registryJson)
     stalePending.pending.candidate = {
       manifest: staleManifest,
@@ -484,7 +480,7 @@ describe('Team Motion library tools', () => {
     const fixture = await signedFixture(await keyPair())
     const { graph, figma, editor } = setup()
     const node = figma.createRectangle()
-    const tampered = JSON.parse(fixture.manifestJson) as TeamMotionLibraryManifest
+    const tampered = parseTeamMotionLibraryManifest(JSON.parse(fixture.manifestJson) as unknown)
     const firstEntry = tampered.entries[0]
     if (firstEntry.kind !== 'preset') throw new Error('Expected preset fixture')
     const firstTrack = firstEntry.preset.motion.tracks[0]

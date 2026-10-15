@@ -26,6 +26,8 @@ test.afterAll(async () => {
 async function selectFrame() {
   expect(frameId, 'frameId must be set — did the Shift+A test run?').toBeTruthy()
   await page.evaluate((id: string) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([id])
@@ -84,7 +86,10 @@ test('gap NumberField sets itemSpacing', async () => {
   const before = await getNodeById(page, frameId)
   const initialSpacing = expectDefined(before, 'before').itemSpacing
 
-  await canvas.dragNumberField(page.getByTestId('layout-gap-input'), 40)
+  await canvas.dragNumberField(
+    page.getByTestId('layout-gap-input').locator('[data-slot="value"]'),
+    40
+  )
 
   const after = await getNodeById(page, frameId)
   expect(expectDefined(after, 'after').itemSpacing).toBeGreaterThan(initialSpacing + 5)
@@ -182,7 +187,7 @@ test('size dropdown adds and removes min width', async () => {
 
 test('editing a Hug width switches to Fixed in one reversible interaction', async () => {
   await selectFrame()
-  const widthField = propertyField(page, 'width')
+  const widthField = propertyField(page, 'width').and(page.locator('[data-slot="root"]'))
 
   await widthField.getByRole('combobox', { name: 'Width' }).click()
   await page.getByRole('option', { name: 'Hug' }).click()
@@ -224,29 +229,38 @@ test('editing a Hug width switches to Fixed in one reversible interaction', asyn
 })
 
 test('editing a Fill height switches to Fixed in one undo step', async () => {
-  await selectFrame()
-  const heightField = propertyField(page, 'height')
+  const frame = expectDefined(await getNodeById(page, frameId), 'frame')
+  const childId = expectDefined(frame.childIds[0], 'child')
+  await page.evaluate((id: string) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.select([id])
+  }, childId)
+  await canvas.waitForRender()
+  // Fill is stored on the child: grow along a column, stretch across a row.
+  const fillsHeight = (node: { layoutGrow: number; layoutAlignSelf: string }) =>
+    frame.layoutMode === 'VERTICAL' ? node.layoutGrow > 0 : node.layoutAlignSelf === 'STRETCH'
+  const heightField = propertyField(page, 'height').and(page.locator('[data-slot="root"]'))
 
   await heightField.getByRole('combobox', { name: 'Height' }).click()
   await page.getByRole('option', { name: 'Fill' }).click()
   await canvas.waitForRender()
 
-  const before = expectDefined(await getNodeById(page, frameId), 'before')
-  expect(before.primaryAxisSizing).toBe('FILL')
+  const before = expectDefined(await getNodeById(page, childId), 'before')
+  expect(fillsHeight(before)).toBe(true)
 
   await heightField.focus()
   await heightField.getByRole('spinbutton').fill(String(Math.round(before.height + 30)))
   await heightField.getByRole('spinbutton').press('Enter')
   await canvas.waitForRender()
 
-  const changed = expectDefined(await getNodeById(page, frameId), 'changed')
-  expect(changed.primaryAxisSizing).toBe('FIXED')
+  const changed = expectDefined(await getNodeById(page, childId), 'changed')
+  expect(fillsHeight(changed)).toBe(false)
   expect(changed.height).toBe(Math.round(before.height + 30))
 
   await canvas.pressKey('Meta+z')
   await canvas.waitForRender()
-  const undone = expectDefined(await getNodeById(page, frameId), 'undone')
-  expect(undone.primaryAxisSizing).toBe('FILL')
+  const undone = expectDefined(await getNodeById(page, childId), 'undone')
+  expect(fillsHeight(undone)).toBe(true)
   expect(undone.height).toBeCloseTo(before.height)
   canvas.assertNoErrors()
 })
@@ -273,16 +287,13 @@ test('Freeform disables auto layout and a flow option restores it', async () => 
 
   let frame = await getNodeById(page, frameId)
   expect(expectDefined(frame, 'frame').layoutMode).toBe('NONE')
-  const layout = propertySection(page, 'Layout')
+  const layout = propertySection(page, 'Auto layout')
   await expect(layout).toBeVisible()
-  await expect(layout.getByRole('button', { name: 'Add auto layout' })).toHaveAttribute(
-    'data-state',
-    'off'
-  )
+  await expect(layout.getByRole('switch', { name: 'Auto layout', exact: true })).not.toBeChecked()
   await expect(layout.getByText('Flow', { exact: true })).toBeVisible()
   await expect(layout.getByRole('checkbox', { name: 'Clip content' })).toBeVisible()
   await expect(layout.getByRole('button', { name: 'Freeform' })).toHaveAttribute('data-state', 'on')
-  await expect(propertySection(page, 'Auto layout')).toHaveCount(0)
+  await expect(propertySection(page, 'Layout')).toHaveCount(0)
 
   await layout.getByRole('button', { name: 'Vertical layout' }).click()
   await canvas.waitForRender()
@@ -290,10 +301,7 @@ test('Freeform disables auto layout and a flow option restores it', async () => 
   expect(expectDefined(frame, 'frame').layoutMode).toBe('VERTICAL')
   const autoLayout = propertySection(page, 'Auto layout')
   await expect(autoLayout).toBeVisible()
-  await expect(autoLayout.getByRole('button', { name: 'Remove auto layout' })).toHaveAttribute(
-    'data-state',
-    'on'
-  )
+  await expect(autoLayout.getByRole('switch', { name: 'Auto layout', exact: true })).toBeChecked()
   await expect(propertySection(page, 'Layout')).toHaveCount(0)
   canvas.assertNoErrors()
 })

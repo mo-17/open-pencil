@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
+import type { Fill } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -142,7 +143,9 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
     // import_svg shape: a FRAME of full-size VECTOR children, one per path.
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    const fill = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+    const fill: Fill[] = [
+      { type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
+    ]
     const frame = graph.createNode('FRAME', pageId, {
       x: 0,
       y: 0,

@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 import { resolveWalktourModule } from '@open-pencil/core/plugins'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 
 import {
   compileComponentTemplates,
@@ -13,7 +14,7 @@ test('Walktour recipe retains real editable target cards and authored positions 
   const f = componentTemplateFixture(['walktour'], 'zh-CN')
   try {
     const node = [...f.graph.getAllNodes()].find(
-      (item) => item.interactiveProps?.module?.moduleType === 'walktour'
+      (item) => readModuleInstance(item.interactiveProps?.module)?.moduleType === 'walktour'
     )
     if (!node) throw new Error('Missing tour')
     const module = resolveWalktourModule(node.interactiveProps?.module)

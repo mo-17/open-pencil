@@ -12,6 +12,8 @@ import {
   renderBusinessNavigation
 } from '@/app/lowcode/backend/business/pages/navigation'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 import { moduleInstallationFixture } from './installation/helpers'
 
 function descendants(graph: SceneGraph, id: string): SceneNode[] {
@@ -185,7 +187,7 @@ describe('business module navigation', () => {
     const sources = result.pageIds
       .flatMap((id) => descendants(graph, id))
       .filter((node) => node.type === 'LIST')
-      .map((node) => node.interactiveProps?.dataSourceRef)
+      .map((node) => readBackendResourceDataSource(node.interactiveProps?.dataSourceRef))
     expect(
       sources.some(
         (source) => source?.kind === 'backendResource' && source.resourceId === 'service-desk-users'

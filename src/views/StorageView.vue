@@ -754,11 +754,6 @@ const previewWorkspace = useDocumentWorkspace<StorageDocument>({
 const previewURL = previewWorkspace.previewURL
 const vWorkspacePreview = previewWorkspace.previewDirective
 
-function workspacePreviewStyle(documentId: string): Record<string, string> | undefined {
-  const url = previewURL(documentId)
-  return url ? { '--storage-workspace-preview': `url("${url}")` } : undefined
-}
-
 async function openDocument(document: StorageDocument): Promise<void> {
   if (
     openingDocumentId.value ||
@@ -1080,7 +1075,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="flex min-h-screen flex-col bg-app text-surface" data-test-id="storage-workspace">
+  <main class="flex min-h-screen flex-col bg-canvas text-surface" data-test-id="storage-workspace">
     <header class="flex h-14 items-center border-b border-border px-6">
       <div>
         <div class="flex items-center gap-2">
@@ -1144,14 +1139,14 @@ onBeforeUnmount(() => {
     <section class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col p-6">
       <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
         <div class="min-w-0 flex-1">
-          <p v-if="error" class="text-xs text-danger" role="alert">{{ error }}</p>
+          <p v-if="error" class="text-xs text-error" role="alert">{{ error }}</p>
           <p v-else-if="operationNotice" class="text-xs text-success" role="status">
             {{ operationNotice }}
           </p>
           <p v-else-if="conflictCount" class="text-[10px] text-warning" role="status">
             {{ dialogs.storageConflictCount({ count: conflictCount }) }}
           </p>
-          <p v-else-if="durabilityAvailable === false" class="text-[10px] text-danger">
+          <p v-else-if="durabilityAvailable === false" class="text-[10px] text-error">
             {{ dialogs.storageDurabilityUnavailable }}
           </p>
           <p v-else class="text-[10px] text-muted">
@@ -1184,8 +1179,7 @@ onBeforeUnmount(() => {
           :preserved-copy="preservedCopyIds.has(document.id)"
           :busy="openingDocumentId === document.id || deletingDocumentId === document.id"
           :disabled="durabilityAvailable !== true"
-          :class="{ 'storage-workspace-document-card--preview': previewURL(document.id) }"
-          :style="workspacePreviewStyle(document.id)"
+          :preview-image="previewURL(document.id)"
           @open="openDocument(document)"
           @delete="requestDeleteDocument(document)"
         />
@@ -1273,17 +1267,3 @@ onBeforeUnmount(() => {
     @confirm="confirmDeleteDocument"
   />
 </template>
-
-<style scoped>
-:deep(.storage-workspace-document-card--preview > button > div:first-child) {
-  background-image: var(--storage-workspace-preview);
-  background-position: center;
-  background-size: cover;
-}
-
-:deep(
-  .storage-workspace-document-card--preview > button > div:first-child > div[class~='size-11']
-) {
-  visibility: hidden;
-}
-</style>

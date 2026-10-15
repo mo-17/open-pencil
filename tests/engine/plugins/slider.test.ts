@@ -9,6 +9,8 @@ import {
   sliderInitialValues
 } from '#core/plugins/slider'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('Slider is a portable FRAME module with isolated default configuration', () => {
   const first = createSliderModuleInstance()
   const second = createSliderModuleInstance()
@@ -16,7 +18,7 @@ test('Slider is a portable FRAME module with isolated default configuration', ()
   expect(second.config.label).toBe('Value')
   expect(SLIDER_MODULE_DEFAULT_CONFIG.label).toBe('Value')
   const frame = createSliderModuleFrameOverrides({ label: '价格', range: true })
-  expect(frame.interactiveProps?.module?.moduleType).toBe('slider')
+  expect(expectModuleInstance(frame.interactiveProps?.module).moduleType).toBe('slider')
   expect(resolveSliderModule(frame.interactiveProps?.module)?.ok).toBe(true)
 })
 

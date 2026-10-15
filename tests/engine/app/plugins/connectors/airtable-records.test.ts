@@ -152,8 +152,11 @@ describe('Airtable Records read-only reference connector', () => {
       ).rejects.toThrow()
     }
 
-    const widenedOrigin = clonedContract()
-    widenedOrigin.network.origins = ['https://example.com']
+    const originalWidenedOrigin = clonedContract()
+    const widenedOrigin: typeof originalWidenedOrigin = {
+      ...originalWidenedOrigin,
+      network: { ...originalWidenedOrigin.network, origins: ['https://example.com'] }
+    }
     await expect(
       AIRTABLE_RECORDS_CONNECTOR_ADAPTER.prepare({
         contract: widenedOrigin,
@@ -163,8 +166,11 @@ describe('Airtable Records read-only reference connector', () => {
       })
     ).rejects.toThrow('must be declared by the connector network policy')
 
-    const widenedMethod = clonedContract()
-    widenedMethod.network.methods = ['GET', 'POST']
+    const originalWidenedMethod = clonedContract()
+    const widenedMethod: typeof originalWidenedMethod = {
+      ...originalWidenedMethod,
+      network: { ...originalWidenedMethod.network, methods: ['GET', 'POST'] }
+    }
     await expect(
       AIRTABLE_RECORDS_CONNECTOR_ADAPTER.prepare({
         contract: widenedMethod,

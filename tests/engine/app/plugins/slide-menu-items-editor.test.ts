@@ -1,30 +1,22 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const source = readFileSync(
-  resolve(
-    import.meta.dir,
-    '../../../../src/components/properties/Lowcode/SlideMenuItemsEditor.vue'
-  ),
+  repoPath('src/components/properties/Lowcode/SlideMenuItemsEditor.vue'),
   'utf8'
 )
 const panelSource = readFileSync(
-  resolve(import.meta.dir, '../../../../src/components/properties/Lowcode/ModulePropsPanel.vue'),
+  repoPath('src/components/properties/Lowcode/ModulePropsPanel.vue'),
   'utf8'
 )
 const scalarSource = readFileSync(
-  resolve(
-    import.meta.dir,
-    '../../../../src/components/properties/Lowcode/ModuleScalarFieldEditor.vue'
-  ),
+  repoPath('src/components/properties/Lowcode/ModuleScalarFieldEditor.vue'),
   'utf8'
 )
 const controllerSource = readFileSync(
-  resolve(
-    import.meta.dir,
-    '../../../../src/components/properties/Lowcode/module-props-panel-controller.ts'
-  ),
+  repoPath('src/components/properties/Lowcode/module-props-panel-controller.ts'),
   'utf8'
 )
 

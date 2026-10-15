@@ -16,11 +16,16 @@ export {
   NodeNotFoundError,
   toolChangesDocument
 } from './schema'
-export type { ToolCtx, ToolDef, ParamDef, ParamType } from './schema'
-export { toolsToAI, buildDebugLog, serializeToolMutation } from './ai-adapter'
-export type { ToolExecution, ToolCapability } from './schema'
-export { isAtomicTool, isToolExposed, type ToolInterface, type ToolExposure } from './schema'
+export type { ToolCtx, ToolDef, ParamDef, ParamType, ToolExecution, ToolCapability } from './schema'
+export {
+  isAtomicTool,
+  isToolExposed,
+  parseToolArgs,
+  type ToolInterface,
+  type ToolExposure
+} from './schema'
 export { toolNumber } from './input'
+export { toolsToAI, buildDebugLog, serializeToolMutation } from './ai-adapter'
 export type {
   ToolLogEntry,
   ToolDebugLog,
@@ -28,7 +33,13 @@ export type {
   AIAdapterExecutionContext,
   StepBudget
 } from './ai-adapter'
-export { calcClusterConfidence, diffDocuments, diffPageLayersJSX, wrapEvalCode } from './analyze'
+export {
+  calcClusterConfidence,
+  compileScript,
+  diffDocuments,
+  diffPageLayersJSX,
+  wrapEvalCode
+} from './analyze'
 export type { DocumentDiff, DocumentDiffOptions, LayerJSXChange } from './analyze'
 export {
   VALID_OVERLAP_CATEGORIES,
@@ -49,3 +60,5 @@ export type {
   DesignBriefScope,
   DesignBriefLocale
 } from './describe/brief'
+
+export type { LowcodeNodeRead, LowcodeNodesRead } from './read/lowcode'

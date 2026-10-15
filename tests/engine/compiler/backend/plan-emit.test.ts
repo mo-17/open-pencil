@@ -10,6 +10,8 @@ import {
 } from '@open-pencil/compiler'
 import type { BackendProviderBundle, BackendProviderPlan } from '@open-pencil/compiler'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import { createFakeBackendProviderBundle, fakeBackendApplication, fakeSelection } from './helpers'
 
 function digest(value: string | Uint8Array): string {
@@ -217,7 +219,12 @@ describe('Compiler Backend Provider plan and emission', () => {
     expect(typeof manifestContent).toBe('string')
     if (manifestContent === undefined) return
     expect(firstEmission.emission.manifestDigest).toBe(digest(manifestContent))
-    expect(manifestContent).toBe(secondEmission.emission.files.get(BACKEND_ARTIFACT_MANIFEST_PATH))
+    expect(manifestContent).toBe(
+      expectDefined(
+        secondEmission.emission.files.get(BACKEND_ARTIFACT_MANIFEST_PATH),
+        'second manifest'
+      )
+    )
   })
 
   test('fails closed for binary artifacts in contract v1', () => {

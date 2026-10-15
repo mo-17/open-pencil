@@ -1,4 +1,6 @@
-import { randomIndex } from '@open-pencil/core/random'
+import { uniq } from 'es-toolkit/array'
+
+import { randomIndex } from '@open-pencil/scene-graph/random'
 
 import { parsePeer } from '@/app/presence/schema'
 import { ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/constants'
@@ -36,11 +38,9 @@ const SAFE_PRESENCE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/
 
 function presenceIds(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return [
-    ...new Set(
-      value.filter((id): id is string => typeof id === 'string' && SAFE_PRESENCE_ID.test(id))
-    )
-  ]
+  return uniq(
+    value.filter((id): id is string => typeof id === 'string' && SAFE_PRESENCE_ID.test(id))
+  )
     .sort()
     .slice(0, MAX_TIMELINE_PRESENCE_IDS)
 }

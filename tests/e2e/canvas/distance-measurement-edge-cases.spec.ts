@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
 
 async function showMeasurement(targetId: string) {
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.hoveredNodeId = id
@@ -15,6 +17,8 @@ async function showMeasurement(targetId: string) {
 
 test('renders containment, multi-selection, rotation, and overlap edge cases', async () => {
   const targets = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -110,6 +114,8 @@ test('renders containment, multi-selection, rotation, and overlap edge cases', a
   ).toMatchSnapshot('distance-containment.png')
 
   await editor.page.evaluate(({ first, second }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([first, second])
@@ -119,10 +125,10 @@ test('renders containment, multi-selection, rotation, and overlap edge cases', a
     await editor.page.screenshot({ clip: { x: 390, y: 40, width: 430, height: 260 } })
   ).toMatchSnapshot('distance-multi-rotation.png')
 
-  await editor.page.evaluate(
-    (id) => window.openPencil?.getStore?.().select([id]),
-    targets.overlapSelected
-  )
+  await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, targets.overlapSelected)
   await showMeasurement(targets.overlapTarget)
   expect(
     await editor.page.screenshot({ clip: { x: 70, y: 350, width: 240, height: 200 } })

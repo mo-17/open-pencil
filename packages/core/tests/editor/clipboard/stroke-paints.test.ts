@@ -106,7 +106,9 @@ for (const carrier of ['html', 'snapshot'] as const) {
     const target = createEditor()
     try {
       const root = source.graph.createNode('FRAME', source.state.currentPageId)
-      const tile = source.graph.createNode('RECTANGLE', root.id, { name: 'Tile' })
+      const tile = source.graph.createNode('RECTANGLE', root.id, {
+        name: 'Tile'
+      })
       const pattern: Stroke = {
         ...imageStroke,
         type: 'PATTERN',
@@ -133,7 +135,10 @@ for (const carrier of ['html', 'snapshot'] as const) {
       const pastedTile = expectDefined(children.find((node) => node.name === 'Tile'))
       const pastedPaint = expectDefined(children.find((node) => node.name === 'Paint'))
       const assertReferences = (node: SceneNode) => {
-        expect(node.strokes[0]).toEqual({ ...pattern, sourceNodeId: pastedTile.id })
+        expect(node.strokes[0]).toEqual({
+          ...pattern,
+          sourceNodeId: pastedTile.id
+        })
         expect(node.stateOverrides?.hover?.strokes?.[0]?.sourceNodeId).toBe(pastedTile.id)
         expect(node.responsiveOverrides?.compact?.strokes?.[0]?.sourceNodeId).toBe(pastedTile.id)
         expect(pastedTile.id).not.toBe(tile.id)
@@ -156,7 +161,9 @@ test('Duplicate remaps pattern strokes through undo/redo and save/reopen', async
   const editor = createEditor()
   try {
     const root = editor.graph.createNode('FRAME', editor.state.currentPageId)
-    const tile = editor.graph.createNode('RECTANGLE', root.id, { name: 'Tile' })
+    const tile = editor.graph.createNode('RECTANGLE', root.id, {
+      name: 'Tile'
+    })
     const pattern: Stroke = {
       ...imageStroke,
       type: 'PATTERN',
@@ -185,7 +192,7 @@ test('Duplicate remaps pattern strokes through undo/redo and save/reopen', async
     expect(editor.graph.getNode(clonedTile.id)).toBeDefined()
     const saved = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(editor.graph)))
     const savedRoot = expectDefined(
-      [...saved.nodes.values()].find((node) => node.name === 'Frame copy')
+      [...saved.nodes.values()].findLast((node) => node.name === 'Frame')
     )
     const savedChildren = saved.getChildren(savedRoot.id)
     const savedTile = expectDefined(savedChildren.find((node) => node.name === 'Tile'))
@@ -219,10 +226,19 @@ for (const carrier of ['html', 'snapshot', 'figma'] as const) {
     const target = createEditor()
     try {
       const root = source.graph.createNode('FRAME', source.state.currentPageId, { name: 'Pattern' })
-      const tile = source.graph.createNode('RECTANGLE', root.id, { name: 'Tile' })
+      const tile = source.graph.createNode('RECTANGLE', root.id, {
+        name: 'Tile'
+      })
       source.graph.createNode('RECTANGLE', root.id, {
         name: 'Paint',
-        strokes: [{ ...imageStroke, type: 'PATTERN', imageHash: undefined, sourceNodeId: tile.id }]
+        strokes: [
+          {
+            ...imageStroke,
+            type: 'PATTERN',
+            imageHash: undefined,
+            sourceNodeId: tile.id
+          }
+        ]
       })
       source.replaceGraph(
         await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(source.graph)))
@@ -252,9 +268,15 @@ for (const carrier of ['html', 'snapshot', 'figma'] as const) {
       target.undo.undo()
       target.undo.redo()
       expect(target.graph.getNode(pastedPaint.id)?.strokes[0]?.sourceNodeId).toBe(pastedTile.id)
-      const reopened = await parseFigFile(uint8ArrayToArrayBuffer(await exportFigFile(target.graph)))
-      const reopenedPaint = expectDefined([...reopened.nodes.values()].find((node) => node.name === 'Paint'))
-      const reopenedTile = expectDefined([...reopened.nodes.values()].find((node) => node.name === 'Tile'))
+      const reopened = await parseFigFile(
+        uint8ArrayToArrayBuffer(await exportFigFile(target.graph))
+      )
+      const reopenedPaint = expectDefined(
+        [...reopened.nodes.values()].find((node) => node.name === 'Paint')
+      )
+      const reopenedTile = expectDefined(
+        [...reopened.nodes.values()].find((node) => node.name === 'Tile')
+      )
       expect(reopenedPaint.strokes[0]?.sourceNodeId).toBe(reopenedTile.id)
     } finally {
       source.dispose()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed, ref } from 'vue'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
@@ -18,6 +19,7 @@ import ChatNodePreview from '@/components/chat/ChatNodePreview.vue'
 import ChatProfileSelect from '@/components/chat/ChatProfileSelect.vue'
 import ChatThinkingSelect from '@/components/chat/ChatThinkingSelect.vue'
 import ProviderModelSelect from '@/components/chat/ProviderModelSelect.vue'
+import AppDropOverlay from '@/components/ui/feedback/AppDropOverlay.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
@@ -25,6 +27,8 @@ const { ai, dialogs } = useI18n()
 
 const {
   status,
+  dragging = false,
+  dropRefusal = null,
   initializing = false,
   stopping = false,
   stopRetryAvailable = false,
@@ -36,6 +40,8 @@ const {
   allowMultipleAttachments = false,
   attachmentTargetLabel
 } = defineProps<{
+  dragging?: boolean
+  dropRefusal?: string | null
   status: 'ready' | 'submitted' | 'streaming' | 'error'
   initializing?: boolean
   stopping?: boolean
@@ -105,7 +111,7 @@ const attachmentTarget = computed(() => {
   const override = attachmentTargetLabel?.trim()
   if (override) return override
   if (isAgentProvider.value) return agentName.value
-  return [providerDef.value.name, selectedModelName.value].filter(Boolean).join(' · ')
+  return compact([providerDef.value.name, selectedModelName.value]).join(' · ')
 })
 
 function chooseFiles() {
@@ -165,6 +171,13 @@ function handleSubmit(submittedText: string) {
     @paste="handlePaste"
     @settings="openSettingsDialog('ai')"
   >
+    <template #overlay>
+      <AppDropOverlay
+        :visible="dragging"
+        :accepts="!dropRefusal"
+        :label="dropRefusal ?? ai.dropImagesToAttach"
+      />
+    </template>
     <template #model>
       <div class="@container flex min-w-0 items-center gap-1">
         <template v-if="isAgentProvider">

@@ -1,3 +1,5 @@
+import * as v from 'valibot'
+
 import { readCacheText, removeCacheEntry, writeCacheText } from '@/app/cache'
 
 import {
@@ -45,6 +47,18 @@ async function removeEntryWithStatus(
   return { status }
 }
 
+/** Keep the persisted domain identity check separate from JSON structure validation. */
+function hasCompatibleCacheEnvelope(envelope: {
+  [Key in keyof Pick<SupabaseSchemaCacheEnvelope, 'format' | 'version' | 'cachedAt'>]: unknown
+}): boolean {
+  return (
+    envelope.format === SUPABASE_SCHEMA_CACHE_FORMAT &&
+    envelope.version === SUPABASE_SCHEMA_CACHE_VERSION &&
+    typeof envelope.cachedAt === 'number' &&
+    Number.isFinite(envelope.cachedAt)
+  )
+}
+
 export async function readSupabaseSchemaCatalogCacheState(
   identity: SupabaseSchemaCatalogIdentity,
   options: SupabaseSchemaCacheOptions = {}
@@ -57,13 +71,22 @@ export async function readSupabaseSchemaCatalogCacheState(
   }
 
   try {
-    const envelope = JSON.parse(raw) as Partial<SupabaseSchemaCacheEnvelope>
-    if (
-      envelope.format !== SUPABASE_SCHEMA_CACHE_FORMAT ||
-      envelope.version !== SUPABASE_SCHEMA_CACHE_VERSION ||
-      typeof envelope.cachedAt !== 'number' ||
-      !Number.isFinite(envelope.cachedAt)
-    ) {
+    const parsed = v.safeParse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.object({
+          format: v.literal(SUPABASE_SCHEMA_CACHE_FORMAT),
+          version: v.literal(SUPABASE_SCHEMA_CACHE_VERSION),
+          cachedAt: v.pipe(v.number(), v.finite()),
+          catalog: v.unknown()
+        })
+      ),
+      raw
+    )
+    if (!parsed.success) return await removeEntryWithStatus(key, 'invalid')
+    const envelope = parsed.output
+    if (!hasCompatibleCacheEnvelope(envelope)) {
       return await removeEntryWithStatus(key, 'invalid')
     }
     const now = (options.now ?? Date.now)()

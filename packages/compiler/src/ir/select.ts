@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import {
   DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
   DEFAULT_LOWCODE_SELECT_PLACEHOLDER,
@@ -22,7 +24,7 @@ export function selectFeatures(
     ...(multiple
       ? {
           selectDefaultValues: Array.isArray(value)
-            ? [...new Set(value.filter((item): item is string => typeof item === 'string'))]
+            ? uniq(value.filter((item): item is string => typeof item === 'string'))
             : []
         }
       : {})

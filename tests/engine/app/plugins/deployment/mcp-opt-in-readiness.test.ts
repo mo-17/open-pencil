@@ -104,7 +104,11 @@ describe('opt-in readiness and deployment-plan MCP tools', () => {
       expect(entry.enabledByDefault).toBe(false)
       expect(entry.manifest.contributions.commands).toEqual([definition.mcpSafePlan])
       expect(entry.manifest.contributions.exporters ?? []).toEqual([])
-      expect(entry.manifest.contributions.connectors ?? []).toEqual([])
+      expect(
+        ('connectors' in entry.manifest.contributions
+          ? entry.manifest.contributions.connectors
+          : undefined) ?? []
+      ).toEqual([])
       expect(
         entry.manifest.contributions.commands?.some(
           (command) =>

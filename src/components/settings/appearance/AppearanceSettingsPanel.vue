@@ -80,7 +80,8 @@ const toolbarOptions = computed<
           designPanelWorkspace === option.value ? 'border-accent/70 bg-accent/5' : 'border-border'
         "
         :data-selected="designPanelWorkspace === option.value || undefined"
-        :data-test-id="`settings-design-panel-workspace-${option.value}`"
+        data-slot="inspector-workspace-option"
+        :data-workspace="option.value"
       >
         <input
           v-model="designPanelWorkspace"
@@ -139,7 +140,8 @@ const toolbarOptions = computed<
           previewToolbarLayout === option.value ? 'border-accent/70 bg-accent/5' : 'border-border'
         "
         :data-selected="previewToolbarLayout === option.value || undefined"
-        :data-test-id="`settings-preview-toolbar-layout-${option.value}`"
+        data-slot="preview-toolbar-layout-option"
+        :data-layout="option.value"
       >
         <input
           v-model="previewToolbarLayout"
@@ -153,7 +155,7 @@ const toolbarOptions = computed<
           class="flex h-14 items-start gap-1 overflow-hidden rounded border border-border bg-panel p-1.5"
           aria-hidden="true"
         >
-          <span class="mt-1 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+          <span class="mt-1 size-1.5 shrink-0 rounded-full bg-success-fill" />
           <span class="mt-0.5 h-2 w-6 shrink-0 rounded-sm bg-muted/35" />
           <span
             v-for="index in option.density"

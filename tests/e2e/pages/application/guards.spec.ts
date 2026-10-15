@@ -6,6 +6,7 @@ import {
   reopenApplicationModeDocument,
   waitForApplicationDocument
 } from '#tests/helpers/compiler/application-mode/editor'
+import { parseJSONBytes } from '#tests/helpers/serialization'
 
 const editor = useEditorSetup()
 test.setTimeout(180_000)
@@ -13,7 +14,7 @@ test.setTimeout(180_000)
 // eslint-disable-next-line no-empty-pattern -- useEditorSetup owns the editor lifecycle.
 test('guard drafts apply atomically, undo, reject unsafe fallback, block preview navigation and persist in FIG', async ({}, info) => {
   await editor.page.setViewportSize({ width: 2200, height: 1100 })
-  const bytes = JSON.parse(
+  const bytes = parseJSONBytes(
     execFileSync(
       'bun',
       [
@@ -22,7 +23,7 @@ test('guard drafts apply atomically, undo, reject unsafe fallback, block preview
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as number[]
+  )
   await reopenApplicationModeDocument(editor.page, bytes)
   const preview = editor.page.locator('iframe[aria-label="lowcode preview"]')
   const runtime = editor.page.frameLocator('iframe[aria-label="lowcode preview"]')
@@ -43,13 +44,13 @@ test('guard drafts apply atomically, undo, reject unsafe fallback, block preview
   await expect(entry.getByRole('alert')).toBeVisible()
   await fallback.fill('/home')
   expect(
-    await editor.page.evaluate(
-      () =>
-        window.openPencil
-          ?.getStore?.()
-          .graph.getPages()
-          .find((page) => page.name === 'Products')?.lowcodeApplicationPage?.enterGuard
-    )
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil
+        ?.getStore?.()
+        .graph.getPages()
+        .find((page) => page.name === 'Products')?.lowcodeApplicationPage?.enterGuard
+    })
   ).toBeUndefined()
   let previousFrame = await preview.getAttribute('src')
   await entry.getByRole('button', { name: 'Apply rule', exact: true }).click()
@@ -80,6 +81,8 @@ test('guard drafts apply atomically, undo, reject unsafe fallback, block preview
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store?.graph.getNode(store.state.currentPageId)?.name
       })
@@ -106,6 +109,8 @@ test('guard drafts apply atomically, undo, reject unsafe fallback, block preview
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         return store?.graph.getNode(store.state.currentPageId)?.name
       })

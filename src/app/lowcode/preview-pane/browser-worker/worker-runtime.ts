@@ -14,6 +14,7 @@ import { fontManager } from '@open-pencil/core/text'
 
 import { createBrowserDownloadedFontCache } from '@/app/editor/fonts/browser/downloaded-font-cache'
 import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser/web-font-fetch'
+import { installBundledFonts } from '@/app/editor/fonts/bundled'
 import { restoreVueCompilerGraph } from '@/app/plugins/host/vue/compiler/protocol'
 
 import type { PreviewDiagnostic, PreviewHostBuildMetrics } from '../host/types'
@@ -101,6 +102,7 @@ export async function executeBrowserPreviewWorkerRequest(value: unknown): Promis
     postProgress(request, 'restore', startedAt)
     const graph = restoreVueCompilerGraph(request.graph)
     postProgress(request, 'fonts', startedAt)
+    installBundledFonts()
     const fontAbortController = new AbortController()
     const fontCache = createBrowserDownloadedFontCache()
     const fontFetch = createBrowserWebFontFetch({

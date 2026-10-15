@@ -5,8 +5,12 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import {
   createSqliteMarketplaceRepository,
+  parseMarketplaceState,
+  type MarketplaceSubmissionRevisionV1,
   digestMarketplaceArtifact,
   marketplaceListingDigest,
   type MarketplaceListingMetadataV1
@@ -255,16 +259,8 @@ describe('Phase 4 SQLite submission revisions', () => {
   })
 
   test('rejects history payload or reviewer-evidence tampering with an unchanged audit chain', async () => {
-    interface PersistedRevisionForTamper {
-      manifestDigest: string
-      signingKeyId: string | null
-      authenticatedRequestKeyId: string | null
-      supersededReason: string
-      createdAt: string
-    }
-    interface PersistedStateForTamper {
-      auditEvents: object[]
-      submissions: Array<{ revisionHistory: PersistedRevisionForTamper[] }>
+    type PersistedRevisionForTamper = {
+      -readonly [Key in keyof MarketplaceSubmissionRevisionV1]: MarketplaceSubmissionRevisionV1[Key]
     }
     const mutations = [
       (revision: PersistedRevisionForTamper) => {
@@ -289,7 +285,16 @@ describe('Phase 4 SQLite submission revisions', () => {
       const row = database
         .query<{ state_json: string }, []>('SELECT state_json FROM marketplace_state WHERE id = 1')
         .get()
-      const state = JSON.parse(row?.state_json ?? '{}') as PersistedStateForTamper
+      const parsed = parseMarketplaceState(
+        v.parse(v.pipe(v.string(), v.parseJson(), v.unknown()), row?.state_json ?? '{}')
+      )
+      const state = {
+        ...parsed,
+        submissions: parsed.submissions.map((submission) => ({
+          ...submission,
+          revisionHistory: submission.revisionHistory.map((revision) => ({ ...revision }))
+        }))
+      }
       const auditEventsBefore = JSON.stringify(state.auditEvents)
       const revision = state.submissions.at(0)?.revisionHistory.at(0)
       if (!revision) throw new TypeError('Expected persisted revision fixture')

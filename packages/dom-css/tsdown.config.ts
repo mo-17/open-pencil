@@ -6,6 +6,7 @@ export default defineConfig({
     browser: './src/browser.ts',
     'static-export': './src/static-export.ts',
     export: './src/export/index.ts',
+    'scene-graph': './src/import/scene-graph.ts',
     'jsx-runtime': './src/import/jsx/runtime.ts',
     'jsx-dev-runtime': './src/import/jsx/dev-runtime.ts'
   },

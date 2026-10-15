@@ -1,6 +1,7 @@
 import { lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, basename, isAbsolute, join, parse, resolve, sep as osSep } from 'node:path'
 
+import { compact } from 'es-toolkit/array'
 import { toUint8Array } from 'js-base64'
 
 import { decodeBase64 } from '@open-pencil/core/bytes'
@@ -59,7 +60,7 @@ async function resolveRealAncestor(
  */
 async function assertNoSymlinksInRemainder(realAncestor: string, remainder: string): Promise<void> {
   if (!remainder) return
-  const segments = remainder.split(osSep).filter(Boolean)
+  const segments = compact(remainder.split(osSep))
   let current = realAncestor
   for (const seg of segments) {
     current = join(current, seg)

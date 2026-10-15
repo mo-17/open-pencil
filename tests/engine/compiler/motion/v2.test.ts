@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { instrumentVectorMotionHTML } from '#compiler/adapters/react/motion/target'
+import * as v from 'valibot'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -187,15 +188,24 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     expect(runtime).toContain('boxShadow')
     const registrySource = /const registry: Record<string, MotionSpec> = (.+)\n/.exec(runtime)?.[1]
     expect(registrySource).toBeDefined()
-    const registry = JSON.parse(registrySource ?? '{}') as Record<
-      string,
-      {
-        tracks: Array<{
-          keyframes: Array<Record<string, unknown>>
-          timing: { easing: string }
-        }>
-      }
-    >
+    const registry = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.record(
+          v.string(),
+          v.looseObject({
+            tracks: v.array(
+              v.looseObject({
+                keyframes: v.array(v.record(v.string(), v.unknown())),
+                timing: v.looseObject({ easing: v.string() })
+              })
+            )
+          })
+        )
+      ),
+      registrySource ?? '{}'
+    )
     const frames = Object.values(registry)[0]?.tracks[0]?.keyframes ?? []
     expect(frames.length).toBeGreaterThanOrEqual(65)
     expect(frames.length).toBeLessThanOrEqual(257)
@@ -215,7 +225,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     const changed = motion()
     const path = changed.tracks[0]?.path
     expect(path).toBeDefined()
-    if (!path) throw new Error('expected motion path')
+    if (!path || !('points' in path)) throw new Error('expected polyline motion path')
     path.points[1].x = 121
     const second = compileMotion(changed)
     const token = (out: typeof first) =>
@@ -256,10 +266,19 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     const runtime = out.files.get('src/__motion-runtime.ts') as string
     const registrySource = /const registry: Record<string, MotionSpec> = (.+)\n/.exec(runtime)?.[1]
     expect(registrySource).toBeDefined()
-    const registry = JSON.parse(registrySource ?? '{}') as Record<
-      string,
-      { tracks: Array<{ timing: { easing: string } }> }
-    >
+    const registry = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.record(
+          v.string(),
+          v.looseObject({
+            tracks: v.array(v.looseObject({ timing: v.looseObject({ easing: v.string() }) }))
+          })
+        )
+      ),
+      registrySource ?? '{}'
+    )
     const easing = Object.values(registry)[0]?.tracks[0]?.timing.easing
     expect(easing?.startsWith('linear(')).toBe(true)
     expect(easing?.slice('linear('.length, -1).split(',')).toHaveLength(65)
@@ -345,7 +364,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     }))
     const spec = motion()
     const path = spec.tracks[0]?.path
-    if (!path) throw new Error('expected motion path')
+    if (!path || !('points' in path)) throw new Error('expected polyline motion path')
     path.points = points
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -368,7 +387,8 @@ describe('compiler — MotionSpec v2 artifacts', () => {
 
     const degenerate = motion()
     const degeneratePath = degenerate.tracks[0]?.path
-    if (!degeneratePath) throw new Error('expected degenerate motion path')
+    if (!degeneratePath || !('points' in degeneratePath))
+      throw new Error('expected polyline motion path')
     degeneratePath.points = Array.from({ length: 128 }, () => ({ x: 4, y: 7 }))
     const degenerateCSS = compileMotion(degenerate).files.get('src/__motion.css') as string
     expect(degenerateCSS).not.toContain('NaN')
@@ -640,10 +660,23 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     const runtime = out.files.get('src/__motion-runtime.ts') as string
     const registrySource = /const registry: Record<string, MotionSpec> = (.+)\n/.exec(runtime)?.[1]
     expect(registrySource).toBeDefined()
-    const registry = JSON.parse(registrySource ?? '{}') as Record<
-      string,
-      { tracks: Array<{ keyframes: Array<{ filter?: string }> }> }
-    >
+    const registry = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.record(
+          v.string(),
+          v.looseObject({
+            tracks: v.array(
+              v.looseObject({
+                keyframes: v.array(v.looseObject({ filter: v.optional(v.string()) }))
+              })
+            )
+          })
+        )
+      ),
+      registrySource ?? '{}'
+    )
     const frames = Object.values(registry)[0]?.tracks[0]?.keyframes ?? []
     expect(frames[0]?.filter).toContain('blur(0px) drop-shadow(2px 3px 7px')
     expect(runtime).toContain('"--op-motion-vector-trim-visible":"1"')

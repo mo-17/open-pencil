@@ -81,7 +81,7 @@ function bundledManifest(pluginId: string): PluginManifestPayloadV1 {
   const manifest = createBundledPluginCatalog().find(
     (entry) => entry.manifest.plugin.id === pluginId
   )?.manifest
-  if (!manifest) throw new Error(`Missing bundled plugin: ${pluginId}`)
+  if (manifest?.schemaVersion !== 1) throw new Error(`Missing bundled v1 plugin: ${pluginId}`)
   return structuredClone(manifest)
 }
 

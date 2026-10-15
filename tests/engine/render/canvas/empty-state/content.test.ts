@@ -73,10 +73,15 @@ test('Empty State canvas wraps large mixed copy, preserves its beginning and cli
     height: 360
   })
   const blocks: { x: number; y: number; height: number }[] = []
-  const draw = h.canvas.drawParagraph.bind(h.canvas)
-  const spy = spyOn(h.canvas, 'drawParagraph').mockImplementation((paragraph, x, y) => {
-    blocks.push({ x, y, height: paragraph.getHeight() })
-    draw(paragraph, x, y)
+  const build = h.renderer.buildParagraph.bind(h.renderer)
+  const spy = spyOn(h.renderer, 'buildParagraph').mockImplementation((label, color, options) => {
+    const layout = build(label, color, options)
+    const draw = layout.draw.bind(layout)
+    layout.draw = (canvas, x, y) => {
+      blocks.push({ x, y, height: layout.getHeight() })
+      draw(canvas, x, y)
+    }
+    return layout
   })
   try {
     h.canvas.clear(h.ck.WHITE)

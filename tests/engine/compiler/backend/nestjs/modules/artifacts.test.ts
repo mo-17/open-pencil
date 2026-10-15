@@ -6,6 +6,8 @@ import { emitNestJSModules } from '#compiler/backend/nestjs/modules'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import { commandApplication } from '../commands/helpers'
 import { modelFiles } from '../model-capabilities/helpers'
 
@@ -92,16 +94,19 @@ test('emits real business modules and constrained command entry points with a sh
   const plain = structuredClone(app)
   delete plain.modules
   const legacy = modelFiles(plain)
+  const legacyFile = (path: string): string => {
+    const content = expectDefined(legacy.get('backend/nestjs/' + path), path)
+    if (typeof content !== 'string') throw new Error('Expected generated text artifact ' + path)
+    return content
+  }
   for (const name of [
     'command.service.ts',
     'command-execution.ts',
     'command-input.ts',
     'identity.ts'
   ])
-    expect(file('src/' + name)).toEqual(legacy.get('backend/nestjs/src/' + name))
-  expect(file('migrations/001-initial.sql')).toEqual(
-    legacy.get('backend/nestjs/migrations/001-initial.sql')
-  )
+    expect(file('src/' + name)).toEqual(legacyFile('src/' + name))
+  expect(file('migrations/001-initial.sql')).toEqual(legacyFile('migrations/001-initial.sql'))
   expect(emitNestJSModules(plain)).toEqual([])
   expect(
     emitNestJSCommands(plain).some((artifact) => artifact.path.endsWith('/command.controller.ts'))

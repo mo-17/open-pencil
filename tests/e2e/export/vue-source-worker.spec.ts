@@ -59,11 +59,9 @@ test('compiles Vue in a real module Worker and terminates it on abort', async ({
       const graph = new SceneGraph()
       const [designPage] = graph.getPages()
       const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2, 3, 4])
-      const font = new Uint8Array(
-        await fetch('/packages/core/assets/Inter-Regular.ttf').then((response) =>
-          response.arrayBuffer()
-        )
-      )
+      const fontResponse = await fetch('/packages/core/assets/Inter-Regular.ttf')
+      const fontBytes = await fontResponse.arrayBuffer()
+      const font = new Uint8Array(fontBytes)
       graph.images.set('hero-image', image)
       graph.createNode('RECTANGLE', designPage.id, {
         name: 'Hero',

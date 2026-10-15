@@ -68,13 +68,16 @@ export function renderEmptyStateModulePreview(
       )
       const rounded = {
         ...frame,
-        node: { ...node, cornerRadius: config.borderRadius, independentCorners: false }
+        node: {
+          ...node,
+          cornerRadius: config.borderRadius,
+          independentCorners: false
+        }
       }
       withModulePreviewSurface(renderer, canvas, rounded, config.backgroundColor, () => {
         drawIllustration(renderer, canvas, config, geometry.icon)
-        if (title) canvas.drawParagraph(title, geometry.title.x, geometry.title.y)
-        if (description)
-          canvas.drawParagraph(description, geometry.description.x, geometry.description.y)
+        if (title) title.draw(canvas, geometry.title.x, geometry.title.y)
+        if (description) description.draw(canvas, geometry.description.x, geometry.description.y)
       })
     } finally {
       title?.delete()

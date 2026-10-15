@@ -35,7 +35,9 @@ function scene(enhanced = true) {
     height: 40,
     bindings: { value: { kind: 'ref', stateId: 'choice' } },
     events: {
-      onChange: [{ kind: 'setState', targetStateId: 'choice', valueExpr: '$value' }]
+      onChange: [
+        { id: 'set-value', kind: 'setState', targetStateId: 'choice', valueExpr: '$value' }
+      ]
     },
     interactiveProps: {
       ariaLabel: 'Searchable status',

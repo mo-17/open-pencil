@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 
@@ -559,13 +560,11 @@ function graphMapIssueTypeSummaryLabel(issues: readonly WorkflowGraphIssue[]): s
   const missingCount = issues.filter((issue) => issue.type === 'missing-workflow').length
   const argCount = issues.filter((issue) => issue.type === 'call-args').length
   const cycleCount = issues.filter((issue) => issue.type === 'cycle').length
-  return [
+  return compact([
     missingCount > 0 ? panels.value.lowcodeWorkflowGraphMissingCount({ count: missingCount }) : '',
     argCount > 0 ? graphArgIssueCountLabel(argCount) : '',
     cycleCount > 0 ? graphCycleCountLabel(cycleCount) : ''
-  ]
-    .filter(Boolean)
-    .join(', ')
+  ]).join(', ')
 }
 function graphMapNodeIssueLabel(count: number): string {
   return graphIssueCountLabel(count)
@@ -850,7 +849,7 @@ function containingPageId(node: SceneNode): string | undefined {
       <p v-if="workflowGraph.issues.length === 0" class="text-muted">
         {{ panels.lowcodeWorkflowGraphNoIssues }}
       </p>
-      <ul v-else class="flex flex-col gap-0.5 text-red-500">
+      <ul v-else class="flex flex-col gap-0.5 text-error">
         <li
           v-for="(issue, index) in workflowGraph.issues"
           :key="`${issue.type}-${index}`"
@@ -896,7 +895,7 @@ function containingPageId(node: SceneNode): string | undefined {
         v-if="graphDetailsOpen"
         ref="graphMapRoot"
         data-test-id="lowcode-workflow-graph-map"
-        class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
+        class="@container/workflow-map flex flex-col gap-1 border-l border-border pl-2 text-muted"
         @keydown="handleGraphMapKeydown"
       >
         <div class="flex flex-wrap items-center justify-between gap-1">
@@ -971,11 +970,11 @@ function containingPageId(node: SceneNode): string | undefined {
         <ul
           v-if="graphMapIssues.length > 0"
           data-test-id="lowcode-workflow-graph-map-issue-group"
-          class="flex flex-col gap-0.5 rounded border border-red-500/30 bg-red-500/5 px-1 py-0.5 text-[10px]"
+          class="flex flex-col gap-0.5 rounded border border-error/30 bg-error/5 px-1 py-0.5 text-[10px]"
         >
           <li
             data-test-id="lowcode-workflow-graph-map-issue-summary"
-            class="text-[9px] uppercase text-red-500/80"
+            class="text-[9px] uppercase text-error/80"
           >
             {{ graphMapIssueSummaryLabel() }}
           </li>
@@ -988,7 +987,7 @@ function containingPageId(node: SceneNode): string | undefined {
             <span class="min-w-0">
               <span
                 data-test-id="lowcode-workflow-graph-map-issue-type"
-                class="mr-1 rounded bg-red-500/10 px-1 text-red-500"
+                class="mr-1 rounded bg-error/10 px-1 text-error"
               >
                 {{ graphMapIssueTypeLabel(issue) }}
               </span>
@@ -1021,7 +1020,7 @@ function containingPageId(node: SceneNode): string | undefined {
         <div
           v-if="graphMapNodeGroups.length > 0"
           data-test-id="lowcode-workflow-graph-map-node-groups"
-          class="grid gap-1 sm:grid-cols-3"
+          class="grid grid-cols-1 gap-1 @[32rem]/workflow-map:grid-cols-3"
         >
           <section
             v-for="group in graphMapNodeGroups"
@@ -1090,7 +1089,7 @@ function containingPageId(node: SceneNode): string | undefined {
                         <span
                           data-test-id="lowcode-workflow-graph-map-node-issue"
                           :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
-                          class="shrink-0 text-red-500"
+                          class="shrink-0 text-error"
                         >
                           {{ graphMapNodeIssueLabel(node.issues.length) }}
                         </span>
@@ -1186,7 +1185,7 @@ function containingPageId(node: SceneNode): string | undefined {
         <div
           v-if="graphMapEdgeGroups.length > 0"
           data-test-id="lowcode-workflow-graph-map-edge-groups"
-          class="grid gap-1 sm:grid-cols-2"
+          class="grid grid-cols-1 gap-1 @[24rem]/workflow-map:grid-cols-2"
         >
           <section
             v-for="group in graphMapEdgeGroups"
@@ -1259,7 +1258,7 @@ function containingPageId(node: SceneNode): string | undefined {
                       <span
                         data-test-id="lowcode-workflow-graph-map-edge-missing"
                         :aria-label="graphMapMissingEdgeLabel(edge)"
-                        class="ml-1 rounded bg-red-500/10 px-1 text-red-500"
+                        class="ml-1 rounded bg-error/10 px-1 text-error"
                       >
                         {{ ' ' + panels.lowcodeWorkflowGraphMissing }}
                       </span>

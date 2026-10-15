@@ -7,6 +7,8 @@ import {
 } from '#compiler/adapters/date-range/source'
 import { DATE_RANGE_COMPILER_MODULE_LOWERER } from '#compiler/modules/date-range'
 
+import { createDefaultNode } from '@open-pencil/scene-graph'
+
 import { createDateRangeModuleInstance } from '#core/plugins/date-range'
 
 import { dateRangeFixture } from '#tests/helpers/compiler/modules/date-range/fixture'
@@ -14,11 +16,21 @@ import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 
 test('date range lowerer rejects incompatible contracts and round-trips authored empty strings', () => {
   const instance = createDateRangeModuleInstance()
-  expect(DATE_RANGE_COMPILER_MODULE_LOWERER.lower(instance)).toEqual({
+  expect(
+    DATE_RANGE_COMPILER_MODULE_LOWERER.lower(
+      instance,
+      createDefaultNode(() => 'lowerer-host', 'FRAME')
+    )
+  ).toEqual({
     ok: true,
     payload: instance.config
   })
-  expect(DATE_RANGE_COMPILER_MODULE_LOWERER.lower({ ...instance, configVersion: 2 }).ok).toBe(false)
+  expect(
+    DATE_RANGE_COMPILER_MODULE_LOWERER.lower(
+      { ...instance, configVersion: 2 },
+      createDefaultNode(() => 'lowerer-host', 'FRAME')
+    ).ok
+  ).toBe(false)
 })
 test.each(['react', 'vue'] as const)(
   '%s date range export and local lifecycle fixture typecheck',

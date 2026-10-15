@@ -13,16 +13,12 @@ import {
   type Schema,
   validateSchema
 } from '../src/schema-runtime'
+import type { RuntimeMessage, RuntimeCodec } from '../src/schema-runtime/interpreter'
 
-interface RuntimeMessage {
-  [name: string]:
-    | boolean
-    | number
-    | string
-    | bigint
-    | Uint8Array
-    | RuntimeMessage
-    | RuntimeMessage[]
+function decode(codec: RuntimeCodec, method: string, value: ByteBuffer | Uint8Array): unknown {
+  const decoder = codec[method]
+  if (typeof decoder !== 'function') throw new Error(`Missing codec method ${method}`)
+  return Reflect.apply(decoder, codec, [value])
 }
 
 test('rejects malformed byte fields without corrupting buffer length', () => {
@@ -63,16 +59,13 @@ describe('Kiwi schema runtime', () => {
 
   test('compiles schemas and round-trips messages', () => {
     const schema = parseSchema(schemaText)
-    interface ItemCodec {
-      encodeItem(value: unknown): Uint8Array
-      decodeItem(value: Uint8Array): unknown
-    }
+    const codec = compileSchema(schema)
+    const encodeItem = codec.encodeItem as (value: RuntimeMessage) => Uint8Array
+    const decodeItem = codec.decodeItem as (value: Uint8Array) => RuntimeMessage
 
-    const codec = compileSchema(schema) as ItemCodec
-
-    const encoded = codec.encodeItem({ id: 42, name: 'OpenPencil', kind: 'CARD', tags: ['kiwi'] })
+    const encoded = encodeItem({ id: 42, name: 'OpenPencil', kind: 'CARD', tags: ['kiwi'] })
     expect(encoded.length).toBeGreaterThan(0)
-    expect(codec.decodeItem(encoded)).toEqual({
+    expect(decodeItem(encoded)).toEqual({
       id: 42,
       name: 'OpenPencil',
       kind: 'CARD',
@@ -81,16 +74,13 @@ describe('Kiwi schema runtime', () => {
   })
 
   test('applies array budgets only to codecs compiled with limits', () => {
-    interface BatchCodec {
-      decodeBatch(value: Uint8Array): unknown
-    }
     const schema = parseSchema(`
         message Batch {
           uint[] values = 1;
         }
       `)
-    const legacyCodec = compileSchema(schema) as BatchCodec
-    const limitedCodec = compileSchema(schema, { limits: { maxArrayItems: 1 } }) as BatchCodec
+    const legacyCodec = compileSchema(schema)
+    const limitedCodec = compileSchema(schema, { limits: { maxArrayItems: 1 } })
     const encoded = new ByteBuffer()
     encoded.writeVarUint(1)
     encoded.writeVarUint(2)
@@ -98,24 +88,20 @@ describe('Kiwi schema runtime', () => {
     encoded.writeVarUint(8)
     encoded.writeVarUint(0)
 
-    expect(legacyCodec.decodeBatch(encoded.toUint8Array())).toEqual({ values: [7, 8] })
-    expect(() => limitedCodec.decodeBatch(encoded.toUint8Array())).toThrow(
+    expect(decode(legacyCodec, 'decodeBatch', encoded.toUint8Array())).toEqual({ values: [7, 8] })
+    expect(() => decode(limitedCodec, 'decodeBatch', encoded.toUint8Array())).toThrow(
       'Kiwi array item limit exceeded (1 per message)'
     )
   })
 
   test('freezes codec limits and applies them through a ByteBuffer override', () => {
-    interface BatchCodec {
-      ByteBuffer: typeof ByteBuffer
-      decodeBatch(value: ByteBuffer | Uint8Array): unknown
-    }
     const schema = parseSchema(`
         message Batch {
           uint[] values = 1;
         }
       `)
     const limits = { maxArrayItems: 1 }
-    const codec = compileSchema(schema, { limits }) as BatchCodec
+    const codec = compileSchema(schema, { limits })
     const encoded = new ByteBuffer()
     encoded.writeVarUint(1)
     encoded.writeVarUint(2)
@@ -124,7 +110,7 @@ describe('Kiwi schema runtime', () => {
     encoded.writeVarUint(0)
 
     limits.maxArrayItems = 10
-    expect(() => codec.decodeBatch(encoded.toUint8Array())).toThrow(
+    expect(() => decode(codec, 'decodeBatch', encoded.toUint8Array())).toThrow(
       'Kiwi array item limit exceeded (1 per message)'
     )
 
@@ -133,11 +119,11 @@ describe('Kiwi schema runtime', () => {
     validBaseBuffer.writeVarUint(1)
     validBaseBuffer.writeVarUint(7)
     validBaseBuffer.writeVarUint(0)
-    expect(codec.decodeBatch(validBaseBuffer)).toEqual({ values: [7] })
+    expect(decode(codec, 'decodeBatch', validBaseBuffer)).toEqual({ values: [7] })
     expect(validBaseBuffer.offset).toBe(validBaseBuffer.length)
 
     const baseBuffer = new ByteBuffer(encoded.toUint8Array())
-    expect(() => codec.decodeBatch(baseBuffer)).toThrow(
+    expect(() => decode(codec, 'decodeBatch', baseBuffer)).toThrow(
       'Kiwi array item limit exceeded (1 per message)'
     )
     expect(baseBuffer.offset).toBeGreaterThan(0)
@@ -151,28 +137,27 @@ describe('Kiwi schema runtime', () => {
       }
     }
     codec.ByteBuffer = CustomByteBuffer
-    expect(() => codec.decodeBatch(encoded.toUint8Array())).toThrow(
+    expect(() => decode(codec, 'decodeBatch', encoded.toUint8Array())).toThrow(
       'Kiwi array item limit exceeded (1 per message)'
     )
     expect(CustomByteBuffer.constructions).toBe(1)
   })
 
   test('applies decode depth only to codecs compiled with limits and unwinds after failure', () => {
-    interface LinkCodec {
-      decodeLink(value: Uint8Array): unknown
-    }
     const schema = parseSchema(`
         message Link {
           Link next = 1;
         }
       `)
-    const legacyCodec = compileSchema(schema) as LinkCodec
-    const limitedCodec = compileSchema(schema, { limits: { maxDecodeDepth: 2 } }) as LinkCodec
+    const legacyCodec = compileSchema(schema)
+    const limitedCodec = compileSchema(schema, { limits: { maxDecodeDepth: 2 } })
     const encoded = new Uint8Array([1, 1, 0, 0, 0])
 
-    expect(legacyCodec.decodeLink(encoded)).toEqual({ next: { next: {} } })
-    expect(() => limitedCodec.decodeLink(encoded)).toThrow('Kiwi decode nesting limit exceeded (2)')
-    expect(limitedCodec.decodeLink(new Uint8Array([0]))).toEqual({})
+    expect(decode(legacyCodec, 'decodeLink', encoded)).toEqual({ next: { next: {} } })
+    expect(() => decode(limitedCodec, 'decodeLink', encoded)).toThrow(
+      'Kiwi decode nesting limit exceeded (2)'
+    )
+    expect(decode(limitedCodec, 'decodeLink', new Uint8Array([0]))).toEqual({})
   })
 
   test('keeps binary schema budgets optional for legacy input', () => {
@@ -305,12 +290,11 @@ describe('Kiwi schema runtime', () => {
     })
 
     try {
-      const codec = compileSchema(parseSchema(schemaText)) as {
-        encodeItem(value: unknown): Uint8Array
-        decodeItem(value: Uint8Array): unknown
-      }
-      const encoded = codec.encodeItem({ id: 7, name: 'CSP-safe', kind: 'BADGE', tags: [] })
-      expect(codec.decodeItem(encoded)).toEqual({
+      const codec = compileSchema(parseSchema(schemaText))
+      const encodeItem = codec.encodeItem as (value: RuntimeMessage) => Uint8Array
+      const decodeItem = codec.decodeItem as (value: Uint8Array) => RuntimeMessage
+      const encoded = encodeItem({ id: 7, name: 'CSP-safe', kind: 'BADGE', tags: [] })
+      expect(decodeItem(encoded)).toEqual({
         id: 7,
         name: 'CSP-safe',
         kind: 'BADGE',

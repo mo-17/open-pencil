@@ -322,7 +322,7 @@ describe('CORE_TOOLS render lowcode → compiler → Figma-compatible .fig', () 
     expect(inputJSX.jsx).toContain('placeholderColor="#8B8B93"')
     const copy = new SceneGraph()
     const [copied] = await renderJSX(copy, inputJSX.jsx)
-    expect(copy.getNode(copied.id)?.interactiveProps.validation).toEqual({ required: true })
+    expect(copy.getNode(copied.id)?.interactiveProps?.validation).toEqual({ required: true })
     expect(inputJSX.jsx).not.toContain('bindings=')
 
     const textarea = getNodeByName(graph, 'E2E textarea')

@@ -97,7 +97,7 @@ const effectPick = computed(() => parseEffectPickConfig(config.value))
     <p
       v-if="statusMessage"
       data-test-id="module-props-status"
-      class="mb-2 rounded border border-orange-500/30 bg-orange-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-orange-400"
+      class="mb-2 rounded border border-warning/30 bg-warning/10 px-2 py-1.5 text-[10px] leading-relaxed text-warning"
     >
       {{ statusMessage }}
     </p>

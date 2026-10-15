@@ -98,7 +98,10 @@ function transport(
   }
 }
 
-const fixtures: Array<ReturnType<typeof fixture>> = []
+const fixtures: Array<{
+  scope: ReturnType<typeof effectScope>
+  processes: Array<ReturnType<typeof transport>>
+}> = []
 
 function fixture(policy: PreviewRefreshPolicy = 'manual', delayOpen = false, desktop = true) {
   const scope = effectScope()

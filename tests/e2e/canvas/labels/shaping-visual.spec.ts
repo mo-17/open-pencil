@@ -10,6 +10,8 @@ async function expectCanvas(name: string): Promise<void> {
 
 test('canvas labels use shaped Inter text, ellipsis, and fixed-size zoom presentation', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -72,6 +74,8 @@ test('canvas labels use shaped Inter text, ellipsis, and fixed-size zoom present
   await expectCanvas('shaped-labels-zoom-125')
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 2

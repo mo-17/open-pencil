@@ -14,6 +14,8 @@ import {
   type BackendProviderPlanV2
 } from '@open-pencil/compiler'
 
+import { expectRecord } from '#tests/helpers/assert'
+
 import { supabaseObservabilityApplicationV2, supabasePrivateRealtimeSelectionV2 } from './helpers'
 
 function createPlan(
@@ -179,15 +181,17 @@ describe('Supabase Backend Provider V2 observability review artifacts', () => {
     expect(result.plan.adapterPlans.migrations).toMatchObject({
       targetModelDigest: inspection.declaredDataModelDigest
     })
-    expect(result.plan.adapterPlans.observability.operationalEventSink).toMatchObject({
-      proposalAndBatchAuthorityClaims: 'fixed-false',
-      timestampProjection: 'trusted-host-zero-pad-to-nine-fractional-digits-without-rounding',
-      expectedPostgrestExposure: 'not-exposed',
-      postgrestExposureVerified: false,
-      hostCasWriterEmitted: false,
-      databaseApplied: false,
-      trustedReceiptAccepted: false
-    })
+    expect(expectRecord(result.plan.adapterPlans.observability).operationalEventSink).toMatchObject(
+      {
+        proposalAndBatchAuthorityClaims: 'fixed-false',
+        timestampProjection: 'trusted-host-zero-pad-to-nine-fractional-digits-without-rounding',
+        expectedPostgrestExposure: 'not-exposed',
+        postgrestExposureVerified: false,
+        hostCasWriterEmitted: false,
+        databaseApplied: false,
+        trustedReceiptAccepted: false
+      }
+    )
     expect(inspection.plan.driftDetection.schedule).toEqual({
       automationId: 'schema-drift-check',
       cron: '15 3 * * *',

@@ -11,6 +11,7 @@ export function applicationNavigationFixture() {
     events: {
       onClick: [
         {
+          id: 'fixture-action-1',
           kind: 'navigate',
           to: '/products/:id?tab=details&filter=a%2Fb#reviews',
           params: { id: '"42"' }
@@ -32,7 +33,14 @@ export function applicationNavigationFixture() {
     height: 48,
     interactiveProps: { text: 'Open related product' },
     events: {
-      onClick: [{ kind: 'navigate', to: '/products/:id?tab=related#specs', params: { id: '"73"' } }]
+      onClick: [
+        {
+          id: 'fixture-action-2',
+          kind: 'navigate',
+          to: '/products/:id?tab=related#specs',
+          params: { id: '"73"' }
+        }
+      ]
     }
   })
   return { ...fixture, location }

@@ -55,23 +55,33 @@ for (const scenario of scenarios) {
     }
     const setupStarted = performance.now()
     await setupScenario(page, scenario)
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     const setupMs = performance.now() - setupStarted
     const input = await readRecording(
       'tests/fixtures/navigation/gestures/synthetic-pinch-reversal.json'
     )
-    await page.evaluate(() =>
-      window.openPencil?.test?.navigation?.startRecording('stability-roundtrip')
-    )
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.startRecording('stability-roundtrip')
+    })
     await replay(page, input, 'dom')
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
-    const recording = await page.evaluate(
-      () => window.openPencil?.test?.navigation?.stopRecording() as NavigationRecordingFile
-    )
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
+    const recording = await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.stopRecording() as NavigationRecordingFile
+    })
     const metrics = computeNavigationMetrics(recording)
     expect(metrics.renderCount).toBeGreaterThan(0)
 
     const fixture = await page.evaluateHandle(async () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Store unavailable')
       const buildStarted = performance.now()
@@ -118,6 +128,8 @@ for (const scenario of scenarios) {
       }
     })
     const result = await fixture.evaluate(async (fixture) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Store unavailable')
       const started = performance.now()

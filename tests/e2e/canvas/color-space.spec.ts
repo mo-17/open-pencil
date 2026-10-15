@@ -21,6 +21,8 @@ for (const colorSpace of ['srgb', 'display-p3'] as const) {
     ]
     await page.evaluate(
       async ({ colorSpace, samples }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('Editor unavailable')
         store.setDocumentColorSpace(colorSpace)

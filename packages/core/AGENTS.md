@@ -5,6 +5,10 @@ Renderer, layout, editor, Figma API, tools, clipboard, vector conversion, and do
 - Public surface is the compatibility barrel plus the subpaths listed in `packages/core/package.json` `exports`; add a subpath there rather than deep-importing.
 - CanvasKit runtime loading is centralized in `@open-pencil/core/canvaskit`. Headless raster export may dynamically load `canvaskit-wasm/full`; elsewhere `import type` and pass CanvasKit in.
 - Drawing and input share preview-aware geometry through `@open-pencil/core/geometry`, built on Scene Graph matrices. Use it for world/screen transforms, inverses, bounds, and handle placement.
+- Content an author wrote (design JSX, HTML, `.pen`) gets its sizes and positions from `layoutAuthoredNodes` in `packages/core/src/layout.ts`, which measures text that resizes to its content wherever it sits and then lays out the pages involved; renderers and readers of authored formats call it, while `.fig` keeps the geometry it stores (`packages/core/tests/layout/authored.test.ts`).
+- HTML is styled by whoever has a CSS runtime and built into layers by `sceneGraphFromStyledHTML` (`packages/core/src/io/formats/html/layers.ts`), which browser builds may bundle. `readHTMLDocument` and `headlessHTMLReader` use the headless CSS runtime, which cannot be bundled for browsers, so they stay out of `BUILTIN_IO_FORMATS` and the CLI registers the reader (`packages/core/tests/io/formats/html/import.test.ts`).
+- Copies of part of a document, such as previews, history snapshots, and exports, come from `extractPageContext` or `extractExportGraph` in `packages/core/src/io/subgraph.ts`, not another copier. Pass `componentSets` when instances must switch variant and `shareTables` for a read-only view rebuilt often (`packages/core/tests/io/subgraph.test.ts`).
+- Undo for structural AI and MCP edits records only what an edit touches with `captureDocumentChange`: the edit's page is copied up front, and another page or the document node the first time `SceneGraph.observeNodeChanges` reports it about to change, so code that writes into a node directly calls `willChangeNode` first. Copies share values rather than deep-copying, so values must be replaced rather than written into, apart from the child lists, source metadata, and override maps it copies; comments on the document node stay out of undo (`packages/core/tests/editor/history/document-change.test.ts`).
 
 ## Layout
 
@@ -44,6 +48,15 @@ Renderer, layout, editor, Figma API, tools, clipboard, vector conversion, and do
 - Renderer interaction policy uses explicit `beginInteractiveEdit()` leases and `isInteractiveEditing()`, not undo batching. Release leases on every terminal path. Keep live queries callable across app facades that spread editor actions.
 - `packages/core/src/editor/history/atomic-tool.ts` owns synchronous property/variable transactions for AI, MCP, and WebMCP tools; see Tools above.
 
+## OpenPencil API
+
+`OpenPencilAPI` (`packages/core/src/openpencil-api/`) is what OpenPencil adds to the Plugin API, exposed to scripts as the `openpencil` global next to `figma`.
+
+- Keep `figma` Figma-shaped and put OpenPencil-only features on `openpencil`, in the same style: methods and node-like handles with getters and setters, not parallel helper functions. Never add non-Figma members to `FigmaAPI` (`compatibility.ts`).
+- Script runners get both globals only through `compileScript` (`packages/core/src/tools/analyze/eval/wrap.ts`); the `eval` tool, `openpencil eval`, and app automation must not build their own `AsyncFunction`.
+- Members take names, not internal ids, and write through the same scene-graph functions the editor's actions use, such as `behaviourFromSpec`; errors name what exists. Tools for the same feature wrap the `openpencil` API rather than reimplementing it (`packages/core/src/tools/create/behaviours.ts`).
+- A new member updates `packages/docs/programmable/cli/scripting.md` and the agent skill in the same change; tests drive it as scripts do, through `compileScript` (`packages/core/tests/openpencil-api/`).
+
 ## Renderer
 
 Canvas is CanvasKit (Skia WASM) on a WebGL surface, not DOM.
@@ -65,12 +78,18 @@ Canvas is CanvasKit (Skia WASM) on a WebGL surface, not DOM.
 
 - Bounded rendering caches share `packages/core/src/cache/resource.ts` for recency, count/weight accounting, and removal disposal. Domain adapters own keys, font/page/dependency invalidation, and sizing units; use non-touching `peek()` for FIFO or planning reads. Rejected insertions leave ownership with the caller.
 - Keep weak memos, async request registries, pools, and dependency-owned picture/path maps on their distinct lifetime policies.
-- Paragraph construction is typed against `packages/core/src/canvas/text/paragraph-inputs.ts`; the same inputs drive preparation-cache invalidation. Add a mutation case when extending that contract. Drawing borrows native paragraphs; the renderer owns their bounded cache and destruction.
+- Paragraph construction is typed against `packages/core/src/canvas/text/paragraph/inputs.ts`; the same inputs drive preparation-cache invalidation. Add a mutation case when extending that contract. Drawing borrows native paragraphs; the renderer owns their bounded cache and destruction.
+- Text lays out through `buildParagraph` into a `TextLayout` (`packages/core/src/canvas/text/layout/`): one native paragraph for plain text, or one per paragraph with its list indent, marker, and spacing, since Skia has no hanging indent. Drawing, measurement, the text editor, saved glyphs (`shapeText`), and text outlines all read that layout rather than laying text out again (`packages/core/tests/canvas/text/lists.test.ts`).
+
+### Text decorations
+
+- Underlines and strikethroughs come from `textDecorationRects` (`packages/core/src/canvas/text/decorations.ts`), Figma's geometry over laid-out or saved glyphs, both for drawing and for the rects `.fig` files save, which Figma draws decorations from; Skia's paragraph decorations stay off. Drawn decorations are kept with the prepared text, whose paragraph inputs cover them, or by saved glyphs in the renderer's `derivedDecorationCache` (`packages/core/tests/canvas/text/decorations.test.ts`).
 
 ### Geometry and overlays
 
 - Use `@open-pencil/core/geometry` for world/screen transforms, inverses, bounds, and handle placement instead of interpreting ancestor rotations or reflections independently.
 - Label drawing and hit testing share `packages/core/src/canvas/labels/{layout,transform,style}.ts`, including paragraph measurements and unreflected label axes.
+- Editor chrome sized in screen pixels (outlines, borders, carets, highlights) draws in the overlay pass, never in the scene, which is cached and scaled while navigating. Draw outlines with `withScreenStroke` and `inNodeSpace` (`packages/core/src/canvas/overlays/outline.ts`). `open-pencil/no-zoom-in-scene-drawing` enforces it.
 - Selection border width is constant regardless of zoom: divide by scale. Section and frame title text never scales: render at a fixed font size and ellipsize to fit.
 - Rulers are rendered on the canvas with selection range badges that do not overlap tick numbers. Remote cursors are Figma-style colored arrows with a white border and name pill, rendered in screen space.
 
@@ -85,5 +104,6 @@ Pixel-affecting features need committed visual coverage, not only mock or geomet
 - **Shape follows Figma.** Match `@figma/plugin-typings` at the version pinned in the root `package.json`. `packages/core/src/figma-api/compatibility.ts` type-checks the supported surface against `PluginAPI`; add every new member to `SupportedPluginAPI` there. Model unsupported members explicitly rather than approximating them.
 - **Behavior follows Figma.** Read the Plugin API documentation for the member, and for anything observable (geometry, ordering, defaults, errors) run the same script in live Figma and record the observed result in the test. `figma-use` and `tests/figma/` are the live oracle; `tests/fixtures/figma-oracles/` holds recorded values.
 - **User actions are shared code.** When an editor command does the same thing (group, ungroup, boolean, flatten, instance creation, component sync), call the implementation under `packages/core/src/editor/` or its shared helper. Do not reimplement geometry, placement, or propagation here; new geometry helpers belong in Scene Graph.
-- Node proxies live in `packages/core/src/figma-api/proxy.ts` and `packages/core/src/figma-api/accessors/`; `packages/core/src/figma-api/render-bounds.ts` implements Figma's `absoluteRenderBounds` semantics and is the only geometry that is Figma-specific.
-- `packages/core/src/figma-api/index.ts` stays under the 600-line limit by moving whole domains into sibling modules such as `components.ts` and `text.ts`, not by extracting generic helpers into this folder.
+- Geometry getters lay out what the graph's edits touched since the last read, as Figma does, through `flushPendingLayout` in `packages/core/src/figma-api/pending-layout.ts`; a new geometry getter calls it first (`packages/core/tests/figma-api/pending-layout.test.ts`).
+- Node proxies live in `packages/core/src/figma-api/proxy.ts` and `packages/core/src/figma-api/accessors/`; per-character text styles are modelled in `packages/core/src/text/character-style.ts`, which the editor's selection styling shares, and read for scripts in `packages/core/src/figma-api/text/style.ts`, which node getters, range methods, and segments all use (`packages/core/tests/figma-api/text/styles.test.ts`); `packages/core/src/figma-api/render-bounds.ts` implements Figma's `absoluteRenderBounds` semantics and is the only geometry that is Figma-specific.
+- `packages/core/src/figma-api/index.ts` stays under the 600-line limit by moving whole domains into sibling modules such as `components.ts` and `text/`, not by extracting generic helpers into this folder.

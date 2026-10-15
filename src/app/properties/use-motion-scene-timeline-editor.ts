@@ -1,3 +1,4 @@
+import { uniq } from 'es-toolkit/array'
 /* oxlint-disable eslint/max-lines -- Scene choreography keeps one atomic selection, preview, undo, and collaborative presence controller. */
 import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 
@@ -643,7 +644,7 @@ export function useMotionSceneTimelineEditor() {
         scope: 'scene',
         ownerId: ownerId.value,
         ...(selectedSequenceId.value ? { sequenceId: selectedSequenceId.value } : {}),
-        trackIds: [...new Set(selected.map(({ trackId }) => trackId))],
+        trackIds: uniq(selected.map(({ trackId }) => trackId)),
         keyframeIds: [],
         cueIds: [...selectedCueIds.value],
         playheadMs: visiblePlayheadMs.value,

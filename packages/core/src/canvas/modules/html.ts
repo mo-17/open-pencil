@@ -1,4 +1,5 @@
 import type { Canvas } from 'canvaskit-wasm'
+import { compact } from 'es-toolkit'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -18,21 +19,21 @@ const TAG = /<[^>]*>/g
 
 /** Reduce bounded authored HTML to inert text for CanvasKit's dependency-free summary. */
 export function htmlPreviewText(html: string): string {
-  return html
-    .replace(HIDDEN_ELEMENT_CONTENT, ' ')
-    .replace(COMMENT, ' ')
-    .replace(BLOCK_BOUNDARY, '\n')
-    .replace(TAG, ' ')
-    .replaceAll('&nbsp;', ' ')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&amp;', '&')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .join(' · ')
+  return compact(
+    html
+      .replace(HIDDEN_ELEMENT_CONTENT, ' ')
+      .replace(COMMENT, ' ')
+      .replace(BLOCK_BOUNDARY, '\n')
+      .replace(TAG, ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+  ).join(' · ')
 }
 
 /** Draw a deterministic offline summary; the real HTML renders only inside an isolated iframe. */

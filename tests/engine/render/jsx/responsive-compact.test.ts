@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import {
   collectResponsiveTailwindClasses,
   collectTailwindClasses
-} from '@open-pencil/core/io/formats/jsx'
-import { SceneGraph } from '@open-pencil/scene-graph'
+} from '#core/io/formats/jsx/index'
 
 describe('responsive desktop canvas to compact flow', () => {
   test('GRID to vertical flow retains row spacing instead of cancelling it with a gap reset', () => {

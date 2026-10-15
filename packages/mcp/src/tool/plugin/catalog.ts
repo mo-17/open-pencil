@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { fail, getDomainFailure, ok } from '#mcp/result'
 import type { MCPResult } from '#mcp/result'
+import { unrefTimer } from '#mcp/timers'
 import {
   PLUGIN_MCP_CATALOG_LIMITS,
   type PluginMCPCatalogSnapshot,
@@ -408,7 +409,7 @@ export function createPluginMCPController(options: {
     pollTimer = setInterval(() => {
       void refresh()
     }, pollIntervalMs)
-    pollTimer.unref()
+    unrefTimer(pollTimer)
   }
 
   function stopPolling(): void {

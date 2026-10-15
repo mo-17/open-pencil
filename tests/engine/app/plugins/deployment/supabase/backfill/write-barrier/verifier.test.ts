@@ -4,9 +4,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   createBackendProviderPlanV2,
   createBackendProviderRegistryV2,
-  SUPABASE_BACKEND_PROVIDER_BUNDLE_V2,
-  type BackendApplicationSpecV2
+  SUPABASE_BACKEND_PROVIDER_BUNDLE_V2
 } from '@open-pencil/compiler/backend'
+import type { BackendApplicationSpecV2 } from '@open-pencil/lowcode/backend'
 
 import {
   type SupabaseBackfillLiveCatalogAuthorityV1,
@@ -430,9 +430,9 @@ describe('Supabase Host backfill write-barrier verifier', () => {
       snapshotScope: 'single-statement'
     })
     expect(request.queryDigest).toMatch(/^[A-Za-z0-9_-]{43}$/u)
-    expect(Object.keys(request.parameters)).toEqual(
-      SUPABASE_BACKFILL_WRITE_BARRIER_VERIFICATION_PARAMETER_ORDER
-    )
+    expect(Object.keys(request.parameters)).toEqual([
+      ...SUPABASE_BACKFILL_WRITE_BARRIER_VERIFICATION_PARAMETER_ORDER
+    ])
     expect(request.parameters).toEqual({
       schema: 'public',
       table: 'accounts',
@@ -550,8 +550,9 @@ describe('Supabase Host backfill write-barrier verifier', () => {
     const installedBeforeRotation = await verifySupabaseBackfillWriteBarrierV1(
       verificationFixture(review, input, { state: 'installed' }).options
     )
-    let releaseInitialRead: ((value: SupabaseBackfillLiveCatalogCompilerInputV1) => void) | null =
-      null
+    let releaseInitialRead: (value: SupabaseBackfillLiveCatalogCompilerInputV1) => void = () => {
+      throw new TypeError('Missing pending compiler-input reader')
+    }
     const initialRead = new Promise<SupabaseBackfillLiveCatalogCompilerInputV1>((resolve) => {
       releaseInitialRead = resolve
     })
@@ -571,7 +572,6 @@ describe('Supabase Host backfill write-barrier verifier', () => {
       rotateSupabaseBackfillWriteBarrierInstalledVerificationEpochV1(structuredClone(review))
     ).toThrow(SupabaseBackfillWriteBarrierVerificationError)
     const requiredEpoch = rotateSupabaseBackfillWriteBarrierInstalledVerificationEpochV1(review)
-    if (!releaseInitialRead) throw new Error('Missing pending compiler-input reader')
     releaseInitialRead(input)
     const installedStartedBeforeRotation = await startedBeforeRotation
     const installed = await verifySupabaseBackfillWriteBarrierV1(

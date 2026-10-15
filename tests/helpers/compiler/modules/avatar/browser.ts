@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type ConsoleMessage, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -13,13 +14,18 @@ export async function withAvatar(
   updates = false
 ): Promise<void> {
   const script = `import {avatarFixture} from './tests/helpers/compiler/modules/avatar/fixture';const result=avatarFixture(${JSON.stringify(target)},${updates});if(result.warnings.length)throw new Error(JSON.stringify(result.warnings));process.stdout.write(JSON.stringify([...result.files].map(([path,content])=>[path,typeof content==='string'?content:Array.from(content)])));`
-  const serialized = JSON.parse(
+  const serialized = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.array(v.tuple([v.string(), v.union([v.string(), v.array(v.number())])]))
+    ),
     execFileSync('bun', ['-e', script], {
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
       cwd: process.cwd()
     })
-  ) as [string, string | number[]][]
+  )
   const files = new Map(
     serialized.map(([path, content]) => [
       path,

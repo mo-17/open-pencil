@@ -28,7 +28,7 @@ import {
 const MODES = ['production', 'preview', 'source-only-prototype'] as const
 
 describe('HTTP API intent requires an implemented compiler provider', () => {
-  test.each(MODES)('V1 rejects %s before any provider validation callback', (mode) => {
+  test.each([...MODES])('V1 rejects %s before any provider validation callback', (mode) => {
     const { registry, selection, calls } = trackedSupabaseProvider()
     const result = createBackendProviderPlan(registry, {
       selection,
@@ -41,7 +41,7 @@ describe('HTTP API intent requires an implemented compiler provider', () => {
     expect(calls).toEqual([])
   })
 
-  test.each(MODES)('V2 rejects %s before any provider validation callback', (mode) => {
+  test.each([...MODES])('V2 rejects %s before any provider validation callback', (mode) => {
     const { registry, selection, calls } = trackedSupabaseProviderV2()
     const result = createBackendProviderPlanV2(registry, {
       selection,

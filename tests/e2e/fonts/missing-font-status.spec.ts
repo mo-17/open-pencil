@@ -1,6 +1,9 @@
+import { readFile } from 'node:fs/promises'
+
 import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { repoPath } from '#tests/helpers/paths'
 
 interface FontLoadTestState {
   attempts: number
@@ -17,76 +20,81 @@ interface FontLoadMockOptions {
 }
 
 async function installFontLoadMock(page: Page, options: FontLoadMockOptions) {
-  await page.addInitScript((options) => {
-    const {
-      family,
-      deferredStyle,
-      deferredStyleAttempt,
-      failedLoadsByStyle = {},
-      unavailableStyles = []
-    } = options
-    let releaseFont: (() => void) | undefined
-    const fontGate = new Promise<void>((resolve) => {
-      releaseFont = resolve
-    })
-    const state: FontLoadTestState = {
-      attempts: 0,
-      requests: [],
-      release: () => releaseFont?.()
-    }
-    Object.defineProperty(window, '__OPENPENCIL_DEFERRED_FONT__', {
-      configurable: true,
-      value: state
-    })
-
-    let callbackId = 1
-    const callbacks = new Map<number, unknown>()
-    Object.defineProperty(window, '__TAURI_INTERNALS__', {
-      configurable: true,
-      value: {
-        callbacks,
-        metadata: {
-          currentWindow: { label: 'main' },
-          currentWebview: { label: 'main' }
-        },
-        convertFileSrc: (filePath: string) => filePath,
-        invoke: async (command: string, args?: Record<string, unknown>) => {
-          switch (command) {
-            case 'list_system_fonts':
-              return [{ family, styles: ['Regular'] }]
-            case 'load_system_font': {
-              if (args?.family !== family) return null
-              const style = typeof args.style === 'string' ? args.style : 'Regular'
-              state.attempts++
-              state.requests.push(style)
-              const styleAttempt = state.requests.filter((request) => request === style).length
-              if (unavailableStyles.includes(style)) return null
-              if (styleAttempt <= (failedLoadsByStyle[style] ?? 0)) return null
-              if (style === deferredStyle && styleAttempt === deferredStyleAttempt) await fontGate
-              const response = await fetch('/Inter-Regular.ttf')
-              return response.arrayBuffer()
-            }
-            case 'take_pending_open':
-              return []
-            case 'plugin:event|listen':
-            case 'plugin:event|unlisten':
-              return null
-            default:
-              return null
-          }
-        },
-        transformCallback: (callback: unknown) => {
-          const id = callbackId++
-          callbacks.set(id, callback)
-          return id
-        },
-        unregisterCallback: (id: number) => {
-          callbacks.delete(id)
-        },
-        runCallback: () => null
+  const fontBytes = Array.from(await readFile(repoPath('packages/core/assets/Inter-Regular.ttf')))
+  await page.addInitScript(
+    (options) => {
+      const {
+        family,
+        deferredStyle,
+        deferredStyleAttempt,
+        failedLoadsByStyle = {},
+        unavailableStyles = [],
+        fontBytes
+      } = options
+      let releaseFont: (() => void) | undefined
+      const fontGate = new Promise<void>((resolve) => {
+        releaseFont = resolve
+      })
+      const state: FontLoadTestState = {
+        attempts: 0,
+        requests: [],
+        release: () => releaseFont?.()
       }
-    })
-  }, options)
+      Object.defineProperty(window, '__OPENPENCIL_DEFERRED_FONT__', {
+        configurable: true,
+        value: state
+      })
+
+      let callbackId = 1
+      const callbacks = new Map<number, unknown>()
+      Object.defineProperty(window, '__TAURI_INTERNALS__', {
+        configurable: true,
+        value: {
+          callbacks,
+          metadata: {
+            currentWindow: { label: 'main' },
+            currentWebview: { label: 'main' }
+          },
+          convertFileSrc: (filePath: string) => filePath,
+          invoke: async (command: string, args?: Record<string, unknown>) => {
+            switch (command) {
+              case 'list_system_fonts':
+                return [{ family, styles: ['Regular'] }]
+              case 'load_system_font': {
+                if (args?.family !== family) return null
+                const style = typeof args.style === 'string' ? args.style : 'Regular'
+                state.attempts++
+                state.requests.push(style)
+                const styleAttempt = state.requests.filter((request) => request === style).length
+                if (unavailableStyles.includes(style)) return null
+                if (styleAttempt <= (failedLoadsByStyle[style] ?? 0)) return null
+                if (style === deferredStyle && styleAttempt === deferredStyleAttempt) await fontGate
+                return Uint8Array.from(fontBytes).buffer
+              }
+              case 'take_pending_open':
+              case 'take_pending_rooms':
+                return []
+              case 'plugin:event|listen':
+              case 'plugin:event|unlisten':
+                return null
+              default:
+                return null
+            }
+          },
+          transformCallback: (callback: unknown) => {
+            const id = callbackId++
+            callbacks.set(id, callback)
+            return id
+          },
+          unregisterCallback: (id: number) => {
+            callbacks.delete(id)
+          },
+          runCallback: () => null
+        }
+      })
+    },
+    { ...options, fontBytes }
+  )
 }
 
 async function disableOnlineFonts(page: Page): Promise<void> {
@@ -101,25 +109,45 @@ async function disableOnlineFonts(page: Page): Promise<void> {
 }
 
 function fontLoadAttempts(page: Page): Promise<number> {
-  return page.evaluate(
-    () =>
-      (window as Window & { __OPENPENCIL_DEFERRED_FONT__: FontLoadTestState })
-        .__OPENPENCIL_DEFERRED_FONT__.attempts
-  )
+  return page.evaluate(() => {
+    const state: unknown = Reflect.get(window, '__OPENPENCIL_DEFERRED_FONT__')
+    if (
+      !state ||
+      typeof state !== 'object' ||
+      !('attempts' in state) ||
+      typeof state.attempts !== 'number'
+    )
+      throw new Error('Font fixture unavailable')
+    return state.attempts
+  })
 }
 
 function fontLoadRequests(page: Page): Promise<string[]> {
-  return page.evaluate(
-    () =>
-      (window as Window & { __OPENPENCIL_DEFERRED_FONT__: FontLoadTestState })
-        .__OPENPENCIL_DEFERRED_FONT__.requests
-  )
+  return page.evaluate(() => {
+    const state: unknown = Reflect.get(window, '__OPENPENCIL_DEFERRED_FONT__')
+    if (
+      !state ||
+      typeof state !== 'object' ||
+      !('requests' in state) ||
+      !Array.isArray(state.requests) ||
+      !state.requests.every((request): request is string => typeof request === 'string')
+    )
+      throw new Error('Font fixture unavailable')
+    return state.requests
+  })
 }
 
 function releaseFontLoad(page: Page): Promise<void> {
   return page.evaluate(() => {
-    const win = window as Window & { __OPENPENCIL_DEFERRED_FONT__: FontLoadTestState }
-    win.__OPENPENCIL_DEFERRED_FONT__.release()
+    const state: unknown = Reflect.get(window, '__OPENPENCIL_DEFERRED_FONT__')
+    if (
+      !state ||
+      typeof state !== 'object' ||
+      !('release' in state) ||
+      typeof state.release !== 'function'
+    )
+      throw new Error('Font fixture unavailable')
+    state.release()
   })
 }
 
@@ -137,6 +165,8 @@ test('does not report a local font as missing while its bytes are still loading'
   await disableOnlineFonts(page)
 
   const textId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 120, 120, 240, 40)
@@ -167,6 +197,8 @@ test('does not report a local font as missing while its bytes are still loading'
   await expect
     .poll(() =>
       page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         const node = store?.graph.getNode(id)
         return node ? store?.renderer?.nodeFontReadiness(node) : 'missing-node'
@@ -192,6 +224,8 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
   await disableOnlineFonts(page)
 
   const textId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 120, 120, 240, 40)
@@ -210,9 +244,10 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
   await expect(retry).toBeVisible()
   await expect.poll(() => fontLoadAttempts(page)).toBe(2)
   await expect.poll(() => fontLoadRequests(page)).toEqual(['Bold', 'Regular'])
-  const renderVersionBeforeRetry = await page.evaluate(
-    () => window.openPencil?.getStore?.()?.state.renderVersion ?? 0
-  )
+  const renderVersionBeforeRetry = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.()?.state.renderVersion ?? 0
+  })
 
   await retry.click()
   await expect.poll(() => fontLoadAttempts(page)).toBe(4)
@@ -223,6 +258,8 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
   await expect
     .poll(() =>
       page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         const node = store?.graph.getNode(id)
         return node
@@ -235,7 +272,12 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
     )
     .toMatchObject({ readiness: 'ready' })
   await expect
-    .poll(() => page.evaluate(() => window.openPencil?.getStore?.()?.state.renderVersion ?? 0))
+    .poll(() =>
+      page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.()?.state.renderVersion ?? 0
+      })
+    )
     .toBeGreaterThan(renderVersionBeforeRetry)
   await expect(retry).toHaveCount(0)
 })

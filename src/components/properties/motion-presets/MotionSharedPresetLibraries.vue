@@ -73,7 +73,8 @@ function acceptJSON(): void {
         v-for="library in libraries"
         :key="library.manifest.library.id"
         class="rounded border border-border bg-input p-2"
-        :data-test-id="`motion-shared-library-${library.manifest.library.id}`"
+        data-slot="motion-shared-library"
+        :data-library-id="library.manifest.library.id"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
@@ -87,7 +88,8 @@ function acceptJSON(): void {
           <span
             class="shrink-0 rounded px-1 py-0.5 text-[9px]"
             :class="library.updateAvailable ? 'bg-warning/15 text-warning' : 'bg-panel text-muted'"
-            :data-test-id="`motion-shared-status-${library.manifest.library.id}`"
+            data-slot="library-status"
+            :data-library-id="library.manifest.library.id"
           >
             {{
               library.updateAvailable
@@ -100,7 +102,8 @@ function acceptJSON(): void {
         <Tip :label="library.manifest.source.ref">
           <p
             class="mt-1 truncate text-[9px] text-muted"
-            :data-test-id="`motion-shared-source-${library.manifest.library.id}`"
+            data-slot="library-source"
+            :data-library-id="library.manifest.library.id"
           >
             {{ library.manifest.source.kind }} · {{ library.manifest.source.ref }}
           </p>
@@ -116,7 +119,9 @@ function acceptJSON(): void {
           <button
             type="button"
             class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-panel hover:text-surface disabled:opacity-50"
-            :data-test-id="`motion-shared-check-${library.manifest.library.id}`"
+            data-slot="library-action"
+            data-command="check-library"
+            :data-library-id="library.manifest.library.id"
             :disabled="disabled || busyId === library.manifest.library.id"
             @click="emit('check', library.manifest.library.id)"
           >
@@ -130,7 +135,9 @@ function acceptJSON(): void {
             v-if="library.updateAvailable"
             type="button"
             class="rounded bg-accent px-1.5 py-0.5 text-[10px] text-white hover:bg-accent/90 disabled:opacity-50"
-            :data-test-id="`motion-shared-accept-${library.manifest.library.id}`"
+            data-slot="library-action"
+            data-command="accept-library"
+            :data-library-id="library.manifest.library.id"
             :disabled="disabled || busyId === library.manifest.library.id"
             @click="emit('accept', library.manifest.library.id)"
           >
@@ -138,8 +145,10 @@ function acceptJSON(): void {
           </button>
           <button
             type="button"
-            class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50"
-            :data-test-id="`motion-shared-remove-${library.manifest.library.id}`"
+            class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-error/10 hover:text-error disabled:opacity-50"
+            data-slot="library-action"
+            data-command="remove-library"
+            :data-library-id="library.manifest.library.id"
             :disabled="disabled || Boolean(busyId)"
             @click="emit('remove', library.manifest.library.id)"
           >

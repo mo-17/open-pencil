@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing stable tag for official releases (vX.Y.Z); ignored for unsigned fork builds.
+        description: Existing release tag (vX.Y.Z or vX.Y.Z-beta.N); ignored for unsigned fork builds.
         required: false
         type: string
   push:
@@ -135,6 +135,9 @@ jobs:
             requireHttpsOrigin("OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN");
           '
       - name: Build shared desktop frontend and package outputs
+        env:
+          # Official releases only: lets the app send its daily ping and, with consent, usage stats.
+          VITE_OPENPENCIL_FEEDBACK: "on"
         run: |
           bun run generate:icons --target desktop
           bun run generate:tauri-menu

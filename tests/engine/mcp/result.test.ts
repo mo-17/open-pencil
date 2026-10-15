@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { fail, getDomainFailure, MAX_RESULT_BYTES, ok } from '#mcp/result'
+
+const ErrorJSON = v.pipe(v.string(), v.parseJson(), v.object({ error: v.string() }))
 
 describe('MCP result formatting', () => {
   test('keeps compact text for legacy clients and adds structured content', () => {
@@ -10,7 +14,10 @@ describe('MCP result formatting', () => {
 
     expect(result.isError).toBeUndefined()
     expect(result.content).toEqual([{ type: 'text', text: '{"id":"1:2","nested":{"value":true}}' }])
-    expect(result.structuredContent).toEqual({ id: '1:2', nested: { value: true } })
+    expect(result.structuredContent).toEqual({
+      id: '1:2',
+      nested: { value: true }
+    })
     expect(result._meta).toEqual({ openpencil: { durationMs: 3 } })
   })
 
@@ -29,8 +36,12 @@ describe('MCP result formatting', () => {
   })
 
   test('recognizes both core domain failure envelopes', () => {
-    expect(getDomainFailure({ error: 'missing' })).toEqual({ error: 'missing' })
-    expect(getDomainFailure({ ok: false, error: 'invalid' })).toEqual({ error: 'invalid' })
+    expect(getDomainFailure({ error: 'missing' })).toEqual({
+      error: 'missing'
+    })
+    expect(getDomainFailure({ ok: false, error: 'invalid' })).toEqual({
+      error: 'invalid'
+    })
     expect(getDomainFailure({ ok: true, data: { error: 'domain data' } })).toBeUndefined()
   })
 
@@ -40,7 +51,7 @@ describe('MCP result formatting', () => {
     expect(result.isError).toBe(true)
     expect(result.content[0].type).toBe('text')
     if (result.content[0].type !== 'text') throw new Error('Expected text result')
-    const error = JSON.parse(result.content[0].text) as { error: string }
+    const error = v.parse(ErrorJSON, result.content[0].text)
     expect(error.error).toContain('large_tool')
     expect(error.error).toContain('too large')
   })

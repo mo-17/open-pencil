@@ -14,10 +14,9 @@ test.each(['first-page', 'none'] as const)(
     graph.createNode('TEXT', graph.getPages()[0].id, { text: 'First' })
     graph.createNode('TEXT', graph.addPage('Second').id, { text: 'Second' })
     const bytes = await exportFigFile(graph)
-    const worker = new Worker(
-      new URL('../../../../../src/kiwi/fig/session/worker.ts', import.meta.url),
-      { type: 'module' }
-    )
+    const worker = new Worker(import.meta.resolve('#core/kiwi/fig/session/worker'), {
+      type: 'module'
+    })
     const channel = new MessageChannel()
     const messages: FigSessionResponse[] = []
     let notify: (() => void) | undefined
@@ -44,8 +43,7 @@ test.each(['first-page', 'none'] as const)(
       worker.postMessage(
         {
           type: 'open',
-          originalBuffer: bytes.slice().buffer,
-          archiveBuffer: bytes.slice().buffer,
+          buffer: bytes.slice().buffer,
           options: { populate },
           port: channel.port2
         },
@@ -53,7 +51,7 @@ test.each(['first-page', 'none'] as const)(
       )
       expect((await next('page-manifest')).type).toBe('page-manifest')
       const opened = await next('graph')
-      if (opened.type !== 'graph' || !('graph' in opened)) throw new Error('Missing worker graph')
+      if (opened.type !== 'graph' || !opened.graph) throw new Error('Missing worker graph')
       const { deserializeSceneGraph } = await import('#core/kiwi/fig/parse/transfer')
       const received = deserializeSceneGraph(opened.graph)
       expect(received.getChildren(received.getPages()[0].id)).toHaveLength(

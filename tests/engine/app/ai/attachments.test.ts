@@ -476,7 +476,7 @@ describe('visual chat attachment normalization', () => {
       size: 101,
       async arrayBuffer() {
         reads++
-        return sourceBytes('image/png').buffer
+        return new Uint8Array(sourceBytes('image/png')).buffer
       }
     }
 

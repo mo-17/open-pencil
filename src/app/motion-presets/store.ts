@@ -408,7 +408,7 @@ export function serializeLocalMotionPresetLibrary(
   sharedLibraries: readonly SharedMotionPresetLibraryState[] = []
 ): string {
   const parsedLibrary = parseUserMotionPresetLibrary(library)
-  const canonical = JSON.parse(serializeUserMotionPresetLibrary(parsedLibrary)) as UnknownRecord
+  const canonical = JSON.parse(serializeUserMotionPresetLibrary(parsedLibrary)) as unknown
   const parsedFavorites = parseFavorites([...favorites], parsedLibrary)
   const parsedSharedLibraries = parseSharedLibraries([...sharedLibraries])
   return `${JSON.stringify(

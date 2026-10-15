@@ -11,6 +11,7 @@ import { SkiaRenderer } from '#core/canvas/renderer'
 import { renderShapeUncached } from '#core/canvas/scene'
 import { fontManager } from '#core/text/fonts'
 
+import { expectRgbaPixels, asCanvas } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 import { repoPath } from '#tests/helpers/paths'
 
@@ -96,7 +97,7 @@ describe('lowcode BUTTON canvas label', () => {
     })
     const graph = new SceneGraph()
 
-    renderShapeUncached(r, canvas as Canvas, node, graph)
+    renderShapeUncached(r, asCanvas(canvas), node, graph)
 
     expect(callOrder).toEqual(['effects:behind', 'fill', 'effects:front', 'text:整理行囊'])
     expect(renderText).toHaveBeenCalledTimes(1)
@@ -152,13 +153,15 @@ describe('lowcode BUTTON canvas label', () => {
       surface.flush()
 
       const image = surface.makeImageSnapshot()
-      const pixels = image.readPixels(0, 0, {
-        width: 180,
-        height: 56,
-        colorType: ck.ColorType.RGBA_8888,
-        alphaType: ck.AlphaType.Unpremul,
-        colorSpace: ck.ColorSpace.SRGB
-      })
+      const pixels = expectRgbaPixels(
+        image.readPixels(0, 0, {
+          width: 180,
+          height: 56,
+          colorType: ck.ColorType.RGBA_8888,
+          alphaType: ck.AlphaType.Unpremul,
+          colorSpace: ck.ColorSpace.SRGB
+        })
+      )
       image.delete()
 
       let darkPixels = 0

@@ -8,3 +8,5 @@ export * from './npm/pack'
 export * from './manifest/read'
 export * from './process'
 export * from './manifest/types'
+
+export { parseWorkspace } from './workspace/schema'

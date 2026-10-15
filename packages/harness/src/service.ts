@@ -5,6 +5,8 @@ import type { ResumeStateStore } from './session-store'
 export class HarnessSessionService {
   private readonly sessions = new Map<string, BackendSession>()
   private readonly turns = new Map<string, AbortController>()
+  /** Sessions whose last turn ended because it was cancelled. */
+  private readonly cancelled = new Set<string>()
 
   constructor(
     private readonly backends: ReadonlyMap<string, HarnessBackend>,
@@ -29,10 +31,7 @@ export class HarnessSessionService {
       throw new Error(`Harness session already active: ${sessionId}`)
     const backend = this.backends.get(configuration.adapter)
     if (!backend) throw new Error(`Harness adapter is unavailable: ${configuration.adapter}`)
-    const resumeState = await this.store.load(sessionId)
-    if (resumeState && resumeState.harnessId !== backend.id) {
-      throw new Error(`Harness state belongs to ${resumeState.harnessId}, not ${backend.id}`)
-    }
+    const resumeState = await this.loadResumeState(sessionId, backend)
     const session = await backend.createSession({
       sessionId,
       resumeState,
@@ -60,7 +59,14 @@ export class HarnessSessionService {
     } finally {
       signal?.removeEventListener('abort', abort)
       if (this.turns.get(sessionId) === controller) this.turns.delete(sessionId)
+      if (controller.signal.aborted) this.cancelled.add(sessionId)
+      else this.cancelled.delete(sessionId)
     }
+  }
+
+  /** Whether the session's last turn ended because it was cancelled, not because it finished. */
+  lastTurnCancelled(sessionId: string): boolean {
+    return this.cancelled.has(sessionId)
   }
 
   cancelTurn(sessionId: string): void {
@@ -73,6 +79,22 @@ export class HarnessSessionService {
     const state = await session.stop()
     await this.store.save(sessionId, state)
     this.sessions.delete(sessionId)
+    this.cancelled.delete(sessionId)
+  }
+
+  /**
+   * A backend that resumes only within its live process (Pi's in-memory just-bash sandbox)
+   * cannot use saved state, and passing it makes every later session with that ID fail.
+   */
+  private async loadResumeState(sessionId: string, backend: HarnessBackend) {
+    const resumeState = await this.store.load(sessionId)
+    // State another backend saved stays for that backend to resume.
+    if (resumeState && resumeState.harnessId !== backend.id) {
+      throw new Error(`Harness state belongs to ${resumeState.harnessId}, not ${backend.id}`)
+    }
+    if (backend.capabilities.sessionResume === 'persistent') return resumeState
+    await this.store.remove(sessionId)
+    return undefined
   }
 
   async destroySession(sessionId: string): Promise<void> {
@@ -80,6 +102,7 @@ export class HarnessSessionService {
     await session.destroy()
     await this.store.remove(sessionId)
     this.sessions.delete(sessionId)
+    this.cancelled.delete(sessionId)
   }
 
   async shutdown(): Promise<void> {

@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { SUPABASE_BACKEND_PROVIDER_DESCRIPTOR } from '@open-pencil/compiler/backend'
 import {
   BACKEND_PRODUCTION_GATE_IDS,
@@ -22,6 +24,7 @@ import {
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import { runOpenPencilCLI } from '#tests/helpers/cli'
+import { parseCLISourceMigrationLedger } from '#tests/helpers/cli-reports'
 
 const temporaryDirectories: string[] = []
 
@@ -350,9 +353,14 @@ describe('CLI backend local-only workflow', () => {
     expect(linked.stderr).toContain('must not contain symbolic links')
 
     const unsafeLedgerPath = join(root, 'unsafe-migration-ledger.json')
-    const unsafeLedger = JSON.parse(await readFile(transitionedPath, 'utf8')) as {
-      entries: Array<{ source: { path: string } }>
-    }
+    const unsafeLedger = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.pipe(v.unknown(), v.transform(parseCLISourceMigrationLedger))
+      ),
+      await readFile(transitionedPath, 'utf8')
+    )
     unsafeLedger.entries[0].source.path = '../escaped.sql'
     await writeFile(unsafeLedgerPath, JSON.stringify(unsafeLedger), 'utf8')
     const escaped = await runOpenPencilCLI([
@@ -467,11 +475,16 @@ describe('CLI backend local-only workflow', () => {
       await driftEvent('drift:dev:verified', schemaDigest, '2026-09-04T00:02:00.000Z'),
       'verified'
     )
-    const latestNoDriftReceiptDigest = (
-      JSON.parse(await readFile(verified.output, 'utf8')) as {
-        driftRecords: Array<{ providerReceiptDigest: string }>
-      }
-    ).driftRecords.at(-1)?.providerReceiptDigest
+    const latestNoDriftReceiptDigest = v
+      .parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.pipe(v.unknown(), v.transform(parseCLISourceMigrationLedger))
+        ),
+        await readFile(verified.output, 'utf8')
+      )
+      .driftRecords.at(-1)?.providerReceiptDigest
     if (!latestNoDriftReceiptDigest) throw new Error('missing CLI no-drift fixture')
     const rebindId = 'authority-rebind:dev:grant-dev-2'
     const authorityReceipt = (

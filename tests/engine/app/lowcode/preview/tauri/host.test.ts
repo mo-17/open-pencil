@@ -135,7 +135,7 @@ describe('Tauri preview Host', () => {
         const second = await host.build({ ...input, generation: 2 })
         if (first.status !== 'ready' || second.status !== 'ready')
           throw new Error('Expected ready guard-only previews')
-        expect(first.frame.pageSessionSource?.signature).toBe(signature)
+        expect<unknown>(first.frame.pageSessionSource?.signature).toBe(signature)
         expect(second.frame.channelId).not.toBe(first.frame.channelId)
         expect(
           parsePreviewInboundMessage(
@@ -223,12 +223,12 @@ describe('Tauri preview Host', () => {
         acknowledge()
         const first = await build
         if (first.status !== 'ready') throw new Error('Expected captured desktop result')
-        expect(first.frame.pageSessionSource?.signature).toBe(before)
+        expect<unknown>(first.frame.pageSessionSource?.signature).toBe(before)
         expect(first.frame.pageSessionSource?.signature).not.toBe(after)
         expect(first.frame.pageSessionSource?.graph).toBe(graph)
         const second = await host.build({ ...input, generation: 2 })
         if (second.status !== 'ready') throw new Error('Expected latest desktop result')
-        expect(second.frame.pageSessionSource?.signature).toBe(after)
+        expect<unknown>(second.frame.pageSessionSource?.signature).toBe(after)
         expect(second.frame.channelId).not.toBe(first.frame.channelId)
         expect(second.frame).not.toBe(first.frame)
         const message = {

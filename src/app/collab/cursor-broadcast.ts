@@ -35,7 +35,7 @@ function normalizeFpsCap(value: number): number {
  */
 export function createCursorBroadcastQueue<T>(
   emit: (value: T) => void,
-  scheduler: CursorBroadcastScheduler = defaultScheduler()
+  timing: CursorBroadcastScheduler = defaultScheduler()
 ): CursorBroadcastQueue<T> {
   let pending: T | null = null
   let fpsCap = DEFAULT_CURSOR_FPS_CAP
@@ -49,11 +49,11 @@ export function createCursorBroadcastQueue<T>(
 
   function cancelScheduled() {
     if (frameHandle !== null) {
-      scheduler.cancelFrame(frameHandle)
+      timing.cancelFrame(frameHandle)
       frameHandle = null
     }
     if (delayHandle !== null) {
-      scheduler.clearDelay(delayHandle)
+      timing.clearDelay(delayHandle)
       delayHandle = null
     }
   }
@@ -62,17 +62,17 @@ export function createCursorBroadcastQueue<T>(
     if (pending === null) return
     const value = pending
     pending = null
-    lastSentAt = scheduler.now()
+    lastSentAt = timing.now()
     emit(value)
   }
 
   function requestFrame() {
     if (frameHandle !== null) return
-    frameHandle = scheduler.requestFrame(() => {
+    frameHandle = timing.requestFrame(() => {
       frameHandle = null
-      const remaining = intervalMs() - (scheduler.now() - lastSentAt)
+      const remaining = intervalMs() - (timing.now() - lastSentAt)
       if (remaining > 0) {
-        delayHandle = scheduler.setDelay(() => {
+        delayHandle = timing.setDelay(() => {
           delayHandle = null
           requestFrame()
         }, remaining)
@@ -84,12 +84,12 @@ export function createCursorBroadcastQueue<T>(
 
   function schedule() {
     if (frameHandle !== null || delayHandle !== null) return
-    const remaining = intervalMs() - (scheduler.now() - lastSentAt)
+    const remaining = intervalMs() - (timing.now() - lastSentAt)
     if (remaining <= 0) {
       requestFrame()
       return
     }
-    delayHandle = scheduler.setDelay(() => {
+    delayHandle = timing.setDelay(() => {
       delayHandle = null
       requestFrame()
     }, remaining)

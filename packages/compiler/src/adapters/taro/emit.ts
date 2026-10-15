@@ -8,6 +8,7 @@ import type {
   IRStateDecl,
   IRTree
 } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { emitExpression } from '@open-pencil/lowcode'
 
@@ -78,7 +79,7 @@ class TaroStyleSheet {
   register(node: IRElement | IRComponentRef): string | undefined {
     const classUtilities: string[] = []
     const declarations: Record<string, string> = {}
-    for (const utility of node.className.split(/\s+/).filter(Boolean)) {
+    for (const utility of compact(node.className.split(/\s+/))) {
       const match = BACKGROUND_ASSET.exec(utility)
       if (!match) {
         classUtilities.push(utility)
@@ -156,16 +157,14 @@ export function emitTaroPage(
   auditTreeRuntime(plan.ir, environment.warn)
   const body = plan.ir.children.map((node) => emitNode(node, ctx, 3)).join('\n')
   const hooks = emitPageHooks(plan.ir)
-  const componentImportSource = [...componentImports]
-    .sort()
-    .map((name) => {
+  const componentImportSource = compact(
+    [...componentImports].sort().map((name) => {
       const component = environment.components.get(name)
       return component
         ? `import ${component.identifier} from '../../components/${component.slug}'`
         : ''
     })
-    .filter(Boolean)
-    .join('\n')
+  ).join('\n')
   return {
     source: `import { useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
@@ -248,16 +247,14 @@ export function emitTaroComponent(
     'className'
   ].join(', ')
   const body = children.map((node) => emitNode(node, ctx, 3)).join('\n')
-  const componentImportSource = [...componentImports]
-    .sort()
-    .map((name) => {
+  const componentImportSource = compact(
+    [...componentImports].sort().map((name) => {
       const nested = environment.components.get(name)
       return nested && nested.identifier !== component.identifier
         ? `import ${nested.identifier} from './${nested.slug}'`
         : ''
     })
-    .filter(Boolean)
-    .join('\n')
+  ).join('\n')
   return {
     source: `import Taro from '@tarojs/taro'
 import { Button, Checkbox, Form, Image, Input, Label, Picker, Radio, Switch, Text, Textarea, View } from '@tarojs/components'
@@ -442,7 +439,7 @@ function emitElement(node: IRElement, ctx: EmitContext, level: number): string {
 }
 
 function auditElement(node: IRElement, ctx: EmitContext, emittedVRTour: boolean): void {
-  const unsupported = [
+  const unsupported = compact([
     node.motion || node.motionDrivers || node.motionScene ? 'motion' : '',
     node.generatedEffect ? 'generated-effect' : '',
     node.prototype || node.transitionKey || node.prototypeTarget ? 'prototype' : '',
@@ -453,7 +450,7 @@ function auditElement(node: IRElement, ctx: EmitContext, emittedVRTour: boolean)
     node.upload ? 'upload' : '',
     node.validation || node.formValidationKeys?.length ? 'form-validation' : '',
     node.displayKind ? 'ui-kit-display' : ''
-  ].filter(Boolean)
+  ])
   for (const feature of unsupported) {
     ctx.warn({
       code: `taro-${feature}-unsupported`,

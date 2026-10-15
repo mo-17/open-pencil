@@ -31,7 +31,12 @@ describe('source-only targets fail closed for multiple SELECT', () => {
       bindings: { value: { kind: 'ref', stateId: 'choices' } },
       events: {
         onChange: [
-          { kind: 'setState', targetStateId: 'eventOutput', valueExpr: '"MULTI_UNSUPPORTED_WRITE"' }
+          {
+            id: 'set-value',
+            kind: 'setState',
+            targetStateId: 'eventOutput',
+            valueExpr: '"MULTI_UNSUPPORTED_WRITE"'
+          }
         ]
       },
       interactiveProps: {

@@ -72,7 +72,7 @@ export function renderTreeModulePreview(
         textNode,
         renderer.color4f(rgba.r, rgba.g, rgba.b, rgba.a * opacity),
         { halfLeading: true },
-        (paragraph) => canvas.drawParagraph(paragraph, x, y)
+        (paragraph) => paragraph.draw(canvas, x, y)
       )
     }
     function box(

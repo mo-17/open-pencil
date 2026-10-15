@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit/array'
 const MAX_OUTLINE_NODES = 80
 const MAX_OUTLINE_DEPTH = 12
 const MAX_TEXT_VALUES = 64
@@ -152,7 +153,7 @@ function textReference(
     token,
     kind,
     characterCount: Array.from(value).length,
-    wordCount: value.split(/\s+/).filter(Boolean).length
+    wordCount: compact(value.split(/\s+/)).length
   })
 }
 

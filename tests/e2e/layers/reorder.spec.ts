@@ -4,6 +4,8 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 async function layerOrder(page: Page, parentId?: string) {
   return page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.getNode(id ?? store.state.currentPageId)?.childIds ?? []
@@ -18,6 +20,8 @@ test('dragging layers reorders scene nodes', async ({ page }) => {
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -48,6 +52,8 @@ test('dragging a layer into a container expands it and shows the child', async (
   await canvas.clearCanvas()
 
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId

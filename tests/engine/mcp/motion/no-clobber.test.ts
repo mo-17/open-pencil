@@ -28,9 +28,9 @@ describe('Motion export no-clobber publication', () => {
     expect(settled.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
     expect(settled.filter(({ status }) => status === 'rejected')).toHaveLength(1)
     expect(['left', 'right']).toContain(await readFile(output, 'utf8'))
-    expect(String(settled.find(({ status }) => status === 'rejected')?.reason)).toContain(
-      'already exists'
-    )
+    const failure = settled.find((result) => result.status === 'rejected')
+    if (failure?.status !== 'rejected') throw new Error('Expected a rejected publication')
+    expect(String(failure.reason)).toContain('already exists')
   })
 
   test('claims a sequence directory without replacing a racing destination', async () => {

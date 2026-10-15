@@ -72,7 +72,8 @@ const scene = useMotionSceneTimelineView()
             :style="scene.cueStyle(cue)"
             :aria-label="`${scene.cueTargetName(cue)} · ${scene.cueTrackName(cue)}`"
             :aria-pressed="scene.selectedCueIds.has(cue.id)"
-            :data-test-id="`motion-scene-cue-${cue.id}`"
+            data-slot="motion-scene-cue"
+            :data-cue-id="cue.id"
             @pointerdown.stop.prevent="scene.beginCueDrag($event, cue)"
             @pointermove.stop.prevent="scene.moveCueDrag"
             @pointerup.stop="scene.finishCueDrag"
@@ -173,7 +174,7 @@ const scene = useMotionSceneTimelineView()
       </button>
       <button
         type="button"
-        class="rounded-r px-1 py-0.5 hover:bg-danger/10 hover:text-danger focus-visible:ring-1 focus-visible:ring-danger"
+        class="rounded-r px-1 py-0.5 hover:bg-error/10 hover:text-error focus-visible:ring-1 focus-visible:ring-error"
         :aria-label="scene.panels.motionSceneRemoveMarker"
         @click="scene.deleteMarker(marker.id)"
       >

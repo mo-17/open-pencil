@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { MAPLIBRE_GL_VERSION } from '@open-pencil/compiler/adapters/react/map/component'
 import { previewOptimizeDeps } from '@open-pencil/compiler/dev-server'
 
@@ -13,10 +15,17 @@ import { previewOptimizeDeps } from '@open-pencil/compiler/dev-server'
 describe('preview can resolve maplibre-gl', () => {
   test('preview host declares the same MapLibre version generated projects use', () => {
     const pkgPath = join(process.cwd(), 'package.json')
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.optional(v.record(v.string(), v.string())),
+          devDependencies: v.optional(v.record(v.string(), v.string()))
+        })
+      ),
+      readFileSync(pkgPath, 'utf-8')
+    )
     const declared = pkg.devDependencies?.['maplibre-gl'] ?? pkg.dependencies?.['maplibre-gl']
 
     expect(declared).toBe(MAPLIBRE_GL_VERSION)

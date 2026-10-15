@@ -15,6 +15,8 @@ test.describe('Render performance', () => {
     await helper.waitForInit()
 
     await page.evaluate((count: number) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const arr = new Uint8Array(count * 3)
@@ -87,12 +89,14 @@ test.describe('Render performance', () => {
 
   test('benchmark: synchronous render throughput', async () => {
     const results = await helper.page.evaluate((iterations: number) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const renderer = store.renderer
       if (!renderer) throw new Error('OpenPencil renderer not initialized')
 
-      function setupRenderer() {
+      const setupRenderer = () => {
         renderer.dpr = window.devicePixelRatio || 1
         renderer.panX = store.state.panX
         renderer.panY = store.state.panY
@@ -180,6 +184,8 @@ test.describe('Render performance', () => {
 
     const results = await helper.page.evaluate(
       ({ count, iterations }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         const renderer = store.renderer
@@ -210,10 +216,10 @@ test.describe('Render performance', () => {
               }
             ]
           })
-          shadowIds.push(id)
+          shadowIds.push(id.id)
         }
 
-        function setupRenderer() {
+        const setupRenderer = () => {
           renderer.dpr = window.devicePixelRatio || 1
           renderer.panX = 0
           renderer.panY = -2000

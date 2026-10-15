@@ -49,7 +49,7 @@ export function renderWalktourModulePreview(
         renderer.color4f(color.r, color.g, color.b, color.a * opacity),
         { halfLeading: true },
         (paragraph) => {
-          canvas.drawParagraph(paragraph, 12, (height - paragraph.getHeight()) / 2)
+          paragraph.draw(canvas, 12, (height - paragraph.getHeight()) / 2)
         }
       )
     })

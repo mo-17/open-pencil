@@ -72,7 +72,8 @@ export function materializeSourceRecords(
       sources,
       options.afterMaterializeSourceFields
         ? reader.sourceRecordsFor(options.afterMaterializeSourceFields)
-        : reader.sourceRecords
+        : reader.sourceRecords,
+      new Set(sources.values())
     )
   })
   return state

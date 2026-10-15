@@ -79,7 +79,14 @@ export function applicationModeFixture(enabled = false) {
     height: 48,
     interactiveProps: { text: 'Increment shared count' },
     events: {
-      onClick: [{ kind: 'setVariable', targetName: 'sharedCount', valueExpr: '$prev + 1' }]
+      onClick: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setVariable',
+          targetName: 'sharedCount',
+          valueExpr: '$prev + 1'
+        }
+      ]
     }
   })
   function navigate(owner: SceneNode, text: string, to: string) {
@@ -88,7 +95,7 @@ export function applicationModeFixture(enabled = false) {
       width: 312,
       height: 48,
       interactiveProps: { text },
-      events: { onClick: [{ kind: 'navigate', to }] }
+      events: { onClick: [{ id: 'fixture-action-2', kind: 'navigate', to }] }
     })
   }
   const toProducts = navigate(homeEntry, 'Open products', '/products')

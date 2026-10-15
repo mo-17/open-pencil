@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
+import * as v from 'valibot'
+
 import {
   BackendProviderCompilationError,
   compile,
@@ -14,8 +16,7 @@ import {
 import {
   BACKEND_ARTIFACT_MANIFEST_PATH,
   SUPABASE_BACKEND_PROVIDER_COMPILER_BUNDLE_DIGEST,
-  SUPABASE_BACKEND_PROVIDER_DESCRIPTOR,
-  type BackendArtifactManifestV1
+  SUPABASE_BACKEND_PROVIDER_DESCRIPTOR
 } from '@open-pencil/compiler/backend'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import {
@@ -23,6 +24,25 @@ import {
   type BackendApplicationSpecV1
 } from '@open-pencil/lowcode/backend'
 import { SceneGraph, type ServerWorkflowDef } from '@open-pencil/scene-graph'
+
+import { expectDefined } from '#tests/helpers/assert'
+
+const GeneratedBackendManifest = v.looseObject({
+  format: v.literal('openpencil.backend-artifacts.v1'),
+  version: v.literal(1),
+  authority: v.looseObject({ providerId: v.string(), packageDigest: v.string() }),
+  applicationDigest: v.string(),
+  planDigest: v.string(),
+  artifacts: v.array(v.looseObject({ path: v.string(), digest: v.string() })),
+  requiredSecrets: v.array(v.looseObject({ name: v.string() }))
+})
+
+function readBackendManifest(output: CompilerOutput) {
+  return v.parse(
+    v.pipe(v.string(), v.parseJson(), GeneratedBackendManifest),
+    textFile(output, BACKEND_ARTIFACT_MANIFEST_PATH)
+  )
+}
 
 const LEGACY_ANON_VALUE = 'legacy-public-anon-value'
 const LEGACY_SERVER_WORKFLOW: ServerWorkflowDef = {
@@ -214,9 +234,7 @@ describe('legacy Backend Provider compile integration', () => {
       'src/_lowcode_server.ts'
     )
 
-    const manifest = JSON.parse(
-      textFile(output, BACKEND_ARTIFACT_MANIFEST_PATH)
-    ) as BackendArtifactManifestV1
+    const manifest = readBackendManifest(output)
     expect(manifest.authority.packageDigest).toBe(SUPABASE_BACKEND_PROVIDER_COMPILER_BUNDLE_DIGEST)
     expect(manifest.authority.packageDigest.startsWith('sha256:')).toBe(true)
     expect(manifest.authority.providerId).toBe('supabase')
@@ -252,12 +270,8 @@ describe('legacy Backend Provider compile integration', () => {
     const second = compileLegacyGraph(source)
     expect(backendEntries(second)).toEqual(backendEntries(first))
 
-    const firstManifest = JSON.parse(
-      textFile(first, BACKEND_ARTIFACT_MANIFEST_PATH)
-    ) as BackendArtifactManifestV1
-    const secondManifest = JSON.parse(
-      textFile(second, BACKEND_ARTIFACT_MANIFEST_PATH)
-    ) as BackendArtifactManifestV1
+    const firstManifest = readBackendManifest(first)
+    const secondManifest = readBackendManifest(second)
     expect(secondManifest.applicationDigest).toBe(firstManifest.applicationDigest)
     expect(secondManifest.planDigest).toBe(firstManifest.planDigest)
     expect(secondManifest.artifacts.map((entry) => entry.digest)).toEqual(
@@ -284,7 +298,9 @@ describe('legacy Backend Provider compile integration', () => {
       )
       expect(result.serverFiles).toContain(`openpencil-server/${BACKEND_ARTIFACT_MANIFEST_PATH}`)
       expect(result.backendReviewFiles).toEqual(
-        output.artifactOwnership?.backendReviewFiles.map((path) => `openpencil-server/${path}`)
+        expectDefined(output.artifactOwnership).backendReviewFiles.map(
+          (path) => `openpencil-server/${path}`
+        )
       )
       expect(result.executableServerWorkflowFiles).toEqual(
         EXECUTABLE_SERVER_WORKFLOW_PATHS.map((path) => `openpencil-server/${path}`).sort()
@@ -321,9 +337,7 @@ describe('explicit Backend Provider compile integration', () => {
     expect(firstEntries.length).toBeGreaterThan(1)
     expect(backendEntries(second)).toEqual(firstEntries)
     expect(first.artifactOwnership?.backendReviewFiles).toEqual(firstEntries.map(([path]) => path))
-    const manifest = JSON.parse(
-      textFile(first, BACKEND_ARTIFACT_MANIFEST_PATH)
-    ) as BackendArtifactManifestV1
+    const manifest = readBackendManifest(first)
     expect(manifest.authority).toMatchObject({
       providerId: 'supabase',
       packageDigest: SUPABASE_BACKEND_PROVIDER_COMPILER_BUNDLE_DIGEST
@@ -425,9 +439,7 @@ describe('explicit Backend Provider compile integration', () => {
       expect(textFile(output, 'supabase/functions/openpencil-runtime/index.ts')).toBe(
         textFile(output, 'backend/supabase/functions/openpencil-runtime/index.ts')
       )
-      const manifest = JSON.parse(
-        textFile(output, BACKEND_ARTIFACT_MANIFEST_PATH)
-      ) as BackendArtifactManifestV1
+      const manifest = readBackendManifest(output)
       expect(manifest.authority.providerId).toBe('supabase')
       expect(manifest.applicationDigest).toBe(explicitApplicationDigest)
       expect(output.warnings.map((entry) => entry.code)).not.toContain(

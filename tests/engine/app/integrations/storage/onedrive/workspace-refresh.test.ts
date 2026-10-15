@@ -1,11 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
-const source = readFileSync(
-  resolve(import.meta.dir, '../../../../../../src/views/StorageView.vue'),
-  'utf8'
-)
+import { repoPath } from '#tests/helpers/paths'
+
+const source = readFileSync(repoPath('src/views/StorageView.vue'), 'utf8')
 
 function functionSource(start: string, end: string): string {
   const startIndex = source.indexOf(start)

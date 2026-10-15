@@ -5,7 +5,7 @@ import {
   resolveRenderPlacement,
   type AppliedRenderPlacement
 } from '@open-pencil/core/design-jsx'
-import type { Editor } from '@open-pencil/core/editor'
+import { isEmptyDocumentChange, type Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 import {
@@ -17,9 +17,20 @@ import {
 } from '@open-pencil/core/tools'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import {
+  agentStarted,
+  agentFinished,
+  readAgentSession,
+  touchedNodeIds
+} from '@/app/automation/agents'
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
-import type { AutomationTarget } from '@/app/automation/bridge/target'
-import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
+import { limitToSelection } from '@/app/automation/bridge/selection-scope'
+import { isUnknownRecord, type AutomationTarget } from '@/app/automation/bridge/target'
+import {
+  AUTOMATION_UNDO_LABEL,
+  automationUndoLabel,
+  executeAtomicEditorTool
+} from '@/app/automation/execution/editor'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { pageIdForNode, resolveEditorMutationScope } from '@/app/editor/mutation-scope'
 import { useLibraryService } from '@/app/libraries'
@@ -153,6 +164,8 @@ export function createAutomationToolHandler(
       throw new Error(`Automation parent "${parentId}" does not belong to a page`)
     }
     const before = store.snapshotPage(parentPageId)
+    let finishChange: ReturnType<Editor['captureDocumentChange']> | undefined =
+      store.captureDocumentChange(parentPageId)
     try {
       const results = await renderAutomationRoots(target, tree, parentId, toolArgs, context)
       const rootIds = results.map((node) => node.id)
@@ -167,6 +180,15 @@ export function createAutomationToolHandler(
       throwIfAborted(context?.signal)
       store.requestRender()
       store.flashNodes(rootIds)
+      const change = finishChange()
+      finishChange = undefined
+      if (!isEmptyDocumentChange(change)) {
+        store.pushUndoStep({
+          label: automationUndoLabel('render'),
+          forward: () => store.restoreDocumentChange(change, 'after'),
+          inverse: () => store.restoreDocumentChange(change, 'before')
+        })
+      }
       return {
         ok: true,
         result: automationRenderResult(results, appliedPlacement),
@@ -182,10 +204,12 @@ export function createAutomationToolHandler(
     } catch (error) {
       store.restorePageFromSnapshot(before, parentPageId)
       throw error
+    } finally {
+      finishChange?.()
     }
   }
 
-  return async function handleTool(
+  const handleTool = async function runTool(
     target: AutomationTarget,
     args: unknown,
     context?: AutomationRequestContext
@@ -219,7 +243,7 @@ export function createAutomationToolHandler(
       if (isAtomicTool(def)) {
         const result = await executeAtomicEditorTool(store, figma, def, toolArgs, {
           signal: context?.signal,
-          label: 'MCP',
+          label: AUTOMATION_UNDO_LABEL,
           context: { signal: context?.signal, onProgress: context?.onProgress }
         })
         return {
@@ -280,7 +304,9 @@ export function createAutomationToolHandler(
               }
             }
           },
-          context?.signal
+          context?.signal,
+          pageId,
+          tracksGraph
         )
       } catch (error) {
         const mutationChanged =
@@ -298,6 +324,33 @@ export function createAutomationToolHandler(
 
     return def.mutates ? serializeToolMutation(store, execute) : execute()
   }
+  return async (
+    target: AutomationTarget,
+    args: unknown,
+    context?: AutomationRequestContext
+  ): Promise<unknown> => {
+    const source = isUnknownRecord(args) ? args : {}
+    const toolName = typeof source.name === 'string' ? source.name : ''
+    const requested = isUnknownRecord(source.args) ? source.args : {}
+    const toolArgs =
+      source.scope === 'selection' ? limitToSelection(target.store, toolName, requested) : requested
+    const session = readAgentSession(source.agent)
+    const reply = session ? agentStarted(target.store, session, target.pageId) : 0
+    const response = await handleTool(target, { ...source, args: toolArgs }, context)
+    if (session) {
+      const result =
+        response && typeof response === 'object' && 'result' in response
+          ? response.result
+          : response
+      agentFinished(target.store, session, {
+        reply,
+        pageId: target.pageId,
+        nodeIds: touchedNodeIds(target.store, toolArgs, result),
+        edited: ALL_TOOLS.find((definition) => definition.name === toolName)?.mutates === true
+      })
+    }
+    return response
+  }
 }
 
 function snapshotMutationScope(
@@ -311,30 +364,40 @@ function snapshotMutationScope(
   return { scope: 'page' as const, snapshot: store.snapshotPage(pageId) }
 }
 
-/** §3.v2 decision d: opt-in tools wrap their dispatch in
- *  `editor.undo.runBatch` so the data mutation plus any selection /
- *  flash side-effect collapses into a single Cmd+Z entry. Tools not
- *  in `EDITOR_UNDO_TOOLS` keep the legacy no-batch path. */
+/** Existing editor-backed tools keep their batch; other document edits get a precise change step. */
 async function runWithUndoBatch<T>(
   store: Editor,
   toolName: string,
   fn: () => T | Promise<T>,
-  signal?: AbortSignal
+  signal: AbortSignal | undefined,
+  pageId: string,
+  tracksGraph: boolean
 ): Promise<T> {
-  if (!EDITOR_UNDO_TOOLS.has(toolName)) {
-    const result = await fn()
-    throwIfAborted(signal)
-    return result
-  }
-  store.undo.beginBatch(`AI: ${toolName}`)
+  const batching = EDITOR_UNDO_TOOLS.has(toolName)
+  let finishChange = tracksGraph ? store.captureDocumentChange(pageId) : undefined
+  const historyBefore = store.undo.revision
+  if (batching) store.undo.beginBatch(automationUndoLabel(toolName))
   try {
     const result = await fn()
     throwIfAborted(signal)
-    store.undo.commitBatch()
+    const change = finishChange?.()
+    finishChange = undefined
+    if (change && !isEmptyDocumentChange(change) && store.undo.revision === historyBefore) {
+      const entry = {
+        label: automationUndoLabel(toolName),
+        forward: () => store.restoreDocumentChange(change, 'after'),
+        inverse: () => store.restoreDocumentChange(change, 'before')
+      }
+      if (batching) store.pushUndoEntry(entry)
+      else store.pushUndoStep(entry)
+    }
+    if (batching) store.undo.commitBatch()
     return result
-  } catch (err) {
-    store.undo.rollbackBatch()
-    throw err
+  } catch (error) {
+    if (batching) store.undo.rollbackBatch()
+    throw error
+  } finally {
+    finishChange?.()
   }
 }
 

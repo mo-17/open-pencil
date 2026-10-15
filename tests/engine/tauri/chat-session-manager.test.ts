@@ -12,6 +12,7 @@ import type { AIModelRuntime } from '@/app/ai/models'
 import * as automationMCP from '@/app/automation/mcp/spawn'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
+import { parseACPTestRequest } from '#tests/helpers/tauri/acp-request'
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 type EditorStore = ReturnType<typeof getActiveEditorStore>
@@ -342,6 +343,7 @@ describe('ACP chat session manager', () => {
         modelID: 'gpt-test',
         customModelID: '',
         maxOutputTokens: 16_384,
+        thinkingLevel: 'default',
         capabilities: ['tools'],
         featurePolicy: {
           webSearch: { enabled: false },
@@ -691,11 +693,7 @@ describe('ACP chat session manager', () => {
       if (cmd === 'plugin:shell|stdin_write') {
         const raw = decoder.decode(new Uint8Array((args as { buffer: number[] }).buffer))
         for (const line of raw.trim().split('\n')) {
-          const request = JSON.parse(line) as {
-            id: number
-            method: string
-            params: Record<string, unknown>
-          }
+          const request = parseACPTestRequest(line)
           methods.push(request.method)
           if (request.method === 'initialize') {
             respond(request.id, { protocolVersion: 1 })
@@ -797,7 +795,7 @@ describe('ACP chat session manager', () => {
         const { pid, buffer } = args as { pid: number; buffer: number[] }
         const raw = decoder.decode(new Uint8Array(buffer))
         for (const line of raw.trim().split('\n')) {
-          const request = JSON.parse(line) as { id: number; method: string }
+          const request = parseACPTestRequest(line)
           requests.push({ pid, method: request.method })
           if (request.method === 'initialize') {
             respond(pid, request.id, { protocolVersion: 1 })

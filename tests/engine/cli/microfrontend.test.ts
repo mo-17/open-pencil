@@ -4,6 +4,8 @@ import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import {
   parseOpenPencilMicrofrontendRuntimeManifestJSON,
   type OpenPencilMicrofrontendCompositionManifestV1
@@ -23,7 +25,7 @@ async function writeDocument(path: string): Promise<void> {
   graph.updateNode(home.id, { name: 'Home' })
   graph.createNode('TEXT', home.id, {
     name: 'Welcome',
-    characters: 'Welcome',
+    text: 'Welcome',
     width: 180,
     height: 32
   })
@@ -69,9 +71,18 @@ async function buildApp(
     outDir
   ])
   expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0)
-  const report = JSON.parse(result.stdout) as {
-    microfrontend: { manifest: { digest: string; byteLength: number } }
-  }
+  const report = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        microfrontend: v.looseObject({
+          manifest: v.looseObject({ digest: v.string(), byteLength: v.number() })
+        })
+      })
+    ),
+    result.stdout
+  )
   expect(report.microfrontend.manifest.digest).toMatch(/^[A-Za-z0-9_-]{43}$/)
   const manifest = parseOpenPencilMicrofrontendRuntimeManifestJSON(
     await Bun.file(join(outDir, 'openpencil.microfrontend.json')).text()

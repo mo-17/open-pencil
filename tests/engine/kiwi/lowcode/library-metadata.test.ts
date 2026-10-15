@@ -6,7 +6,6 @@ import {
   parseFigFile,
   SceneGraph,
   type LibraryRef,
-  type PluginDataEntry,
   type SceneNode
 } from '@open-pencil/core'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
@@ -14,7 +13,8 @@ import type { PluginData } from '@open-pencil/kiwi/fig/codec'
 import {
   ensureLibraryCachePage,
   importLibraryComponent,
-  type LibraryManifest
+  type LibraryManifest,
+  type PluginDataEntry
 } from '@open-pencil/scene-graph'
 
 import {
@@ -24,6 +24,8 @@ import {
   LOWCODE_LIBRARY_COMPONENT_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
 
 setDefaultTimeout(30_000)
 
@@ -157,7 +159,7 @@ describe('lowcode team-library pluginData (Phase 4 §14)', () => {
     graph.updateNode(graph.rootId, { lowcodeLibraries: libraryRefs })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const reimportedMaster = [...reimported.getAllNodes()].find((node) => node.name === master.name)
     const root = reimported.getNode(reimported.rootId)
     const reimportedCachePage = [...reimported.getAllNodes()].find(

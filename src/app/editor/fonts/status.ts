@@ -126,7 +126,9 @@ export function useDocumentFontStatus() {
       )
       preparation.signal.throwIfAborted()
       editor.renderer?.invalidateAllPictures()
-      computeAllLayouts(editor.graph, editor.state.currentPageId)
+      editor.graph.applyDerivedLayoutDuring(() =>
+        computeAllLayouts(editor.graph, editor.state.currentPageId)
+      )
       preparation.update({ phase: 'preparing-render' })
       editor.requestRender()
       if (editor.renderer) {

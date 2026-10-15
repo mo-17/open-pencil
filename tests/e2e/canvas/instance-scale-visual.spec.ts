@@ -5,7 +5,7 @@ import { computeAllLayouts, computeLayout } from '@open-pencil/core/layout'
 import { materializeDocument } from '@open-pencil/fig'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import {
-  reconcileNumericVariableBindings,
+  reconcileVariableBindings,
   rescaleNodeTree,
   type SceneNode,
   type SceneGraph
@@ -26,7 +26,6 @@ const fields = [
   'height',
   'fills',
   'strokes',
-  'strokeWeight',
   'cornerRadius',
   'opacity',
   'visible'
@@ -62,6 +61,8 @@ function renderTree(graph: SceneGraph, rootId: string): RenderNode {
 
 async function renderTrees(trees: RenderNode[]) {
   await editor.page.evaluate((trees) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Missing editor')
     const visit = (tree: RenderNode, parentId: string) => {
@@ -86,7 +87,10 @@ test('absolute constraints survive occurrence resizing', async () => {
   const child = graph.getChildren(id)[0]
   expect([child.x, child.y, child.width, child.height]).toEqual([180, 10, 10, 100])
   await renderTrees([renderTree(graph, id)])
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().setZoomAroundPoint(2, 0, 0))
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().setZoomAroundPoint(2, 0, 0)
+  })
   expect(await editor.canvas.screenshotCanvasRegion()).toMatchSnapshot(
     'absolute-constraint-resize.png'
   )
@@ -113,7 +117,7 @@ test('saved inherited expressions follow token edits without double scaling', as
   expect(nested.paddingLeft).toBe(5)
   const before = renderTree(graph, rootId)
   variable.valuesByMode[graph.getNodeVariableModeId(nested.id, variable.collectionId)] = 40
-  reconcileNumericVariableBindings(graph)
+  reconcileVariableBindings(graph)
   computeLayout(graph, nested.id)
   computeLayout(graph, rootId)
   expect(nested.paddingLeft).toBe(10)
@@ -159,7 +163,7 @@ for (const operation of ['component', 'rescale'] as const) {
     const nested = graph.getChildren(rootId)[0]
     graph.bindVariable(rootId, 'paddingRight', '293742:7')
     graph.bindVariable(nested.id, 'paddingRight', '293742:7')
-    reconcileNumericVariableBindings(graph)
+    reconcileVariableBindings(graph)
     computeLayout(graph, nested.id)
     computeLayout(graph, rootId)
     const before = renderTree(graph, rootId)

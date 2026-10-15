@@ -4,6 +4,8 @@ import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import * as v from 'valibot'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph, type MotionSpec } from '@open-pencil/scene-graph'
 
@@ -73,8 +75,16 @@ heavy('motion figma-adapter CLI', () => {
 
     const supportedFind = await run(['find', fixture, '--name', supported.name, '--json'])
     const unsupportedFind = await run(['find', fixture, '--name', unsupported.name, '--json'])
-    supportedId = (JSON.parse(supportedFind.stdout) as Array<{ id: string }>)[0]?.id ?? ''
-    unsupportedId = (JSON.parse(unsupportedFind.stdout) as Array<{ id: string }>)[0]?.id ?? ''
+    supportedId =
+      v.parse(
+        v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+        supportedFind.stdout
+      )[0]?.id ?? ''
+    unsupportedId =
+      v.parse(
+        v.pipe(v.string(), v.parseJson(), v.array(v.looseObject({ id: v.string() }))),
+        unsupportedFind.stdout
+      )[0]?.id ?? ''
     if (!supportedId || !unsupportedId) throw new Error('Motion fixture nodes were not imported')
   })
 
@@ -94,19 +104,30 @@ heavy('motion figma-adapter CLI', () => {
 
     expect(exitCode).toBe(0)
     expect(stderr).toBe('')
-    const result = JSON.parse(stdout) as {
-      version: number
-      source: { node: { id: string } }
-      target: { mode: string; nodeId?: string }
-      safety: { conflictPolicy: string; allowTimelineGrowth: boolean; ownership: string }
-      plan: {
-        supported: boolean
-        durationSeconds: number
-        managedFields: Array<{ name: string }>
-      }
-      script: string
-      output: string | null
-    }
+    const result = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          version: v.number(),
+          source: v.looseObject({ node: v.looseObject({ id: v.string() }) }),
+          target: v.looseObject({ mode: v.string(), nodeId: v.optional(v.string()) }),
+          safety: v.looseObject({
+            conflictPolicy: v.string(),
+            allowTimelineGrowth: v.boolean(),
+            ownership: v.string()
+          }),
+          plan: v.looseObject({
+            supported: v.boolean(),
+            durationSeconds: v.number(),
+            managedFields: v.array(v.looseObject({ name: v.string() }))
+          }),
+          script: v.string(),
+          output: v.union([v.string(), v.null()])
+        })
+      ),
+      stdout
+    )
     expect(Object.keys(result)).toEqual(ADAPTER_ENVELOPE_KEYS)
     expect(result.version).toBe(1)
     expect(result.source.node.id).toBe(supportedId)
@@ -210,15 +231,25 @@ heavy('motion figma-adapter CLI', () => {
 
     expect(exitCode).toBe(1)
     expect(stderr).toBe('')
-    const result = JSON.parse(stdout) as {
-      version: number
-      source: { node: { id: string } }
-      target: { mode: string }
-      safety: { conflictPolicy: string; allowTimelineGrowth: boolean }
-      plan: { supported: boolean; issues: Array<{ code: string }> }
-      script: string | null
-      output: string | null
-    }
+    const result = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          version: v.number(),
+          source: v.looseObject({ node: v.looseObject({ id: v.string() }) }),
+          target: v.looseObject({ mode: v.string() }),
+          safety: v.looseObject({ conflictPolicy: v.string(), allowTimelineGrowth: v.boolean() }),
+          plan: v.looseObject({
+            supported: v.boolean(),
+            issues: v.array(v.looseObject({ code: v.string() }))
+          }),
+          script: v.union([v.string(), v.null()]),
+          output: v.union([v.string(), v.null()])
+        })
+      ),
+      stdout
+    )
     expect(Object.keys(result)).toEqual(ADAPTER_ENVELOPE_KEYS)
     expect(result).toMatchObject({
       version: 1,

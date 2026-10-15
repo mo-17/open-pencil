@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, type SceneNode } from '@open-pencil/core'
-import { collectTailwindClasses } from '@open-pencil/core/io/formats/jsx'
+import { SceneGraph, type SceneNode } from '#core/index'
+import { collectTailwindClasses } from '#core/io/formats/jsx/index'
 
 describe('jsx — blend mode classes', () => {
   function rectangleWithBlend(blendMode: SceneNode['blendMode']): {

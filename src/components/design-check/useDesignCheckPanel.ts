@@ -19,7 +19,7 @@ import {
   type DesignIssue,
   type DesignIssueSeverity
 } from '@/app/editor/design-check/issues'
-import { nodeIcon } from '@/app/editor/icons'
+import { IconFrame, sceneNodeIcon } from '@/app/editor/icons'
 import { appPreferences } from '@/app/settings/preferences/store'
 
 import type { IssueGroupView, IssueRowView } from './types'
@@ -48,13 +48,14 @@ function isHidden(graph: SceneGraph, nodeId: string): boolean {
 export function useDesignCheckPanel(options: {
   active: () => boolean
   list: Readonly<Ref<HTMLElement | null>>
+  initialScope?: DesignCheckScope
 }) {
   const store = useEditorStore()
   const messages = useDesignCheckMessages()
   const presetLabels = usePresetLabels()
   const check = store.designCheck
 
-  const scope = ref<DesignCheckScope>('page')
+  const scope = ref<DesignCheckScope>(options.initialScope ?? 'page')
   const visibleSeverities = ref<DesignIssueSeverity[]>([...DESIGN_ISSUE_SEVERITIES])
   /** Explicit open state per rule; suggestions start collapsed, problems start open. */
   const openGroups = reactive(new Map<string, boolean>())
@@ -94,7 +95,7 @@ export function useDesignCheckPanel(options: {
     return {
       issue,
       layerName: node?.name ?? issue.nodeName,
-      layerIcon: nodeIcon(node ?? { type: 'FRAME', layoutMode: 'NONE' }),
+      layerIcon: node ? sceneNodeIcon(node) : IconFrame,
       detail: issueDetail(issue, messages.value),
       swatch: issueSwatch(issue),
       action: node ? issueAction(issue, messages.value) : null,

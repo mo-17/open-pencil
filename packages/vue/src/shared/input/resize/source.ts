@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array'
+
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import type { DragResize } from '#vue/shared/input/types'
@@ -32,7 +34,7 @@ export function resizedSource(
   const changedKeys = (Object.keys(originalSizing) as (keyof typeof originalSizing)[]).filter(
     (key) => node[key] !== originalSizing[key]
   )
-  source.editedFields = [...new Set([...source.editedFields, ...changedKeys])]
+  source.editedFields = uniq([...source.editedFields, ...changedKeys])
   if (source.fig.layout) {
     const layout = { ...source.fig.layout }
     if (changedKeys.includes('primaryAxisSizing'))

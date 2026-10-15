@@ -4,8 +4,11 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 import { encode, toUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import { canonicalManifestJSON as canonicalJSON } from '@open-pencil/scene-graph'
+
+import { repoPath } from '#tests/helpers/paths'
 
 type JSONPrimitive = boolean | null | number | string
 type JSONValue = JSONObject | JSONPrimitive | readonly JSONValue[]
@@ -21,30 +24,48 @@ type InitializerMaterialV1 = JSONObject & {
   readonly transaction: JSONObject & { readonly parameters: JSONObject }
 }
 
-interface InitializerCanonicalFixtureV1 {
-  readonly fixtureFormat: string
-  readonly fixtureVersion: number
-  readonly initializerFormat: string
-  readonly initializerVersion: number
-  readonly planDomain: string
-  readonly singleFlightDomain: string
-  readonly scopeDomain: string
-  readonly captureConsumed: boolean
-  readonly material: InitializerMaterialV1
-  readonly planDigest: string
-  readonly singleFlightKey: string
-  readonly dispatchScopeKey: string
-}
-
-const fixture = JSON.parse(
+const JSONValueSchema: v.GenericSchema<JSONValue> = v.lazy(() =>
+  v.union([
+    v.null(),
+    v.boolean(),
+    v.number(),
+    v.string(),
+    v.array(JSONValueSchema),
+    v.record(v.string(), JSONValueSchema)
+  ])
+)
+const JSONObjectSchema = v.record(v.string(), JSONValueSchema)
+const InitializerMaterialSchema = v.intersect([
+  JSONObjectSchema,
+  v.object({
+    source: JSONObjectSchema,
+    installed: JSONObjectSchema,
+    inspection: JSONObjectSchema,
+    capture: JSONObjectSchema,
+    transaction: v.intersect([JSONObjectSchema, v.object({ parameters: JSONObjectSchema })])
+  })
+])
+const InitializerCanonicalFixtureSchema = v.strictObject({
+  fixtureFormat: v.string(),
+  fixtureVersion: v.number(),
+  initializerFormat: v.string(),
+  initializerVersion: v.number(),
+  planDomain: v.string(),
+  singleFlightDomain: v.string(),
+  scopeDomain: v.string(),
+  captureConsumed: v.boolean(),
+  material: InitializerMaterialSchema,
+  planDigest: v.string(),
+  singleFlightKey: v.string(),
+  dispatchScopeKey: v.string()
+})
+const fixture = v.parse(
+  v.pipe(v.string(), v.parseJson(), InitializerCanonicalFixtureSchema),
   readFileSync(
-    new URL(
-      '../../../../../../../../fixtures/backend/supabase/receipt-zero-initializer-canonical-v1.json',
-      import.meta.url
-    ),
+    repoPath('tests/fixtures/backend/supabase/receipt-zero-initializer-canonical-v1.json'),
     'utf8'
   )
-) as InitializerCanonicalFixtureV1
+)
 
 function sha256Base64url(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('base64url')
@@ -56,7 +77,7 @@ function digestCanonical(value: JSONValue): string {
 
 function decodeCanonicalBase64(value: string): JSONObject {
   const decoded = Buffer.from(toUint8Array(value)).toString('utf8')
-  const parsed = JSON.parse(decoded) as JSONObject
+  const parsed = v.parse(v.pipe(v.string(), v.parseJson(), JSONObjectSchema), decoded)
   expect(decoded).toBe(canonicalJSON(parsed))
   return parsed
 }
@@ -514,8 +535,10 @@ describe('native Receipt-zero initializer canonical fixture', () => {
 
     const scope = decodeCanonicalBase64(requiredString(parameters, 'canonicalScopeBase64'))
     const receipt = decodeCanonicalBase64(requiredString(parameters, 'canonicalReceiptBase64'))
-    expect(encode(canonicalJSON(scope))).toBe(parameters.canonicalScopeBase64)
-    expect(encode(canonicalJSON(receipt))).toBe(parameters.canonicalReceiptBase64)
+    expect(encode(canonicalJSON(scope))).toBe(requiredString(parameters, 'canonicalScopeBase64'))
+    expect(encode(canonicalJSON(receipt))).toBe(
+      requiredString(parameters, 'canonicalReceiptBase64')
+    )
     expect(parameters.scopeDigest).toBe(digestCanonical(scope))
     expect(parameters.receiptDigest).toBe(digestCanonical(receipt))
     expect(receipt.scope).toEqual(scope)

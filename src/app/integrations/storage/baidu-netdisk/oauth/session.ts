@@ -1,6 +1,6 @@
 /* oxlint-disable eslint/max-lines -- One session owns strict mode isolation, durable grant replacement, and single-use refresh rotation. */
 
-import { randomHex } from '@open-pencil/core/random'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
 import { credentialRef } from '@/app/settings/credentials/reference'

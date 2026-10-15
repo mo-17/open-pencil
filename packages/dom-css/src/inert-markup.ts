@@ -1,6 +1,7 @@
 import { parse, parseFragment, type DefaultTreeAdapterTypes } from 'parse5'
-import valueParser, { type ParsedNode } from 'postcss-value-parser'
+import valueParser, { type Node as ParsedNode } from 'postcss-value-parser'
 
+import { INLINE_TAGS } from './import/flow'
 import type { DesignDocument, DesignNode, DesignStyleDeclaration } from './types'
 
 export type StyleAttributeParser = (value: string | undefined) => DesignStyleDeclaration | undefined
@@ -212,7 +213,7 @@ function sanitizeAttrs(
     ) {
       continue
     }
-    sanitized[name] = value
+    sanitized[rawName] = value
   }
   return sanitized
 }
@@ -229,7 +230,7 @@ function isSafeTag(tagName: string): boolean {
 function sanitizeDesignNodeWithMode(node: DesignNode, strict: boolean): DesignNode | null {
   if (node.type === 'text') return { type: 'text', text: node.text }
 
-  const tagName = node.tagName.toLowerCase()
+  const tagName = node.tagName
   if (!isSafeTag(tagName)) return null
   const attrs = sanitizeAttrs(tagName, node.attrs, strict)
   const inlineStyle = sanitizeStyle(node.inlineStyle, strict)
@@ -296,14 +297,25 @@ function isTextNode(
 
 function parsedChildToDesignNode(
   node: DefaultTreeAdapterTypes.ChildNode,
-  parseStyleAttribute: StyleAttributeParser
+  parseStyleAttribute: StyleAttributeParser,
+  inInline = false,
+  siblings: readonly DefaultTreeAdapterTypes.ChildNode[] = [],
+  index = 0
 ): DesignNode | null {
   if (isTextNode(node)) {
-    return node.value.trim().length > 0 ? { type: 'text', text: node.value } : null
+    const inlineSibling = (candidate: DefaultTreeAdapterTypes.ChildNode | undefined) =>
+      candidate !== undefined &&
+      'tagName' in candidate &&
+      INLINE_TAGS.has(candidate.tagName.toLowerCase())
+    return node.value.trim().length > 0 ||
+      (node.value.length > 0 &&
+        (inInline || inlineSibling(siblings[index - 1]) || inlineSibling(siblings[index + 1])))
+      ? { type: 'text', text: node.value }
+      : null
   }
   if (!('tagName' in node)) return null
 
-  const tagName = node.tagName.toLowerCase()
+  const tagName = node.tagName
   if (!isSafeTag(tagName)) return null
   const rawAttrs = attrsToRecord(node.attrs)
   const attrs = sanitizeAttrs(tagName, rawAttrs, false)
@@ -313,7 +325,15 @@ function parsedChildToDesignNode(
     tagName,
     attrs,
     children: node.childNodes
-      .map((child) => parsedChildToDesignNode(child, parseStyleAttribute))
+      .map((child, index) =>
+        parsedChildToDesignNode(
+          child,
+          parseStyleAttribute,
+          INLINE_TAGS.has(tagName.toLowerCase()),
+          node.childNodes,
+          index
+        )
+      )
       .filter((child): child is DesignNode => child !== null),
     ...(inlineStyle ? { inlineStyle } : {})
   }
@@ -327,7 +347,9 @@ export function parseInertHTML(
   return {
     type: 'document',
     children: fragment.childNodes
-      .map((node) => parsedChildToDesignNode(node, parseStyleAttribute))
+      .map((node, index) =>
+        parsedChildToDesignNode(node, parseStyleAttribute, false, fragment.childNodes, index)
+      )
       .filter((node): node is DesignNode => node !== null)
   }
 }

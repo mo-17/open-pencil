@@ -37,6 +37,7 @@ export interface MotionTimelinePresence {
   playheadMs: number
   playing: boolean
 }
+import type { RoomStatus } from '@/app/collab/room/status'
 import type { AgentPresence, PersonPoint } from '@/app/presence/types'
 
 export interface RemotePeer {
@@ -47,45 +48,48 @@ export interface RemotePeer {
   selection?: string[]
   /** Agents this person runs, as they publish them. */
   agents: AgentPresence[]
-  /** Phase 3 §4.4 — the lowcode panel this peer is editing, if any. */
   editing?: PresenceEditingTarget
-  /** Ephemeral timeline selection/playhead; never persisted into the document. */
   motionTimeline?: MotionTimelinePresence
+  treeFormat?: number
+  hasFile?: boolean
+  voice?: VoiceMembership
 }
 
-/** Phase 3 §4.6 — preview runtime-state collaboration. JSON-serializable so it
- *  rides a Trystero room action (DataPayload). docState values are always JSON
- *  (string/number/boolean/array/object). */
 export type JSONValue = string | number | boolean | null | JSONValue[] | { [k: string]: JSONValue }
-
-/** A single runtime docState key change mirrored across a preview session.
- *  A type literal (not an interface) so it satisfies Trystero's DataPayload
- *  index-signature constraint. */
 export type PreviewDocStatePayload = {
   name: string
   value: JSONValue
 }
 
+/** What a person in a room's voice call publishes about it. */
+export interface VoiceMembership {
+  muted: boolean
+}
+
+/** The active tab's room, as the collaboration UI shows it. */
 export interface CollabState {
+  /** Whether the active tab is in a room. */
+  inRoom: boolean
   connected: boolean
   roomId: string | null
-  /** Phase 3 §4.2 — room auth key (Trystero password). Runtime-only: lives in
-   *  the share-link URL fragment, never persisted to .fig / docState and never
-   *  broadcast via awareness. */
   roomKey: string | null
+  motionConflicts: MotionTimelineConflict[]
+  status: RoomStatus | null
   peers: RemotePeer[]
   localName: string
   localColor: Color
-  /** Bounded, deduplicated deterministic-resolution notices for Motion CRDT merges. */
-  motionConflicts: MotionTimelineConflict[]
+  hasChosenName: boolean
 }
 
 export const DEFAULT_COLLAB_STATE: CollabState = {
+  inRoom: false,
   connected: false,
   roomId: null,
   roomKey: null,
+  motionConflicts: [],
+  status: null,
   peers: [],
   localName: '',
   localColor: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
-  motionConflicts: []
+  hasChosenName: false
 }

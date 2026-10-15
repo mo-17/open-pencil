@@ -425,7 +425,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
             placeholder="/privacy"
             :class="[
               'min-w-0 rounded border bg-input px-2 py-1 text-[11px] text-surface outline-none focus:border-accent',
-              consentPolicyURLError ? 'border-red-500' : 'border-border'
+              consentPolicyURLError ? 'border-error' : 'border-border'
             ]"
             @change="updateConsentCopy"
           />
@@ -476,7 +476,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
         :placeholder="idPlaceholder"
         :class="[
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-          idError ? 'border-red-500' : 'border-border'
+          idError ? 'border-error' : 'border-border'
         ]"
         @change="commitDraft"
       />
@@ -493,7 +493,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
         :placeholder="endpointPlaceholder"
         :class="[
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50',
-          endpointError ? 'border-red-500' : 'border-border'
+          endpointError ? 'border-error' : 'border-border'
         ]"
         @change="commitDraft"
       />
@@ -502,21 +502,21 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
     <p
       v-if="idError"
       data-test-id="lowcode-analytics-id-error"
-      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ idError }}
     </p>
     <p
       v-if="endpointError"
       data-test-id="lowcode-analytics-endpoint-error"
-      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ endpointError }}
     </p>
     <p
       v-if="consentPolicyURLError"
       data-test-id="lowcode-analytics-consent-policy-url-error"
-      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ consentPolicyURLError }}
     </p>

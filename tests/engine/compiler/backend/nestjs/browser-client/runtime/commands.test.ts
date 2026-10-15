@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '#compiler/adapters/react/emit/event'
 import type { IRBackendCommandHandler } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { parseExpression } from '@open-pencil/lowcode'
 
@@ -47,7 +48,7 @@ describe('generated atomic command attempts', () => {
       ]
       const event = await fixture.event(emitEventHandler([action]))
       const running = event.run()
-      const key = fixture.values.get('attempt')
+      const key = v.parse(v.string(), fixture.values.get('attempt'))
       await fixture.waitForRequest(0)
       fixture.pending[0].respond({ id: 'accepted', status: 'pending' }, 202)
       await running
@@ -75,7 +76,7 @@ describe('generated atomic command attempts', () => {
       fixture.auth.transition('user-a')
       fixture.values.set('attempt', '')
       const first = fixture.runtime.backendCommand(input)
-      const key = fixture.values.get('attempt')
+      const key = v.parse(v.string(), fixture.values.get('attempt'))
       expect(key).toMatch(/^[0-9a-f-]{36}$/)
       const duplicate = fixture.runtime.backendCommand(input)
       await fixture.waitForRequest(0)
@@ -113,7 +114,7 @@ describe('generated atomic command attempts', () => {
         fixture.auth.transition('user-a')
         fixture.values.set('attempt', '')
         const running = fixture.runtime.backendCommand(input)
-        const key = fixture.values.get('attempt')
+        const key = v.parse(v.string(), fixture.values.get('attempt'))
         const rejected = running.catch((error: unknown) => error)
         await fixture.waitForRequest(0)
         if (mode === 'network') fixture.pending[0].reject()
@@ -155,7 +156,7 @@ describe('generated atomic command attempts', () => {
       ]
       const event = await fixture.event(emitEventHandler([action]))
       const running = event.run()
-      const key = fixture.values.get('attempt')
+      const key = v.parse(v.string(), fixture.values.get('attempt'))
       await running
       expect(fixture.values.get('attempt')).toBe(key)
       expect(fixture.values.get('busy')).toBe(false)
@@ -186,7 +187,7 @@ describe('generated atomic command attempts', () => {
       fixture.pending[0].respond({ id: 'first', title: 'A note' })
       await first
       expect(fixture.values.get('result')).toEqual({ id: 'first', title: 'A note' })
-      const key = fixture.values.get('attempt')
+      const key = v.parse(v.string(), fixture.values.get('attempt'))
       const old = event.run()
       await fixture.waitForRequest(1)
       fixture.auth.transition('user-b')

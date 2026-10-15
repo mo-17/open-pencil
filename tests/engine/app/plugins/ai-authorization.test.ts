@@ -175,7 +175,7 @@ describe('third-party plugin AI eligibility', () => {
             ...payload.contributions,
             commands: payload.contributions.commands?.map((command) => ({
               ...command,
-              permissions: ['file.save']
+              permissions: ['file.save'] as const
             }))
           }
         }
@@ -392,7 +392,10 @@ describe('third-party plugin AI contribution grants', () => {
             updatedConnectors: [],
             addedStorageProviders: [],
             removedStorageProviders: [],
-            updatedStorageProviders: []
+            updatedStorageProviders: [],
+            addedBackendProviders: [],
+            removedBackendProviders: [],
+            updatedBackendProviders: []
           }
         }
       }

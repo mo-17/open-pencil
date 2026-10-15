@@ -11,8 +11,7 @@ const appGroupedSelectTheme = {
   },
   variants: selectTheme.variants,
   defaultVariants: {
-    radius: 'lg' as const,
-    elevation: 'lg' as const,
+    placement: 'below' as const,
     padding: 'md' as const
   }
 }

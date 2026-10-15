@@ -88,6 +88,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await section.getByRole('checkbox', { name: '设计规范', exact: true }).check()
     await section.getByRole('checkbox', { name: '组件开发', exact: true }).check()
     const value = await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       return editor.graph.getNode([...editor.state.selectedIds][0])?.interactiveProps
     })

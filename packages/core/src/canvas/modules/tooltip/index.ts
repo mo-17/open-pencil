@@ -46,7 +46,7 @@ export function renderTooltipModulePreview(
             canvas,
             { x: 12, y: 0, width: width - 24, height },
             () => {
-              canvas.drawParagraph(paragraph, 12, Math.max(0, (height - paragraph.getHeight()) / 2))
+              paragraph.draw(canvas, 12, Math.max(0, (height - paragraph.getHeight()) / 2))
             }
           )
         }

@@ -18,7 +18,12 @@ import {
 
 export function familyBody(node: SceneNode): Rect {
   const inset = Math.min(16, node.width * 0.06, node.height * 0.1)
-  return { x: inset, y: inset, width: node.width - inset * 2, height: node.height - inset * 2 }
+  return {
+    x: inset,
+    y: inset,
+    width: node.width - inset * 2,
+    height: node.height - inset * 2
+  }
 }
 
 export function familyRegions(body: Rect) {
@@ -32,7 +37,10 @@ export function familyRegions(body: Rect) {
   }
   return {
     label,
-    glyph: { ...body, height: Math.max(0, body.height - labelHeight - (labelHeight ? 6 : 0)) }
+    glyph: {
+      ...body,
+      height: Math.max(0, body.height - labelHeight - (labelHeight ? 6 : 0))
+    }
   }
 }
 
@@ -144,11 +152,7 @@ export function drawFamilyLabel(
     { halfLeading: true },
     (paragraph) =>
       withModulePreviewRectClip(renderer, canvas, box, () =>
-        canvas.drawParagraph(
-          paragraph,
-          box.x,
-          box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2)
-        )
+        paragraph.draw(canvas, box.x, box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2))
       )
   )
 }

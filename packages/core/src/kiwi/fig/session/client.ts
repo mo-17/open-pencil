@@ -1,4 +1,4 @@
-import { randomHex } from '#core/random'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 import type { FigSessionResponse } from './protocol'
 
@@ -6,7 +6,9 @@ const DEFAULT_FIG_SESSION_REQUEST_TIMEOUT_MS = 30_000
 
 export function createFigSessionWorker(): Worker {
   if (typeof Worker === 'undefined') throw new Error('FIG session workers are unavailable')
-  return new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+  return new Worker(new URL('./worker.ts', import.meta.url), {
+    type: 'module'
+  })
 }
 
 export interface FigSessionOriginalArchiveRequester {
@@ -55,13 +57,17 @@ export function createFigSessionOriginalArchiveRequester(
   }
   const onMessage = (event: MessageEvent<FigSessionResponse>) => {
     const response = event.data
-    if (response.type !== 'original-archive-result' && response.type !== 'population-error') {
+    if (
+      response.type !== 'original-archive-result' &&
+      response.type !== 'population-error' &&
+      response.type !== 'archive-error'
+    ) {
       return
     }
     if (!response.requestId) return
     const request = pending.get(response.requestId)
     if (!request) return
-    if (response.type === 'population-error') {
+    if (response.type === 'population-error' || response.type === 'archive-error') {
       fail(sessionError(response.error))
       return
     }

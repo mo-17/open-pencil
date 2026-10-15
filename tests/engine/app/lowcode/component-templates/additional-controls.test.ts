@@ -7,6 +7,7 @@ import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createComponentTemplate, getComponentTemplates } from '@/app/lowcode/component-templates'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
 import { componentTemplateFixture } from '#tests/helpers/compiler/components/templates/fixture'
 import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 
@@ -55,7 +56,7 @@ test('new control templates declare their required modules and bilingual local-s
 })
 
 for (const locale of ['en', 'zh-CN']) {
-  test.each(ids)(
+  test.each([...ids])(
     `${locale} %s inserts an editable module in one undo batch without unrelated state`,
     (id) => {
       const { editor, graph, pageId } = componentTemplateFixture([])
@@ -69,7 +70,7 @@ for (const locale of ['en', 'zh-CN']) {
         const nodes = result.nodeIds.map((nodeId) => graph.getNode(nodeId))
         const modules = nodes.filter((node) => node?.interactiveProps?.module)
         expect(modules).toHaveLength(1)
-        const module = modules[0]?.interactiveProps?.module
+        const module = expectModuleInstance(modules[0]?.interactiveProps?.module)
         expect(module?.pluginId).toBe(`open-pencil.${id === 'range-slider' ? 'slider' : id}`)
         expect(module?.configVersion).toBe(1)
         expect(modules[0]?.type).toBe('FRAME')
@@ -119,7 +120,7 @@ for (const locale of ['en', 'zh-CN']) {
         const result = compile({
           graph: restored,
           pageIds: [restored.getPages()[0].id],
-          options: withDefaults({ target, devMode: false, router: 'none', lang: locale })
+          options: withDefaults({ target, devMode: false, router: 'none', sourceLocale: locale })
         })
         expect(result.warnings).toEqual([])
         const files = new Map<string, string>()

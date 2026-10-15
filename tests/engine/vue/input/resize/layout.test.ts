@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { createEditor, type Editor } from '@open-pencil/core/editor'
 import { parseFigBuffer } from '@open-pencil/fig'
-import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  enforcedAspectRatio,
+  webCryptoBuffer,
+  SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 import { collectResizeDescendants, createResizeSnapshot } from '@open-pencil/scene-graph/resize'
 
 import { exportFigFile } from '#core/io/formats/fig/export'
@@ -25,6 +30,7 @@ function start(editor: Editor, node: SceneNode, handle: DragResize['handle'] = '
   const snapshot = createResizeSnapshot(node)
   return {
     type: 'resize',
+    lockedAspectRatio: enforcedAspectRatio(node),
     handle,
     startX: 0,
     startY: 0,
@@ -108,7 +114,7 @@ describe('canvas resize within layout', () => {
     applyResize(drag, 80, 0, false, editor, true)
     commitResizePreview(drag, editor)
     expect([parent.width, sibling.x]).toEqual([250, 190])
-    const parsed = parseFigBuffer(await exportFigFile(editor.graph))
+    const parsed = parseFigBuffer(webCryptoBuffer(await exportFigFile(editor.graph)))
     expect(parsed.nodeChanges.find((entry) => entry.name === parent.name)?.size?.x).toBe(250)
     expect(parsed.nodeChanges.find((entry) => entry.name === sibling.name)?.transform?.m02).toBe(
       190
@@ -165,7 +171,7 @@ describe('canvas resize within layout', () => {
     applyResize(drag, -100, -50, false, editor, true)
     commitResizePreview(drag, editor)
     const committed = structuredClone(node.source)
-    const parsed = parseFigBuffer(await exportFigFile(editor.graph))
+    const parsed = parseFigBuffer(webCryptoBuffer(await exportFigFile(editor.graph)))
     const exported = parsed.nodeChanges.find((entry) => entry.name === node.name)
     expect(exported).toMatchObject({
       size: { x: 200, y: 150 },

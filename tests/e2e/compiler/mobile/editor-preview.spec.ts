@@ -15,6 +15,8 @@ test('editor preview changes real iframe dimensions without losing an unsaved in
   await expect(pane).toHaveAttribute('data-preview-host', 'browser-worker', { timeout: 60_000 })
   await expect(pane).toHaveAttribute('data-preview-status', 'ready', { timeout: 60_000 })
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.createNode('INPUT', store.state.currentPageId, {

@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit/array'
+
 import type { ApplicationRuntimeAudit } from '@open-pencil/lowcode/application-runtime'
 import type { BackendReleaseStateV1 } from '@open-pencil/lowcode/backend'
 import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
@@ -298,7 +300,7 @@ function deploymentDocumentReview(
     : documentPathLabel(path)
   const documentScope = deployScopeForStore(editor)
   const pathScope = deployDocumentScope({ kind: 'path', path })
-  const documentIdentity = [documentScope, pathScope].filter(Boolean).join('\0')
+  const documentIdentity = compact([documentScope, pathScope]).join('\0')
   if (!documentScope || !pathScope || documentIdentity.length > DOCUMENT_IDENTITY_MAX_LENGTH) {
     throw new DeploymentPluginError(
       'review-required',

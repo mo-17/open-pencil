@@ -46,7 +46,14 @@ function createMotionRoots(editor: ReturnType<typeof createEditor>) {
       id: 'condition',
       kind: 'condition',
       condExpr: 'true',
-      consequent: [{ id: 'play', kind: 'playMotion', targetNodeId: target.id, trackId: 'fade-in' }]
+      consequent: [
+        {
+          id: 'play',
+          kind: 'playMotion',
+          targetNodeId: target.id,
+          trackId: 'fade-in'
+        }
+      ]
     }
   ]
   const trigger = editor.graph.createNode('BUTTON', pageId, {
@@ -85,11 +92,11 @@ describe('clipboard motion references', () => {
 
     const duplicateRoots = [...editor.state.selectedIds].map((id) => editor.graph.getNode(id))
     const copiedTarget = expectDefined(
-      duplicateRoots.find((node) => node?.name === 'Motion target copy'),
+      duplicateRoots.find((node) => node?.name === target.name),
       'copied target'
     )
     const copiedTrigger = expectDefined(
-      duplicateRoots.find((node) => node?.name === 'Motion trigger copy'),
+      duplicateRoots.find((node) => node?.name === trigger.name),
       'copied trigger'
     )
     expect(nestedEventTarget(copiedTrigger)).toBe(copiedTarget.id)
@@ -196,7 +203,10 @@ describe('clipboard motion references', () => {
     source.graph.updateNode(instance.id, {
       name: 'Clipboard Motion Instance',
       motion: customMotion,
-      overrides: { ...instance.overrides, motion: structuredClone(customMotion) }
+      overrides: {
+        ...instance.overrides,
+        motion: structuredClone(customMotion)
+      }
     })
 
     const html = expectDefined(

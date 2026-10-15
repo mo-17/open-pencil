@@ -1,7 +1,5 @@
 import { describe, expect, mock, spyOn, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -11,6 +9,8 @@ import { renderShapeUncached } from '#core/canvas/scene'
 import { createChartModuleFrameOverrides } from '#core/plugins/chart'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGlyphCharacters } from '#core/text/resolver'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { carouselPixelHarness } from '../carousel/helpers'
 import { createMockCanvas, createMockRenderer } from '../effects/helpers'
@@ -76,7 +76,7 @@ describe('chart module canvas preview', () => {
     const canvas = createMockCanvas()
     const renderer = chartRenderer()
 
-    const rendered = renderChartModulePreview(renderer, canvas as Canvas, chartFrame())
+    const rendered = renderChartModulePreview(renderer, asCanvas(canvas), chartFrame())
 
     expect(rendered).toBe(true)
     expect(canvas.save).toHaveBeenCalledTimes(1)
@@ -91,7 +91,7 @@ describe('chart module canvas preview', () => {
     const canvas = createMockCanvas()
     const renderer = chartRenderer()
 
-    renderShapeUncached(renderer, canvas as Canvas, chartFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), chartFrame(), new SceneGraph())
 
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawRect).toHaveBeenCalledTimes(4)
@@ -157,7 +157,7 @@ describe('chart module canvas preview', () => {
       }
     })
 
-    expect(renderChartModulePreview(renderer, canvas as Canvas, node)).toBe(false)
+    expect(renderChartModulePreview(renderer, asCanvas(canvas), node)).toBe(false)
     expect(canvas.drawRect).not.toHaveBeenCalled()
   })
 

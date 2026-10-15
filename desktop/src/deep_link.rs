@@ -8,6 +8,37 @@ pub struct DeepLinkOpen {
     pub node: Option<String>,
 }
 
+/// A complete room invitation, with the key in the URL fragment.
+#[derive(PartialEq, Eq)]
+pub struct DeepLinkJoin {
+    pub room: String,
+    key: String,
+}
+
+impl std::fmt::Debug for DeepLinkJoin {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DeepLinkJoin")
+            .field("room", &self.room)
+            .field("key", &"[redacted]")
+            .finish()
+    }
+}
+
+impl DeepLinkJoin {
+    /// The string the frontend's mandatory invitation parser consumes.
+    pub fn into_room_input(self) -> String {
+        format!("{}#k={}", self.room, self.key)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeepLink {
+    Open(DeepLinkOpen),
+    Join(DeepLinkJoin),
+    OAuth(OAuthCallback),
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeepLinkError {
     UnknownAction(String),
@@ -15,10 +46,86 @@ pub enum DeepLinkError {
     AbsolutePath,
     ParentSegment,
     BadExtension,
+    BadRoom,
+    BadRoomKey,
+    BadOAuthProvider,
+}
+
+/// Room IDs are 32 lowercase base36 characters (`ROOM_ID_LENGTH` and `ROOM_ID_CHARS` in
+/// `src/constants.ts`); anything else is refused before it reaches the frontend.
+const ROOM_ID_LENGTH: usize = 32;
+const ROOM_KEY_LENGTH: usize = 48;
+
+fn is_room_id(room: &str) -> bool {
+    room.len() == ROOM_ID_LENGTH
+        && room
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+}
+
+pub fn parse_deep_link(url: &Url) -> Result<DeepLink, DeepLinkError> {
+    // openpencil://<action>?…  → host is the action.
+    match url.host_str().unwrap_or("") {
+        "open" => parse_open_url(url).map(DeepLink::Open),
+        "join" => parse_join_url(url).map(DeepLink::Join),
+        "oauth" => parse_oauth_url(url)
+            .map(DeepLink::OAuth)
+            .ok_or(DeepLinkError::BadOAuthProvider),
+        action => Err(DeepLinkError::UnknownAction(action.to_string())),
+    }
+}
+
+fn parse_join_url(url: &Url) -> Result<DeepLinkJoin, DeepLinkError> {
+    let room = url
+        .query_pairs()
+        .find(|(key, _)| key == "room")
+        .map(|(_, value)| value.into_owned())
+        .filter(|room| is_room_id(room))
+        .ok_or(DeepLinkError::BadRoom)?;
+    let keys = url::form_urlencoded::parse(url.fragment().unwrap_or("").as_bytes())
+        .filter(|(name, _)| name == "k")
+        .map(|(_, value)| value.into_owned())
+        .collect::<Vec<_>>();
+    let key = keys
+        .first()
+        .filter(|key| {
+            keys.len() == 1
+                && key.len() == ROOM_KEY_LENGTH
+                && key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+        .cloned()
+        .ok_or(DeepLinkError::BadRoomKey)?;
+    Ok(DeepLinkJoin { room, key })
+}
+
+/// An OAuth redirect relayed by the web app's callback page: `openpencil://oauth/<provider>?…`.
+/// The query goes to the webview untouched; the attempt that started sign-in checks its state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct OAuthCallback {
+    pub provider: String,
+    pub query: String,
+}
+
+pub fn parse_oauth_url(url: &Url) -> Option<OAuthCallback> {
+    if url.host_str() != Some("oauth") {
+        return None;
+    }
+    let provider = url.path().strip_prefix('/')?;
+    if provider.is_empty() || !provider.bytes().all(|byte| byte.is_ascii_lowercase()) {
+        return None;
+    }
+    Some(OAuthCallback {
+        provider: provider.to_owned(),
+        query: url
+            .query()
+            .map(|query| format!("?{query}"))
+            .unwrap_or_default(),
+    })
 }
 
 pub fn parse_open_url(url: &Url) -> Result<DeepLinkOpen, DeepLinkError> {
-    // openpencil://open?…  → host is the action.
     let action = url.host_str().unwrap_or("");
     if action != "open" {
         return Err(DeepLinkError::UnknownAction(action.to_string()));
@@ -129,6 +236,28 @@ fn path_ends_with_segments(candidate: &Path, suffix: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn oauth(url: &str) -> Option<OAuthCallback> {
+        parse_oauth_url(&Url::parse(url).unwrap())
+    }
+
+    #[test]
+    fn passes_an_oauth_redirect_through_with_its_provider() {
+        assert_eq!(
+            oauth("openpencil://oauth/openrouter?code=abc&state=xyz"),
+            Some(OAuthCallback {
+                provider: "openrouter".to_owned(),
+                query: "?code=abc&state=xyz".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn refuses_an_oauth_link_without_a_plain_provider() {
+        assert_eq!(oauth("openpencil://oauth?code=abc"), None);
+        assert_eq!(oauth("openpencil://oauth/open/router?code=abc"), None);
+        assert_eq!(oauth("openpencil://open?file=a.pen"), None);
+    }
+
     fn parse(s: &str) -> Result<DeepLinkOpen, DeepLinkError> {
         parse_open_url(&Url::parse(s).unwrap())
     }
@@ -147,6 +276,81 @@ mod tests {
     #[test]
     fn node_is_optional() {
         assert_eq!(parse("openpencil://open?file=a.pen").unwrap().node, None);
+    }
+
+    const ROOM: &str = "abcdefghijklmnopqrstuvwxyz012345";
+
+    const ROOM_KEY: &str = "0123456789abcdefghijklmnopqrstuvwxyz0123456789ab";
+
+    #[test]
+    fn join_preserves_the_fragment_key_through_the_frontend_queue_input() {
+        let link = Url::parse(&format!("openpencil://join?room={ROOM}#k={ROOM_KEY}")).unwrap();
+        let DeepLink::Join(join) = parse_deep_link(&link).unwrap() else {
+            panic!("Expected a room invitation");
+        };
+        assert_eq!(join.room, ROOM);
+        assert!(!format!("{join:?}").contains(ROOM_KEY));
+        assert_eq!(join.into_room_input(), format!("{ROOM}#k={ROOM_KEY}"));
+    }
+
+    #[test]
+    fn join_decodes_url_encoding_in_the_fragment_without_moving_it_to_the_query() {
+        let link = Url::parse(&format!(
+            "openpencil://join?room={ROOM}#k=%30{}",
+            &ROOM_KEY[1..]
+        ))
+        .unwrap();
+        let DeepLink::Join(join) = parse_deep_link(&link).unwrap() else {
+            panic!("Expected a room invitation");
+        };
+        assert_eq!(join.into_room_input(), format!("{ROOM}#k={ROOM_KEY}"));
+    }
+
+    #[test]
+    fn join_refuses_missing_malformed_and_query_only_keys() {
+        for suffix in [
+            String::new(),
+            "#k=".to_string(),
+            "#k=short".to_string(),
+            format!("#k={}", ROOM_KEY.to_uppercase()),
+            format!("#k={ROOM_KEY}x"),
+            format!("#k={}%2F", &ROOM_KEY[..47]),
+            format!("#k={ROOM_KEY}&k={ROOM_KEY}"),
+            format!("&k={ROOM_KEY}"),
+        ] {
+            let link = Url::parse(&format!("openpencil://join?room={ROOM}{suffix}")).unwrap();
+            assert_eq!(parse_deep_link(&link), Err(DeepLinkError::BadRoomKey));
+        }
+    }
+
+    #[test]
+    fn join_refuses_a_room_that_is_not_a_room_id() {
+        for url in [
+            "openpencil://join".to_string(),
+            "openpencil://join?room=".to_string(),
+            "openpencil://join?room=short".to_string(),
+            format!("openpencil://join?room={}", ROOM.to_uppercase()),
+            format!("openpencil://join?room={ROOM}x"),
+            format!("openpencil://join?room={}%2F", &ROOM[..31]),
+        ] {
+            assert_eq!(
+                parse_deep_link(&Url::parse(&url).unwrap()),
+                Err(DeepLinkError::BadRoom),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn deep_link_routes_open_and_refuses_other_actions() {
+        assert!(matches!(
+            parse_deep_link(&Url::parse("openpencil://open?file=a.pen").unwrap()),
+            Ok(DeepLink::Open(_))
+        ));
+        assert_eq!(
+            parse_deep_link(&Url::parse("openpencil://export?file=a.pen").unwrap()),
+            Err(DeepLinkError::UnknownAction("export".into()))
+        );
     }
 
     #[test]

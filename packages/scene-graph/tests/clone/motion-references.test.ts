@@ -93,4 +93,72 @@ describe('SceneGraph Motion action reference cloning', () => {
       { id: 'stop-root', kind: 'stopMotion', targetNodeId: instance.id }
     ])
   })
+
+  test('sync resolves nested forward Motion references once the whole instance is assembled', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const component = graph.createNode('COMPONENT', page.id)
+    const instance = expectDefined(graph.createInstance(component.id, page.id), 'instance')
+    const controls = graph.createNode('FRAME', component.id, { name: 'Controls' })
+    const targets = graph.createNode('FRAME', component.id, { name: 'Targets' })
+    const target = graph.createNode('RECTANGLE', targets.id, {
+      name: 'Animated target',
+      motion: createMotionPreset('slide-up')
+    })
+    const opaqueData = [{ pluginId: 'foreign-plugin', key: 'opaque', value: target.id }]
+    const button = graph.createNode('BUTTON', controls.id, {
+      name: 'Controller',
+      pluginData: opaqueData,
+      events: {
+        onClick: [
+          {
+            id: 'condition',
+            kind: 'condition',
+            condExpr: 'true',
+            consequent: [{ id: 'play', kind: 'playMotion', targetNodeId: target.id }],
+            alternate: []
+          }
+        ]
+      },
+      lowcodeWorkflows: [
+        {
+          id: 'stop',
+          name: 'Stop',
+          actions: [
+            { id: 'stop-target', kind: 'stopMotion', targetNodeId: target.id },
+            { id: 'stop-root', kind: 'stopMotion', targetNodeId: component.id }
+          ]
+        }
+      ]
+    })
+    graph.syncInstance(instance.id)
+    const generatedControls = expectDefined(
+      graph.getChildren(instance.id).find((n) => n.componentId === controls.id),
+      'generated controls'
+    )
+    const generatedTargets = expectDefined(
+      graph.getChildren(instance.id).find((n) => n.componentId === targets.id),
+      'generated targets'
+    )
+    const generatedButton = expectDefined(
+      graph.getChildren(generatedControls.id).find((n) => n.componentId === button.id),
+      'generated button'
+    )
+    const generatedTarget = expectDefined(
+      graph.getChildren(generatedTargets.id).find((n) => n.componentId === target.id),
+      'generated target'
+    )
+    expect(generatedButton.events?.onClick?.[0]).toMatchObject({
+      consequent: [{ id: 'play', kind: 'playMotion', targetNodeId: generatedTarget.id }]
+    })
+    expect(generatedButton.lowcodeWorkflows?.[0].actions).toEqual([
+      { id: 'stop-target', kind: 'stopMotion', targetNodeId: generatedTarget.id },
+      { id: 'stop-root', kind: 'stopMotion', targetNodeId: instance.id }
+    ])
+    expect(generatedButton.pluginData).toEqual(opaqueData)
+    expect(generatedButton.pluginData).not.toBe(button.pluginData)
+    expect(button.events?.onClick?.[0]).toMatchObject({
+      consequent: [{ targetNodeId: target.id }]
+    })
+  })
 })

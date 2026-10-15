@@ -51,6 +51,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
         for (const title of titles)
           await expect(pages.getByText(title, { exact: true })).toBeVisible()
         await page.evaluate(async () => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
           await window.openPencil?.test?.navigation?.waitForSettlement()
         })
         await canvas.canvas.click({ position: { x: 10, y: 10 } })
@@ -61,6 +63,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
         for (const title of titles)
           await expect(pages.getByText(title, { exact: true })).toBeVisible()
         await page.evaluate(async () => {
+          if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
           await window.openPencil?.test?.navigation?.waitForSettlement()
         })
         await page.screenshot({ path: info.outputPath('expansion-template-restored.png') })

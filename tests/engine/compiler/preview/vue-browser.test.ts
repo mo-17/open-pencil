@@ -459,6 +459,7 @@ describe('Vue compiler preview browser', () => {
         const ids = labelledBy.split(/\s+/)
         expect(ids).toHaveLength(2)
         for (const id of ids) {
+          if (!pageHandle) throw new Error('Expected page')
           await playwrightExpect(pageHandle.locator(`[id="${id}"]`)).toHaveCount(1)
         }
         return ids

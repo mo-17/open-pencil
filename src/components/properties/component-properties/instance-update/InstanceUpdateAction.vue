@@ -15,6 +15,7 @@ import type { EditorStore } from '@/app/editor/session'
 import type { LibraryService } from '@/app/libraries'
 import { useInstanceUpdate } from '@/components/properties/component-properties/instance-update/use'
 import { useMenuUI } from '@/components/ui/menu/menu'
+import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { node, editor, service } = defineProps<{
@@ -40,7 +41,7 @@ const { available, updating, updateSelectedInstance } = useInstanceUpdate(
         <button
           type="button"
           data-test-id="instance-update-action"
-          class="flex size-7 items-center justify-center rounded bg-accent/10 text-accent hover:bg-accent/20 data-[state=open]:bg-accent/20 disabled:opacity-50"
+          class="flex size-7 items-center justify-center rounded bg-accent/10 text-primary hover:bg-accent/20 data-[state=open]:bg-accent/20 disabled:opacity-50"
           :disabled="updating"
           :aria-label="panels.updateSelectedInstance"
         >
@@ -53,21 +54,23 @@ const { available, updating, updateSelectedInstance } = useInstanceUpdate(
     </Tip>
     <DropdownMenuPortal v-if="portalActive">
       <DropdownMenuContent align="end" side="bottom" :side-offset="4" :class="menu.content">
-        <DropdownMenuItem
-          data-test-id="instance-update-selected"
-          :class="menu.item"
-          :disabled="updating"
-          @select="updateSelectedInstance"
-        >
-          {{ panels.updateSelectedInstance }}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          data-test-id="instance-review-update"
-          :class="menu.item"
-          @select="emit('review')"
-        >
-          {{ panels.reviewLibraryUpdate }}
-        </DropdownMenuItem>
+        <MenuScrollArea>
+          <DropdownMenuItem
+            data-test-id="instance-update-selected"
+            :class="menu.item"
+            :disabled="updating"
+            @select="updateSelectedInstance"
+          >
+            {{ panels.updateSelectedInstance }}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            data-test-id="instance-review-update"
+            :class="menu.item"
+            @select="emit('review')"
+          >
+            {{ panels.reviewLibraryUpdate }}
+          </DropdownMenuItem>
+        </MenuScrollArea>
       </DropdownMenuContent>
     </DropdownMenuPortal>
   </DropdownMenuRoot>

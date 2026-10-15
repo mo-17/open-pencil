@@ -68,7 +68,8 @@ const {
     <div
       v-for="step in steps"
       :key="step.id"
-      :data-test-id="`lowcode-backend-workflow-step-${step.kind}`"
+      data-slot="workflow-step"
+      :data-step-kind="step.kind"
       class="mt-1.5 min-w-0"
       :class="
         depth === 0 ? 'rounded border border-border/70 p-1.5' : 'border-t border-border/70 py-1.5'
@@ -79,7 +80,7 @@ const {
         ><button
           type="button"
           :aria-label="panels.lowcodeBackendRemoveStep"
-          class="justify-self-end px-1 text-muted hover:text-red-500"
+          class="justify-self-end px-1 text-muted hover:text-error"
           @click="removeById(steps, step.id)"
         >
           ×
@@ -210,7 +211,7 @@ const {
             type="button"
             :aria-label="panels.lowcodeBackendRemoveRule"
             :disabled="mutationValueRemovalLocked(step)"
-            class="justify-self-end px-1 text-muted hover:text-red-500"
+            class="justify-self-end px-1 text-muted hover:text-error"
             @click="removeMutationValue(step, index)"
           >
             ×
@@ -340,7 +341,8 @@ const {
           <div
             v-for="branch in ['consequent', 'alternate'] as const"
             :key="branch"
-            :data-test-id="`lowcode-backend-workflow-${branch}`"
+            data-slot="workflow-branch"
+            :data-branch="branch"
             class="min-w-0 border-l border-border"
             :class="depth < 2 ? 'pl-1' : ''"
           >
@@ -465,7 +467,7 @@ const {
             type="button"
             :aria-label="panels.lowcodeBackendRemoveRule"
             :disabled="filterRemovalLocked(step)"
-            class="justify-self-end px-1 text-muted hover:text-red-500 disabled:opacity-40"
+            class="justify-self-end px-1 text-muted hover:text-error disabled:opacity-40"
             @click="removeFilter(step, filterIndex)"
           >
             ×
@@ -493,7 +495,9 @@ const {
         v-for="kind in stepKinds"
         :key="kind"
         type="button"
-        :data-test-id="`lowcode-backend-add-step-${kind}`"
+        data-slot="workflow-add-step"
+        data-command="add-workflow-step"
+        :data-step-kind="kind"
         :disabled="!canAddStep(workflow, kind)"
         class="min-w-0 max-w-full rounded px-1 text-left text-[9px] break-words whitespace-normal text-muted hover:bg-hover disabled:opacity-40"
         @click="addStep(workflow, kind)"
@@ -505,7 +509,7 @@ const {
       v-if="operationError"
       role="alert"
       data-test-id="lowcode-backend-workflow-operation-error"
-      class="mt-1 text-[9px] text-red-500"
+      class="mt-1 text-[9px] text-error"
     >
       {{ operationError }}
     </p>

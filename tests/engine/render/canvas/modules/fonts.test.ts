@@ -10,6 +10,8 @@ import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { fontResolver, missingGlyphCharacters } from '#core/text/resolver'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 const cases = [
@@ -101,7 +103,7 @@ for (const [name, overrides] of cases) {
       ])
         expect(h.rgb(first, x, y)).toEqual([255, 255, 255])
       await h.save(`module-${name}-narrow`)
-      const module = node.interactiveProps?.module
+      const module = expectModuleInstance(node.interactiveProps?.module)
       if (!module || typeof module !== 'object' || Array.isArray(module))
         throw new Error('module unavailable')
       const config = module.config

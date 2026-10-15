@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
@@ -19,7 +17,14 @@ import {
   type SlideMenuModuleConfig
 } from '#core/plugins/slide-menu'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import {
+  rectValues,
+  canvasMock,
+  createMockCanvas,
+  createMockRenderer
+} from '#tests/engine/render/canvas/effects/helpers'
+import { asDouble, asCanvas } from '#tests/engine/render/canvas/helpers'
+
 import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 const CONFIG: SlideMenuModuleConfig = {
@@ -65,13 +70,13 @@ describe('slide menu module canvas preview', () => {
   })
 
   test('draws an offline button summary without requesting item hrefs', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas preview must stay offline')))
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = asDouble<typeof fetch>(fetchMock)
     try {
-      expect(renderSlideMenuModulePreview(renderer, canvas as Canvas, slideMenuFrame())).toBe(true)
+      expect(renderSlideMenuModulePreview(renderer, asCanvas(canvas), slideMenuFrame())).toBe(true)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -80,11 +85,13 @@ describe('slide menu module canvas preview', () => {
     expect(canvas.save).toHaveBeenCalledTimes(1)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawRect).toHaveBeenCalledTimes(4)
-    expect(canvas.drawRect.mock.calls.slice(1).map((call) => Array.from(call[0]))).toEqual([
-      [32, 17, 50, 19],
-      [32, 23, 50, 25],
-      [32, 29, 50, 31]
-    ])
+    expect<unknown>(canvas.drawRect.mock.calls.slice(1).map((call) => rectValues(call[0]))).toEqual(
+      [
+        [32, 17, 50, 19],
+        [32, 23, 50, 25],
+        [32, 29, 50, 31]
+      ]
+    )
     expect(
       canvas.drawParagraph.mock.calls.map((call) => [paragraphText(call[0]), call[1], call[2]])
     ).toEqual([['Open navigation', 58, 28]])
@@ -138,12 +145,12 @@ describe('slide menu module canvas preview', () => {
     ] as const
 
     for (const visibility of cases) {
-      const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+      const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
       const renderer = rendererWithFont()
       expect(
         renderSlideMenuModulePreview(
           renderer,
-          canvas as Canvas,
+          asCanvas(canvas),
           slideMenuFrame(
             {},
             {
@@ -155,11 +162,11 @@ describe('slide menu module canvas preview', () => {
         ),
         visibility.name
       ).toBe(true)
-      expect(
-        canvas.drawRect.mock.calls.slice(1).map((call) => Array.from(call[0])),
+      expect<unknown>(
+        canvas.drawRect.mock.calls.slice(1).map((call) => rectValues(call[0])),
         visibility.name
       ).toEqual(visibility.expectedBars)
-      expect(
+      expect<unknown>(
         canvas.drawParagraph.mock.calls.map((call) => [paragraphText(call[0]), call[1], call[2]]),
         visibility.name
       ).toEqual(visibility.expectedText)
@@ -168,11 +175,11 @@ describe('slide menu module canvas preview', () => {
   })
 
   test('lets authored children replace the intrinsic trigger preview', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderSlideMenuModulePreview(
         rendererWithFont(),
-        canvas as Canvas,
+        asCanvas(canvas),
         slideMenuFrame({ childIds: ['authored-trigger-label'] })
       )
     ).toBe(true)
@@ -183,20 +190,20 @@ describe('slide menu module canvas preview', () => {
 
   test('keeps small, fontless, and empty frames inert and balanced', () => {
     const renderer = rendererWithFont()
-    const smallCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const smallCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
-      renderSlideMenuModulePreview(renderer, smallCanvas as Canvas, slideMenuFrame({ height: 32 }))
+      renderSlideMenuModulePreview(renderer, asCanvas(smallCanvas), slideMenuFrame({ height: 32 }))
     ).toBe(true)
     expect(smallCanvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
       'Open navigation'
     ])
     expect(smallCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const fontlessCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const fontlessCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderSlideMenuModulePreview(
         createMockRenderer({ zoom: 1, labelFont: null }),
-        fontlessCanvas as Canvas,
+        asCanvas(fontlessCanvas),
         slideMenuFrame()
       )
     ).toBe(true)
@@ -204,11 +211,11 @@ describe('slide menu module canvas preview', () => {
     expect(fontlessCanvas.drawRect).toHaveBeenCalledTimes(4)
     expect(fontlessCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const tinyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const tinyCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
       renderSlideMenuModulePreview(
         renderer,
-        tinyCanvas as Canvas,
+        asCanvas(tinyCanvas),
         slideMenuFrame({ width: 20, height: 10 })
       )
     ).toBe(true)
@@ -216,22 +223,22 @@ describe('slide menu module canvas preview', () => {
     expect(tinyCanvas.drawParagraph).not.toHaveBeenCalled()
     expect(tinyCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const emptyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const emptyCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     expect(
-      renderSlideMenuModulePreview(renderer, emptyCanvas as Canvas, slideMenuFrame({ width: 0 }))
+      renderSlideMenuModulePreview(renderer, asCanvas(emptyCanvas), slideMenuFrame({ width: 0 }))
     ).toBe(true)
     expect(emptyCanvas.save).not.toHaveBeenCalled()
     expect(emptyCanvas.drawRect).not.toHaveBeenCalled()
   })
 
   test('ellipsizes a long trigger label without moving the centered icon-label group', () => {
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
     const triggerLabel = 'Open the complete navigation menu for this workspace'
     expect(
       renderSlideMenuModulePreview(
         renderer,
-        canvas as Canvas,
+        asCanvas(canvas),
         slideMenuFrame({}, { ...CONFIG, triggerLabel })
       )
     ).toBe(true)
@@ -253,7 +260,7 @@ describe('slide menu module canvas preview', () => {
       })
     }
     expect(() =>
-      renderSlideMenuModulePreview(rendererWithFont(), canvas as Canvas, slideMenuFrame())
+      renderSlideMenuModulePreview(rendererWithFont(), asCanvas(canvas), slideMenuFrame())
     ).toThrow('draw failed')
     expect(canvas.restore).toHaveBeenCalledTimes(1)
   })
@@ -262,9 +269,9 @@ describe('slide menu module canvas preview', () => {
     expect(
       BUILTIN_MODULE_CANVAS_ADAPTERS.get(SLIDE_MENU_PLUGIN_ID, SLIDE_MENU_MODULE_TYPE)
     ).toBeDefined()
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
     const renderer = rendererWithFont()
-    renderShapeUncached(renderer, canvas as Canvas, slideMenuFrame(), new SceneGraph())
+    renderShapeUncached(renderer, asCanvas(canvas), slideMenuFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
     expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
       'Open navigation'
@@ -275,8 +282,8 @@ describe('slide menu module canvas preview', () => {
         module: { ...createSlideMenuModuleInstance(), pluginId: 'unknown.plugin' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
-    expect(renderSlideMenuModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
+    expect(renderSlideMenuModulePreview(renderer, asCanvas(invalidCanvas), invalid)).toBe(false)
     expect(invalidCanvas.drawRect).not.toHaveBeenCalled()
     expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
 
@@ -285,7 +292,7 @@ describe('slide menu module canvas preview', () => {
         module: { ...createSlideMenuModuleInstance(), configVersion: 3 }
       }
     })
-    expect(renderSlideMenuModulePreview(renderer, invalidCanvas as Canvas, invalidVersion)).toBe(
+    expect(renderSlideMenuModulePreview(renderer, asCanvas(invalidCanvas), invalidVersion)).toBe(
       false
     )
   })

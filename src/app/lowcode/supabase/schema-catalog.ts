@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit/array'
 export const SUPABASE_SCHEMA_CATALOG_VERSION = 1 as const
 
 export const SUPABASE_SCHEMA_CATALOG_LIMITS = Object.freeze({
@@ -154,10 +155,7 @@ function relation(
 function relationFromString(sourceColumn: string, value: string): SupabaseSchemaRelation | null {
   const referencedTable = referenceTarget(value)
   if (referencedTable) return relation(sourceColumn, referencedTable)
-  const parts = value
-    .split('.')
-    .map((part) => part.trim())
-    .filter(Boolean)
+  const parts = compact(value.split('.').map((part) => part.trim()))
   if (parts.length < 2) return null
   return relation(sourceColumn, parts.at(-2), parts.at(-1))
 }

@@ -13,7 +13,7 @@ describe('CodePen sidecar browser wire', () => {
       requestId: 'wire-1',
       target: 'react',
       packageName: 'wire-demo',
-      files: new Map([
+      files: new Map<string, string | Uint8Array>([
         ['package.json', '{"name":"wire-demo"}'],
         ['src/asset.bin', new Uint8Array([0, 1, 255])]
       ]),

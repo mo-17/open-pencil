@@ -36,6 +36,7 @@ const {
   fillIndex?: number | null
 }>()
 const emit = defineEmits<{ update: [fill: Fill] }>()
+const activeStop = defineModel<number>('activeStop')
 const { panels, editor, common } = useI18n()
 const fillPicker = tv(fillPickerTheme)
 const colorProvider = useColorBindingProvider()
@@ -77,7 +78,12 @@ function listStopClass(active: boolean) {
 </script>
 
 <template>
-  <GradientEditorRoot :fill="fill" @update="emit('update', $event)" v-slot="root">
+  <GradientEditorRoot
+    v-model:active-stop-index="activeStop"
+    :fill="fill"
+    @update="emit('update', $event)"
+    v-slot="root"
+  >
     <div>
       <div class="mb-2 w-28">
         <AppSelect

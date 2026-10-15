@@ -10,13 +10,13 @@ import {
   createVRTourSampleScenes
 } from '@open-pencil/core/plugins'
 
+import { repoPath } from '#tests/helpers/paths'
+
 import { tourFixture } from './helpers'
 
 const samples = VR_TOUR_SAMPLE_ASSETS.map((sample) => ({
   ...sample,
-  bytes: new Uint8Array(
-    readFileSync(new URL(`../../../../packages/demos/vr-tour/${sample.fileName}`, import.meta.url))
-  )
+  bytes: new Uint8Array(readFileSync(repoPath(`packages/demos/vr-tour/${sample.fileName}`)))
 }))
 
 function savedSampleFixture() {
@@ -33,9 +33,14 @@ function savedSampleFixture() {
 for (const target of ['react', 'vue'] as const) {
   test(`${target} exports the referenced 8K samples byte-for-byte without fetching`, () => {
     const { graph, pageId } = savedSampleFixture()
-    const fetch = spyOn(globalThis, 'fetch').mockImplementation(() => {
-      throw new Error('Compilation must use persisted sample images')
-    })
+    const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        () => {
+          throw new Error('Compilation must use persisted sample images')
+        },
+        { preconnect: globalThis.fetch.preconnect }
+      )
+    )
     try {
       const output = compile({ graph, pageIds: [pageId], options: withDefaults({ target }) })
       expect(output.warnings.filter((warning) => warning.code.startsWith('vr-tour-'))).toEqual([])

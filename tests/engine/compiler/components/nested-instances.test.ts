@@ -1,4 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+import { createElement, type ComponentType } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
@@ -161,5 +168,100 @@ describe('compile — unreferenced component pruning (Phase 3 §8 v10)', () => {
     })
     // page B references Widget → reachable → emitted
     expect(out.files.has('src/components/Widget.tsx')).toBe(true)
+  })
+})
+
+/** Load the generated sibling modules; missing component imports fail at actual render time. */
+async function renderNestedComponent(
+  files: ReadonlyMap<string, string | Uint8Array>,
+  props: Record<string, string> = {}
+): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'openpencil-nested-components-'))
+  try {
+    await mkdir(join(directory, 'node_modules'), { recursive: true })
+    await symlink(
+      dirname(fileURLToPath(import.meta.resolve('react/package.json'))),
+      join(directory, 'node_modules/react'),
+      'dir'
+    )
+    for (const [path, value] of files) {
+      if (
+        typeof value !== 'string' ||
+        !path.startsWith('src/components/') ||
+        !path.endsWith('.tsx')
+      )
+        continue
+      const destination = join(directory, path)
+      await mkdir(dirname(destination), { recursive: true })
+      await writeFile(destination, value)
+    }
+    const module = (await import(
+      pathToFileURL(join(directory, 'src/components/Outer.tsx')).href
+    )) as {
+      default: ComponentType<Record<string, string>>
+    }
+    return renderToStaticMarkup(createElement(module.default, props))
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+describe('compile — nested reusable React modules execute', () => {
+  test('a reusable component renders repeated nested references from sibling modules', async () => {
+    const { graph, outer } = makeNestedGraph()
+    const nested = graph.getChildren(outer.id).find((node) => node.type === 'INSTANCE')
+    if (!nested?.componentId) throw new Error('Missing nested component')
+    graph.createInstance(nested.componentId, outer.id)
+    const usePage = graph.addPage('Use')
+    graph.createInstance(outer.id, usePage.id)
+    const output = compile({
+      graph,
+      pageIds: [usePage.id],
+      options: withDefaults({ packageName: 'nested-runtime' })
+    })
+    const html = await renderNestedComponent(output.files)
+    expect((html.match(/>Hi<\/p>/g) ?? []).length).toBe(2)
+  })
+
+  test('every variant imports its distinct nested reference and renders the selected branch', async () => {
+    const graph = makeSceneGraph()
+    const definitionsPage = firstPageId(graph)
+    const outer = graph.createNode('COMPONENT_SET', definitionsPage, { name: 'Outer' })
+    const variants = ['First', 'Second'].map((state) => {
+      const inner = graph.createNode('COMPONENT', definitionsPage, {
+        name: `${state}Inner`,
+        width: 100,
+        height: 30,
+        layoutMode: 'VERTICAL'
+      })
+      graph.createNode('TEXT', inner.id, {
+        text: `${state} leaf`,
+        width: 90,
+        height: 20
+      })
+      const variant = graph.createNode('COMPONENT', outer.id, {
+        name: `State=${state}`,
+        width: 120,
+        height: 40,
+        layoutMode: 'VERTICAL'
+      })
+      graph.createInstance(inner.id, variant.id)
+      return variant
+    })
+    const first = variants[0]
+    if (!first) throw new Error('Missing first variant')
+    const usePage = graph.addPage('Use')
+    graph.createInstance(first.id, usePage.id)
+    const output = compile({
+      graph,
+      pageIds: [usePage.id],
+      options: withDefaults({ packageName: 'nested-variant-runtime' })
+    })
+    const firstHTML = await renderNestedComponent(output.files)
+    expect(firstHTML).toContain('>First leaf</p>')
+    expect(firstHTML).not.toContain('>Second leaf</p>')
+    const secondHTML = await renderNestedComponent(output.files, { state: 'Second' })
+    expect(secondHTML).toContain('>Second leaf</p>')
+    expect(secondHTML).not.toContain('>First leaf</p>')
   })
 })

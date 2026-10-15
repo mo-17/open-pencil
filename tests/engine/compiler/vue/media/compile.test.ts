@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import { buildOpenPencilVueAudioPlayer } from '#compiler/adapters/vue/modules/audio-player'
 import { buildOpenPencilVueLottie } from '#compiler/adapters/vue/modules/lottie'
 import { buildOpenPencilVueQrBarcode } from '#compiler/adapters/vue/modules/qr-barcode'
+import * as v from 'valibot'
 
 import {
   vueMediaBrowserFixture,
@@ -20,9 +21,14 @@ for (const devMode of [false, true]) {
       typeCheckCompilerFiles(files, 'vue')
       for (const name of ['audio_player', 'lottie', 'qr_barcode'])
         expect(files.has('src/__openpencil_' + name + '.vue')).toBe(true)
-      const manifest = JSON.parse(files.get('package.json') as string) as {
-        dependencies: Record<string, string>
-      }
+      const manifest = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+        ),
+        files.get('package.json') as string
+      )
       expect(manifest.dependencies).toMatchObject({
         'lottie-web': '5.13.0',
         qrcode: '1.5.4',

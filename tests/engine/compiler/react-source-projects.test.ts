@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { runInNewContext } from 'node:vm'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import {
   buildCapacitorReactProjectFiles,
@@ -81,7 +83,21 @@ function fixture(): Map<string, string | Uint8Array> {
 }
 
 function packageJSON(files: ReadonlyMap<string, string | Uint8Array>): GeneratedPackageJSON {
-  return JSON.parse(String(files.get('package.json'))) as GeneratedPackageJSON
+  return v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({
+        name: v.string(),
+        main: v.optional(v.string()),
+        scripts: v.record(v.string(), v.string()),
+        dependencies: v.record(v.string(), v.string()),
+        devDependencies: v.record(v.string(), v.string()),
+        customMetadata: v.looseObject({ preserved: v.boolean() })
+      })
+    ),
+    String(files.get('package.json'))
+  )
 }
 
 function expectPortablePaths(files: ReadonlyMap<string, string | Uint8Array>): void {

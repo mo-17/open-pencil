@@ -1,5 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 
+import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'
+
+import { createEmptyBackendApplication } from '@/app/lowcode/backend/document'
+import {
+  addBackendEntity,
+  addBackendWorkflow,
+  addBackendWorkflowStep
+} from '@/app/lowcode/backend/draft'
+import { useBackendWorkflowSteps } from '@/app/lowcode/backend/use-backend-workflow-steps'
+
+import { createTestRenderer, hostNode } from '#tests/helpers/vue/renderer'
+
 describe('visual Backend editor component boundary', () => {
   test('mounts at the document-level Design panel and uses the atomic document adapter', async () => {
     const source = await Bun.file('src/components/properties/Lowcode/BackendEditorPanel.vue').text()
@@ -85,27 +97,140 @@ describe('visual Backend editor component boundary', () => {
     }
   })
 
-  test('edits bounded filters and branches, preserves unsupported headers, and hides credentials', async () => {
-    const source = [
-      await Bun.file('src/app/lowcode/backend/components/BackendWorkflowStepsEditor.vue').text(),
-      await Bun.file('src/app/lowcode/backend/use-backend-workflow-steps.ts').text()
-    ].join('\n')
-
-    for (const kind of ['data.read', 'data.mutate', 'http.request', 'branch', 'call', 'respond']) {
-      expect(source).toContain(`'${kind}'`)
+  test('edits bounded filters and branches, preserves unsupported headers, and hides credentials', () => {
+    let nextId = 0
+    const createId = (prefix: string) => `${prefix}:panel-${++nextId}`
+    const application = createEmptyBackendApplication('workflow-panel')
+    const entity = addBackendEntity(application, createId)
+    const workflow = addBackendWorkflow(application, createId)
+    addBackendWorkflow(application, createId)
+    const branch = addBackendWorkflowStep(application, workflow, 'branch', createId)
+    if (branch.kind !== 'branch') throw new Error('Expected a branch')
+    const http = addBackendWorkflowStep(
+      application,
+      workflow,
+      'http.request',
+      createId,
+      branch.consequent
+    )
+    const read = addBackendWorkflowStep(
+      application,
+      workflow,
+      'data.read',
+      createId,
+      branch.alternate
+    )
+    if (http.kind !== 'http.request' || read.kind !== 'data.read') {
+      throw new Error('Expected editable HTTP and data steps')
     }
-    expect(source).toContain(':data-test-id="`lowcode-backend-add-step-')
-    expect(source).toContain('addFilter(step)')
-    expect(source).toContain('filterOperators')
-    expect(source).toContain('step.headers?.length')
-    expect(source).toContain('<BackendWorkflowStepsEditor')
-    expect(source).toContain(':steps="step[branch]"')
-    expect(source).toContain(':depth="depth + 1"')
-    expect(source).toContain("secret.kind === 'environment'")
-    expect(source).toContain("secret.exposure === 'server'")
-    expect(source).not.toContain('CredentialManager')
-    expect(source).not.toContain('credentialRef')
-    expect(source).not.toContain('JSON.parse')
+    http.headers = [
+      { name: 'X-Region', value: { kind: 'environment', name: 'API_ORIGIN' } },
+      { name: 'Accept-Language', value: { kind: 'expression', expression: '"en-US"' } }
+    ]
+    const preservedHeaders = structuredClone(http.headers)
+    application.secrets = [
+      { kind: 'environment', name: 'API_ORIGIN', exposure: 'server', required: true },
+      { kind: 'environment', name: 'PUBLIC_ORIGIN', exposure: 'client-public', required: true },
+      { kind: 'environment', name: 'OPTIONAL_ORIGIN', exposure: 'server', required: false },
+      {
+        kind: 'credential',
+        name: 'PLUGIN_CONFIG_CREDENTIAL',
+        credentialRef: 'credential.123e4567-e89b-42d3-a456-426614174000',
+        exposure: 'host',
+        required: true
+      },
+      {
+        kind: 'credential',
+        name: 'SERVER_CREDENTIAL',
+        credentialRef: 'credential.123e4567-e89b-42d3-a456-426614174001',
+        exposure: 'server',
+        required: true
+      }
+    ]
+    const controllers: ReturnType<typeof useBackendWorkflowSteps>[] = []
+    const app = createTestRenderer().createApp({
+      setup() {
+        for (const [steps, depth] of [
+          [workflow.steps, 0],
+          [branch.consequent, 1],
+          [branch.alternate, 1]
+        ] as const) {
+          controllers.push(useBackendWorkflowSteps({ application, workflow, steps, depth }))
+        }
+        return () => null
+      }
+    })
+    app.mount(hostNode())
+    try {
+      const [root, consequent, alternate] = controllers
+      if (!root || !consequent || !alternate) throw new Error('Workflow editors did not mount')
+      expect(root.environmentNames.value).toEqual(['API_ORIGIN'])
+      for (const kind of [
+        'data.read',
+        'data.mutate',
+        'http.request',
+        'branch',
+        'call',
+        'respond'
+      ] as const) {
+        expect(root.canAddStep(workflow, kind)).toBe(true)
+        const previousIds = new Set(workflow.steps.map((step) => step.id))
+        root.addStep(workflow, kind)
+        expect(workflow.steps.filter((step) => !previousIds.has(step.id))).toMatchObject([{ kind }])
+      }
+
+      const originalAlternate = structuredClone(branch.alternate)
+      consequent.addStep(workflow, 'data.read')
+      expect(branch.consequent.at(-2)?.kind).toBe('data.read')
+      expect(branch.alternate).toEqual(originalAlternate)
+      const originalConsequent = structuredClone(branch.consequent)
+      alternate.addStep(workflow, 'data.mutate')
+      expect(branch.alternate.at(-2)?.kind).toBe('data.mutate')
+      expect(branch.consequent).toEqual(originalConsequent)
+
+      alternate.addFilter(read)
+      expect(read.filters).toEqual([
+        {
+          field: entity.fields[0]?.id,
+          operator: 'eq',
+          value: { kind: 'expression', expression: '$currentUser.id' }
+        }
+      ])
+      const filter = read.filters?.[0]
+      if (!filter) throw new Error('Filter was not added')
+      alternate.setFilterValueKind(filter, 'environment')
+      expect(filter.value).toEqual({ kind: 'environment', name: 'API_ORIGIN' })
+      alternate.setFilterValueKind(filter, 'expression')
+      expect(filter.value).toEqual({ kind: 'expression', expression: '$currentUser.id' })
+      alternate.removeFilter(read, 0)
+      expect(read.filters).toBeUndefined()
+      read.filters = Array.from({ length: BACKEND_LIMITS.maxFieldsPerEntity }, () =>
+        structuredClone(filter)
+      )
+      const fullRead = structuredClone(read)
+      alternate.addFilter(read)
+      expect(read).toEqual(fullRead)
+      expect(alternate.operationError.value).not.toBe('')
+      alternate.removeFilter(read, 0)
+      alternate.addFilter(read)
+      expect(read.filters).toHaveLength(BACKEND_LIMITS.maxFieldsPerEntity)
+      expect(alternate.operationError.value).toBe('')
+
+      consequent.setHttpURLKind(http, 'environment')
+      expect(http.url).toEqual({ kind: 'environment', name: 'API_ORIGIN' })
+      consequent.toggleHttpBody(http, true)
+      consequent.setHttpBodyKind(http, 'environment')
+      expect(http.body).toEqual({ kind: 'environment', name: 'API_ORIGIN' })
+      consequent.toggleHttpBody(http, false)
+      expect(http.body).toBeUndefined()
+      expect(http.headers).toEqual(preservedHeaders)
+      expect(root.environmentNames.value).not.toContain('PLUGIN_CONFIG_CREDENTIAL')
+      expect(root.environmentNames.value).not.toContain('SERVER_CREDENTIAL')
+      expect(root.environmentNames.value).not.toContain('PUBLIC_ORIGIN')
+      expect(root.environmentNames.value).not.toContain('OPTIONAL_ORIGIN')
+    } finally {
+      app.unmount()
+    }
   })
 
   test('bounds visual inputs and persists only through the atomic editor action', async () => {

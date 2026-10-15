@@ -1,6 +1,7 @@
 import type { PagePathInfo } from '#compiler/adapters/react/route-paths'
 import { buildIndexCSS, buildMetadataTags } from '#compiler/project'
 import type { CompilerMicrofrontendPackaging, CompilerOptions, HTMLMetadata } from '#compiler/types'
+import { compact } from 'es-toolkit'
 
 import { scopeMicrofrontendCSS } from '../microfrontend-css'
 import type { VueLowcodeUsage } from './lowcode/usage'
@@ -368,9 +369,9 @@ export function buildVueIndexCSSFile(
   classNames: readonly string[],
   options: CompilerOptions
 ): string {
-  const custom = [options.themeCss?.trim(), options.metadata?.customCss?.trim()]
-    .filter(Boolean)
-    .join('\n\n')
+  const custom = compact([options.themeCss?.trim(), options.metadata?.customCss?.trim()]).join(
+    '\n\n'
+  )
   return buildIndexCSS(
     classNames,
     '',

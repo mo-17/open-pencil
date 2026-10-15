@@ -14,6 +14,7 @@ import { onScopeDispose, ref, watchEffect, type Ref } from 'vue'
 import type { Editor } from '@open-pencil/core/editor'
 
 import type { LayerDragInstruction } from '#vue/primitives/LayerTree/context'
+import { dropIndex } from '#vue/primitives/LayerTree/model'
 
 interface DragItem {
   id: string
@@ -46,26 +47,23 @@ export function useLayerDrag(
       const data = item()
 
       const isContainer = editor.graph.isContainer(data.id)
-      // Atlaskit's tree-item modes:
-      //   standard      → top¼ above, mid½ make-child, bottom¼ below
-      //   expanded      → top¼ above, rest make-child  (no reorder-below!)
-      //   last-in-group → standard hitbox + reparent zone in the indent gutter
-      //
-      // An expanded container that's the LAST sibling at its level has no way
-      // to drop a node BELOW it (the bottom is always make-child), trapping
-      // anything dragged past it. `last-in-group` restores reorder-below for
-      // these tail-position containers. Leaves stay on `standard`; containers
-      // that aren't last stay on `expanded` so their middle band still grabs
-      // make-child.
       const owningNode = editor.graph.getNode(data.id)
       const parentId = owningNode?.parentId ?? editor.state.currentPageId
       const parent = editor.graph.getNode(parentId)
-      const isLastSibling = parent ? parent.childIds[parent.childIds.length - 1] === data.id : false
+      const isLastSibling = parent ? parent.childIds.at(-1) === data.id : false
       const mode: ItemMode = pickItemMode(isContainer, isLastSibling)
+      const acceptsChildren = isContainer && editor.acceptsChildren(data.id)
+      const acceptsSiblings = editor.acceptsChildren(parentId)
+      const block: Array<'make-child' | 'reorder-above' | 'reorder-below' | 'reparent'> = [
+        'reparent',
+        ...(acceptsChildren ? [] : (['make-child'] as const)),
+        ...(acceptsSiblings ? [] : (['reorder-above', 'reorder-below'] as const))
+      ]
 
       const cleanup = combine(
         draggable({
           element,
+          canDrag: () => acceptsSiblings,
           getInitialData: () => ({ id: data.id }),
           onDragStart: () => {
             draggingId.value = data.id
@@ -85,7 +83,7 @@ export function useLayerDrag(
                 indentPerLevel,
                 currentLevel: data.level,
                 mode,
-                block: isContainer ? ['reparent'] : ['make-child', 'reparent']
+                block
               }
             ),
           canDrop: ({ source }) => source.data.id !== data.id,
@@ -135,11 +133,12 @@ export function useLayerDrag(
       const targetParent = editor.graph.getNode(targetParentId)
       if (!targetParent) return
       const targetIndex = targetParent.childIds.indexOf(targetId)
+      const at = (index: number) => dropIndex(targetParent.childIds, sourceId, index)
 
       if (inst.type === 'reorder-above') {
-        editor.reorderChildWithUndo(sourceId, targetParentId, targetIndex)
+        editor.reorderChildWithUndo(sourceId, targetParentId, at(targetIndex))
       } else if (inst.type === 'reorder-below') {
-        editor.reorderChildWithUndo(sourceId, targetParentId, targetIndex + 1)
+        editor.reorderChildWithUndo(sourceId, targetParentId, at(targetIndex + 1))
       } else if (inst.type === 'make-child') {
         const container = editor.graph.getNode(targetId)
         if (!container || !editor.graph.isContainer(targetId)) return

@@ -37,6 +37,8 @@ import {
   type HostAutomationQueueDispatchOutcomeForTestingV1
 } from '@/app/plugins/host/deployment/backend/testing/automation-queue-runner'
 
+import { repoPath } from '#tests/helpers/paths'
+
 const ENQUEUED_AT = '2026-09-09T00:00:00.000000000Z'
 const RETENTION_DEADLINE = '2026-09-09T01:00:00.000000000Z'
 const RECEIVED_AT = '2026-09-09T00:00:01.000000000Z'
@@ -771,7 +773,7 @@ describe('testing-only Host Automation bounded queue runner', () => {
     )
     expect(getterCalls).toBe(0)
 
-    const root = new URL('../../../../../../../', import.meta.url)
+    const root = repoPath()
     const productionSourcePatterns = [
       'src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue,json,jsonc}',
       'packages/*/src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue,json,jsonc}',
@@ -784,7 +786,7 @@ describe('testing-only Host Automation bounded queue runner', () => {
     const importers: string[] = []
     for (const pattern of productionSourcePatterns) {
       const productionSources = new Bun.Glob(pattern)
-      for await (const path of productionSources.scan({ cwd: root.pathname, absolute: true })) {
+      for await (const path of productionSources.scan({ cwd: root, absolute: true })) {
         if (path.endsWith('/backend/testing/automation-queue-runner.ts')) continue
         const source = await Bun.file(path).text()
         if (source.includes(forbiddenReference)) importers.push(path)
@@ -793,7 +795,7 @@ describe('testing-only Host Automation bounded queue runner', () => {
     expect(importers).toEqual([])
 
     const kernelSource = await Bun.file(
-      new URL('src/app/plugins/host/deployment/backend/testing/automation-queue-runner.ts', root)
+      repoPath('src/app/plugins/host/deployment/backend/testing/automation-queue-runner.ts')
     ).text()
     expect(kernelSource).not.toContain('fetch(')
     expect(kernelSource).not.toContain('@tauri-apps')

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import type { PluginParameterValue } from '@open-pencil/plugin-contracts'
 import {
   PluginConnectorContractRegistry,
   parsePluginConnectorContract
@@ -35,14 +36,16 @@ function signal(): AbortSignal {
   return new AbortController().signal
 }
 
-function sendParameters(overrides: Record<string, unknown> = {}): ConnectorParameterObject {
+function sendParameters(
+  overrides: Record<string, PluginParameterValue> = {}
+): Readonly<Record<string, PluginParameterValue>> {
   return {
     from: 'OpenPencil <sender@example.com>',
     to: ['reader@example.com'],
     subject: 'Connector review',
     text: 'The reviewed connector is ready.',
     ...overrides
-  } as ConnectorParameterObject
+  }
 }
 
 function prepareGet(emailId: string, requestSignal = signal()) {

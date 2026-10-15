@@ -25,9 +25,9 @@ export const CORE_PUBLISHED_WORKER_URLS = Object.freeze([
   },
   {
     ownerEntry: 'src/io/formats/fig/export.ts',
-    sourceSpecifier: './export-worker.ts',
-    publishedSpecifier: './export-worker.js',
-    workerEntry: 'src/io/formats/fig/export-worker.ts'
+    sourceSpecifier: './export/worker.ts',
+    publishedSpecifier: './export/worker.js',
+    workerEntry: 'src/io/formats/fig/export/worker.ts'
   },
   {
     ownerEntry: 'src/kiwi/fig/session/client.ts',
@@ -114,6 +114,7 @@ export default defineConfig({
   clean: true,
   outDir: './dist',
   deps: {
+    dts: { neverBundle: ['ai', /^@ai-sdk\//] },
     neverBundle: [...Object.keys(packageJSON.dependencies ?? {}), /^node:/],
     onlyBundle: false
   }

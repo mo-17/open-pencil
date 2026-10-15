@@ -1,18 +1,18 @@
 import { expect, test } from 'bun:test'
 
-import { SkiaRenderer } from '@open-pencil/core'
 import type { SceneNode } from '@open-pencil/scene-graph'
+import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
 import { initCanvasKit } from '#cli/headless'
 import { buildParagraph } from '#core/canvas/text'
+import { SkiaRenderer } from '#core/index'
 import { fontManager } from '#core/text/fonts'
 import { fontFaceDemand, fontResolver, missingGlyphCharacters } from '#core/text/resolver'
 
 import { expectDefined } from '#tests/helpers/assert'
 
 function textNode(family: string, fontWeight: number, italic = false): SceneNode {
-  return {
-    type: 'TEXT',
+  return createDefaultNode(() => 'imported-font', 'TEXT', {
     text: '你好',
     fontSize: 32,
     fontFamily: family,
@@ -28,7 +28,7 @@ function textNode(family: string, fontWeight: number, italic = false): SceneNode
     styleRuns: [],
     width: 240,
     height: 60
-  } as SceneNode
+  })
 }
 
 test('renders the resolver-selected imported synthetic face without overriding exact faces', async () => {
@@ -37,12 +37,10 @@ test('renders the resolver-selected imported synthetic face without overriding e
   const surface = expectDefined(ck.MakeSurface(240, 60), 'CanvasKit surface')
   const syntheticFamily = 'Imported Synthetic Candidate Fixture'
   const exactFamily = 'Imported Exact Candidate Fixture'
-  const manager = fontManager as typeof fontManager & {
-    cjkFallbackFamilies: string[]
-    arabicFallbackFamilies: string[]
-  }
-  const previousCJKFallbacks = [...manager.cjkFallbackFamilies]
-  const previousArabicFallbacks = [...manager.arabicFallbackFamilies]
+  const cjkFallbacks = fontManager.getCJKFallbackFamilies()
+  const arabicFallbacks = fontManager.getArabicFallbackFamilies()
+  const previousCJKFallbacks = [...cjkFallbacks]
+  const previousArabicFallbacks = [...arabicFallbacks]
   const previousCache = Reflect.get(fontManager, 'downloadedFontCache')
   const previousHostLoader = Reflect.get(fontManager, 'hostFontLoader')
   const previousProviders = new Set(fontManager.enabledOnlineFontProviders())
@@ -73,8 +71,8 @@ test('renders the resolver-selected imported synthetic face without overriding e
     bunny: false,
     fontshare: false
   })
-  manager.cjkFallbackFamilies = []
-  manager.arabicFallbackFamilies = []
+  cjkFallbacks.splice(0)
+  arabicFallbacks.splice(0)
 
   try {
     const imported = await Bun.file('tests/fixtures/fonts/NotoSansSC-Regular.ttf').arrayBuffer()
@@ -128,8 +126,8 @@ test('renders the resolver-selected imported synthetic face without overriding e
         importedRenderFamilies.delete(key)
       }
     }
-    manager.cjkFallbackFamilies = previousCJKFallbacks
-    manager.arabicFallbackFamilies = previousArabicFallbacks
+    cjkFallbacks.splice(0, Infinity, ...previousCJKFallbacks)
+    arabicFallbacks.splice(0, Infinity, ...previousArabicFallbacks)
     fontManager.setDownloadedFontCache(previousCache)
     fontManager.setHostFontLoader(previousHostLoader)
     fontManager.setOnlineFontProviders({

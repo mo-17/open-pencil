@@ -5,6 +5,8 @@ import { getEditingTextId } from '#tests/helpers/store'
 
 async function addTwoTopLevelTexts(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -22,6 +24,8 @@ async function addTwoTopLevelTexts(page: Page) {
 
 async function addTopLevelText(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -37,6 +41,8 @@ async function addTopLevelText(page: Page) {
 
 async function addFrameWithNestedText(page: Page) {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1
@@ -114,6 +120,8 @@ test('double-click drill enters nested text edit mode', async ({ page }) => {
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         return [...store.state.selectedIds]

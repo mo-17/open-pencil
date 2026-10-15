@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
 
 test('regular partial full and independent corner smoothing', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId

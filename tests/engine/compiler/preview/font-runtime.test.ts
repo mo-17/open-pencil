@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { chromium, type Browser, type Page } from '@playwright/test'
 
@@ -21,7 +20,9 @@ function buildFontFiles(): Map<string, string | Uint8Array> {
     width: 400,
     height: 48
   })
-  const content = new Uint8Array(readFileSync(join(process.cwd(), 'public/Inter-Regular.ttf')))
+  const content = new Uint8Array(
+    readFileSync(new URL(import.meta.resolve('@open-pencil/core/assets/Inter-Regular.ttf')))
+  )
   return compile({
     graph,
     pageIds: [pageId],

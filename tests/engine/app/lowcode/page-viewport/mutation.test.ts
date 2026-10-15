@@ -31,7 +31,7 @@ function fixture() {
 }
 
 describe('page viewport editing', () => {
-  test.each(['responsive', 'fit-width', 'fixed'] as const)(
+  test.each([...(['responsive', 'fit-width', 'fixed'] as const)])(
     '%s changes only page metadata and is one reversible edit',
     (mode) => {
       const { editor, page, frame, label } = fixture()
@@ -67,7 +67,7 @@ describe('page viewport editing', () => {
     expect(page.pluginData).toEqual([opaque])
   })
 
-  test.each(['locked', 'internalOnly', 'library'] as const)(
+  test.each([...(['locked', 'internalOnly', 'library'] as const)])(
     '%s page and document ancestors reject editing',
     (kind) => {
       for (const target of ['page', 'document']) {
@@ -183,7 +183,7 @@ describe('fresh mobile template viewport defaults', () => {
     expect(page.lowcodePageViewport).toBeUndefined()
   })
 
-  test.each(['fixed', 'fit-width'] as const)('preserves an explicit %s setting', (mode) => {
+  test.each([...(['fixed', 'fit-width'] as const)])('preserves an explicit %s setting', (mode) => {
     const { editor, page, frame } = fixture()
     editor.graph.updateNode(page.id, { lowcodePageViewport: { version: 1, mode } })
     markNewMobileTemplateViewport(editor, frame.id)
@@ -195,7 +195,7 @@ describe('fresh mobile template viewport defaults', () => {
     const future = { version: 2, mode: 'future' }
     Reflect.set(page, 'lowcodePageViewport', future)
     markNewMobileTemplateViewport(editor, frame.id)
-    expect(page.lowcodePageViewport).toBe(future)
+    expect<unknown>(page.lowcodePageViewport).toBe(future)
     editor.graph.clearNodeFields(page.id, ['lowcodePageViewport'])
     const raw = { pluginId: 'open-pencil', key: LOWCODE_PAGE_VIEWPORT_PLUGIN_KEY, value: 'future' }
     editor.graph.updateNode(page.id, { pluginData: [raw] })

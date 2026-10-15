@@ -36,7 +36,7 @@ describe('custom modal content', () => {
     const id = createModalContent(editor, node.id, '弹窗内容')
     expect(id).toBeTruthy()
     const content = modalContentChild(editor.graph, node)
-    expect(content?.id).toBe(id)
+    expect<unknown>(content?.id).toBe(id)
     expect(content?.type).toBe('FRAME')
     expect(content?.visible).toBe(true)
     expect(editor.graph.getChildren(id ?? '')[0]?.text).toBe('Editable body')
@@ -45,7 +45,7 @@ describe('custom modal content', () => {
     expect(editor.graph.getNode(id ?? '')).toBeUndefined()
     expect(node.interactiveProps).toEqual(original)
     editor.undo.redo()
-    expect(modalContentChild(editor.graph, node)?.id).toBe(id)
+    expect<unknown>(modalContentChild(editor.graph, node)?.id).toBe(id)
     expect(editor.graph.getChildren(id ?? '')).toEqual(children)
   })
 
@@ -57,12 +57,12 @@ describe('custom modal content', () => {
     expect(second).not.toBe(first)
     expect(editor.graph.getNode(first ?? '')).toEqual(previous)
     expect(editor.graph.getNode(second ?? '')?.name).toBe('Content 2')
-    expect(modalContentChild(editor.graph, node)?.id).toBe(second)
+    expect<unknown>(modalContentChild(editor.graph, node)?.id).toBe(second)
     editor.undo.undo()
-    expect(modalContentChild(editor.graph, node)?.id).toBe(first)
+    expect<unknown>(modalContentChild(editor.graph, node)?.id).toBe(first)
   })
 
-  test.each(['locked', 'internalOnly'] as const)(
+  test.each([...(['locked', 'internalOnly'] as const)])(
     'rejects %s ancestry and stale selection',
     (field) => {
       const { editor, node } = fixture()

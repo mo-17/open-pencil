@@ -110,7 +110,7 @@ test('navigation selects the requested event and keeps it after the focus reques
     clearLowcodeActionFocus(request)
     expect(events.eventName.value).toBe('onChange')
     events.eventName.value = 'onSubmit'
-    expect(events.eventName.value).toBe('onChange')
+    expect<unknown>(events.eventName.value).toBe('onChange')
   } finally {
     clearLowcodeActionFocus(request)
     scope.stop()

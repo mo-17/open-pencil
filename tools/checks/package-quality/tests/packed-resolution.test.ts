@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { runCommand } from '@open-pencil/package-artifacts-tools'
+import { parseNpmPack, runCommand } from '@open-pencil/package-artifacts-tools'
 import { inspectTarball } from '@open-pencil/package-artifacts-tools/tarball'
 
 async function createPackageFixture(
@@ -28,7 +28,7 @@ async function createPackageFixture(
         name: '@fixture/resolution',
         version: '1.0.0',
         type: 'module',
-        imports: { '#fixture/*': './src/*.ts' },
+        ...(bunTarget.startsWith('./src/') ? { imports: { '#fixture/*': './src/*.ts' } } : {}),
         files,
         exports: {
           '.': {
@@ -76,7 +76,7 @@ async function packAndInstall(bunTarget: string, files = ['dist']) {
     cwd: packageDirectory,
     env
   })
-  const filename = (JSON.parse(packed.stdout) as Array<{ filename: string }>)[0]?.filename
+  const filename = parseNpmPack(packed.stdout).filename
   if (!filename) throw new Error('Fixture pack did not produce a tarball')
   const tarball = join(artifacts, filename)
   await runCommand({ command: 'npm', args: ['init', '-y'], cwd: consumer, env })
@@ -128,6 +128,10 @@ describe('packed runtime resolution', () => {
       expect.objectContaining({
         field: 'exports["."].bun',
         message: 'target is missing (./src/index.ts)'
+      }),
+      expect.objectContaining({
+        field: 'imports["#fixture/*"]',
+        message: 'target is missing (./src/*.ts)'
       })
     ])
     await evaluateRuntime('node', "await import('@fixture/resolution')", consumer)

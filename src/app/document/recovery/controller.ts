@@ -1,16 +1,15 @@
 import { watchDebounced } from '@vueuse/core'
 import { shallowRef, watch, type WatchHandle } from 'vue'
 
-import type { EditorState } from '@open-pencil/core/editor'
-
 import { getRecoveryStore, isRecoveryStoreMemoryFallback } from '@/app/document/recovery/store'
 import type { RecoveryStore } from '@/app/document/recovery/types'
 import { createCanvasId } from '@/app/storage/id'
 
-type RecoveryState = EditorState & { documentName: string }
+type RecoveryState = { documentName: string; sceneVersion?: number }
 
 interface DocumentRecoveryOptions {
   state: RecoveryState
+  version?: () => number
   buildFigFile: () => Promise<Uint8Array> | Uint8Array
   hasWritableSource: () => boolean
   isEnabled?: () => boolean
@@ -38,6 +37,7 @@ export interface DocumentRecoveryController {
 export function createDocumentRecovery({
   state,
   buildFigFile,
+  version: currentVersion = () => state.sceneVersion ?? 0,
   hasWritableSource,
   isEnabled = () => true,
   store = getRecoveryStore(),
@@ -56,7 +56,7 @@ export function createDocumentRecovery({
     return !disposed && generation === lifecycleGeneration
   }
   let id = recoveryId
-  let protectedVersion = state.sceneVersion
+  let protectedVersion = currentVersion()
   let persistedVersion: number | null = null
   let requestedVersion = protectedVersion
   let lifecycleGeneration = 0
@@ -76,7 +76,6 @@ export function createDocumentRecovery({
     const metadata = await store.write({
       id: snapshotId,
       documentName,
-      sceneVersion: version,
       figBytes: bytes
     })
     persistedVersion = version
@@ -98,7 +97,7 @@ export function createDocumentRecovery({
       await awaitedCleanup
     } while (awaitedCleanup !== cleanup)
     if (disposed || hasWritableSource() || !isEnabled()) return
-    requestedVersion = state.sceneVersion
+    requestedVersion = currentVersion()
     if (requestedVersion === protectedVersion) return
     if (!writing) {
       const generation = lifecycleGeneration
@@ -117,7 +116,7 @@ export function createDocumentRecovery({
   }
 
   const stopVersionWatch: WatchHandle = watchDebounced(
-    () => state.sceneVersion,
+    () => currentVersion(),
     () => {
       void persistNow().catch((error) => console.warn('[Recovery] Snapshot failed:', error))
     },
@@ -128,8 +127,8 @@ export function createDocumentRecovery({
     isEnabled,
     (enabled) => {
       if (enabled) {
-        protectedVersion = state.sceneVersion
-        requestedVersion = state.sceneVersion
+        protectedVersion = currentVersion()
+        requestedVersion = currentVersion()
         resetStatus()
         return
       }
@@ -137,8 +136,8 @@ export function createDocumentRecovery({
       resetStatus()
       const cleanupGeneration = lifecycleGeneration
       const snapshotId = id
-      requestedVersion = state.sceneVersion
-      protectedVersion = state.sceneVersion
+      requestedVersion = currentVersion()
+      protectedVersion = currentVersion()
       const activeWrite = writing
       cleanup = cleanup
         .then(async () => {
@@ -207,7 +206,7 @@ export function createDocumentRecovery({
       if (resetForSource) resetStatus()
       return serializeCleanup(async (generation) => {
         protectedVersion = version
-        requestedVersion = state.sceneVersion
+        requestedVersion = currentVersion()
         if (persistedVersion == null || persistedVersion <= version) {
           await store.remove(id)
           if (!current(generation)) return
@@ -218,9 +217,9 @@ export function createDocumentRecovery({
     },
     discardRecovery() {
       return serializeCleanup(async (generation) => {
-        protectedVersion = state.sceneVersion
+        protectedVersion = currentVersion()
         persistedVersion = null
-        requestedVersion = state.sceneVersion
+        requestedVersion = currentVersion()
         await store.remove(id)
         if (current(generation)) resetStatus()
       })

@@ -8,6 +8,7 @@ import type { FontManager } from '@open-pencil/core/text'
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerFigOutput } from '#tests/helpers/compiler/output'
 import { mockFontsource } from '#tests/helpers/fonts/fontsource'
 import { trackFontModuleResources } from '#tests/helpers/fonts/runtime'
 
@@ -42,6 +43,8 @@ test('canvas shows only the selected tab content below its header from an on-dis
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const nodes = await page.evaluate(async (data) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const moduleURL = performance
@@ -75,6 +78,8 @@ test('canvas shows only the selected tab content below its header from an on-dis
   await canvas.waitForRender()
   // This retained profile builds scene backing over multiple frames; two frames can still be blank.
   await page.waitForFunction(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const renderer = store?.canvasRenderers.find((candidate) => candidate.tracksSceneSettlement)
     if (!store || !renderer || store.state.loading) return false
@@ -93,6 +98,8 @@ test('canvas shows only the selected tab content below its header from an on-dis
     contentType: 'image/png'
   })
   const result = await page.evaluate(async (ids) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const root = store.graph.getNode(ids.rootId)
@@ -185,7 +192,7 @@ for (const target of ['react', 'vue'] as const) {
     const suppliedPath = process.env.OPENPENCIL_TEMPLATE_FIG_PATH
     const path = suppliedPath ? resolve(suppliedPath) : info.outputPath('all-templates.fig')
     diskFixture(path, !suppliedPath)
-    const compiled = JSON.parse(
+    const compiled = parseCompilerFigOutput(
       execFileSync(
         'bun',
         ['tests/helpers/compiler/components/templates/compile-fig.ts', target, path],
@@ -195,7 +202,7 @@ for (const target of ['react', 'vue'] as const) {
           maxBuffer: 16 * 1024 * 1024
         }
       )
-    ) as { files: [string, string][] }
+    )
     await withComponentTemplateFiles(page, target, new Map(compiled.files), async () => {
       const overview = page.getByRole('tab', { name: '概览', exact: true })
       const details = page.getByRole('tab', { name: '详情', exact: true })

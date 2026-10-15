@@ -4,8 +4,8 @@ import { describe, expect, test } from 'bun:test'
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import { expectDefined } from '#tests/helpers/assert'
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
@@ -426,7 +426,7 @@ describe('update_lowcode_node', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.data?.updated).toEqual(['stateOverrides'])
-    expect(graph.getNode(rect.id)?.stateOverrides).toEqual(stateOverrides)
+    expect<unknown>(graph.getNode(rect.id)?.stateOverrides).toEqual(stateOverrides)
   })
 
   test('normalizes solid fill and stroke shorthands in stateOverrides', () => {
@@ -1220,11 +1220,11 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(result.ok).toBe(true)
     expect(editor.undo.canUndo).toBe(true)
     expect(editor.undo.undoLabel).toBe('AI: update_lowcode_node')
-    const after = graph.getNode(rect.id) as JSONObject
+    const after = expectDefined(graph.getNode(rect.id), 'edited node')
     expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
     const label = editor.undo.undo()
     expect(label).toBe('AI: update_lowcode_node')
-    const reverted = graph.getNode(rect.id) as JSONObject
+    const reverted = expectDefined(graph.getNode(rect.id), 'edited node')
     expect(reverted.interactiveProps).toBeUndefined()
     expect(reverted.renderCondition).toBeUndefined()
   })
@@ -1238,7 +1238,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
       patch_json: JSON.stringify({ interactiveProps: { text: 'Submit' } })
     }) as Result<{ id: string; updated: string[] }>
     expect(result.ok).toBe(true)
-    const after = graph.getNode(rect.id) as JSONObject
+    const after = expectDefined(graph.getNode(rect.id), 'edited node')
     expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
     expect(editor.undo.canUndo).toBe(false)
   })

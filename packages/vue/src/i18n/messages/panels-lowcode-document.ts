@@ -1,6 +1,8 @@
 import { params } from '@nanostores/i18n'
 
 export const lowcodeDocumentPanelMessageDefaults = {
+  lowcodeAnalyticsConfigureProviderHint:
+    'Open the Services & Workflows panel with no selection to configure a GA4, Plausible, or PostHog provider id.',
   lowcodeAnalytics: 'Analytics',
   lowcodeAnalyticsClear: 'Clear',
   lowcodeAnalyticsEnabled: 'Enabled',

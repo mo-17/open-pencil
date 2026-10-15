@@ -1,8 +1,9 @@
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const repoRoot = resolve(packageRoot, '../..')
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
+
+const repoRoot = await resolveWorkspaceRoot(import.meta.dir)
+const packageRoot = resolve(repoRoot, 'packages/motion-runtime')
 const consumerTsconfig = resolve(packageRoot, 'tests/fixtures/consumer-tsconfig.json')
 const entrypoint = 'motion-runtime-framework-neutral-consumer.ts'
 const consumerSource = `

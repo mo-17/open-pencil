@@ -1,10 +1,13 @@
 /* oxlint-disable eslint(complexity) -- The stateful mock service intentionally models all Management, Auth, and Storage endpoints in one closure. */
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   digestBackendApplication,
   type BackendApplicationSpecV1,
-  type BackendReleaseProviderAuthorityV1
+  type BackendReleaseProviderAuthorityV1,
+  type BackendStoragePathRuleIR
 } from '@open-pencil/lowcode/backend'
 
 import {
@@ -178,7 +181,12 @@ function mockService(options: MockServiceOptions = {}): {
     const contentType = ((init?.headers ?? {}) as Record<string, string>)['content-type']
     const isDeleteRoot = url.endsWith('/storage/v1/object/user-assets')
     const objectPath = isDeleteRoot
-      ? String((JSON.parse(String(init?.body)) as { prefixes: string[] }).prefixes[0])
+      ? String(
+          v.parse(
+            v.pipe(v.string(), v.parseJson(), v.strictObject({ prefixes: v.array(v.string()) })),
+            String(init?.body)
+          ).prefixes[0]
+        )
       : decodeURIComponent(url.split('/storage/v1/object/user-assets/')[1] ?? '')
     const allowedIdentity = identity === 'user-a'
     const allowedPath = objectPath.startsWith(`users/${USER_A}/`)
@@ -359,11 +367,11 @@ describe('Supabase Management Storage isolation transport', () => {
 
   test('binds tenant partitions to bucket plus rule and rejects an ambiguous legacy collision', async () => {
     const service = mockService()
-    const rule = {
+    const rule: BackendStoragePathRuleIR = {
       id: 'tenant-files',
       prefix: ['tenants'],
       principal: { kind: 'tenant-member' as const, tenantId: 'organizations' },
-      operations: ['read', 'create', 'update', 'delete', 'upsert'] as const
+      operations: ['read', 'create', 'update', 'delete', 'upsert']
     }
     const scoped = transport(service.fetcher, {
       tenantPartitions: {

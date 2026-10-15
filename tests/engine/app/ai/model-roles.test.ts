@@ -6,7 +6,7 @@ import { computed, effectScope, nextTick, ref } from 'vue'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
-import { buildReasoningProviderOptions, reasoningCallSettings } from '@/app/ai/chat/reasoning'
+import { reasoningCallSettings } from '@/app/ai/chat/reasoning'
 import { registerAIChatEffects } from '@/app/ai/chat/storage'
 import { createChatSessionManager } from '@/app/ai/chat/transports'
 import {
@@ -27,6 +27,7 @@ import {
   setModelRoleAssignment,
   type AIModelSettings
 } from '@/app/ai/models'
+import type { EditorStore } from '@/app/editor/active-store'
 import { appCredentialRefs } from '@/app/settings/credentials/persistence'
 import { credentialKey } from '@/app/settings/credentials/reference'
 
@@ -150,6 +151,7 @@ describe('AI model profiles and role assignments', () => {
       modelID: 'text-only',
       customModelID: '',
       maxOutputTokens: 4096,
+      thinkingLevel: 'default',
       capabilities: [],
       featurePolicy: {
         webSearch: { enabled: false },
@@ -373,6 +375,7 @@ describe('AI model profiles and role assignments', () => {
         modelID: 'text-only',
         customModelID: '',
         maxOutputTokens: 4096,
+        thinkingLevel: 'default',
         capabilities: [],
         featurePolicy: {
           webSearch: { enabled: false },

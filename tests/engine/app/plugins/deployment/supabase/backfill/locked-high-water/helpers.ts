@@ -170,7 +170,7 @@ export function lockedHighWaterResponse(
     maximumBatchReceiptCount?: string
     withinReceiptCountLimit?: boolean
   }> = {}
-): Readonly<Record<string, unknown>> {
+) {
   const review = fixture.captureReview.review
   return Object.freeze({
     format: SUPABASE_BACKFILL_LOCKED_HIGH_WATER_CAPTURE_FORMAT,

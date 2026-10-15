@@ -7,6 +7,8 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/?test')
     await new CanvasHelper(page).waitForInit()
     const id = await page.evaluate(async (mode) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const path = '/src/app/shell/theme.ts'
       const module = await import(path)
       module.useAppTheme().setTheme(mode)
@@ -37,20 +39,20 @@ for (const theme of ['light', 'dark']) {
     await radius.press('Enter')
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id)?.effects[0].radius,
-          id
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.effects[0].radius
+        }, id)
       )
       .toBe(20)
     await section.getByRole('heading', { name: 'Effects' }).click()
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z')
     await expect
       .poll(() =>
-        page.evaluate(
-          (id) => window.openPencil?.getStore?.().graph.getNode(id)?.effects[0].radius,
-          id
-        )
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.effects[0].radius
+        }, id)
       )
       .toBe(12)
     await section.getByRole('combobox', { name: 'Effects', exact: true }).click()
@@ -59,7 +61,10 @@ for (const theme of ['light', 'dark']) {
     await section.getByRole('button', { name: 'Remove effect' }).click()
     await expect
       .poll(() =>
-        page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.effects, id)
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.effects
+        }, id)
       )
       .toEqual([])
     await expect(section.locator('[data-slot="effect-settings"]')).toHaveCount(0)

@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear()
 
 test('button text color is editable without replacing the button label', async () => {
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -24,7 +26,9 @@ test('button text color is editable without replacing the button label', async (
   const panel = editor.page.getByTestId('lowcode-interactive-props')
   await panel.scrollIntoViewIfNeeded()
   await expect(panel).toBeVisible()
-  const colorField = editor.page.getByTestId('lowcode-interactive-textColor')
+  const colorField = editor.page.locator(
+    '[data-slot="interactive-property"][data-property="textColor"]'
+  )
   await expect(colorField).toBeVisible()
   const hexInput = colorField.getByTestId('color-hex-input')
   await expect(hexInput).toHaveValue('111827')
@@ -33,6 +37,8 @@ test('button text color is editable without replacing the button label', async (
   await editor.canvas.waitForRender()
 
   const interactiveProps = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]

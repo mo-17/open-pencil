@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { parseExpression } from '@open-pencil/lowcode'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 
 import { videoLiveDefinition } from '@/app/lowcode/backend/business/definitions/media'
 import { createMediaApplication } from '@/app/lowcode/backend/business/model/media/application'
@@ -15,6 +16,8 @@ import {
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 import { createBusinessScreen } from '@/app/lowcode/backend/business/pages/screen'
 import type { BusinessText } from '@/app/lowcode/backend/business/types'
+
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
 
 const authentication = {
   kind: 'oidc-pkce' as const,
@@ -224,11 +227,13 @@ describe('video and live business page definition', () => {
       )
       expect(result.pageIds).toHaveLength(7)
       const nodes = [...editor.graph.getAllNodes()]
-      const players = nodes.filter((node) => node.interactiveProps?.module?.moduleType === 'video')
+      const players = nodes.filter(
+        (node) => readModuleInstance(node.interactiveProps?.module)?.moduleType === 'video'
+      )
       expect(players).toHaveLength(4)
       for (const player of players) {
         expect(player.interactiveProps?.lang).toBe(locale)
-        expect(player.interactiveProps?.module?.config).toMatchObject({
+        expect(readModuleInstance(player.interactiveProps?.module)?.config).toMatchObject({
           controls: true,
           autoplay: false
         })
@@ -247,7 +252,7 @@ describe('video and live business page definition', () => {
       expect(guards).toContain('.active === !0')
       expect(guards).toContain('.active === !1')
       const filters = nodes.flatMap((node) => {
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         return source?.kind === 'backendResource' && source.resourceId === 'media-favorites'
           ? (source.filterEntries ?? []).map((entry) => entry.valueExpr)
           : []

@@ -1,11 +1,12 @@
 import type { Node as YogaNode } from 'yoga-layout'
 
-import { isAutoLayoutMode, type SceneNode } from '@open-pencil/scene-graph'
+import { isAutoLayoutMode, enforcedAspectRatio, type SceneNode } from '@open-pencil/scene-graph'
+import { layoutConstrainedChildRect } from '@open-pencil/scene-graph/resize'
 
 import { resolveModalContent } from '#core/plugins/content/modal'
 import { resolveTabsContent } from '#core/plugins/content/tabs'
 
-import { usesDetachedDerivedLayout } from './derived'
+import { keepsSavedLayout, usesDetachedDerivedLayout } from './derived'
 import type { LayoutGraph } from './graph'
 import { preservesImportedInstanceLayout } from './imported-instance'
 
@@ -31,42 +32,142 @@ function preservesImportedHugCrossSize(
     )
 }
 
-function applyFrameSize(graph: LayoutGraph, frame: SceneNode, yogaNode: YogaNode): void {
+type LayoutGeometry = Partial<Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>>
+
+/**
+ * Writes only the geometry layout changed. Laying out a large page leaves most layers where they
+ * were, and each write would notify every graph listener for nothing. A frame it resizes from
+ * `before`, by default the size it has, places the layers its constraints govern; `constrained`
+ * marks a write those constraints made, which places its own children in turn.
+ */
+function writeLayoutGeometry(
+  graph: LayoutGraph,
+  id: string,
+  geometry: LayoutGeometry,
+  computeLayout: ComputeLayoutFn,
+  before?: { width: number; height: number },
+  constrained = false
+): void {
+  const node = graph.getNode(id)
+  if (!node) return
+  const from = before ?? { width: node.width, height: node.height }
+  const changes: LayoutGeometry = {}
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    const value = geometry[key]
+    if (value !== undefined && value !== node[key]) changes[key] = value
+  }
+  if (Object.keys(changes).length > 0) graph.updateNode(id, changes)
+  if (!CONSTRAINT_PARENT_TYPES.has(node.type)) return
+  // Laying out what a file holds, as a page opens or its fonts arrive, resizes a frame only where
+  // our layout differs from the one the file saved; its children keep the places it saved.
+  if (graph.isApplyingDerivedLayout && !constrained) return
+  if (from.width !== node.width || from.height !== node.height) {
+    constrainChildren(graph, node, from, computeLayout)
+  }
+}
+
+/**
+ * The size each Hug frame had after layout last ran on it. Keyed by the node, so a deleted
+ * frame's entry goes with it and a restored one starts afresh.
+ */
+const huggedSizes = new WeakMap<SceneNode, { width: number; height: number }>()
+
+const CONSTRAINT_PARENT_TYPES: ReadonlySet<SceneNode['type']> = new Set([
+  'FRAME',
+  'COMPONENT',
+  'COMPONENT_SET',
+  'INSTANCE'
+])
+
+/**
+ * Places the children of a frame layout resized by their constraints: every child of a frame
+ * without auto layout, and those that ignore an auto layout, as Figma keeps a badge pinned to the
+ * right of a Hug button while its label grows. A child it resizes places its own children, and
+ * lays out again when it has auto layout.
+ */
+function constrainChildren(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  before: { width: number; height: number },
+  computeLayout: ComputeLayoutFn
+): void {
+  for (const child of graph.getChildren(frame.id)) {
+    if (isAutoLayoutMode(frame.layoutMode) && child.layoutPositioning !== 'ABSOLUTE') continue
+    const size = { width: child.width, height: child.height }
+    writeLayoutGeometry(
+      graph,
+      child.id,
+      layoutConstrainedChildRect(
+        child,
+        before,
+        frame,
+        child.horizontalConstraint,
+        child.verticalConstraint,
+        enforcedAspectRatio(child)
+      ),
+      computeLayout,
+      undefined,
+      true
+    )
+    const resized = child.width !== size.width || child.height !== size.height
+    if (resized && isAutoLayoutMode(child.layoutMode)) computeLayout(graph, child.id)
+  }
+}
+
+/**
+ * The size a frame's constrained children move from as it hugs, or null when it hugs no axis.
+ * An editor that resizes a Hug frame places its children for the size it sets, which layout then
+ * hugs back, as when a parent stretches it; its children move only from the size it last hugged
+ * to. An axis it does not hug keeps the size it has.
+ */
+function hugStart(frame: SceneNode): { width: number; height: number } | null {
+  const row = frame.layoutMode === 'HORIZONTAL'
+  const hugsWidth = (row ? frame.primaryAxisSizing : frame.counterAxisSizing) === 'HUG'
+  const hugsHeight = (row ? frame.counterAxisSizing : frame.primaryAxisSizing) === 'HUG'
+  if (!hugsWidth && !hugsHeight) {
+    huggedSizes.delete(frame)
+    return null
+  }
+  const hugged = huggedSizes.get(frame)
+  return {
+    width: hugsWidth && hugged ? hugged.width : frame.width,
+    height: hugsHeight && hugged ? hugged.height : frame.height
+  }
+}
+
+function applyFrameSize(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  yogaNode: YogaNode,
+  keepsSaved: boolean,
+  computeLayout: ComputeLayoutFn
+): void {
   if (frame.layoutMode === 'GRID') {
     if (frame.gridTemplateRows.length === 0) {
-      graph.updateNode(frame.id, { height: yogaNode.getComputedHeight() })
+      writeLayoutGeometry(graph, frame.id, { height: yogaNode.getComputedHeight() }, computeLayout)
     }
     return
   }
 
-  if (frame.primaryAxisSizing !== 'HUG' && frame.counterAxisSizing !== 'HUG') return
+  const before = hugStart(frame)
+  if (!before) return
 
-  const computedW = yogaNode.getComputedWidth()
-  const computedH = yogaNode.getComputedHeight()
-  const updates: Partial<SceneNode> = {}
-
-  const derived = frame.derivedLayout
-  if (frame.primaryAxisSizing === 'HUG') {
-    if (frame.layoutMode === 'HORIZONTAL') updates.width = derived?.width ?? computedW
-    else updates.height = derived?.height ?? computedH
-  }
+  const updates: LayoutGeometry = {}
+  const derived = keepsSaved ? frame.derivedLayout : null
+  const primary = frame.layoutMode === 'HORIZONTAL' ? 'width' : 'height'
+  const counter = primary === 'width' ? 'height' : 'width'
+  const computed = (axis: 'width' | 'height') =>
+    axis === 'width' ? yogaNode.getComputedWidth() : yogaNode.getComputedHeight()
+  if (frame.primaryAxisSizing === 'HUG') updates[primary] = derived?.[primary] ?? computed(primary)
   if (frame.counterAxisSizing === 'HUG') {
-    if (frame.layoutMode === 'HORIZONTAL') {
-      updates.height = preservesImportedHugCrossSize(graph, frame, 'height')
-        ? frame.height
-        : (derived?.height ?? computedH)
-    } else {
-      updates.width = preservesImportedHugCrossSize(graph, frame, 'width')
-        ? frame.width
-        : (derived?.width ?? computedW)
-    }
+    updates[counter] =
+      keepsSaved && preservesImportedHugCrossSize(graph, frame, counter)
+        ? frame[counter]
+        : (derived?.[counter] ?? computed(counter))
   }
 
-  graph.updateNode(frame.id, updates)
-}
-
-function frameSourceIsFig(graph: LayoutGraph, parentId: string | null): boolean {
-  return parentId ? graph.getNode(parentId)?.source.format === 'fig' : false
+  writeLayoutGeometry(graph, frame.id, updates, computeLayout, before)
+  huggedSizes.set(frame, { width: frame.width, height: frame.height })
 }
 
 function computedChildPosition(
@@ -74,11 +175,11 @@ function computedChildPosition(
   yogaChild: YogaNode,
   axis: 'x' | 'y',
   preservesImportedGeometry: boolean,
-  parentLayoutEdited: boolean
+  keepsSaved: boolean
 ): number {
   if (preservesImportedGeometry) return child[axis]
   const computed = axis === 'x' ? yogaChild.getComputedLeft() : yogaChild.getComputedTop()
-  if (child.type === 'INSTANCE' || parentLayoutEdited) return computed
+  if (child.type === 'INSTANCE' || !keepsSaved) return computed
   return child.derivedLayout?.[axis] ?? computed
 }
 
@@ -97,11 +198,11 @@ function computedChildSize(
   yogaChild: YogaNode,
   axis: 'width' | 'height',
   preservesImportedFrameGeometry: boolean,
-  parentLayoutEdited: boolean
+  keepsSaved: boolean
 ): number {
   if (
     preservesImportedFrameGeometry ||
-    (!parentLayoutEdited && preservesStaleImportedTextSize(child, axis))
+    (keepsSaved && preservesStaleImportedTextSize(child, axis))
   ) {
     return child[axis]
   }
@@ -109,43 +210,48 @@ function computedChildSize(
   if (child.type === 'TEXT' && child.source.format === 'fig') {
     return computed > 0 ? computed : child[axis]
   }
-  return parentLayoutEdited ? computed : (child.derivedLayout?.[axis] ?? computed)
+  if (!keepsSaved) return computed
+  return child.derivedLayout?.[axis] ?? computed
 }
 
-function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: YogaNode): void {
+function updateChildFromYoga(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  child: SceneNode,
+  yogaChild: YogaNode,
+  keepsSaved: boolean,
+  computeLayout: ComputeLayoutFn
+): void {
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
-  // Preserve imported geometry until the user explicitly changes its parent's
-  // flow. After that, stale FIG positions must not override the chosen layout.
-  const parentLayoutEdited = child.parentId
-    ? graph.getNode(child.parentId)?.source.editedFields.includes('layoutMode') === true
-    : false
+  const savedFig = keepsSaved && child.source.format === 'fig'
   const preservesImportedFrameGeometry =
-    !parentLayoutEdited &&
-    child.source.format === 'fig' &&
-    frameSourceIsFig(graph, child.parentId) &&
-    (child.type === 'FRAME' || child.type === 'LINE')
+    savedFig && frame.source.format === 'fig' && (child.type === 'FRAME' || child.type === 'LINE')
   const preservesImportedPosition =
-    preservesImportedFrameGeometry ||
-    (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
-  graph.updateNode(child.id, {
-    x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition, parentLayoutEdited),
-    y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition, parentLayoutEdited),
-    width: computedChildSize(
-      child,
-      yogaChild,
-      'width',
-      preservesImportedFrameGeometry,
-      parentLayoutEdited
-    ),
-    height: computedChildSize(
-      child,
-      yogaChild,
-      'height',
-      preservesImportedFrameGeometry,
-      parentLayoutEdited
-    )
-  })
+    preservesImportedFrameGeometry || (savedFig && Math.abs(child.rotation) > 0.001)
+  writeLayoutGeometry(
+    graph,
+    child.id,
+    {
+      x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition, keepsSaved),
+      y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition, keepsSaved),
+      width: computedChildSize(
+        child,
+        yogaChild,
+        'width',
+        preservesImportedFrameGeometry,
+        keepsSaved
+      ),
+      height: computedChildSize(
+        child,
+        yogaChild,
+        'height',
+        preservesImportedFrameGeometry,
+        keepsSaved
+      )
+    },
+    computeLayout
+  )
 }
 
 function* recomputeGridChildSteps(
@@ -188,7 +294,13 @@ export function* applyYogaLayoutSteps(
   yogaNode: YogaNode,
   computeLayoutSteps: ComputeLayoutStepsFn
 ): Generator<LayoutApplyStep, void, void> {
-  applyFrameSize(graph, frame, yogaNode)
+  const computeLayout: ComputeLayoutFn = (target, id) => {
+    for (const _step of computeLayoutSteps(target, id)) {
+      /* Run dependent constraint layout in the current mutation transaction. */
+    }
+  }
+  const keepsSaved = keepsSavedLayout(graph, frame)
+  applyFrameSize(graph, frame, yogaNode, keepsSaved, computeLayout)
   yield 'work'
 
   const children = graph.getChildren(frame.id)
@@ -198,17 +310,16 @@ export function* applyYogaLayoutSteps(
     const yogaChild = yogaNode.getChild(yogaIndex)
     yogaIndex++
 
-    updateChildFromYoga(graph, child, yogaChild)
+    updateChildFromYoga(graph, frame, child, yogaChild, keepsSaved, computeLayout)
     yield 'work'
 
     if (!child.visible) continue
     if (preservesImportedInstanceLayout(graph, child)) continue
-    if (resolveTabsContent(graph, child) || resolveModalContent(graph, child)) {
-      yield* computeLayoutSteps(graph, child.id)
-      continue
-    }
-
-    if (usesDetachedDerivedLayout(child)) {
+    if (
+      resolveTabsContent(graph, child) ||
+      resolveModalContent(graph, child) ||
+      usesDetachedDerivedLayout(graph, child)
+    ) {
       yield* computeLayoutSteps(graph, child.id)
       continue
     }

@@ -255,7 +255,7 @@ describe('application mode workflows', () => {
     const view = readApplicationMode(editor)
     expect(view.enabled).toBe(false)
     expect(view.invalid).toBe(true)
-    expect(root.lowcodeApplication).toBe(future)
+    expect<unknown>(root.lowcodeApplication).toBe(future)
     setApplicationEnabled(editor, true, 'Replace mode')
     setApplicationRole(editor, page, 'application', 'Role')
     setApplicationEntry(editor, page, frame.id, 'Entry')

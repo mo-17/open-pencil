@@ -32,11 +32,14 @@ These are the main composables most `@open-pencil/vue` consumers will use.
 - [useSharedStyleBinding](./use-shared-style-binding)
 - [useColorModel](./use-color-model)
 - [useMask](./use-mask)
+- [useVariableModes](./use-variable-modes)
 - [useTypography](./use-typography)
 - [useExport](./use-export)
 - [useFillControls](./use-fill-controls)
 - [useStrokeControls](./use-stroke-controls)
 - [useEffectsControls](./use-effects-controls)
+- [useSelectionLayout](./use-selection-layout)
+- [useSelectionColors](./use-selection-colors)
 
 ## Document workspaces
 
@@ -44,6 +47,5 @@ These are the main composables most `@open-pencil/vue` consumers will use.
 
 ## Variables, navigation, and localization
 
-- [useVariablesEditor](./use-variables-editor)
 - [usePageList](./use-page-list)
 - [useI18n](./use-i18n)

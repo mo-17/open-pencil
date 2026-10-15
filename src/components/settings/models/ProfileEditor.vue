@@ -4,6 +4,7 @@ import { computed, ref, useTemplateRef } from 'vue'
 import type { AIProviderID } from '@open-pencil/core/constants'
 import { useDialogMessages, useI18n } from '@open-pencil/vue'
 
+import { usePiSetup } from '@/app/ai/agents/setup'
 import {
   MAX_REMOTE_MCP_SERVERS_PER_MODEL,
   remoteMCPSettings,
@@ -13,12 +14,13 @@ import { useModelProfileFeedback } from '@/app/ai/models/settings/profile-editor
 import { useModelProfileEditor } from '@/app/ai/models/settings/profile-editor/use'
 import { thinkingLevelOptions as buildThinkingLevelOptions } from '@/app/ai/models/thinking'
 import { useSettingsFormGuard } from '@/app/settings/navigation/use'
-import ProviderConnectionTestButton from '@/components/chat/ProviderConnectionTestButton.vue'
+import PiSetup from '@/components/settings/agents/PiSetup.vue'
 import { focusInvalidField } from '@/components/settings/layout/focus'
 import SettingsPage from '@/components/settings/layout/SettingsPage.vue'
 import SettingsSaveFeedback from '@/components/settings/layout/SettingsSaveFeedback.vue'
 import SettingsSection from '@/components/settings/layout/SettingsSection.vue'
 import ProviderSelect from '@/components/settings/provider-select/ProviderSelect.vue'
+import ProviderConnectionTestButton from '@/components/settings/provider/ProviderConnectionTestButton.vue'
 import ProviderSettingsField from '@/components/settings/provider/ProviderSettingsField.vue'
 import ProviderSettingsInput from '@/components/settings/provider/ProviderSettingsInput.vue'
 import ProviderSettingsKeyField from '@/components/settings/provider/ProviderSettingsKeyField.vue'
@@ -34,6 +36,8 @@ const emit = defineEmits<{ done: []; deleted: [] }>()
 const { ai, common, credentials, settings } = useI18n()
 const formElement = useTemplateRef<HTMLFormElement>('formElement')
 const dialogs = useDialogMessages()
+const nameInput = useTemplateRef('nameInput')
+defineExpose({ focus: () => nameInput.value?.focus({ preventScroll: true }) })
 const keyInput = ref('')
 const deleteOpen = ref(false)
 const profile = useModelProfileEditor({ profileId, keyInput, labels: ai })
@@ -77,6 +81,10 @@ const codeExecutionEnabled = computed({
     draft.featurePolicy.codeExecution.enabled = enabled
   }
 })
+const pi = usePiSetup(isHarness)
+const customModelPlaceholder = computed(() =>
+  isHarness.value ? (pi.state.value?.defaultModel ?? 'provider/model') : 'e.g. llama-3.3-70b'
+)
 const feedback = useModelProfileFeedback(profile, keyInput, settings)
 const { errors: fieldErrors } = feedback
 const busy = computed(() => saving.value || connectionTestStatus.value === 'testing')
@@ -164,6 +172,7 @@ async function remove() {
             @blur="feedback.blur('name')"
           >
             <AppInput
+              ref="nameInput"
               v-bind="control"
               v-model="draft.name"
               :aria-label="ai.modelName"
@@ -181,6 +190,15 @@ async function remove() {
             />
           </ProviderSettingsField>
 
+          <div v-if="pi.state.value" class="flex flex-col gap-2" data-test-id="settings-pi-setup">
+            <PiSetup
+              :setup="pi.state.value"
+              @check="pi.refresh()"
+              @install-companion="pi.installCompanion()"
+              @install-bridge="pi.installBridge()"
+            />
+          </div>
+
           <template v-if="!isACP">
             <div class="flex items-center gap-2 pt-1">
               <p class="text-[10px] font-medium uppercase tracking-wide text-muted">
@@ -190,7 +208,7 @@ async function remove() {
             </div>
 
             <ProviderSettingsField
-              v-if="modelOptions.length"
+              v-if="modelOptions.length && !isHarness"
               v-slot="{ control }"
               :label="ai.modelID"
               :error="fieldErrors.modelID"
@@ -212,7 +230,7 @@ async function remove() {
               v-if="providerDef.supportsCustomModel && selectedModelValue === CUSTOM_MODEL_VALUE"
               v-slot="{ control }"
               :label="ai.customModelID"
-              :hint="settings.modelIDHint"
+              :hint="isHarness ? ai.piModelHint : settings.modelIDHint"
               :error="fieldErrors.customModelID"
               @blur="feedback.blur('customModelID')"
             >
@@ -221,7 +239,7 @@ async function remove() {
                 v-model="draft.customModelID"
                 :aria-label="ai.customModelID"
                 data-test-id="provider-settings-custom-model"
-                placeholder="e.g. llama-3.3-70b"
+                :placeholder="customModelPlaceholder"
               />
             </ProviderSettingsField>
 
@@ -428,7 +446,7 @@ async function remove() {
               </div>
             </div>
           </div>
-          <p v-if="featureError" class="text-[10px] text-danger" role="alert">{{ featureError }}</p>
+          <p v-if="featureError" class="text-[10px] text-error" role="alert">{{ featureError }}</p>
           <SettingsSaveFeedback :error="saveError" :result="saveResult" />
         </fieldset>
       </SettingsSection>

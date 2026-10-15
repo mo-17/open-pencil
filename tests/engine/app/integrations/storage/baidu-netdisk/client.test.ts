@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   baiduNetdiskChunkMd5,
   baiduNetdiskRemoteRevision,
@@ -44,7 +46,7 @@ function transportWithCapabilities(
 ): { transport: BaiduNetdiskTransport; registered: Array<[BaiduNetdiskCapabilityKind, string]> } {
   const registered: Array<[BaiduNetdiskCapabilityKind, string]> = []
   const transport = Object.assign(
-    (input: RequestInfo | URL, init: RequestInit = {}) => {
+    async (input: RequestInfo | URL, init: RequestInit = {}) => {
       let href: string
       if (input instanceof URL) href = input.toString()
       else if (typeof input === 'string') href = input
@@ -132,11 +134,20 @@ describe('BaiduNetdiskClient', () => {
   })
 
   test('protects uk and fs_id before JSON.parse can round uint64 values', () => {
-    const parsed = JSON.parse(
+    const parsed = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.strictObject({
+          uk: v.string(),
+          nested: v.strictObject({ fs_id: v.string() }),
+          text: v.string()
+        })
+      ),
       protectBaiduNetdiskDecimalIds(
         `{"uk":208281036,"nested":{"fs_id":18446744073709551615},"text":"fs_id:123"}`
       )
-    ) as { uk: string; nested: { fs_id: string }; text: string }
+    )
 
     expect(parsed.uk).toBe('208281036')
     expect(parsed.nested.fs_id).toBe('18446744073709551615')
@@ -197,7 +208,10 @@ describe('BaiduNetdiskClient', () => {
         const body = init.body as URLSearchParams
         expect(body.get('path')).toBe(`${BAIDU_NETDISK_APP_ROOT}/${DOCUMENT_ID}--惊悚.fig`)
         expect(body.get('rtype')).toBe('1')
-        hashes = JSON.parse(body.get('block_list') ?? '[]') as string[]
+        hashes = v.parse(
+          v.pipe(v.string(), v.parseJson(), v.array(v.string())),
+          body.get('block_list') ?? '[]'
+        )
         expect(hashes).toHaveLength(2)
         return Response.json({ errno: 0, uploadid: 'upload-1', block_list: [0, 1] })
       }

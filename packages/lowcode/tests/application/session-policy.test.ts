@@ -22,6 +22,7 @@ describe('application page session retention contract', () => {
   test('absent policy preserves exact old canonical metadata and projection shape', () => {
     const { graph, page, entry } = fixture()
     const original = structuredClone(page.lowcodeApplicationPage)
+    if (!original) throw new Error('Expected application page policy')
     expect(validateLowcodeApplicationPage(original)).toEqual({ ok: true, value: original })
     expect(resolveLowcodeApplicationPages(graph).pages).toEqual([
       { pageId: page.id, entryNodeId: entry.id }
@@ -33,7 +34,12 @@ describe('application page session retention contract', () => {
     '%s is authored, detached and scoped only in application mode',
     (stateRetention) => {
       const { graph, root, page, entry } = fixture()
-      const policy = { version: 1, role: 'application', entryNodeId: entry.id, stateRetention }
+      const policy = {
+        version: 1 as const,
+        role: 'application' as const,
+        entryNodeId: entry.id,
+        stateRetention
+      }
       const result = validateLowcodeApplicationPage(policy)
       expect(result).toEqual({ ok: true, value: policy })
       if (!result.ok) throw new Error('Valid policy rejected')
@@ -53,7 +59,7 @@ describe('application page session retention contract', () => {
   test('reference/components roles retain dormant preferences without entering runtime scope', () => {
     const { graph, page } = fixture()
     for (const role of ['reference', 'components'] as const) {
-      const policy = { version: 1, role, stateRetention: 'preserve' as const }
+      const policy = { version: 1 as const, role, stateRetention: 'preserve' as const }
       expect(validateLowcodeApplicationPage(policy)).toEqual({ ok: true, value: policy })
       page.lowcodeApplicationPage = policy
       expect(resolveLowcodeApplicationPages(graph).pages).toEqual([])

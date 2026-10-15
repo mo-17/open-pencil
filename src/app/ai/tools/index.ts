@@ -1,7 +1,12 @@
 import { tool } from 'ai'
-import type { ToolExecutionOptions } from 'ai'
+import type { ToolExecutionOptions, ToolSet } from 'ai'
+import { isPlainObject } from 'es-toolkit/predicate'
 
-import { graphFromPageSnapshot } from '@open-pencil/core/editor'
+import {
+  graphFromPageSnapshot,
+  isEmptyDocumentChange,
+  type DocumentChange
+} from '@open-pencil/core/editor'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 import {
   registerComponentCatalog,
@@ -9,7 +14,12 @@ import {
   toolChangesDocument,
   toolsToAI
 } from '@open-pencil/core/tools'
-import type { ToolLogEntry, ToolDef, AIAdapterExecutionContext } from '@open-pencil/core/tools'
+import type {
+  ToolLogEntry,
+  ToolDef,
+  AIAdapterExecutionContext,
+  ToolCtx
+} from '@open-pencil/core/tools'
 
 import { DEFAULT_AGENT_STEPS } from '@/app/ai/chat/step-limit'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -34,6 +44,11 @@ import { aiToolDefinitions } from './catalog'
 import { recordToolChange } from './changes/capture'
 import {
   getRunState,
+  currentRun,
+  markRunChange,
+  recordRunUndoEntry,
+  takeRunUndoNote,
+  type Run,
   markRunWork,
   moveRunToPage,
   recordRunBaseline,
@@ -47,6 +62,7 @@ import {
   runAgentId
 } from './run'
 export { endRun, runAgentId, runPageId }
+export { currentRun, didHitStepLimit, markRunPreview, runUndoEntries } from './run'
 import {
   createCommerceAITools,
   COMMERCE_AI_TOOL_NAME,
@@ -270,6 +286,8 @@ async function finalizeSuccessfulMutation(
 
 export interface CreateAIToolsOptions {
   readonly diagnosticContext?: AIDiagnosticContext
+  /** Direct chat Stop lets the already-started call settle into its reply. */
+  readonly startedCallCancellation?: 'abort' | 'finish'
   readonly commerce?: CommerceAIToolOptions
   readonly business?: BusinessAIToolOptions
   readonly personalNotes?: PersonalNotesAIToolOptions
@@ -280,25 +298,52 @@ export function startRun(store: EditorStore, maxSteps: number, model?: string): 
   startAgentRun(store, maxSteps, model)
 }
 
-export function createAITools(store: EditorStore, options: CreateAIToolsOptions = {}) {
+function isDiagnosticContext(
+  input: CreateAIToolsOptions | AIDiagnosticContext
+): input is AIDiagnosticContext {
+  return 'sessionId' in input || 'runId' in input
+}
+
+export function createAITools(
+  store: EditorStore,
+  input: CreateAIToolsOptions | AIDiagnosticContext = {}
+): ToolSet {
+  const options: CreateAIToolsOptions = isDiagnosticContext(input)
+    ? { diagnosticContext: input }
+    : input
   let activeMutation: MutationTransaction | undefined
   let lastSuccessfulSnapshot: SuccessfulSnapshot | undefined
   const runState = getRunState(store)
-  const reviews = new Map<string, { before: PageHistorySnapshot; pageId: string }>()
+  const callRuns = new Map<string, Run>()
+  const finishesStartedCalls = options.startedCallCancellation === 'finish'
+  const reviews = new Map<
+    string,
+    {
+      finishChange: () => DocumentChange
+      undoBefore: ReturnType<EditorStore['undo']['peekUndo']>
+      run: Run
+    }
+  >()
   const captureReview = (def: ToolDef, context: AIAdapterExecutionContext) => {
     const id = context.toolCallId
     const review = id ? reviews.get(id) : undefined
     if (id) reviews.delete(id)
-    if (!review || context.status !== 'success' || !toolChangesDocument(def)) return
+    if (!review) return
     try {
+      if (context.status !== 'success' || !toolChangesDocument(def)) {
+        review.finishChange()
+        return
+      }
       if (!id) return
-      const after =
-        lastSuccessfulSnapshot?.scope === 'page' && lastSuccessfulSnapshot.pageId === review.pageId
-          ? lastSuccessfulSnapshot.snapshot
-          : store.snapshotPage(review.pageId)
-      recordToolChange(store, id, review.before, after)
+      const change = review.finishChange()
+      if (!isEmptyDocumentChange(change)) review.run.changedCalls.add(id)
+      recordRunUndoEntry(store, review.run, { tool: def.name, toolCallId: id }, review.undoBefore)
+      recordToolChange(store, id, change)
+      markRunChange(store, change)
     } catch (error) {
       console.warn('Could not record AI tool change', error)
+    } finally {
+      review.run.endTool()
     }
   }
   // CodePen shadow tools require the full app EditorStore lifecycle. Keeping
@@ -316,29 +361,119 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
     ...(codePenToolsEnabled ? createCodePenAITools(store) : [])
   ]
 
+  const runForCall = (toolCallId?: string) =>
+    toolCallId ? (callRuns.get(toolCallId) ?? currentRun(store)) : currentRun(store)
+
+  function startCallReview(def: ToolDef, context: ToolCtx | undefined, pageId: string, run: Run) {
+    if (toolChangesDocument(def)) {
+      const before =
+        activeMutation?.scope === 'page' && activeMutation.pageId === pageId
+          ? activeMutation.before
+          : store.snapshotPage(pageId)
+      recordRunBaseline(run, before)
+      if (context?.toolCallId) {
+        run.beginTool()
+        reviews.set(context.toolCallId, {
+          finishChange: store.captureDocumentChange(pageId),
+          undoBefore: store.undo.peekUndo(),
+          run
+        })
+      }
+    }
+  }
+
+  function reusableSnapshot(
+    scope: MutationTransaction['scope'],
+    pageId: string,
+    coalesceKey: string
+  ) {
+    return lastSuccessfulSnapshot?.scope === scope &&
+      lastSuccessfulSnapshot.pageId === pageId &&
+      lastSuccessfulSnapshot.coalesceKey === coalesceKey &&
+      lastSuccessfulSnapshot.sceneVersion === store.state.sceneVersion &&
+      lastSuccessfulSnapshot.undoRevision === store.undo.revision
+      ? lastSuccessfulSnapshot.snapshot
+      : undefined
+  }
+
+  function callMutationFailed(context: AIAdapterExecutionContext) {
+    return context.status !== 'success' || (!finishesStartedCalls && context.signal?.aborted)
+  }
+
+  async function finishCallMutation(
+    def: ToolDef,
+    context: AIAdapterExecutionContext,
+    transaction: MutationTransaction
+  ) {
+    const graphChanged = mutationChanged(store, transaction)
+    const historyChanged = undoHistoryChanged(store, transaction)
+    if (historyChanged) lastSuccessfulSnapshot = undefined
+    if (callMutationFailed(context)) {
+      // The JSX renderer owns its creation transaction and removes every
+      // partial root on failure/abort. A page-wide restore here would also
+      // erase unrelated user edits made while a large tree was yielding.
+      if (!graphChanged) return
+      lastSuccessfulSnapshot = undefined
+      if (!historyChanged && def.name !== 'render') restoreMutation(store, transaction)
+      return
+    }
+    if (!graphChanged) return
+
+    try {
+      const successfulSnapshot = await finalizeSuccessfulMutation(
+        store,
+        def.name,
+        transaction,
+        finishesStartedCalls ? undefined : context.signal
+      )
+      lastSuccessfulSnapshot = successfulSnapshot
+    } catch (error) {
+      lastSuccessfulSnapshot = undefined
+      if (!undoHistoryChanged(store, transaction)) restoreMutation(store, transaction)
+      throw error
+    }
+  }
+
   const applicationTools = toolsToAI(
     toolDefinitions,
     {
       mutationKey: store,
+      startedCallCancellation: options.startedCallCancellation,
       executeTool: async (def, figma, args, context) => {
         const pageId = figma.currentPageId
-        if (toolChangesDocument(def)) {
-          const before =
-            activeMutation?.scope === 'page' && activeMutation.pageId === pageId
-              ? activeMutation.before
-              : store.snapshotPage(pageId)
-          recordRunBaseline(store, before)
-          if (context?.toolCallId) reviews.set(context.toolCallId, { before, pageId })
+        const run = runForCall(context?.toolCallId)
+        const toolContext = finishesStartedCalls ? { ...context, signal: undefined } : context
+        if (def.mutates && !run.active)
+          return { error: 'Stopped before this call ran; nothing was changed.' }
+        startCallReview(def, context, pageId, run)
+        let result: unknown
+        if (isAtomicTool(def)) {
+          result = await executeAtomicEditorTool(store, figma, def, args, {
+            label: 'AI',
+            signal: toolContext?.signal,
+            context: toolContext
+          })
+        } else if (
+          finishesStartedCalls &&
+          def.mutates &&
+          !POSTPROCESS_FREE_TOOLS.has(def.name) &&
+          !DOCUMENT_SCOPE_TOOLS.has(def.name)
+        ) {
+          result = await store.runMutationWithLayout(
+            () => def.execute(figma, args, toolContext),
+            pageId,
+            async () => {
+              const page = store.graph.getNode(pageId)
+              if (page) await ensureGraphFonts(store.graph, page.childIds, store.renderer)
+            }
+          )
+        } else {
+          result = await def.execute(figma, args, toolContext)
         }
-        const result = isAtomicTool(def)
-          ? await executeAtomicEditorTool(store, figma, def, args, {
-              label: 'AI',
-              signal: context?.signal,
-              context
-            })
-          : await def.execute(figma, args, context)
-        if (figma.currentPageId !== pageId) await moveRunToPage(store, figma.currentPageId)
-        return result
+        if (figma.currentPageId !== pageId) await moveRunToPage(store, run, figma.currentPageId)
+        const undoNote = takeRunUndoNote(store, run)
+        if (!undoNote) return result
+        return isPlainObject(result) ? { ...result, undoNote } : { result, undoNote }
       },
       getFigma: () => {
         const figma = makeFigmaFromStore(store, runPageId(store))
@@ -359,6 +494,9 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         return undefined
       },
       onBeforeExecute: (def, { args, signal, toolCallId }) => {
+        const run = runForCall(toolCallId)
+        if (def.mutates && !run.active)
+          throw new Error('Stopped before this call ran; nothing was changed.')
         if (COMPONENT_CATALOG_TOOL_NAMES.has(def.name)) {
           const libraryService = useLibraryService()
           libraryService.bindEditor(store)
@@ -377,17 +515,10 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         ) {
           const { pageId, scope } = resolveEditorMutationScope(store, args, {
             forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name),
-            defaultPageId: runPageId(store)
+            defaultPageId: run.pageId || runPageId(store)
           })
           const coalesceKey = `${runState.undoCoalesceKey}:${scope}:${pageId}${toolCallId ? `:${toolCallId}` : ''}`
-          const reusableBefore =
-            lastSuccessfulSnapshot?.scope === scope &&
-            lastSuccessfulSnapshot.pageId === pageId &&
-            lastSuccessfulSnapshot.coalesceKey === coalesceKey &&
-            lastSuccessfulSnapshot.sceneVersion === store.state.sceneVersion &&
-            lastSuccessfulSnapshot.undoRevision === store.undo.revision
-              ? lastSuccessfulSnapshot.snapshot
-              : undefined
+          const reusableBefore = reusableSnapshot(scope, pageId, coalesceKey)
           const common = {
             pageId,
             coalesceKey,
@@ -420,39 +551,20 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
           activeMutation = undefined
           if (!transaction) return
 
-          const graphChanged = mutationChanged(store, transaction)
-          const historyChanged = undoHistoryChanged(store, transaction)
-          if (historyChanged) lastSuccessfulSnapshot = undefined
-          if (context.status !== 'success' || context.signal?.aborted) {
-            // The JSX renderer owns its creation transaction and removes every
-            // partial root on failure/abort. A page-wide restore here would also
-            // erase unrelated user edits made while a large tree was yielding.
-            if (!graphChanged) return
-            lastSuccessfulSnapshot = undefined
-            if (!historyChanged && def.name !== 'render') restoreMutation(store, transaction)
-            return
-          }
-          if (!graphChanged) return
-
-          try {
-            const successfulSnapshot = await finalizeSuccessfulMutation(
-              store,
-              def.name,
-              transaction,
-              context.signal
-            )
-            lastSuccessfulSnapshot = successfulSnapshot
-          } catch (error) {
-            lastSuccessfulSnapshot = undefined
-            if (!undoHistoryChanged(store, transaction)) restoreMutation(store, transaction)
-            throw error
-          }
+          await finishCallMutation(def, context, transaction)
         } catch (error) {
           presentationFailed = true
           throw error
         } finally {
-          if (presentationFailed && context.toolCallId) reviews.delete(context.toolCallId)
-          else captureReview(def, context)
+          if (presentationFailed && context.toolCallId) {
+            const review = reviews.get(context.toolCallId)
+            reviews.delete(context.toolCallId)
+            try {
+              review?.finishChange()
+            } finally {
+              review?.run.endTool()
+            }
+          } else captureReview(def, context)
         }
       },
       onFlashNodes: (nodeIds) => {
@@ -471,13 +583,25 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
             mutates: entry.mutates,
             failed: Boolean(entry.error)
           },
-          options.diagnosticContext
+          options.diagnosticContext,
+          entry.cause
         )
       },
       getStepBudget: () => stepBudget(store)
     },
     { tool }
   )
+  for (const entry of Object.values(applicationTools)) {
+    const execute = entry.execute
+    if (!execute) continue
+    entry.execute = (args, execution = { toolCallId: '', messages: [], context: undefined }) => {
+      const id = execution.toolCallId
+      if (id) callRuns.set(id, currentRun(store))
+      return Promise.resolve(execute(args, execution)).finally(() => {
+        if (id) callRuns.delete(id)
+      })
+    }
+  }
   const { create_module: hiddenCreateModuleTool, ...publicApplicationTools } = applicationTools
   const createModuleExecutor = executableAITool(hiddenCreateModuleTool)
   if (!createModuleExecutor) {

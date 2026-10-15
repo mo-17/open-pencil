@@ -181,7 +181,7 @@ describe('browser preview Worker protocol', () => {
       result: { status: 'ready', html: '<main>ready</main>', diagnostics: [], metrics: metrics() }
     }
     expect(parseBrowserPreviewWorkerResponse(response, REQUEST_ID, 7)).toBeNull()
-    expect(parseBrowserPreviewWorkerResponse(response, REQUEST_ID, 8)).toEqual(response)
+    expect<unknown>(parseBrowserPreviewWorkerResponse(response, REQUEST_ID, 8)).toEqual(response)
     expect(() =>
       parseBrowserPreviewWorkerResponse({ ...response, extra: true }, REQUEST_ID, 8)
     ).toThrow('fields are invalid')
@@ -196,7 +196,7 @@ describe('browser preview Worker protocol', () => {
       stage: 'fonts',
       elapsedMs: 12.5
     }
-    expect(parseBrowserPreviewWorkerResponse(progress, REQUEST_ID, 8)).toEqual(progress)
+    expect<unknown>(parseBrowserPreviewWorkerResponse(progress, REQUEST_ID, 8)).toEqual(progress)
     expect(parseBrowserPreviewWorkerResponse(progress, REQUEST_ID, 7)).toBeNull()
     expect(() =>
       parseBrowserPreviewWorkerResponse({ ...progress, stage: 'network' }, REQUEST_ID, 8)

@@ -1,9 +1,17 @@
+import {
+  Button as RekaButton,
+  Checkbox as RekaCheckbox,
+  Switch as RekaSwitch,
+  Textarea as RekaTextarea
+} from './behaviours/elements'
 import { LOWCODE_INTRINSIC_ELEMENTS } from './lowcode'
 import {
   node,
   type BaseProps,
   type ComponentProps,
   type InstanceProps,
+  type ParagraphProps,
+  type SpanProps,
   type TextProps,
   type TreeNode
 } from './tree'
@@ -23,6 +31,14 @@ export function Frame(props: BaseProps, ...children: Child[]): TreeNode {
 
 export function Text(props: TextProps, ...children: Child[]): TreeNode {
   return withChildren('text', props, children)
+}
+
+export function Span(props: SpanProps, ...children: Child[]): TreeNode {
+  return withChildren('text-span', props, children)
+}
+
+export function Paragraph(props: ParagraphProps, ...children: Child[]): TreeNode {
+  return withChildren('text-paragraph', props, children)
 }
 
 export function Rectangle(props: BaseProps, ...children: Child[]): TreeNode {
@@ -75,7 +91,7 @@ export function Instance(props: InstanceProps, ...children: Child[]): TreeNode {
   return withChildren('instance', props, children)
 }
 
-export function Button(props: BaseProps, ...children: Child[]): TreeNode {
+function lowcodeButton(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('button', props, children)
 }
 
@@ -87,7 +103,7 @@ export function Select(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('select', props, children)
 }
 
-export function Checkbox(props: BaseProps, ...children: Child[]): TreeNode {
+function lowcodeCheckbox(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('checkbox', props, children)
 }
 
@@ -103,7 +119,7 @@ export function Radio(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('radio', props, children)
 }
 
-export function Textarea(props: BaseProps, ...children: Child[]): TreeNode {
+function lowcodeTextarea(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('textarea', props, children)
 }
 
@@ -111,7 +127,7 @@ export function DatePicker(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('datepicker', props, children)
 }
 
-export function Switch(props: BaseProps, ...children: Child[]): TreeNode {
+function lowcodeSwitch(props: BaseProps, ...children: Child[]): TreeNode {
   return withChildren('switch', props, children)
 }
 
@@ -122,6 +138,8 @@ export const Page = Frame
 export const INTRINSIC_ELEMENTS = [
   'frame',
   'text',
+  'text-span',
+  'text-paragraph',
   'rectangle',
   'ellipse',
   'line',
@@ -135,3 +153,15 @@ export const INTRINSIC_ELEMENTS = [
   'instance',
   ...LOWCODE_INTRINSIC_ELEMENTS
 ] as const
+
+/** The fork control function also exposes the official Reka namespace. */
+export const Button = Object.assign(lowcodeButton, RekaButton)
+
+/** The fork control function also exposes the official Reka namespace. */
+export const Checkbox = Object.assign(lowcodeCheckbox, RekaCheckbox)
+
+/** The fork control function also exposes the official Reka namespace. */
+export const Switch = Object.assign(lowcodeSwitch, RekaSwitch)
+
+/** The fork control function also exposes the official Reka namespace. */
+export const Textarea = Object.assign(lowcodeTextarea, RekaTextarea)

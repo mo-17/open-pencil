@@ -416,7 +416,10 @@ describe('preview browser — compiled Slide Menu module', () => {
       const panels = page.locator('[data-openpencil-slide-menu-panel]')
       await triggers.nth(0).click()
       await playwrightExpect(overlays).toHaveCount(1)
-      await triggers.nth(1).evaluate((element) => element.click())
+      await triggers.nth(1).evaluate((element) => {
+        if (!(element instanceof HTMLElement)) throw new Error('Expected an HTML trigger')
+        element.click()
+      })
       await playwrightExpect(overlays).toHaveCount(2)
       await playwrightExpect(panels.nth(0)).toHaveAttribute('data-state', 'open')
       await playwrightExpect(panels.nth(1)).toHaveAttribute('data-state', 'open')
@@ -431,7 +434,10 @@ describe('preview browser — compiled Slide Menu module', () => {
       ).toBe(true)
       expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
 
-      await triggers.nth(1).evaluate((element) => element.click())
+      await triggers.nth(1).evaluate((element) => {
+        if (!(element instanceof HTMLElement)) throw new Error('Expected an HTML trigger')
+        element.click()
+      })
       await playwrightExpect(overlays).toHaveCount(2)
       await playwrightExpect(panels.nth(1)).toHaveAttribute('data-state', 'open')
       await overlays
@@ -491,7 +497,10 @@ describe('preview browser — compiled Slide Menu module', () => {
       await playwrightExpect(overlay).toHaveCount(1)
       await playwrightExpect(panel).toHaveAttribute('data-state', 'closed')
       await playwrightExpect
-        .poll(() => page.evaluate(() => document.body.style.overflow))
+        .poll(() => {
+          if (!page) throw new Error('Expected page')
+          return page.evaluate(() => document.body.style.overflow)
+        })
         .toBe('hidden')
 
       await page.keyboard.press('Escape')

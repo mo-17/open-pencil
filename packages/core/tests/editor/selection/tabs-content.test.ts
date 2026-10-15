@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { createRendererProbe, disposeRendererProbes } from '#core-tests/helpers/renderer'
+import {
+  createRendererProbe,
+  createRendererTestEditor as createEditor,
+  disposeRendererProbes
+} from '#core-tests/helpers/renderer'
 
-import { createEditor } from '@open-pencil/core/editor'
-import { createSceneGeometry } from '@open-pencil/core/geometry'
-import { createTabsModuleFrameOverrides } from '@open-pencil/core/plugins'
 import type { SceneNode } from '@open-pencil/scene-graph'
+
+import { createSceneGeometry } from '#core/geometry'
+import { createTabsModuleFrameOverrides } from '#core/plugins'
 
 afterEach(disposeRendererProbes)
 

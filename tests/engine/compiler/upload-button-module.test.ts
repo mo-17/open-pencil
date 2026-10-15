@@ -6,6 +6,7 @@ import {
   UPLOAD_BUTTON_REACT_MODULE_ADAPTER
 } from '#compiler/adapters/react/modules/upload-button'
 import type { IRElement } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -90,9 +91,14 @@ describe('compiler trusted Upload Button module adapter', () => {
     })
     const app = String(output.files.get('src/App.tsx'))
     const runtime = String(output.files.get('src/__openpencil_upload_button.tsx'))
-    const pkg = JSON.parse(String(output.files.get('package.json'))) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      String(output.files.get('package.json'))
+    )
 
     expect(app).toContain("import OpenPencilUploadButton from './__openpencil_upload_button'")
     expect(app).toContain('<OpenPencilUploadButton config={{')
@@ -156,9 +162,7 @@ describe('compiler trusted Upload Button module adapter', () => {
     ).toBeUndefined()
     expect(
       trustedNativeUploadButtonTrigger(
-        nativeUploadTriggerElement(payload, [
-          { kind: 'text', sourceId: 'authored', value: 'Authored trigger' }
-        ])
+        nativeUploadTriggerElement(payload, [{ kind: 'text', value: 'Authored trigger' }])
       )
     ).toEqual({
       label: 'Choose files',

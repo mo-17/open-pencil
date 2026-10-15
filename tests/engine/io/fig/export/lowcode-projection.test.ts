@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { parseFigBuffer } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { NodeType, SceneNode } from '@open-pencil/scene-graph'
@@ -14,7 +16,6 @@ import {
 } from '#core/io/formats/fig/lowcode-projection'
 import { parseFigFile } from '#core/io/formats/fig/read'
 import {
-  FIGMA_PROJECTION_PLUGIN_KEY,
   FIGMA_PROJECTION_VERSION,
   readFigmaProjectionMarker,
   type FigmaProjectionMarker
@@ -28,13 +29,18 @@ type ParsedFig = ReturnType<typeof parseFigBuffer>
 type RawNodeChange = ParsedFig['nodeChanges'][number]
 
 function marker(node: SceneNode): FigmaProjectionMarker | null {
-  const entry = node.pluginData.find((item) => item.key === FIGMA_PROJECTION_PLUGIN_KEY)
-  return entry ? (JSON.parse(entry.value) as FigmaProjectionMarker) : null
+  return readFigmaProjectionMarker({
+    pluginData: node.pluginData.map(({ pluginId, key, value }) => ({
+      pluginID: pluginId,
+      key,
+      value
+    }))
+  })
 }
 
 function nodeTypeEntry(node: SceneNode): string | null {
   const entry = node.pluginData.find((item) => item.key === LOWCODE_NODE_TYPE_KEY)
-  return entry ? (JSON.parse(entry.value) as string) : null
+  return entry ? v.parse(v.pipe(v.string(), v.parseJson(), v.string()), entry.value) : null
 }
 
 function projected(type: NodeType, overrides: Partial<SceneNode> = {}) {
@@ -90,14 +96,19 @@ function expectCompleteCJKGlyphCache(parsed: ParsedFig, node: RawNodeChange, tex
   expect(glyphs).toHaveLength(characters.length)
   expect(glyphs[0]?.position.x).toBeCloseTo(expectedX, 4)
   expect(baseline.position.x).toBeCloseTo(expectedX, 4)
-  expect(baseline.width).toBeCloseTo(lineWidth, 4)
+  // Skia rounds the saved line width to hundredths while glyph advances keep float precision.
+  expect(Math.abs(baseline.width - lineWidth)).toBeLessThanOrEqual(1 / 64)
   expect(baseline.endCharacter).toBe(characters.length)
   expect(baseline.lineY).toBeCloseTo((nodeHeight - authoredLineHeight) / 2, 4)
   expect(baseline.position.y).toBeCloseTo(glyphs[0]?.position.y ?? Number.NaN, 4)
-  expect(baseline.lineHeight).toBeCloseTo(fontMeta.fontLineHeight * fontSize, 4)
-  expect(Number.isInteger(baseline.lineAscent)).toBe(true)
+  expect(baseline.lineHeight).toBe(Math.ceil(fontMeta.fontLineHeight * fontSize))
+  expect(baseline.lineAscent).toBeGreaterThan(0)
+  expect(baseline.lineAscent).toBeLessThanOrEqual(baseline.lineHeight)
   expect(derived.logicalIndexToCharacterOffsetMap).toHaveLength(characters.length)
-  expect(fontMeta.key).toMatchObject({ family: 'Noto Sans SC', style: 'Regular' })
+  expect(fontMeta.key).toMatchObject({
+    family: 'Noto Sans SC',
+    style: 'Regular'
+  })
   expect(fontMeta.fontDigest).toBeInstanceOf(Uint8Array)
   expect(fontMeta.fontDigest).toHaveLength(20)
   for (const [index, glyph] of glyphs.entries()) {
@@ -105,8 +116,10 @@ function expectCompleteCJKGlyphCache(parsed: ParsedFig, node: RawNodeChange, tex
     expect(glyph.advance).toBeGreaterThan(0)
     expect(glyph.advance).toBeLessThanOrEqual(1)
     const blobLength = parsed.blobs[glyph.commandsBlob ?? -1]?.byteLength ?? 0
-    if (/\s/u.test(characters[index] ?? '')) expect(blobLength).toBe(0)
-    else expect(blobLength).toBeGreaterThan(0)
+    if (/\s/u.test(characters[index] ?? '')) {
+      // The shaped writer emits the closing opcode for an empty glyph path.
+      expect(parsed.blobs[glyph.commandsBlob ?? -1]).toEqual(new Uint8Array([0]))
+    } else expect(blobLength).toBeGreaterThan(0)
   }
 }
 
@@ -124,16 +137,24 @@ describe('Figma-compatible lowcode visual projection', () => {
           { label: '停用', value: 'disabled', disabled: true }
         ]
       }
-      const { graph, node, plan } = projected('SELECT', { interactiveProps: props })
+      const { graph, node, plan } = projected('SELECT', {
+        interactiveProps: props
+      })
       expect(plan.syntheticNodes[0].text).toBe('请选择')
-      expect(marker(plan.syntheticNodes[0])).toMatchObject({ role: 'placeholder' })
+      expect(marker(plan.syntheticNodes[0])).toMatchObject({
+        role: 'placeholder'
+      })
       const bytes = await exportFigFileWithOptions(graph, { profile })
-      const imported = await parseFigFile(bytes)
+      const imported = await parseFigFile(new Uint8Array(bytes).buffer)
       const restored = [...imported.nodes.values()].find((entry) => entry.type === 'SELECT')
       expect(restored?.interactiveProps).toEqual(props)
       expect(node.interactiveProps).toEqual(props)
       const empty = projected('SELECT', {
-        interactiveProps: { ...props, value: '', options: [{ label: '全部', value: '' }] }
+        interactiveProps: {
+          ...props,
+          value: '',
+          options: [{ label: '全部', value: '' }]
+        }
       }).plan
       expect(empty.syntheticNodes[0].text).toBe('全部')
       expect(marker(empty.syntheticNodes[0])).toMatchObject({ role: 'option' })
@@ -154,8 +175,10 @@ describe('Figma-compatible lowcode visual projection', () => {
     expect(plan.syntheticNodes[0].text).toBe('Express delivery')
     expect(marker(plan.syntheticNodes[0])).toMatchObject({ role: 'option' })
     expect(marker(plan.syntheticNodes[0])?.field).toBeUndefined()
-    const bytes = await exportFigFileWithOptions(graph, { profile: 'figma-compatible' })
-    const imported = await parseFigFile(bytes)
+    const bytes = await exportFigFileWithOptions(graph, {
+      profile: 'figma-compatible'
+    })
+    const imported = await parseFigFile(new Uint8Array(bytes).buffer)
     const restored = [...imported.nodes.values()].find((entry) => entry.name === node.name)
     expect(restored?.type).toBe('SELECT')
     expect(restored?.interactiveProps).toEqual(props)
@@ -191,7 +214,9 @@ describe('Figma-compatible lowcode visual projection', () => {
   })
 
   test('projects editable text fields with importer-compatible markers', () => {
-    const button = projected('BUTTON', { interactiveProps: { text: 'Save' } }).plan
+    const button = projected('BUTTON', {
+      interactiveProps: { text: 'Save' }
+    }).plan
     const input = projected('INPUT', {
       interactiveProps: { value: '', placeholder: 'Email address' }
     }).plan
@@ -201,7 +226,9 @@ describe('Figma-compatible lowcode visual projection', () => {
     const select = projected('SELECT', {
       interactiveProps: { options: ['Draft', 'Published'], value: '' }
     }).plan
-    const date = projected('DATEPICKER', { interactiveProps: { value: '2026-07-27' } }).plan
+    const date = projected('DATEPICKER', {
+      interactiveProps: { value: '2026-07-27' }
+    }).plan
 
     expect(button.syntheticNodes[0]).toMatchObject({
       type: 'TEXT',
@@ -213,22 +240,42 @@ describe('Figma-compatible lowcode visual projection', () => {
       role: 'label',
       field: 'text'
     })
-    expect(input.syntheticNodes[0]).toMatchObject({ type: 'TEXT', text: 'Email address' })
+    expect(input.syntheticNodes[0]).toMatchObject({
+      type: 'TEXT',
+      text: 'Email address'
+    })
     expect(marker(input.syntheticNodes[0])).toMatchObject({
       role: 'placeholder',
       field: 'placeholder'
     })
-    expect(textarea.syntheticNodes[0]).toMatchObject({ type: 'TEXT', text: 'Draft' })
-    expect(marker(textarea.syntheticNodes[0])).toMatchObject({ role: 'value', field: 'value' })
-    expect(select.syntheticNodes[0]).toMatchObject({ type: 'TEXT', text: 'Draft' })
+    expect(textarea.syntheticNodes[0]).toMatchObject({
+      type: 'TEXT',
+      text: 'Draft'
+    })
+    expect(marker(textarea.syntheticNodes[0])).toMatchObject({
+      role: 'value',
+      field: 'value'
+    })
+    expect(select.syntheticNodes[0]).toMatchObject({
+      type: 'TEXT',
+      text: 'Draft'
+    })
     expect(marker(select.syntheticNodes[0])).toEqual({
       version: FIGMA_PROJECTION_VERSION,
       role: 'option'
     })
     expect(marker(select.syntheticNodes[1])).toMatchObject({ role: 'chevron' })
-    expect(date.syntheticNodes[0]).toMatchObject({ type: 'TEXT', text: '2026-07-27' })
-    expect(marker(date.syntheticNodes[0])).toMatchObject({ role: 'value', field: 'value' })
-    expect(marker(date.syntheticNodes[1])).toMatchObject({ role: 'calendar-icon' })
+    expect(date.syntheticNodes[0]).toMatchObject({
+      type: 'TEXT',
+      text: '2026-07-27'
+    })
+    expect(marker(date.syntheticNodes[0])).toMatchObject({
+      role: 'value',
+      field: 'value'
+    })
+    expect(marker(date.syntheticNodes[1])).toMatchObject({
+      role: 'calendar-icon'
+    })
   })
 
   test('projects custom value and placeholder colors for INPUT and TEXTAREA', () => {
@@ -252,7 +299,10 @@ describe('Figma-compatible lowcode visual projection', () => {
       const valueNode = valuePlan.syntheticNodes[0]
       const placeholderNode = placeholderPlan.syntheticNodes[0]
 
-      expect(marker(valueNode)).toMatchObject({ role: 'value', field: 'value' })
+      expect(marker(valueNode)).toMatchObject({
+        role: 'value',
+        field: 'value'
+      })
       expect(valueNode).toMatchObject({
         type: 'TEXT',
         text: 'Authored value',
@@ -272,7 +322,14 @@ describe('Figma-compatible lowcode visual projection', () => {
 
   test('projects a custom BUTTON label color independently from its background fill', () => {
     const { plan } = projected('BUTTON', {
-      fills: [{ type: 'SOLID', color: parseColor('#123456'), opacity: 1, visible: true }],
+      fills: [
+        {
+          type: 'SOLID',
+          color: parseColor('#123456'),
+          opacity: 1,
+          visible: true
+        }
+      ],
       interactiveProps: { text: 'Save', textColor: '#F9FAFB' }
     })
 
@@ -289,7 +346,11 @@ describe('Figma-compatible lowcode visual projection', () => {
       const { plan } = projected(type, {
         width: 220,
         height: 80,
-        interactiveProps: { options: ['Alpha', 'Beta'], value: 'Beta', checked: true }
+        interactiveProps: {
+          options: ['Alpha', 'Beta'],
+          value: 'Beta',
+          checked: true
+        }
       })
       const rows = plan.childrenFor(plan.root)
       expect(rows).toHaveLength(2)
@@ -314,7 +375,9 @@ describe('Figma-compatible lowcode visual projection', () => {
   })
 
   test('projects boolean controls without text-field markers', () => {
-    const checkbox = projected('CHECKBOX', { interactiveProps: { checked: true } }).plan
+    const checkbox = projected('CHECKBOX', {
+      interactiveProps: { checked: true }
+    }).plan
     const checkboxIndicator = checkbox.syntheticNodes[0]
     expect(checkboxIndicator.visible).toBe(true)
     expect(marker(checkboxIndicator)).toEqual({
@@ -322,7 +385,9 @@ describe('Figma-compatible lowcode visual projection', () => {
       role: 'indicator'
     })
 
-    const toggle = projected('SWITCH', { interactiveProps: { checked: true } }).plan
+    const toggle = projected('SWITCH', {
+      interactiveProps: { checked: true }
+    }).plan
     expect(toggle.syntheticNodes.map((node) => node.type)).toEqual(['RECTANGLE', 'ELLIPSE'])
     expect(marker(toggle.syntheticNodes[0])).toEqual({
       version: FIGMA_PROJECTION_VERSION,
@@ -339,7 +404,9 @@ describe('Figma-compatible lowcode visual projection', () => {
     for (const type of ['FORM', 'LIST'] as const) {
       const graph = new SceneGraph()
       const node = graph.createNode(type, graph.getPages()[0].id)
-      const child = graph.createNode('RECTANGLE', node.id, { name: `${type} child` })
+      const child = graph.createNode('RECTANGLE', node.id, {
+        name: `${type} child`
+      })
       const plan = projectLowcodeNodeForFigma(node, graph.getChildren(node.id))
       if (!plan) throw new Error(`Expected ${type} projection`)
 
@@ -463,7 +530,9 @@ describe('Figma-compatible lowcode visual projection', () => {
       interactiveProps: { text: label }
     })
 
-    const bytes = await exportFigFileWithOptions(graph, { profile: 'figma-compatible' })
+    const bytes = await exportFigFileWithOptions(graph, {
+      profile: 'figma-compatible'
+    })
     const buffer = bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength

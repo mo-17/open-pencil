@@ -9,6 +9,7 @@ import Components from 'unplugin-vue-components/vite'
 import { defineConfig } from 'vite'
 
 import { ensureBrandAssets } from '@open-pencil/brand-tools'
+import { ensureDemoDocument } from '@open-pencil/demo-tools'
 
 import packageJson from './package.json'
 import { viteBuildTarget } from './src/app/shell/support/baseline'
@@ -19,6 +20,7 @@ import {
   openPencilAutomationPlugin
 } from './vite/automation'
 import { copyCanvasKitAssetsPlugin } from './vite/canvaskit-assets'
+import { aiIconCollection } from './vite/icons'
 import { openPencilProjectRootDefineValue } from './vite/project-root'
 import { openPencilPwaPlugin } from './vite/pwa'
 import { rawMarkdownPlugin } from './vite/raw-markdown'
@@ -28,7 +30,7 @@ const host = process.env.TAURI_DEV_HOST
 const automationRoute = localAutomationRoute(host)
 
 export default defineConfig(async ({ command }) => {
-  await ensureBrandAssets(['web'])
+  await Promise.all([ensureBrandAssets(['web']), ensureDemoDocument()])
   return {
     resolve: {
       alias: createOpenPencilAliases(__dirname)
@@ -54,8 +56,8 @@ export default defineConfig(async ({ command }) => {
       rawMarkdownPlugin(),
       copyCanvasKitAssetsPlugin(),
       tailwindcss(),
-      Icons({ compiler: 'vue3' }),
-      Components({ resolvers: [IconsResolver({ prefix: 'icon' })] }),
+      Icons({ compiler: 'vue3', customCollections: { ai: aiIconCollection() } }),
+      Components({ resolvers: [IconsResolver({ prefix: 'icon', customCollections: ['ai'] })] }),
       openPencilAutomationPlugin(command, host),
       vue(),
       openPencilPwaPlugin()
@@ -65,9 +67,10 @@ export default defineConfig(async ({ command }) => {
       // Lower syntax to the supported browser baseline; APIs remain checked separately.
       target: viteBuildTarget(),
       chunkSizeWarningLimit: 2500,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           app: resolve(__dirname, 'index.html'),
+          updater: resolve(__dirname, 'updater.html'),
           aiPopout: resolve(__dirname, 'ai-popout.html'),
           previewPopout: resolve(__dirname, 'preview-popout.html')
         }

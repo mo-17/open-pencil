@@ -17,7 +17,14 @@ export function remoteModuleResetFixture() {
     layoutMode: 'VERTICAL',
     itemSpacing: 12,
     events: {
-      onSubmit: [{ kind: 'setState', targetStateId: 'submitted', valueExpr: 'submitted + 1' }]
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submitted',
+          valueExpr: 'submitted + 1'
+        }
+      ]
     }
   })
   const rating = createRatingModuleFrameOverrides({ label: 'Remote score' })

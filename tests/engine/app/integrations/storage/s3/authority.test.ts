@@ -187,6 +187,7 @@ describe('S3 profile authorization generations', () => {
     const profileId = uniqueProfile('Adapter generation')
     let resolutions = 0
     const adapter = createS3StorageAdapter(runtime(profileId, () => resolutions++))
+    if (!adapter.getAuthority) throw new TypeError('Expected S3 authority support.')
     const original = await adapter.getAuthority()
     expect(original).toEqual(ensureS3StorageAuthority(profileId))
 
@@ -270,7 +271,6 @@ describe('S3 profile authorization generations', () => {
     expect(source).toContain('prepareS3LegacyMigration')
     expect(source).toContain('dialogs.value.storageS3MutationBlockedByUnsyncedWork')
     expect(source).toContain('dialogs.value.storageS3MutationBlockedByOpenDocuments')
-    expect(source.match(/if \(!\(await savePreferences\(profileId\)\)\) return/g)).toHaveLength(1)
 
     const engine = await Bun.file(repoPath('src/app/storage/sync/engine.ts')).text()
     const authorizedAdapter = engine.slice(

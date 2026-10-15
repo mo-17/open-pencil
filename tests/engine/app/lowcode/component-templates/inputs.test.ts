@@ -127,7 +127,7 @@ for (const locale of ['en', 'zh-CN'])
         const result = compile({
           graph: restored,
           pageIds: [restored.getPages()[0].id],
-          options: withDefaults({ target, router: 'none', devMode: false, lang: locale })
+          options: withDefaults({ target, router: 'none', devMode: false, sourceLocale: locale })
         })
         expect(result.warnings).toEqual([])
         typeCheckCompilerFiles(

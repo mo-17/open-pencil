@@ -25,7 +25,14 @@ export function slideMenuFormFixture(target: 'react' | 'vue') {
     layoutMode: 'VERTICAL',
     itemSpacing: 12,
     events: {
-      onSubmit: [{ kind: 'setVariable', targetName: 'outerSubmits', valueExpr: '$prev + 1' }]
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setVariable',
+          targetName: 'outerSubmits',
+          valueExpr: '$prev + 1'
+        }
+      ]
     }
   })
   graph.createNode('INPUT', outer.id, {

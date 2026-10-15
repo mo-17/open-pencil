@@ -1,4 +1,4 @@
-import type { Canvas, Paragraph } from 'canvaskit-wasm'
+import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -9,6 +9,7 @@ import {
 } from '#core/canvas/modules/preview'
 import type { ModuleCanvasAdapter } from '#core/canvas/modules/types'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { modalHidesContent } from '#core/plugins/content/modal'
 import { MODAL_MODULE_TYPE, MODAL_PLUGIN_ID, resolveModalModule } from '#core/plugins/modal'
 
@@ -48,13 +49,15 @@ function triggerParagraph(
   renderer: SkiaRenderer,
   node: SceneNode,
   width: number
-): Paragraph | null {
+): TextLayout | null {
   const label = modalTriggerTextNode(node)
   if (!label || !renderer.fontProvider || !renderer.fontsLoaded || width <= 0) return null
   label.width = width
   const readiness = renderer.nodeFontReadiness(label)
   if (readiness !== 'ready' && readiness !== 'substituted') return null
-  return renderer.buildParagraph(label, renderer.color4f(1, 1, 1, 1), { halfLeading: true })
+  return renderer.buildParagraph(label, renderer.color4f(1, 1, 1, 1), {
+    halfLeading: true
+  })
 }
 
 /** Draw only an inert trigger; the modal body is a generated-runtime concern. */
@@ -85,8 +88,8 @@ export function renderModalModulePreview(
           drawModalIcon(renderer, canvas, left, frame.height / 2, scale)
         }
         if (paragraph) {
-          canvas.drawParagraph(
-            paragraph,
+          paragraph.draw(
+            canvas,
             left + iconWidth + actualGap,
             (frame.height - paragraph.getHeight()) / 2
           )

@@ -26,7 +26,8 @@ import Tip from '@/components/ui/overlay/Tip.vue'
 import { useSelectUI } from '@/components/ui/select/select'
 
 const { panels } = useI18n()
-const { label: labelProp } = defineProps<{ label?: string }>()
+/** The placeholder shows while no family is set, such as Mixed for texts in different fonts. */
+const { label: labelProp, placeholder } = defineProps<{ label?: string; placeholder?: string }>()
 const label = computed(() => labelProp ?? panels.value.fontFamily)
 const modelValue = defineModel<string>({ required: true })
 const emit = defineEmits<{ select: [family: string] }>()
@@ -47,7 +48,8 @@ const ui = computed<FontPickerUI>(() => ({
     'w-full border-b border-border bg-transparent px-3 py-2 text-sm text-surface outline-none placeholder:text-muted',
   filters: 'border-b border-border bg-panel-secondary px-3 py-1.5',
   empty: 'px-2 py-3 text-center text-xs text-muted',
-  emptyAction: 'mt-2 rounded bg-accent px-2 py-1 text-xs font-medium text-white disabled:opacity-50'
+  emptyAction:
+    'mt-2 rounded bg-accent px-2 py-1 text-xs font-medium text-on-accent disabled:opacity-50'
 }))
 
 const previewFontLoads = new Set<string>()
@@ -172,7 +174,7 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
         :aria-label="label"
         :class="selectCls.trigger"
       >
-        <span class="truncate">{{ modelValue }}</span>
+        <span class="truncate">{{ modelValue || placeholder }}</span>
         <Tip
           v-if="option"
           :label="licenseDescription(option.licenseDisplay, isLicenseChecking(option))"
@@ -225,7 +227,7 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
         class="flex min-w-0 flex-1 items-center gap-2"
         @vue:mounted="prepareFontOption(option)"
       >
-        <icon-lucide-check v-if="selected" class="size-3 shrink-0 text-accent" />
+        <icon-lucide-check v-if="selected" class="size-3 shrink-0 text-primary" />
         <span v-else class="size-3 shrink-0" />
         <span class="truncate" :style="{ fontFamily: `'${family}', sans-serif` }">{{
           family

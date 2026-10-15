@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { renderJSX, SceneGraph } from '@open-pencil/core'
-import { collectLayoutPrimitiveClasses, selectionToJSX } from '@open-pencil/core/io/formats/jsx'
+import { renderJSX, SceneGraph } from '#core/index'
+import { collectLayoutPrimitiveClasses, selectionToJSX } from '#core/io/formats/jsx/index'
 
 function paragraph(interactiveProps: Record<string, unknown>) {
   const graph = new SceneGraph()
@@ -58,7 +58,7 @@ describe('bounded JSX layout whitespace', () => {
     const jsx = selectionToJSX([node.id], graph)
     const copy = new SceneGraph()
     const [copied] = await renderJSX(copy, jsx)
-    expect(copy.getNode(copied.id)?.interactiveProps.layout).toEqual(layout)
+    expect(copy.getNode(copied.id)?.interactiveProps?.layout).toEqual(layout)
     expect(jsx).toContain('Plain text body')
   })
 

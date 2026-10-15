@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenPencil",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "identifier": "net.dannote.open-pencil",
   "build": {
     "beforeDevCommand": "bun run generate:icons --target desktop && bun run generate:tauri-menu && bun run build:codepen-sidecar && bun run dev",
@@ -27,9 +27,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": [
-      "binaries/openpencil-codepen-sidecar"
-    ],
+    "externalBin": ["binaries/openpencil-codepen-sidecar"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -39,9 +37,7 @@
     ],
     "fileAssociations": [
       {
-        "ext": [
-          "pen"
-        ],
+        "ext": ["pen"],
         "name": "Pencil Design File",
         "description": "Pencil design file",
         "role": "Editor",
@@ -49,9 +45,7 @@
         "rank": "Alternate"
       },
       {
-        "ext": [
-          "fig"
-        ],
+        "ext": ["fig"],
         "name": "Figma Design File",
         "description": "Figma design file",
         "role": "Editor",
@@ -60,8 +54,9 @@
       }
     ],
     "macOS": {
+      "minimumSystemVersion": "13.0",
       "signingIdentity": "Developer ID Application: Danila Poyarkov (N7D7M3Q3CD)",
-      "minimumSystemVersion": "13.0"
+      "entitlements": "Entitlements.plist"
     },
     "linux": {
       "deb": {
@@ -75,9 +70,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "openpencil"
-        ]
+        "schemes": ["openpencil"]
       }
     },
     "updater": {
@@ -89,6 +82,9 @@
       "windows": {
         "installMode": "passive"
       }
+    },
+    "fs": {
+      "requireLiteralLeadingDot": true
     }
   }
 }

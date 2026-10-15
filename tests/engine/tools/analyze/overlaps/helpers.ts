@@ -1,4 +1,4 @@
-import type { SceneGraph } from '@open-pencil/core'
+import type { SceneGraph } from '#core/index'
 
 export function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id

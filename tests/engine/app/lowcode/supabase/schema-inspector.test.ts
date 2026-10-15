@@ -131,7 +131,7 @@ describe('Supabase schema inspector state', () => {
       schema: 'public',
       tables: []
     })
-    expect(cached).toEqual(inspector.catalog.value)
+    expect<unknown>(cached).toEqual(inspector.catalog.value)
   })
 
   test('keeps a cached catalog visible when no PAT is configured', async () => {

@@ -23,6 +23,8 @@ import {
 } from '@/app/lowcode/value-controls/form/fields'
 import { useModuleValueSession } from '@/app/lowcode/value-controls/form/session'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 test('module binding choices accept exact writable endpoint types and preserve invalid bindings explicitly', () => {
   const editor = createEditor(),
     graph = editor.graph,
@@ -146,7 +148,7 @@ test('outer readOnly rejects unrelated nodes and incomplete or forged module ide
         moduleValueReadOnly(graph.createNode(type, page, createTreeModuleFrameOverrides()))
       ).toBeUndefined()
     const frame = createTreeModuleFrameOverrides(),
-      module = frame.interactiveProps?.module
+      module = expectModuleInstance(frame.interactiveProps?.module)
     if (!module) throw new Error('Tree module unavailable')
     for (const invalid of [
       { ...module, pluginId: 'unreviewed.tree' },
@@ -201,7 +203,7 @@ for (const boundary of [
         owner.value = editor.graph.createNode('FRAME', editor.state.currentPageId)
       if (boundary === 'same-id') owner.value = structuredClone(node)
       if (boundary === 'config') {
-        const module = node.interactiveProps?.module
+        const module = expectModuleInstance(node.interactiveProps?.module)
         if (!module) throw new Error('Missing module')
         module.config.initialValue = 1
       }

@@ -7,6 +7,7 @@ import { createCarouselModuleFrameOverrides } from '#core/plugins/carousel'
 import { collectGraphFontKeys, collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGlyphCharacters } from '#core/text/resolver'
 
+import { asDouble } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 
 import { carouselPixelHarness } from './helpers'
@@ -65,14 +66,14 @@ test('real Carousel pixels show the selected CJK slide offline with multiline te
     shaped.push({
       text: node.text,
       weight: node.fontWeight,
-      lines: paragraph.getNumberOfLines(),
+      lines: paragraph.getShapedLines().length,
       missing: missingGlyphCharacters(node.text, paragraph.getShapedLines())
     })
     return paragraph
   })
   const originalFetch = globalThis.fetch
   const fetchMock = mock(() => Promise.reject(new Error('Carousel canvas must remain offline')))
-  globalThis.fetch = fetchMock as typeof fetch
+  globalThis.fetch = asDouble<typeof fetch>(fetchMock)
   try {
     const { graph, node } = fixture()
     const original = structuredClone(node)

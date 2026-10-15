@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/core/constants'
 import {
   assessFontLicenseBytes,
@@ -268,7 +270,7 @@ async function loadedFaceAssets(family: string, style: string): Promise<Compiler
 function localRequestStyles(request: WebFontFaceRequest): string[] {
   const requested = weightToStyle(request.weight, request.style === 'italic')
   const regular = request.style === 'italic' ? 'Regular Italic' : 'Regular'
-  return [...new Set([requested, regular, ...(request.style === 'italic' ? ['Regular'] : [])])]
+  return uniq([requested, regular, ...(request.style === 'italic' ? ['Regular'] : [])])
 }
 
 async function locallyAvailableFaceAssets(
@@ -312,7 +314,7 @@ function localFallbackCandidates(
     script === 'arabic'
       ? fontManager.getArabicFallbackFamilies()
       : fontManager.getCJKFallbackFamilies()
-  return [...new Set([...configuredCandidates, ...alreadySelected])]
+  return uniq([...configuredCandidates, ...alreadySelected])
 }
 
 /**

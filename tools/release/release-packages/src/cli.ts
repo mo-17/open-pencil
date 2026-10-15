@@ -8,7 +8,8 @@ import {
   buildReleasePackages,
   packReleasePackages,
   prepareReleasePackages,
-  publishReleasePackages
+  publishReleasePackages,
+  verifyReleasePackages
 } from './workflow'
 
 function command(name: string, description: string, execute: (root: string) => Promise<unknown>) {
@@ -32,6 +33,11 @@ await runMain(
         prepareReleasePackages
       ),
       pack: command('pack', 'Pack and validate release package artifacts', packReleasePackages),
+      verify: command(
+        'verify',
+        'Prepare and verify local npm artifacts without publishing',
+        verifyReleasePackages
+      ),
       publish: command(
         'publish',
         'Publish the exact verified package artifacts',

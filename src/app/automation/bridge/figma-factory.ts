@@ -2,7 +2,7 @@ import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { createCanvasKitRasterCodec } from '@open-pencil/core/io/formats/raster'
 
 import type { EditorStore } from '@/app/editor/active-store'
-import { listFamilies, listFonts } from '@/app/editor/fonts'
+import { listFamilies, listFonts, loadFont } from '@/app/editor/fonts'
 
 export function makeFigmaFromStore(
   store: EditorStore,
@@ -10,6 +10,8 @@ export function makeFigmaFromStore(
 ): FigmaAPI {
   const api = new FigmaAPI(store.graph)
   api.setRenderer(store.renderer ?? null)
+  api.icons = store.iconProvider
+  api.theme = store.state.theme ?? 'light'
   api.currentPage = api.wrapNode(pageId)
   // The user's selection belongs to the page on screen.
   api.currentPage.selection =
@@ -33,6 +35,9 @@ export function makeFigmaFromStore(
       generatedEffectMode: opts.generatedEffectMode
     })
   if (store.renderer) api.rasterCodec = createCanvasKitRasterCodec(store.renderer.ck)
+  api.loadFontAsync = async ({ family, style }) => {
+    await loadFont(family, style).catch(() => null)
+  }
   api.listAvailableFontsAsync = async () => {
     const [systemFonts, familyOptions] = await Promise.all([listFonts(), listFamilies()])
     const fonts = systemFonts.flatMap(({ family, styles }) =>

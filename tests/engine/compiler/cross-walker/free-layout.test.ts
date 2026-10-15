@@ -101,7 +101,7 @@ describe('cross-walker — FREE propagates through compile() and round-trips thr
     })
 
     const bytes = await exportFigFile(graph)
-    const reimported = await parseFigFile(bytes.buffer)
+    const reimported = await parseFigFile(Uint8Array.from(bytes).buffer)
     const reimportedPage = reimported.getPages()[0]
     const reimportedFrame = [...reimported.getAllNodes()].find((n) => n.name === 'FreeCard')
     expect(reimportedFrame?.layoutMode).toBe('FREE')

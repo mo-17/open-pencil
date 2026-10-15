@@ -65,7 +65,7 @@ describe('preview iframe message protocol', () => {
       type: 'navigate',
       route: '/settings'
     }
-    expect(parsePreviewInboundMessage(valid, CHANNEL)).toEqual(valid)
+    expect<unknown>(parsePreviewInboundMessage(valid, CHANNEL)).toEqual(valid)
     expect(parsePreviewInboundMessage({ ...valid, channel: `${CHANNEL}x` }, CHANNEL)).toBeNull()
     expect(parsePreviewInboundMessage({ ...valid, source: 'other' }, CHANNEL)).toBeNull()
     expect(parsePreviewInboundMessage({ ...valid, extra: true }, CHANNEL)).toBeNull()
@@ -83,7 +83,7 @@ describe('preview iframe message protocol', () => {
       type: 'select',
       id: 'node-1'
     }
-    expect(
+    expect<unknown>(
       parsePreviewMessageEvent({ source, origin: 'null', data }, source, 'null', CHANNEL)
     ).toEqual(data)
     expect(
@@ -106,7 +106,7 @@ describe('preview iframe message protocol', () => {
 
   test('accepts only exact runtime readiness and error handshakes', () => {
     const ready = { source: 'op-lowcode-preview', channel: CHANNEL, type: 'ready' }
-    expect(parsePreviewInboundMessage(ready, CHANNEL)).toEqual(ready)
+    expect<unknown>(parsePreviewInboundMessage(ready, CHANNEL)).toEqual(ready)
     expect(parsePreviewInboundMessage({ ...ready, extra: true }, CHANNEL)).toBeNull()
 
     const runtimeError = {
@@ -115,7 +115,7 @@ describe('preview iframe message protocol', () => {
       type: 'runtimeError',
       message: 'React failed to start'
     }
-    expect(parsePreviewInboundMessage(runtimeError, CHANNEL)).toEqual(runtimeError)
+    expect<unknown>(parsePreviewInboundMessage(runtimeError, CHANNEL)).toEqual(runtimeError)
     expect(
       parsePreviewInboundMessage(
         { ...runtimeError, message: 'x'.repeat(PREVIEW_MESSAGE_LIMITS.runtimeErrorLength + 1) },
@@ -202,7 +202,7 @@ describe('preview iframe message protocol', () => {
       name: 'filters',
       value: { query: 'pencil', tags: ['design'] }
     }
-    expect(parsePreviewInboundMessage(docState, CHANNEL)).toEqual(docState)
+    expect<unknown>(parsePreviewInboundMessage(docState, CHANNEL)).toEqual(docState)
     expect(
       parsePreviewInboundMessage(
         {
@@ -221,7 +221,7 @@ describe('preview iframe message protocol', () => {
       snapshot: { capturedAt: 1, activeAnimationCount: 0, entries: [] },
       error: undefined
     }
-    expect(parsePreviewInboundMessage(motion, CHANNEL)).toEqual(motion)
+    expect<unknown>(parsePreviewInboundMessage(motion, CHANNEL)).toEqual(motion)
     expect(
       parsePreviewInboundMessage({ ...motion, error: 'mixed status payload' }, CHANNEL)
     ).toBeNull()
@@ -280,9 +280,9 @@ describe('preview iframe message protocol', () => {
   test('accepts an optional boolean replace without weakening the navigation boundary', () => {
     const payload = { type: 'navigate', route: '/details/item%201?tab=one#section' }
     const envelope = { source: 'op-lowcode-editor', channel: CHANNEL, ...payload }
-    expect(createPreviewEditorMessage(CHANNEL, payload)).toEqual(envelope)
+    expect<unknown>(createPreviewEditorMessage(CHANNEL, payload)).toEqual(envelope)
     for (const replace of [true, false]) {
-      expect(createPreviewEditorMessage(CHANNEL, { ...payload, replace })).toEqual({
+      expect<unknown>(createPreviewEditorMessage(CHANNEL, { ...payload, replace })).toEqual({
         ...envelope,
         replace
       })
@@ -371,7 +371,7 @@ describe('preview iframe message protocol', () => {
       text: 'Task created',
       error: null
     }
-    expect(parsePreviewInboundMessage(result, CHANNEL)).toEqual(result)
+    expect<unknown>(parsePreviewInboundMessage(result, CHANNEL)).toEqual(result)
     expect(parsePreviewInboundMessage({ ...result, value: 'must-not-leak' }, CHANNEL)).toBeNull()
     expect(parsePreviewInboundMessage({ ...result, headers: {} }, CHANNEL)).toBeNull()
     expect(parsePreviewInboundMessage({ ...result, body: 'must-not-leak' }, CHANNEL)).toBeNull()
@@ -388,13 +388,13 @@ describe('preview iframe message protocol', () => {
         CHANNEL
       )
     ).toBeNull()
-    expect(
+    expect<unknown>(
       parsePreviewInboundMessage(
         { ...result, ok: true, status: 'clicked', text: null, error: null },
         CHANNEL
       )
     ).toEqual({ ...result, ok: true, status: 'clicked', text: null, error: null })
-    expect(
+    expect<unknown>(
       parsePreviewInboundMessage(
         { ...result, ok: false, status: 'timeout', text: null, error: 'not-found' },
         CHANNEL

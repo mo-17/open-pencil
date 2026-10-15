@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit'
 export type ReactCompilerProjectFiles = ReadonlyMap<string, string | Uint8Array>
 
 interface ReactPackageJSONPatch {
@@ -117,7 +118,7 @@ export function appendReactProjectGitignore(
   if (current !== undefined && typeof current !== 'string') {
     throw new TypeError('React compiler output contains a binary .gitignore')
   }
-  const lines = (current ?? '').split(/\r?\n/).filter(Boolean)
+  const lines = compact((current ?? '').split(/\r?\n/))
   const seen = new Set(lines)
   for (const addition of additions) {
     if (!seen.has(addition)) lines.push(addition)
@@ -147,11 +148,11 @@ export function stripReactMainCSSImports(source: string): string {
 }
 
 export function safeReverseDomainAppId(packageName: string): string {
-  const segments = packageName
-    .toLowerCase()
-    .split(/[._-]+/)
-    .map((segment) => segment.replace(/[^a-z0-9]/g, ''))
-    .filter(Boolean)
-    .map((segment) => (/^[0-9]/.test(segment) ? `app${segment}` : segment))
+  const segments = compact(
+    packageName
+      .toLowerCase()
+      .split(/[._-]+/)
+      .map((segment) => segment.replace(/[^a-z0-9]/g, ''))
+  ).map((segment) => (/^[0-9]/.test(segment) ? `app${segment}` : segment))
   return `dev.openpencil.${segments.join('.') || 'app'}`
 }

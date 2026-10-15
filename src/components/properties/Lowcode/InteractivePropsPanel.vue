@@ -288,7 +288,8 @@ function updateOption(key: string, index: number, value: string): void {
         type="date"
         :value="stringValue(field.key)"
         :aria-label="t(field.labelKey)"
-        :data-test-id="`lowcode-interactive-${field.key}`"
+        data-slot="interactive-property"
+        :data-property="field.key"
         spellcheck="false"
         :placeholder="t(field.placeholderKey)"
         class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
@@ -301,7 +302,8 @@ function updateOption(key: string, index: number, value: string): void {
         :color="colorValue(field)"
         editable
         :aria-label="t(field.labelKey)"
-        :data-test-id="`lowcode-interactive-${field.key}`"
+        data-slot="interactive-property"
+        :data-property="field.key"
         class="w-full rounded border border-border bg-input px-2 py-1"
         @update="onColorInput(field.key, $event)"
       />

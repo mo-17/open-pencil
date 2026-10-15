@@ -1,4 +1,4 @@
-import { blake3 } from '@noble/hashes/blake3'
+import { blake3 } from '@noble/hashes/blake3.js'
 // Deploy a built static bundle to a hosting provider. Phase 3 §5: the
 // "dist → live URL" hop after `buildPreviewProject` produces the static SPA.
 // Provider-agnostic surface with a per-provider dispatch — Netlify (§5.2) and
@@ -8,6 +8,7 @@ import { blake3 } from '@noble/hashes/blake3'
 // built-ins — so the editor could call this directly in future (the first
 // editor surface shells out to the CLI instead, keeping one deploy pipeline).
 import { fromUint8Array } from 'js-base64'
+import * as v from 'valibot'
 
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
@@ -45,6 +46,8 @@ export interface DeployOptions {
   onProgress?: (p: DeployProgress) => void
 }
 
+const APIResponseObject = v.record(v.string(), v.unknown())
+
 const NETLIFY_API = 'https://api.netlify.com/api/v1'
 const VERCEL_API = 'https://api.vercel.com'
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
@@ -62,7 +65,7 @@ function tokenEnv(provider: DeployTarget['provider']): string {
 
 /** Lowercase hex SHA-1 of `bytes` (Web Crypto — works in Bun and browsers). */
 async function sha1Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-1', bytes)
+  const digest = await crypto.subtle.digest('SHA-1', new Uint8Array(bytes))
   const view = new Uint8Array(digest)
   let hex = ''
   for (const b of view) hex += b.toString(16).padStart(2, '0')
@@ -87,7 +90,9 @@ function fileExtension(rel: string): string {
  * upload asset manifest.
  */
 function cloudflareHash(rel: string, bytes: Uint8Array): string {
-  return bytesToHex(blake3(fromUint8Array(bytes) + fileExtension(rel))).slice(0, 32)
+  return bytesToHex(
+    blake3(new TextEncoder().encode(fromUint8Array(bytes) + fileExtension(rel)))
+  ).slice(0, 32)
 }
 
 /** `/index.html` → `/index.html`, `/a b/x.js` → `/a%20b/x.js` (leading slash kept). */
@@ -116,7 +121,7 @@ async function apiFetch(
   let body: BodyInit | undefined
   if (init.rawBody !== undefined) {
     headers['Content-Type'] = 'application/octet-stream'
-    body = init.rawBody
+    body = new Uint8Array(init.rawBody)
   } else if (init.jsonBody !== undefined) {
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(init.jsonBody)
@@ -133,7 +138,7 @@ async function apiFetch(
   // These endpoints return JSON; tolerate an empty body.
   const text = await res.text()
   if (!text) return {}
-  return JSON.parse(text) as JSONObject
+  return v.parse(v.pipe(v.string(), v.parseJson(), APIResponseObject), text)
 }
 
 type ProgressFn = ((p: DeployProgress) => void) | undefined
@@ -165,7 +170,11 @@ async function digestPayload(
   let digested = 0
   for (const [rel, content] of payload) {
     const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content
-    entries.push({ rel: rel.replace(/^\/+/, ''), bytes, sha: await sha1Hex(bytes) })
+    entries.push({
+      rel: rel.replace(/^\/+/, ''),
+      bytes,
+      sha: await sha1Hex(bytes)
+    })
     onProgress?.({ stage: 'digest', done: ++digested, total })
   }
   return entries
@@ -228,7 +237,11 @@ async function createNetlifyDeploy(
   siteId: string,
   entries: DigestedFile[],
   token: string
-): Promise<{ deploy: Record<string, unknown>; deployId: string; required: Set<string> }> {
+): Promise<{
+  deploy: Record<string, unknown>
+  deployId: string
+  required: Set<string>
+}> {
   const manifest: Record<string, string> = {}
   for (const e of entries) manifest['/' + e.rel] = e.sha
   const deploy = await apiFetch(`${NETLIFY_API}/sites/${encodeURIComponent(siteId)}/deploys`, {
@@ -326,7 +339,11 @@ async function createVercelDeploy(
     token: target.token,
     jsonBody: {
       name: target.site ?? DEFAULT_VERCEL_NAME,
-      files: entries.map((e) => ({ file: e.rel, sha: e.sha, size: e.bytes.length })),
+      files: entries.map((e) => ({
+        file: e.rel,
+        sha: e.sha,
+        size: e.bytes.length
+      })),
       projectSettings: { framework: null },
       target: 'production'
     }
@@ -368,7 +385,10 @@ function isCloudflareAPIResult(value: unknown): value is CloudflareAPIResult {
   return Array.isArray(value) || (typeof value === 'object' && value !== null)
 }
 
-function resolveCloudflareTarget(target: DeployTarget): { accountId: string; projectName: string } {
+function resolveCloudflareTarget(target: DeployTarget): {
+  accountId: string
+  projectName: string
+} {
   if (target.accountId && target.site) {
     return { accountId: target.accountId, projectName: target.site }
   }
@@ -404,7 +424,9 @@ async function cloudflareFetch(
     formBody?: FormData
   }
 ): Promise<CloudflareAPIResult> {
-  const headers: Record<string, string> = { Authorization: `Bearer ${init.token}` }
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${init.token}`
+  }
   let body: BodyInit | undefined
   if (init.jsonBody !== undefined) {
     headers['Content-Type'] = 'application/json'
@@ -425,7 +447,7 @@ async function cloudflareFetch(
       `Cloudflare API ${path} failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`
     )
   }
-  const parsed = (await res.json()) as JSONObject
+  const parsed = v.parse(v.pipe(v.string(), v.parseJson(), APIResponseObject), await res.text())
   return 'result' in parsed && isCloudflareAPIResult(parsed.result) ? parsed.result : parsed
 }
 

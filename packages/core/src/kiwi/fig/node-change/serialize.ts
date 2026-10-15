@@ -1,5 +1,6 @@
 import {
   sceneNodeToKiwi as sceneNodeToKiwiWithRuntime,
+  EMPTY_EXPORT_RUNTIME,
   type FigNodeChangeExportRuntime,
   type KiwiNodeChange,
   type SceneNodeToKiwiOptions
@@ -19,16 +20,16 @@ export {
   buildFigKiwi,
   decompressFigKiwiDataAsync,
   FIG_KIWI_DEFAULT_VERSION,
-  fractionalPosition,
   makeCanvasNodeChange,
   makeDocumentNodeChange,
   mapToFigmaType,
   parseFigKiwiChunks,
   safeColor
 } from '@open-pencil/fig/node-change'
-export { buildFontDigestMap } from './font/digests'
+export { buildFontDigestMap, settleFontDigestMap } from './font/digests'
 
 const coreFigExportRuntime = {
+  ...EMPTY_EXPORT_RUNTIME,
   getGlyphOutlineMetrics(family: string, style: string, text: string, fontSize: number) {
     if (!fontCoversTextSync(family, style, text)) return null
     return getGlyphOutlineMetricsSync(family, style, text, fontSize)
@@ -66,6 +67,9 @@ export function sceneNodeToKiwi(
 ): KiwiNodeChange[] {
   return sceneNodeToKiwiWithRuntime(node, parentGuid, childIndex, localIdCounter, graph, blobs, {
     ...options,
-    runtime: options.runtime ?? coreFigExportRuntime
+    runtime: { ...coreFigExportRuntime, ...options.runtime }
   })
 }
+
+export { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
+export type { KiwiNodeChange, SceneNodeToKiwiOptions } from '@open-pencil/fig/node-change'

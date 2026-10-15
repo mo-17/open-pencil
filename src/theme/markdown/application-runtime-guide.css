@@ -1,0 +1,40 @@
+.application-runtime-guide {
+  --foreground: var(--color-surface);
+  --background: var(--color-panel);
+  --card: var(--color-panel);
+  --card-foreground: var(--color-surface);
+  --popover: var(--color-panel);
+  --popover-foreground: var(--color-surface);
+  --primary: var(--color-accent);
+  --primary-foreground: white;
+  --secondary: var(--color-panel-secondary);
+  --secondary-foreground: var(--color-surface);
+  --muted: var(--color-panel-field);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-hover);
+  --accent-foreground: var(--color-surface);
+  --destructive: var(--color-error);
+  --border: var(--color-border);
+  --input: var(--color-input);
+  --ring: var(--color-accent);
+}
+
+.application-runtime-guide p {
+  margin-block: 0.65rem;
+}
+
+.application-runtime-guide blockquote {
+  border-left-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  padding: 0.65rem 0.9rem;
+}
+
+.application-runtime-guide pre {
+  border: 1px solid var(--color-border);
+  background: var(--color-input);
+}
+
+.application-runtime-guide table {
+  min-width: 100%;
+}

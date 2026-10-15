@@ -201,7 +201,9 @@ describe('collectTree — events', () => {
     const handlers = btnIR.events?.onClick
     expect(handlers).toHaveLength(1)
     expect(handlers?.[0]).toMatchObject({ kind: 'setState', stateName: 'count' })
-    expect(handlers?.[0].references).toEqual(['count'])
+    const handler = handlers?.[0]
+    if (handler?.kind !== 'setState') throw new Error('Expected a setState handler')
+    expect(handler.references).toEqual(['count'])
   })
 
   test('action with invalid expression → dropped with warning', () => {

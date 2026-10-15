@@ -77,8 +77,8 @@ async function fixture() {
   const installer = createBackendLibraryInstaller({
     editor,
     store: {
-      installedBackendProviders: () => (active ? store.installedBackendProviders() : []),
-      installedModules: () => store.installedModules()
+      ...store,
+      installedBackendProviders: () => (active ? store.installedBackendProviders() : [])
     },
     draft,
     busy,
@@ -273,14 +273,16 @@ describe('backend library installation controller', () => {
   })
 
   test.each([
-    ['commands', { version: 1, commands: [] }],
-    ['httpApi', {}],
-    ['storage', { version: 1, buckets: [] }],
-    ['capabilities', [{ capability: 'server.functions', required: false }]],
-    ['secrets', [{ kind: 'environment', name: 'CUSTOM', exposure: 'server', required: true }]],
-    ['workflows', { version: 1, workflows: [{}] }],
-    ['unknownDraftConfiguration', undefined]
-  ] as const)('preserves customized or invalid %s drafts', async (key, data) => {
+    ...([
+      ['commands', { version: 1, commands: [] }],
+      ['httpApi', {}],
+      ['storage', { version: 1, buckets: [] }],
+      ['capabilities', [{ capability: 'server.functions', required: false }]],
+      ['secrets', [{ kind: 'environment', name: 'CUSTOM', exposure: 'server', required: true }]],
+      ['workflows', { version: 1, workflows: [{}] }],
+      ['unknownDraftConfiguration', undefined]
+    ] as const)
+  ])('preserves customized or invalid %s drafts', async (key, data) => {
     const value = await fixture()
     Reflect.set(value.draft.value, key, structuredClone(data))
     const snapshot = value.editor.snapshotDocument()
@@ -313,12 +315,8 @@ describe('backend library installation controller', () => {
   })
 
   test.each([
-    'redirect',
-    'protected-page',
-    'legacy-auth',
-    'malformed-backend',
-    'read-error'
-  ] as const)('blocks an existing %s flow before mutation', async (mode) => {
+    ...(['redirect', 'protected-page', 'legacy-auth', 'malformed-backend', 'read-error'] as const)
+  ])('blocks an existing %s flow before mutation', async (mode) => {
     const value = await fixture()
     const root = value.editor.graph.rootId
     if (mode === 'redirect') value.editor.graph.updateNode(root, { lowcodeAuthRedirect: '' })
@@ -350,7 +348,7 @@ describe('backend library installation controller', () => {
       expect(hasBackendAuthenticationFlow(value.editor.graph)).toBe(true)
   })
 
-  test.each(['provider', 'draft', 'auth', 'graph'] as const)(
+  test.each([...(['provider', 'draft', 'auth', 'graph'] as const)])(
     'rechecks a raced %s before committing',
     async (mode) => {
       const value = await fixture()
@@ -424,84 +422,83 @@ describe('backend library installation controller', () => {
   })
 
   test.each([
-    ['personal-notes', 'react'],
-    ['personal-notes', 'vue'],
-    ['single-sku-shop', 'react'],
-    ['single-sku-shop', 'vue'],
-    ['single-merchant-shop', 'react'],
-    ['single-merchant-shop', 'vue'],
-    ['multi-merchant-marketplace', 'react'],
-    ['multi-merchant-marketplace', 'vue'],
-    ['single-merchant-commerce', 'react'],
-    ['single-merchant-commerce', 'vue'],
-    ['multi-merchant-commerce', 'react'],
-    ['multi-merchant-commerce', 'vue'],
-    ['customer-crm', 'react'],
-    ['customer-crm', 'vue'],
-    ['service-desk', 'react'],
-    ['service-desk', 'vue'],
-    ['content-knowledge-base', 'react'],
-    ['content-knowledge-base', 'vue'],
-    ['booking-registration', 'react'],
-    ['booking-registration', 'vue'],
-    ['project-tasks', 'react'],
-    ['project-tasks', 'vue'],
-    ['rental-viewing', 'react'],
-    ['rental-viewing', 'vue'],
-    ['video-live', 'react'],
-    ['video-live', 'vue'],
-    ['food-ordering', 'react'],
-    ['food-ordering', 'vue'],
-    ['hospital-registration', 'react'],
-    ['hospital-registration', 'vue'],
-    ['personal-blog', 'react'],
-    ['personal-blog', 'vue'],
-    ['automotive-news', 'react'],
-    ['automotive-news', 'vue'],
-    ['procurement-inventory', 'react'],
-    ['procurement-inventory', 'vue'],
-    ['enterprise-approvals', 'react'],
-    ['enterprise-approvals', 'vue'],
-    ['survey-forms', 'react'],
-    ['survey-forms', 'vue'],
-    ['online-courses', 'react'],
-    ['online-courses', 'vue'],
-    ['community-forum', 'react'],
-    ['community-forum', 'vue'],
-    ['asset-management', 'react'],
-    ['asset-management', 'vue'],
-    ['quote-contracts', 'react'],
-    ['quote-contracts', 'vue'],
-    ['recruitment-hr', 'react'],
-    ['recruitment-hr', 'vue']
-  ] as const)(
-    'exports %s from the library entry as %s without warnings',
-    async (template, target) => {
-      const value = await fixture()
-      const beforePages = new Set(value.editor.graph.getPages().map((page) => page.id))
-      const installed = await value.installer.create(template, authentication(), value.providerKey)
-      expect(value.failures).toEqual([])
-      expect(installed).toBe(true)
-      const pages = value.editor.graph.getPages().filter((page) => !beforePages.has(page.id))
-      expect(pages).toHaveLength(templatePageCounts[template])
-      if (template === 'personal-notes')
-        expect(pages.map((page) => page.name).sort()).toEqual(['Notes login', 'Personal notes'])
-      const output = compileAppBackendProviderDocument(value.store, {
-        graph: value.editor.graph,
-        pageIds: pages.map((page) => page.id),
-        options: withDefaults({
-          target,
-          router: target === 'vue' ? 'vue-router-v4' : 'react-router-v6',
-          devMode: false
-        })
+    ...([
+      ['personal-notes', 'react'],
+      ['personal-notes', 'vue'],
+      ['single-sku-shop', 'react'],
+      ['single-sku-shop', 'vue'],
+      ['single-merchant-shop', 'react'],
+      ['single-merchant-shop', 'vue'],
+      ['multi-merchant-marketplace', 'react'],
+      ['multi-merchant-marketplace', 'vue'],
+      ['single-merchant-commerce', 'react'],
+      ['single-merchant-commerce', 'vue'],
+      ['multi-merchant-commerce', 'react'],
+      ['multi-merchant-commerce', 'vue'],
+      ['customer-crm', 'react'],
+      ['customer-crm', 'vue'],
+      ['service-desk', 'react'],
+      ['service-desk', 'vue'],
+      ['content-knowledge-base', 'react'],
+      ['content-knowledge-base', 'vue'],
+      ['booking-registration', 'react'],
+      ['booking-registration', 'vue'],
+      ['project-tasks', 'react'],
+      ['project-tasks', 'vue'],
+      ['rental-viewing', 'react'],
+      ['rental-viewing', 'vue'],
+      ['video-live', 'react'],
+      ['video-live', 'vue'],
+      ['food-ordering', 'react'],
+      ['food-ordering', 'vue'],
+      ['hospital-registration', 'react'],
+      ['hospital-registration', 'vue'],
+      ['personal-blog', 'react'],
+      ['personal-blog', 'vue'],
+      ['automotive-news', 'react'],
+      ['automotive-news', 'vue'],
+      ['procurement-inventory', 'react'],
+      ['procurement-inventory', 'vue'],
+      ['enterprise-approvals', 'react'],
+      ['enterprise-approvals', 'vue'],
+      ['survey-forms', 'react'],
+      ['survey-forms', 'vue'],
+      ['online-courses', 'react'],
+      ['online-courses', 'vue'],
+      ['community-forum', 'react'],
+      ['community-forum', 'vue'],
+      ['asset-management', 'react'],
+      ['asset-management', 'vue'],
+      ['quote-contracts', 'react'],
+      ['quote-contracts', 'vue'],
+      ['recruitment-hr', 'react'],
+      ['recruitment-hr', 'vue']
+    ] as const)
+  ])('exports %s from the library entry as %s without warnings', async (template, target) => {
+    const value = await fixture()
+    const beforePages = new Set(value.editor.graph.getPages().map((page) => page.id))
+    const installed = await value.installer.create(template, authentication(), value.providerKey)
+    expect(value.failures).toEqual([])
+    expect(installed).toBe(true)
+    const pages = value.editor.graph.getPages().filter((page) => !beforePages.has(page.id))
+    expect(pages).toHaveLength(templatePageCounts[template])
+    if (template === 'personal-notes')
+      expect(pages.map((page) => page.name).sort()).toEqual(['Notes login', 'Personal notes'])
+    const output = compileAppBackendProviderDocument(value.store, {
+      graph: value.editor.graph,
+      pageIds: pages.map((page) => page.id),
+      options: withDefaults({
+        target,
+        router: target === 'vue' ? 'vue-router-v4' : 'react-router-v6',
+        devMode: false
       })
-      expect(output.warnings).toEqual([])
-      expect(output.files.has(target === 'vue' ? 'src/main.ts' : 'src/main.tsx')).toBe(true)
-      expect([...output.files.keys()].some((path) => path.startsWith('backend/nestjs/'))).toBe(true)
-      const auth = output.files.get('src/lowcode-backend-auth.ts')
-      expect(typeof auth).toBe('string')
-      expect(auth).toContain(authentication().issuer)
-      expect(auth).toContain(authentication().clientId)
-    }
-  )
+    })
+    expect(output.warnings).toEqual([])
+    expect(output.files.has(target === 'vue' ? 'src/main.ts' : 'src/main.tsx')).toBe(true)
+    expect([...output.files.keys()].some((path) => path.startsWith('backend/nestjs/'))).toBe(true)
+    const auth = output.files.get('src/lowcode-backend-auth.ts')
+    expect(typeof auth).toBe('string')
+    expect(auth).toContain(authentication().issuer)
+    expect(auth).toContain(authentication().clientId)
+  })
 })

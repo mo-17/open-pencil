@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 
+import { expectRecord } from '#tests/helpers/assert'
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 test('mutation tool retains explicit navigation history and Back fallback inside branches', () => {
@@ -18,8 +19,8 @@ test('mutation tool retains explicit navigation history and Back fallback inside
     id: owner.id,
     patch_json: JSON.stringify({ events: { onClick: [action] } })
   })
-  expect(result.ok).toBe(true)
-  expect(graph.getNode(owner.id)?.events?.onClick).toEqual([action])
+  expect(expectRecord(result).ok).toBe(true)
+  expect<unknown>(graph.getNode(owner.id)?.events?.onClick).toEqual([action])
 })
 
 test('mutation tool rejects unsafe fallback and unknown history atomically', () => {
@@ -38,7 +39,7 @@ test('mutation tool rejects unsafe fallback and unknown history atomically', () 
         events: { onClick: [action] }
       })
     })
-    expect(result.ok).toBe(false)
+    expect(expectRecord(result).ok).toBe(false)
     expect(graph.getNode(owner.id)?.events).toBeUndefined()
     expect(graph.getNode(owner.id)?.interactiveProps).toBeUndefined()
   }

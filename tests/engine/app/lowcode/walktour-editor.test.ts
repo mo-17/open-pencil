@@ -21,6 +21,8 @@ import {
 } from '@/app/lowcode/walktour-editor'
 import { useWalktourDraft } from '@/app/lowcode/walktour-editor/use'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 function fixture() {
   const editor = createEditor()
   const node = editor.graph.createNode(
@@ -165,7 +167,7 @@ for (const boundary of [
       if (boundary === 'cancel') d.cancel(old)
       if (boundary === 'dispose') f.scope.stop()
       if (boundary === 'external-module')
-        f.owner.value.interactiveProps.module = createWalktourModuleInstance({
+        expectDefined(f.owner.value.interactiveProps).module = createWalktourModuleInstance({
           triggerLabel: 'External'
         })
       const current = d.version.value

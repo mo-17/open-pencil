@@ -1,4 +1,5 @@
 import { isValid, decode } from 'js-base64'
+import * as v from 'valibot'
 
 /**
  * Phase 3 §3 — shared Supabase config validators.
@@ -11,7 +12,6 @@ import { isValid, decode } from 'js-base64'
  * one source.
  */
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { ValidationResult } from './validate'
 
@@ -30,7 +30,7 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
     const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     if (!isValid(padded)) return null
     const json = decode(padded)
-    return JSON.parse(json) as JSONObject
+    return v.parse(v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.unknown())), json)
   } catch {
     return null
   }

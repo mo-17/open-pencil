@@ -29,7 +29,7 @@ function setFigSource(
 }
 
 function decodeExport(bytes: Uint8Array): RawNodeChange[] {
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  const buffer = new Uint8Array(bytes).buffer
   return parseFigBuffer(buffer).nodeChanges as RawNodeChange[]
 }
 
@@ -160,9 +160,7 @@ describe('FIG export node-reference remapping', () => {
     }
 
     const bytes = await exportFigFile(graph)
-    const parsed = parseFigBuffer(
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-    )
+    const parsed = parseFigBuffer(new Uint8Array(bytes).buffer)
     const exportedTarget = findByName(parsed.nodeChanges as RawNodeChange[], target.name)
     if (!exportedTarget.guid) throw new Error('Expected the target to receive an export GUID')
     expect(guidToString(exportedTarget.guid)).not.toBe('0:0')

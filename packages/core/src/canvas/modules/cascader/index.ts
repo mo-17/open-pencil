@@ -22,7 +22,10 @@ export function renderCascaderModulePreview(
 ): boolean {
   return preview.renderResolvedModulePreview(node, cascader.resolveCascaderModule, (frame) => {
     const { width, height } = frame
-    const config = { ...frame.config, ...moduleControlState(node, frame.config) }
+    const config = {
+      ...frame.config,
+      ...moduleControlState(node, frame.config)
+    }
     const binding = readModuleInitialValue(graph, node, 'value', 'array')
     const selected = cascader.parseCascaderPath(
       config.items,
@@ -69,7 +72,7 @@ export function renderCascaderModulePreview(
               renderer.color4f(color.r, color.g, color.b, opacity * (summary ? 1 : 0.6)),
               { halfLeading: true },
               (paragraph) => {
-                canvas.drawParagraph(paragraph, 12, (height - config.fontSize * 1.5) / 2)
+                paragraph.draw(canvas, 12, (height - config.fontSize * 1.5) / 2)
               }
             )
           }

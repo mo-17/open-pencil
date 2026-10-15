@@ -15,8 +15,10 @@ import {
   createRemotePluginCatalogClient,
   remotePluginCatalogEntries
 } from '@/app/plugins'
+import { createRemotePluginTransport } from '@/app/plugins/remote/transport'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
+import { fetchStub } from '#tests/helpers/fetch'
 
 const NOW = Date.parse('2026-08-05T00:00:00.000Z')
 const CATALOG_URL = 'https://plugins.example/catalog.json'
@@ -96,10 +98,10 @@ describe('remote plugin catalog client', () => {
       engineVersion: '0.13.2',
       cache,
       now: () => NOW,
-      transport: {
+      transport: catalogTransport({
         loadCatalog: async () => fresh(data.catalog, CATALOG_URL),
         loadManifest: async () => fresh(data.manifest, MANIFEST_URL)
-      }
+      })
     })
 
     const result = await client.load()
@@ -133,10 +135,10 @@ describe('remote plugin catalog client', () => {
       engineVersion: '0.13.2',
       cache,
       now: () => NOW,
-      transport: {
+      transport: catalogTransport({
         loadCatalog: async () => fresh(data.catalog, CATALOG_URL),
         loadManifest: async () => fresh(data.manifest, MANIFEST_URL)
-      }
+      })
     })
     expect((await online.load()).status).toBe('fresh')
 
@@ -157,7 +159,7 @@ describe('remote plugin catalog client', () => {
       engineVersion: '0.13.2',
       cache,
       now: () => NOW,
-      transport: offlineTransport
+      transport: catalogTransport(offlineTransport)
     })
     const cached = await offline.load()
     expect(cached.status).toBe('cached')
@@ -173,7 +175,7 @@ describe('remote plugin catalog client', () => {
       engineVersion: '0.13.2',
       cache,
       now: () => NOW,
-      transport: {
+      transport: catalogTransport({
         loadCatalog: async () => ({
           status: 'not-modified' as const,
           url: CATALOG_URL,
@@ -183,7 +185,7 @@ describe('remote plugin catalog client', () => {
         loadManifest: async (): Promise<never> => {
           throw new Error('manifest refresh failed')
         }
-      }
+      })
     })
     const packageFallback = await partiallyOffline.load()
     expect(packageFallback.status).toBe('cached')
@@ -199,7 +201,7 @@ describe('remote plugin catalog client', () => {
       engineVersion: '0.13.2',
       cache,
       now: () => Date.parse('2026-09-01T00:00:00.000Z'),
-      transport: offlineTransport
+      transport: catalogTransport(offlineTransport)
     })
     const stale = await expired.load()
     expect(stale.status).toBe('stale')
@@ -218,10 +220,10 @@ describe('remote plugin catalog client', () => {
       publisherKeyring: data.publisherKeyring,
       engineVersion: '0.13.2',
       now: () => NOW,
-      transport: {
+      transport: catalogTransport({
         loadCatalog: async () => fresh(data.catalog, CATALOG_URL),
         loadManifest: async () => fresh(data.manifest, MANIFEST_URL)
-      }
+      })
     })
 
     const result = await client.load()
@@ -232,3 +234,16 @@ describe('remote plugin catalog client', () => {
     expect(result.issues[0]?.error).toMatchObject({ code: 'publisher-key-revoked' })
   })
 })
+
+function catalogTransport(
+  overrides: Pick<ReturnType<typeof createRemotePluginTransport>, 'loadCatalog' | 'loadManifest'>
+) {
+  return {
+    ...createRemotePluginTransport({
+      fetchImpl: fetchStub(async () => {
+        throw new Error('Unexpected remote fixture transport operation')
+      })
+    }),
+    ...overrides
+  }
+}

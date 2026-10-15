@@ -21,6 +21,8 @@ test.afterAll(async () => {
 
 async function getSelectedNodeFlags() {
   return page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -77,6 +79,8 @@ test('multi-selection independent corners toggle is one undo step', async () => 
 
   const independentStates = () =>
     page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return [...store.state.selectedIds].map(

@@ -1,8 +1,10 @@
 import { request } from 'node:http'
 import type { ClientRequest, RequestOptions } from 'node:http'
+import { setTimeout, clearTimeout } from 'node:timers'
 
 import { resolveStdioRPCTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
 import type { RPCSendOptions } from '#mcp/rpc-types'
+import { unrefTimer } from '#mcp/timers'
 import { readDiscoveryFile } from '#mcp/transport/discovery'
 import { getSocketPath, platformHasUnixSockets } from '#mcp/transport/paths'
 
@@ -186,7 +188,13 @@ export function createStdioRPCBridge({
       if (transportMode === 'socket' && resolvedSocketPath) {
         reqOpts = { socketPath: resolvedSocketPath, path, method, headers }
       } else if (transportMode === 'tcp' && resolvedHttpPort) {
-        reqOpts = { hostname: '127.0.0.1', port: resolvedHttpPort, path, method, headers }
+        reqOpts = {
+          hostname: '127.0.0.1',
+          port: resolvedHttpPort,
+          path,
+          method,
+          headers
+        }
       }
 
       if (!reqOpts) {
@@ -327,7 +335,7 @@ export function createStdioRPCBridge({
     reconnectTimer = setTimeout(() => {
       connectPromise = connect()
     }, reconnectDelayMs)
-    reconnectTimer.unref()
+    unrefTimer(reconnectTimer)
   }
 
   /**
@@ -373,6 +381,9 @@ export function createStdioRPCBridge({
         clearTimeout(timer)
         cleanupAbort()
         if (destroyWith && activeRequest && !activeRequest.destroyed) {
+          // Close the transport as well: Bun's ClientRequest.destroy can reject the request
+          // while leaving an unread response's socket alive.
+          activeRequest.socket?.destroy(destroyWith)
           activeRequest.destroy(destroyWith)
         }
         activeRequest = null

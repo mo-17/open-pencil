@@ -3,10 +3,12 @@ import { resolve } from 'node:path'
 
 import { serializeCodePenSidecarRequest } from '@open-pencil/compiler/codepen/sidecar-wire'
 
+import { repoPath } from '#tests/helpers/paths'
+
 import { handleCodePenSidecarInput, readCodePenSidecarFrame } from '../src/index'
 import { CODEPEN_SIDECAR_LIMITS, parseCodePenSidecarRequest } from '../src/protocol'
 
-const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..')
+const REPOSITORY_ROOT = repoPath()
 const SIDECAR_ENTRY = resolve(import.meta.dir, '../src/index.ts')
 
 interface RequestFileFixture {

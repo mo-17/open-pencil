@@ -1,6 +1,5 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
-import { uint8ArrayToArrayBuffer } from '#core-tests/helpers/fig/fixtures'
 import { collectAllNodes } from '#core-tests/helpers/fig/traversal'
 
 import { exportFigFile, initCodec, parseFigFile, SceneGraph } from '@open-pencil/core'
@@ -31,7 +30,7 @@ describe('roundtrip: GROUP survives export → re-import', () => {
     })
 
     const bytes = await exportFigFile(graph)
-    const reImported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
+    const reImported = await parseFigFile(bytes.buffer as ArrayBuffer)
     const nodes = collectAllNodes(reImported)
 
     const roundTripped = nodes.find((n) => n.name === 'My Group')

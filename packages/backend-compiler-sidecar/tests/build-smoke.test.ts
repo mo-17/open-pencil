@@ -3,6 +3,8 @@ import { mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
+
 import {
   BACKEND_COMPILER_SIDECAR_CANDIDATE_FORMAT,
   BACKEND_COMPILER_SIDECAR_TARGETS,
@@ -88,7 +90,7 @@ async function writeSyntheticCandidate(
 describe('Backend Compiler sidecar candidate build contract', () => {
   test('keeps the release matrix candidate-only while building every declared target', async () => {
     const workflow = await readFile(
-      resolve(import.meta.dir, '../../../.github/workflows/build.yml'),
+      join(await resolveWorkspaceRoot(import.meta.dir), '.github/workflows/build.yml'),
       'utf8'
     )
     for (const target of Object.keys(BACKEND_COMPILER_SIDECAR_TARGETS)) {
@@ -282,7 +284,9 @@ describe('Backend Compiler sidecar candidate provenance', () => {
       const target = backendCompilerSidecarTargetFromHost()
       const binaryPath = await writeSyntheticCandidate(directory, target)
       const manifestPath = backendCompilerSidecarCandidateManifestPath(binaryPath)
-      const parsed = JSON.parse(await readFile(manifestPath, 'utf8')) as MutableCandidateManifestV1
+      const parsed: MutableCandidateManifestV1 = {
+        ...(await verifyBackendCompilerSidecarCandidate(target, binaryPath))
+      }
       parsed.executionAuthorityCreated = true
       await writeFile(manifestPath, `${JSON.stringify(parsed)}\n`)
       expect(

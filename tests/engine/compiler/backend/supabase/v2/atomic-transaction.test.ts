@@ -907,7 +907,7 @@ describe('Supabase Backend Provider V2 atomic transaction review artifacts', () 
     if (invalidIncrementMutation.kind !== 'data.mutate' || !invalidIncrementMutation.increments) {
       throw new Error('Invalid atomic fixture')
     }
-    invalidIncrementMutation.increments[0].by = 2
+    Reflect.set(invalidIncrementMutation.increments[0], 'by', 2)
     expect(createPlan(invalidIncrement).result).toMatchObject({
       ok: false,
       diagnostics: expect.arrayContaining([

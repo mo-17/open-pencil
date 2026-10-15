@@ -5,7 +5,9 @@ import { computed, provide, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { attachmentsForMessage } from '@/app/ai/attachment/presentation/store'
 import type { AttachmentPresentation } from '@/app/ai/attachment/presentation/types'
+import type { ReasoningDisplay } from '@/app/settings/preferences/store'
 import { CHAT_NODES_LIVE } from '@/components/chat/tool/context'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
@@ -20,7 +22,10 @@ const {
   showContinue = false,
   pendingApprovalIds = [],
   actionableApprovalMessageId,
-  nodesLive = true
+  presentations,
+  interactive = false,
+  nodesLive = true,
+  reasoningDisplay
 } = defineProps<{
   messages: UIMessage[]
   status: ChatStatus
@@ -28,13 +33,22 @@ const {
   pendingApprovalIds?: readonly string[]
   actionableApprovalMessageId?: string | null
   presentations?: Record<string, { text?: string; attachments?: AttachmentPresentation[] }>
+  /** Offers regenerating the last reply, retrying an unanswered request, and editing the last request. */
+  interactive?: boolean
   /** False for a conversation from another document: its layer IDs are not this document's. */
   nodesLive?: boolean
+  /** Overrides the reasoning display preference, for a surface that always shows it. */
+  reasoningDisplay?: ReasoningDisplay
 }>()
 const emit = defineEmits<{
   continue: []
   toolApproval: [messageId: string, id: string, approved: boolean]
+  regenerate: []
+  revert: [messageId: string]
+  restore: [messageId: string]
+  edit: [messageId: string, text: string]
 }>()
+
 const { ai } = useI18n()
 provide(
   CHAT_NODES_LIVE,
@@ -50,6 +64,16 @@ const isThinking = computed(() => {
   if ('toolCallId' in part && (part.state === 'output-available' || part.state === 'output-error'))
     return true
   return status === 'submitted'
+})
+const idle = computed(() => interactive && (status === 'ready' || status === 'error'))
+// A request that failed before any reply is the last message; it is retried, not an older reply.
+const lastMessage = computed(() => messages.at(-1))
+const lastRequest = computed(() => messages.findLast((m) => m.role === 'user'))
+/** Messages with attachments carry context a plain text edit would drop. */
+const editableRequestId = computed(() => {
+  const request = lastRequest.value
+  if (!request || presentations?.[request.id]?.attachments?.length) return undefined
+  return attachmentsForMessage(request.id).value.length > 0 ? undefined : request.id
 })
 const transcriptContent = ref<HTMLDivElement>()
 const viewportComponent = ref<{ viewportElement?: HTMLElement }>()
@@ -88,6 +112,15 @@ const { arrivedState, resumeFollowing } = useScrollFollowing(
           "
           :presentation="presentations?.[msg.id]"
           :streaming="running && msg.role === 'assistant' && index === messages.length - 1"
+          :can-regenerate="idle && msg.id === lastMessage?.id && msg.role === 'assistant'"
+          :can-retry="idle && msg.id === lastMessage?.id && msg.role === 'user'"
+          :can-edit="idle && msg.id === editableRequestId"
+          :turn-actions-disabled="!idle"
+          :reasoning-display="reasoningDisplay"
+          @regenerate="emit('regenerate')"
+          @revert="emit('revert', msg.id)"
+          @restore="emit('restore', msg.id)"
+          @edit="(text) => emit('edit', msg.id, text)"
         />
 
         <!-- Thinking indicator: shown when AI is working but no visible activity -->

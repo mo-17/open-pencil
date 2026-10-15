@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { selectedContentNodeId } from '#tests/helpers/plugins/content-components'
 
 const output = 'output/modal-canvas-content-20260925'
 
@@ -25,6 +26,8 @@ async function prepare(page: Page): Promise<CanvasHelper> {
 
 async function waitForCanvasSettlement(page: Page) {
   await page.evaluate(async () => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     // Let Vue resize/recreate the scene surface after showing or hiding the content banner.
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
@@ -37,6 +40,8 @@ async function waitForCanvasSettlement(page: Page) {
   await expect
     .poll(() =>
       page.evaluate(() => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const renderers = window.openPencil
           .getStore()
           .canvasRenderers.filter((renderer) => renderer.tracksSceneSettlement)
@@ -74,12 +79,15 @@ async function insertModal(page: Page) {
 
 async function drawContentRectangle(page: Page, canvas: CanvasHelper) {
   const point = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const rootId = editor.state.contentEdit?.rootId
     const root = rootId && editor.graph.getNode(rootId)
     if (!root) throw new Error('Dialog content editing has not started')
     const origin = editor.graph.getAbsolutePosition(root.id)
     return {
+      rootId: root.id,
       x: (origin.x + root.width - 72) * editor.state.zoom + editor.state.panX,
       y: (origin.y + root.height - 48) * editor.state.zoom + editor.state.panY,
       width: 40 * editor.state.zoom,
@@ -87,7 +95,15 @@ async function drawContentRectangle(page: Page, canvas: CanvasHelper) {
     }
   })
   await canvas.drawRect(point.x, point.y, point.width, point.height)
-  await expect(layer(page, 'Rectangle')).toBeVisible()
+  const id = await selectedContentNodeId(page)
+  expect(
+    await page.evaluate((nodeId) => {
+      const node = window.openPencil?.getStore?.().graph.getNode(nodeId)
+      return { type: node?.type, parentId: node?.parentId }
+    }, id)
+  ).toEqual({ type: 'RECTANGLE', parentId: point.rootId })
+  await expect(page.locator(`[data-node-id="${id}"]`).getByTestId('layers-item')).toBeVisible()
+  return id
 }
 
 test('edits an existing dialog form using normal properties and drawing tools and keeps edits on return', async ({
@@ -114,7 +130,7 @@ test('edits an existing dialog form using normal properties and drawing tools an
   await expect(label).toHaveValue('Save locally')
   await label.fill('Save profile changes')
   await label.blur()
-  await drawContentRectangle(page, canvas)
+  const rectangleId = await drawContentRectangle(page, canvas)
   await waitForCanvasSettlement(page)
   await page.screenshot({ path: output + '/editing-existing.png' })
 
@@ -123,7 +139,9 @@ test('edits an existing dialog form using normal properties and drawing tools an
   await expect(page.getByTestId('modal-edit-content')).toBeEnabled()
   await page.getByTestId('modal-edit-content').click()
   await expect(banner).toContainText('Dialog form content')
-  await expect(layer(page, 'Rectangle')).toBeVisible()
+  await expect(
+    page.locator(`[data-node-id="${rectangleId}"]`).getByTestId('layers-item')
+  ).toBeVisible()
   await selectLayer(page, 'Save locally')
   await expect(label).toHaveValue('Save profile changes')
   canvas.assertNoErrors()
@@ -174,7 +192,8 @@ test('selecting an outside layer or changing page leaves content editing', async
   test.setTimeout(60_000)
   const canvas = await prepare(page)
   await canvas.drawRect(80, 90, 120, 70)
-  await layer(page, 'Rectangle').dblclick()
+  const outsideId = await selectedContentNodeId(page)
+  await page.locator(`[data-node-id="${outsideId}"]`).getByTestId('layers-item').dblclick()
   await page.getByTestId('layers-item-input').fill('Outside dialog')
   await page.getByTestId('layers-item-input').press('Enter')
   await canvas.pressKey('Escape')

@@ -3,11 +3,11 @@ import type { Canvas } from 'canvaskit-wasm'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
+import { strokeLayoutChildren } from '#core/canvas/overlays/layout-outlines'
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
 import {
   AUTO_LAYOUT_HOVER_BLUE,
   AUTO_LAYOUT_HOVER_BLUE_FILL,
-  AUTO_LAYOUT_HOVER_CHILD_DASH,
   AUTO_LAYOUT_HOVER_MAGENTA,
   AUTO_LAYOUT_HOVER_MAGENTA_FILL,
   AUTO_LAYOUT_HOVER_STRIPE_GAP,
@@ -15,6 +15,8 @@ import {
   AUTO_LAYOUT_HOVER_STROKE_WIDTH,
   AUTO_LAYOUT_HOVER_TICK_LENGTH,
   AUTO_LAYOUT_HOVER_VALUE_OFFSET,
+  AUTO_LAYOUT_HOVER_GAP_PILL,
+  AUTO_LAYOUT_HOVER_PADDING_PILL,
   AUTO_LAYOUT_HOVER_VALUE_PILL_HEIGHT,
   AUTO_LAYOUT_HOVER_VALUE_PILL_PADDING_X,
   AUTO_LAYOUT_HOVER_VALUE_PILL_RADIUS
@@ -104,25 +106,39 @@ function drawStripedRect(
   immutablePath.delete()
 }
 
-function drawValuePill(r: SkiaRenderer, canvas: Canvas, text: string, x: number, y: number) {
-  if (!r.labelFont) return
-  const width = Math.max(24, text.length * 8 + AUTO_LAYOUT_HOVER_VALUE_PILL_PADDING_X * 2)
+/** A value in a pill as wide as its text, its digits centred, as Figma draws padding and gaps. */
+function drawValuePill(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  text: string,
+  x: number,
+  y: number,
+  color: Color
+) {
+  const font = r.valueFont ?? r.labelFont
+  if (!font) return
+  const glyphs = font.getGlyphIDs(text)
+  let advance = 0
+  for (const glyphWidth of font.getGlyphWidths(glyphs)) advance += glyphWidth
+  // The ink's top and bottom, so the digits sit in the middle whatever the font's metrics.
+  const bounds = font.getGlyphBounds(glyphs)
+  let top = 0
+  let bottom = 0
+  for (let i = 0; i < bounds.length; i += 4) {
+    top = Math.min(top, bounds[i + 1])
+    bottom = Math.max(bottom, bounds[i + 3])
+  }
+  const width = advance + AUTO_LAYOUT_HOVER_VALUE_PILL_PADDING_X * 2
   const height = AUTO_LAYOUT_HOVER_VALUE_PILL_HEIGHT
   const rect = r.ck.RRectXY(
     r.ck.LTRBRect(x - width / 2, y - height / 2, x + width / 2, y + height / 2),
     AUTO_LAYOUT_HOVER_VALUE_PILL_RADIUS,
     AUTO_LAYOUT_HOVER_VALUE_PILL_RADIUS
   )
-  r.auxFill.setColor(r.selColor())
+  r.auxFill.setColor(canvasColor(r, color))
   canvas.drawRRect(rect, r.auxFill)
   r.auxFill.setColor(r.ck.Color4f(1, 1, 1, 1))
-  canvas.drawText(
-    text,
-    x - width / 2 + AUTO_LAYOUT_HOVER_VALUE_PILL_PADDING_X,
-    y + 5,
-    r.auxFill,
-    r.labelFont
-  )
+  canvas.drawText(text, x - advance / 2, y - (top + bottom) / 2, r.auxFill, font)
 }
 
 function gapRects(node: SceneNode, graph: SceneGraph): RectTuple[] {
@@ -226,7 +242,8 @@ function drawSpacingHover(
     canvas,
     String(Math.round(node.itemSpacing)),
     (x + width / 2) * r.zoom + r.panX + AUTO_LAYOUT_HOVER_VALUE_OFFSET,
-    (y + height / 2) * r.zoom + r.panY - AUTO_LAYOUT_HOVER_VALUE_OFFSET
+    (y + height / 2) * r.zoom + r.panY - AUTO_LAYOUT_HOVER_VALUE_OFFSET,
+    AUTO_LAYOUT_HOVER_GAP_PILL
   )
 }
 
@@ -249,29 +266,9 @@ function drawPaddingHover(
     canvas,
     String(Math.round(value)),
     (x + width / 2) * r.zoom + r.panX + AUTO_LAYOUT_HOVER_VALUE_OFFSET,
-    (y + height / 2) * r.zoom + r.panY - AUTO_LAYOUT_HOVER_VALUE_OFFSET
+    (y + height / 2) * r.zoom + r.panY - AUTO_LAYOUT_HOVER_VALUE_OFFSET,
+    AUTO_LAYOUT_HOVER_PADDING_PILL
   )
-}
-
-function drawChildrenHover(r: SkiaRenderer, canvas: Canvas, graph: SceneGraph, node: SceneNode) {
-  r.auxStroke.setStrokeWidth(1)
-  r.auxStroke.setColor(r.selColor())
-  r.auxStroke.setPathEffect(
-    r.ck.PathEffect.MakeDash([AUTO_LAYOUT_HOVER_CHILD_DASH, AUTO_LAYOUT_HOVER_CHILD_DASH], 0)
-  )
-  for (const child of visibleLayoutChildren(node, graph)) {
-    const abs = graph.getAbsolutePosition(child.id)
-    canvas.drawRect(
-      r.ck.LTRBRect(
-        abs.x * r.zoom + r.panX,
-        abs.y * r.zoom + r.panY,
-        (abs.x + child.width) * r.zoom + r.panX,
-        (abs.y + child.height) * r.zoom + r.panY
-      ),
-      r.auxStroke
-    )
-  }
-  r.auxStroke.setPathEffect(null)
 }
 
 export function drawAutoLayoutHover(
@@ -284,7 +281,7 @@ export function drawAutoLayoutHover(
   const node = graph.getNode(hover.nodeId)
   if (!node || (node.layoutMode !== 'HORIZONTAL' && node.layoutMode !== 'VERTICAL')) return
 
-  if (hover.kind === 'children') drawChildrenHover(r, canvas, graph, node)
+  if (hover.kind === 'children') strokeLayoutChildren(r, canvas, graph, node)
   if (hover.kind === 'spacing' || hover.kind === 'spacing-value') {
     drawSpacingHover(r, canvas, graph, node, hover.kind === 'spacing-value')
   }

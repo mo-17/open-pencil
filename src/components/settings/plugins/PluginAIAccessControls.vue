@@ -7,7 +7,7 @@ import {
 } from 'reka-ui'
 import { computed, ref } from 'vue'
 
-import { useI18n } from '@open-pencil/vue'
+import { vTestId, useI18n } from '@open-pencil/vue'
 
 import {
   appPluginAIAuthorization,
@@ -194,7 +194,7 @@ function confirmReview(): void {
   <section
     v-if="reviews.length"
     class="mt-3 rounded border border-border bg-input/20 p-2.5"
-    :data-test-id="`plugin-ai-access-${plugin.package.manifest.plugin.id}`"
+    v-test-id="`plugin-ai-access-${plugin.package.manifest.plugin.id}`"
   >
     <div class="min-w-0">
       <h5 class="text-[10px] font-medium text-surface">
@@ -215,7 +215,7 @@ function confirmReview(): void {
         v-for="review in reviews"
         :key="`${review.kind}:${review.contributionId}`"
         class="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-panel px-2 py-2"
-        :data-test-id="`plugin-ai-contribution-${review.kind}-${review.contributionId}`"
+        v-test-id="`plugin-ai-contribution-${review.kind}-${review.contributionId}`"
       >
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-1.5">
@@ -240,7 +240,9 @@ function confirmReview(): void {
               ? 'border-error/30 text-error hover:bg-error/10'
               : 'border-accent/40 bg-accent text-white hover:bg-accent/90'
           "
-          :data-test-id="`plugin-ai-${grantActive(review) ? 'revoke' : 'review'}-${review.kind}-${review.contributionId}`"
+          v-test-id="
+            `plugin-ai-${grantActive(review) ? 'revoke' : 'review'}-${review.kind}-${review.contributionId}`
+          "
           :aria-label="actionLabel(review)"
           @click="openReview(grantActive(review) ? 'revoke' : 'grant', review)"
         >
@@ -336,7 +338,7 @@ function confirmReview(): void {
         <button
           type="button"
           class="rounded px-3 py-1.5 text-[11px] font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-          :class="pending?.action === 'revoke' ? 'bg-danger' : 'bg-accent'"
+          :class="pending?.action === 'revoke' ? 'bg-error-fill' : 'bg-accent'"
           data-test-id="plugin-ai-access-confirm"
           @click="confirmReview"
         >

@@ -8,7 +8,9 @@ import {
   readFigSource
 } from '@open-pencil/core/io/formats/fig'
 
-const FIXTURES = resolve(import.meta.dir, '../../../../fixtures')
+import { repoPath } from '#tests/helpers/paths'
+
+const FIXTURES = repoPath('tests/fixtures')
 
 test('ordinary FIG reads merge finite archive limits and reject oversized input', async () => {
   const bytes = new Uint8Array(await readFile(resolve(FIXTURES, 'gold-preview.fig')))

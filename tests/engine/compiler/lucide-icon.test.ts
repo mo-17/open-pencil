@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -28,9 +30,14 @@ describe('compile — lucide icons (Phase 4 §23)', () => {
     })
     return {
       app: out.files.get('src/App.tsx') as string,
-      pkg: JSON.parse(out.files.get('package.json') as string) as {
-        dependencies: Record<string, string>
-      },
+      pkg: v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+        ),
+        out.files.get('package.json') as string
+      ),
       warnings: out.warnings
     }
   }

@@ -29,7 +29,7 @@ export function applicationSessionFixture(retention: 'reset' | 'preserve' = 'pre
     width: 312,
     height: 48,
     interactiveProps: { placeholder: 'Filter products', text: '' },
-    bindings: { value: { kind: 'state', stateId: 'filter' } }
+    bindings: { value: { kind: 'ref', stateId: 'filter' } }
   })
   graph.createNode('TEXT', homeEntry.id, {
     text: 'Page: 1',
@@ -70,7 +70,7 @@ export function applicationSessionFixture(retention: 'reset' | 'preserve' = 'pre
     width: 312,
     height: 48,
     interactiveProps: { placeholder: 'Detail draft' },
-    bindings: { value: { kind: 'state', stateId: 'detailDraft' } }
+    bindings: { value: { kind: 'ref', stateId: 'detailDraft' } }
   })
   button(productsEntry, 'Open next product', '/products/43')
   button(productsEntry, 'Open previous product', '/products/42')

@@ -204,7 +204,7 @@ async function commitDraft(): Promise<void> {
   >
     <icon-lucide-panels-top-left class="size-3" />
     CodePen AI
-    <span v-if="drafts.length" class="rounded bg-accent px-1 text-accent-foreground">
+    <span v-if="drafts.length" class="rounded bg-accent px-1 text-on-accent">
       {{ drafts.length }}
     </span>
   </button>
@@ -277,7 +277,7 @@ async function commitDraft(): Promise<void> {
             </div>
             <button
               type="button"
-              class="mt-1 justify-self-start rounded bg-accent px-2 py-1 text-accent-foreground"
+              class="mt-1 justify-self-start rounded bg-accent px-2 py-1 text-on-accent"
               @click="requestRebuild(item)"
             >
               Ask AI to rebuild safely
@@ -313,17 +313,18 @@ async function commitDraft(): Promise<void> {
                 <input
                   type="file"
                   accept="image/png,image/webp"
-                  :data-test-id="`codepen-ai-reference-${viewport.id}`"
+                  data-slot="codepen-reference"
+                  :data-viewport-id="viewport.id"
                   :disabled="busy"
                   @change="selectReference($event, viewport.id)"
                 />
-                <span v-if="references[viewport.id]" class="text-emerald-500">Ready</span>
+                <span v-if="references[viewport.id]" class="text-success">Ready</span>
               </label>
             </div>
             <button
               type="button"
               data-test-id="codepen-ai-compare"
-              class="self-start rounded bg-accent px-2 py-1 text-accent-foreground disabled:opacity-40"
+              class="self-start rounded bg-accent px-2 py-1 text-on-accent disabled:opacity-40"
               :disabled="busy || !allReferencesReady"
               @click="compareDraft"
             >
@@ -352,7 +353,7 @@ async function commitDraft(): Promise<void> {
           </template>
         </section>
 
-        <p v-if="localError" role="alert" class="rounded bg-danger/10 p-2 text-danger">
+        <p v-if="localError" role="alert" class="rounded bg-error/10 p-2 text-error">
           {{ localError }}
         </p>
       </div>
@@ -369,7 +370,7 @@ async function commitDraft(): Promise<void> {
       <button
         type="button"
         data-test-id="codepen-ai-commit"
-        class="rounded bg-accent px-3 py-1.5 text-xs text-accent-foreground disabled:opacity-40"
+        class="rounded bg-accent px-3 py-1.5 text-xs text-on-accent disabled:opacity-40"
         :disabled="!canCommit"
         @click="commitDraft"
       >

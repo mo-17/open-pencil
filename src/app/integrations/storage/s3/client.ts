@@ -4,6 +4,7 @@ import { storageFetch } from '@/app/integrations/storage/s3/fetch'
 import {
   S3_RANGE_CHUNK_BYTES,
   downloadS3ObjectByRange,
+  parseS3ContentRange,
   type S3RangeRequest
 } from '@/app/integrations/storage/s3/range-download'
 import { inferS3Region } from '@/app/integrations/storage/s3/region'
@@ -178,7 +179,8 @@ export async function s3Request(
   const signed = await client.sign(url, {
     ...init,
     headers,
-    credentials: 'omit'
+    credentials: 'omit',
+    cache: 'no-store'
   })
   let res: Response
   try {
@@ -200,6 +202,7 @@ export async function s3Request(
           headers: signed.headers,
           body: init.body ?? undefined,
           credentials: 'omit',
+          cache: 'no-store',
           signal: init.signal
         },
         maxResponseBytes,
@@ -289,8 +292,24 @@ export async function getObjectRange(
     S3_RANGE_CHUNK_BYTES
   )
   if (res.status === 404) return null
-  if (res.status !== 206) throw new Error('Storage provider did not honor the thumbnail byte range')
-  return new Uint8Array(await res.arrayBuffer())
+  const contentRange = res.headers.get('content-range')
+  if (res.status !== 206 && (res.status !== 200 || !contentRange)) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new Error('Storage provider did not honor the thumbnail byte range')
+  }
+  const range = contentRange ? parseS3ContentRange(contentRange) : null
+  if (range && (range.start !== start || range.endInclusive >= endExclusive)) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new Error('Storage provider did not honor the thumbnail byte range')
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  if (
+    bytes.length > endExclusive - start ||
+    (range && bytes.length !== range.endInclusive - range.start + 1)
+  ) {
+    throw new Error('Storage range body length does not match Content-Range')
+  }
+  return bytes
 }
 
 export async function putObject(

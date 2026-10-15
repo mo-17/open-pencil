@@ -3,12 +3,15 @@ import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 const editor = useEditorSetup('/?test&no-chrome&no-rulers')
 
 test('renders imported .pen variable colors and fonts like literal values', async () => {
-  await editor.page.evaluate(() =>
-    window.openPencil?.openFile?.('/tests/fixtures/pen-variables.pen')
-  )
+  await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.openFile?.('/tests/fixtures/pen-variables.pen')
+  })
   await editor.canvas.waitForInit()
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return ['literal-text', 'plain-text', 'dashed-text'].map(
         (id) => store?.graph.getNode(id)?.fontFamily
@@ -16,6 +19,8 @@ test('renders imported .pen variable colors and fonts like literal values', asyn
     })
   ).toEqual(['Noto Naskh Arabic', 'Noto Naskh Arabic', 'Noto Naskh Arabic'])
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.state.zoom = 1

@@ -1,22 +1,25 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
+
+import { repoPath } from '#tests/helpers/paths'
 
 import { withModuleFormCleanup } from '../components/form-module/lifecycle'
 import { withComponentTemplateFiles } from '../components/templates/browser'
 
-async function routerDependency(name: string): Promise<string> {
-  const cache = resolve('node_modules/.bun')
-  const prefix = `${name}@7.18.3+`
-  const entry = (await readdir(cache)).find((item) => item.startsWith(prefix))
-  if (!entry) throw new Error(`Missing already cached ${name}@7.18.3; no dependency was installed`)
-  return join(cache, entry, 'node_modules', name)
+function routerDependency(name: string): string {
+  // These router versions belong to the compiler fixture, not the app's router.
+  const directory = repoPath('packages/compiler/node_modules', name)
+  if (!existsSync(join(directory, 'package.json')))
+    throw new Error(`Missing existing compiler test dependency: ${name}`)
+  return directory
 }
 
 function installedDependency(name: string): string {
@@ -37,9 +40,14 @@ export async function withApplicationGuardsFiles(
   run: () => Promise<void>
 ): Promise<void> {
   if (target === 'vue') return withComponentTemplateFiles(page, target, files, run)
-  const manifest = JSON.parse(files.get('package.json') ?? '{}') as {
-    dependencies?: Record<string, string>
-  }
+  const manifest = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.looseObject({ dependencies: v.optional(v.record(v.string(), v.string())) })
+    ),
+    files.get('package.json') ?? '{}'
+  )
   expect(manifest.dependencies?.['react-router-dom']).toBe('^7.18.3')
   const root = await mkdtemp(join(tmpdir(), 'openpencil-guards-browser-'))
   try {
@@ -51,7 +59,7 @@ export async function withApplicationGuardsFiles(
     ])) {
       const installed =
         name === 'react-router' || name === 'react-router-dom'
-          ? await routerDependency(name)
+          ? routerDependency(name)
           : installedDependency(name)
       if (!existsSync(join(installed, 'package.json')))
         throw new Error(`Missing existing test dependency: ${name}`)

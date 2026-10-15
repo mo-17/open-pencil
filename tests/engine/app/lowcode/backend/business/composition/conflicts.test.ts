@@ -8,6 +8,8 @@ import {
   previewComposeBusinessModules
 } from '@/app/lowcode/backend/business/composition'
 
+import { expectDefined } from '#tests/helpers/assert'
+
 import { business, notes, resource } from './helpers'
 
 describe('business composition refusal boundaries', () => {
@@ -18,7 +20,7 @@ describe('business composition refusal boundaries', () => {
     expect(base).toEqual(before)
   })
 
-  test.each(['entity', 'profile', 'directory', 'command', 'role', 'policy'] as const)(
+  test.each([...(['entity', 'profile', 'directory', 'command', 'role', 'policy'] as const)])(
     'rejects changed standalone %s instead of treating it as an installed module',
     (kind) => {
       const base = business()
@@ -29,7 +31,7 @@ describe('business composition refusal boundaries', () => {
       if (!users || !command || !policy || !role) throw new Error('Missing fixture definition')
       if (kind === 'entity') users.name = 'custom_users'
       if (kind === 'profile') resource(base, 'my-profile').readFields.push('owner_id')
-      if (kind === 'directory') resource(base, 'users').query.searchFields = []
+      if (kind === 'directory') expectDefined(resource(base, 'users').query).searchFields = []
       if (kind === 'command') command.name = 'Custom registration'
       if (kind === 'role') role.name = 'custom_manager'
       if (kind === 'policy') policy.principal = { kind: 'authenticated' }
@@ -44,7 +46,7 @@ describe('business composition refusal boundaries', () => {
     }
   )
 
-  test.each(['table', 'path', 'role'] as const)(
+  test.each([...(['table', 'path', 'role'] as const)])(
     'rejects an unrelated %s collision atomically',
     (kind) => {
       const base = notes()

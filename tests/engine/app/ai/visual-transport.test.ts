@@ -156,7 +156,10 @@ describe('visual reference message preparation', () => {
   test('replaces latest images with analyzer text when Design lacks vision', async () => {
     const messages = [userMessage('user-latest', 'Recreate this layout', LATEST_IMAGE)]
     const controller = new AbortController()
-    const analyze = vi.fn(async () => '  Two-column layout with a blue header.  ')
+    const analyze = vi.fn(
+      async (_message: UIMessage, _signal?: AbortSignal) =>
+        '  Two-column layout with a blue header.  '
+    )
 
     const prepared = await prepareVisualReferenceMessages(messages, {
       designSupportsVision: false,

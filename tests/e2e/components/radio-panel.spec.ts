@@ -8,6 +8,8 @@ async function setupRadio(page: Page) {
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const graph = editor.graph
     graph.updateNode(editor.state.currentPageId, {
@@ -38,7 +40,10 @@ async function setupRadio(page: Page) {
 }
 
 async function props(page: Page, id: string) {
-  return page.evaluate((id) => window.openPencil.getStore().graph.getNode(id)?.interactiveProps, id)
+  return page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().graph.getNode(id)?.interactiveProps
+  }, id)
 }
 
 async function inputContrast(input: Locator): Promise<number> {
@@ -71,7 +76,7 @@ async function inputContrast(input: Locator): Promise<number> {
 test('radio options are visible first in classic and focused inspectors', async ({ page }) => {
   const { section, canvas } = await setupRadio(page)
   for (const mode of ['classic', 'focused']) {
-    await page.getByTestId(`design-panel-workspace-${mode}`).click()
+    await page.locator(`[data-slot="inspector-workspace"][data-workspace="${mode}"]`).click()
     const options = section.getByTestId('lowcode-interactive-option-input')
     await expect(options).toHaveCount(2)
     await expectInViewport(page, options.first())
@@ -98,7 +103,10 @@ test('radio option edits preserve the default atomically and leave bound state u
     value: 'Business'
   })
   await expect(section.getByTestId('lowcode-interactive-value')).toHaveText('Business')
-  await page.evaluate(() => window.openPencil.getStore().undo.undo())
+  await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().undo.undo()
+  })
   await expect(inputs.nth(1)).toHaveValue('Team')
   await expect(section.getByTestId('lowcode-interactive-value')).toHaveText('Team')
   await section.getByTestId('lowcode-interactive-option-add').click()
@@ -112,8 +120,8 @@ test('radio option edits preserve the default atomically and leave bound state u
   await expect(inputs).toHaveCount(2)
   expect((await props(page, first))?.value).toBeUndefined()
   await expect(section.getByTestId('lowcode-interactive-value')).toHaveText('(none)')
-  await section.getByTestId('lowcode-interactive-groupName').fill('renamed-plan')
-  await section.getByTestId('lowcode-interactive-groupName').press('Enter')
+  await section.getByRole('textbox', { name: 'Group name', exact: true }).fill('renamed-plan')
+  await section.getByRole('textbox', { name: 'Group name', exact: true }).press('Enter')
   expect((await props(page, first))?.groupName).toBe('renamed-plan')
   await section.getByTestId('lowcode-value-binding-select').selectOption('state:plan')
   await expect(section.getByTestId('lowcode-interactive-value')).toBeDisabled()
@@ -121,6 +129,8 @@ test('radio option edits preserve the default atomically and leave bound state u
   await inputs.nth(1).fill('Company')
   await inputs.nth(1).press('Enter')
   const bound = await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     return {
       binding: editor.graph.getNode(id)?.bindings?.value,
@@ -140,6 +150,8 @@ test('late option change after selection switches cannot edit either radio', asy
   const input = section.getByTestId('lowcode-interactive-option-input').first()
   await input.fill('Uncommitted old draft')
   await input.evaluate((element, secondId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     window.openPencil.getStore().select([secondId])
     element.dispatchEvent(new Event('change', { bubbles: true }))
   }, second)
@@ -154,6 +166,8 @@ test('form overview reveals and focuses a hidden collapsed radio section without
 }) => {
   const { first, second, section, canvas } = await setupRadio(page)
   const formId = await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const form = editor.graph.createNode('FORM', editor.state.currentPageId, {
       name: 'Plan form',
@@ -163,24 +177,38 @@ test('form overview reveals and focuses a hidden collapsed radio section without
     editor.graph.reparentNode(id, form.id)
     return form.id
   }, first)
-  await page.getByTestId('design-panel-workspace-studio').click()
+  await page.locator('[data-slot="inspector-workspace"][data-workspace="studio"]').click()
   await page.getByTestId('inspector-section-trigger-lowcode-control').click()
   await expect(section).toHaveAttribute('data-state', 'closed')
-  await page.getByTestId('inspector-section-hide-lowcode-control').click()
+  await page
+    .locator(
+      '[data-slot="inspector-section-action"][data-command="hide-section"][data-section-id="lowcode-control"]'
+    )
+    .click()
   await expect(section).not.toBeVisible()
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), formId)
-  const before = await page.evaluate(() =>
-    JSON.stringify(window.openPencil.getStore().graph.getAllNodes())
-  )
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, formId)
+  const before = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return JSON.stringify(window.openPencil.getStore().graph.getAllNodes())
+  })
   await page.getByTestId('form-overview-bindings').click()
   await expect(section).toBeVisible()
   await expect(section).toHaveAttribute('data-state', 'open')
   await expect(section.getByTestId('lowcode-value-binding-select')).toBeFocused()
   await expect(section).toHaveAttribute('data-lowcode-focus-highlighted', 'true')
   expect(
-    await page.evaluate(() => JSON.stringify(window.openPencil.getStore().graph.getAllNodes()))
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return JSON.stringify(window.openPencil.getStore().graph.getAllNodes())
+    })
   ).toBe(before)
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), second)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, second)
   await expect(section).not.toBeVisible()
   canvas.assertNoErrors()
 })
@@ -205,6 +233,8 @@ for (const theme of ['dark', 'light']) {
       await page.setViewportSize({ width: 1440, height: 1100 })
       const { first, section, canvas } = await setupRadio(page)
       await page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         editor.updateNode(id, {
           interactiveProps: { options: ['个人', '团队'], value: '团队', groupName: 'plan' },

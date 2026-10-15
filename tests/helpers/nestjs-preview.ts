@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type {
   ManagedPreviewCommand,
@@ -7,16 +8,26 @@ import type {
 } from '@open-pencil/compiler/managed-preview'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
-export type PreviewFixtureWindow = Window & {
-  __OP_NESTJS_PREVIEW__: {
-    spawns: { pid: number; args: string[] }[]
-    updates: string[]
-    killed: number[]
-    opened: string[]
-    managedCommands: ManagedPreviewCommand[]
-    caDialogs: number
-  }
-  __OP_NESTJS_RESOLVE_CA__: (value: string | null) => void
+const previewFixtureStateSchema = v.object({
+  spawns: v.array(v.object({ pid: v.number(), args: v.array(v.string()) })),
+  updates: v.array(v.string()),
+  killed: v.array(v.number()),
+  opened: v.array(v.string()),
+  managedCommands: v.array(v.record(v.string(), v.unknown())),
+  caDialogs: v.number()
+})
+
+export async function readPreviewFixtureState(page: Page) {
+  const value: unknown = await page.evaluate(() => Reflect.get(window, '__OP_NESTJS_PREVIEW__'))
+  return v.parse(previewFixtureStateSchema, value)
+}
+
+export async function resolvePreviewCA(page: Page, path: string | null) {
+  await page.evaluate((path) => {
+    const resolve: unknown = Reflect.get(window, '__OP_NESTJS_RESOLVE_CA__')
+    if (typeof resolve !== 'function') throw new Error('Preview CA fixture unavailable')
+    resolve(path)
+  }, path)
 }
 
 export async function mockDesktopPreview(page: Page) {
@@ -29,14 +40,15 @@ export async function mockDesktopPreview(page: Page) {
       managedCommands: [] as ManagedPreviewCommand[],
       caDialogs: 0
     }
-    ;(window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__ = state
+    Object.assign(window, { __OP_NESTJS_PREVIEW__: state })
     let resolveCA: ((value: string | null) => void) | null = null
-    ;(window as PreviewFixtureWindow).__OP_NESTJS_RESOLVE_CA__ = (value) => {
+    const resolvePreviewCA = (value: string | null) => {
       if (!resolveCA) throw new Error('No pending CA selection')
       const resolve = resolveCA
       resolveCA = null
       resolve(value)
     }
+    Object.assign(window, { __OP_NESTJS_RESOLVE_CA__: resolvePreviewCA })
     const callbacks = new Map<number, (value: unknown) => void>()
     const processes = new Map<
       number,
@@ -135,7 +147,13 @@ export async function mockDesktopPreview(page: Page) {
             const pid = args?.pid as number
             const managed = processes.get(pid)?.managed
             if (managed) {
-              const request = JSON.parse(String(args?.buffer)) as ManagedPreviewCommand
+              const protocolURL = new URL(
+                '/packages/compiler/src/managed-preview/protocol.ts',
+                window.location.origin
+              ).href
+              const { parseManagedPreviewCommand } = await import(/* @vite-ignore */ protocolURL)
+              const payload: unknown = JSON.parse(String(args?.buffer))
+              const request: ManagedPreviewCommand = parseManagedPreviewCommand(payload)
               state.managedCommands.push(request)
               if (request.command === 'diagnose') {
                 for (const diagnostic of [
@@ -234,7 +252,12 @@ export async function mockDesktopPreview(page: Page) {
             return null
           }
           if (command === 'plugin:event|listen') return ++serial
-          if (command === 'take_pending_open' || command === 'list_system_fonts') return []
+          if (
+            command === 'take_pending_open' ||
+            command === 'take_pending_rooms' ||
+            command === 'list_system_fonts'
+          )
+            return []
           return null
         }
       }
@@ -311,11 +334,12 @@ export async function addNotesField(page: Page, fieldName: string) {
 }
 
 export function managedCommands(page: Page) {
-  return page.evaluate(() =>
-    (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.managedCommands.map(
-      (command) => command.command
-    )
-  )
+  return page.evaluate(() => {
+    const state = Reflect.get(window, '__OP_NESTJS_PREVIEW__')
+    if (!state || !Array.isArray(state.managedCommands))
+      throw new Error('Preview fixture unavailable')
+    return state.managedCommands.map((command: ManagedPreviewCommand) => command.command)
+  })
 }
 
 export async function changeNotesClient(page: Page, clientId: string) {

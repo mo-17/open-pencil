@@ -6,6 +6,7 @@ import { SceneGraph, SkiaRenderer } from '@open-pencil/core'
 
 import { initCanvasKit } from '#cli/headless'
 
+import { expectRgbaPixels, asDouble } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 
 let ck: Awaited<ReturnType<typeof initCanvasKit>>
@@ -33,7 +34,7 @@ function solidPNG(red: number, green: number, blue: number): Uint8Array {
 function renderedPixels(renderer: SkiaRenderer): Uint8Array {
   const image = renderer.surface.makeImageSnapshot()
   try {
-    return expectDefined(
+    return expectRgbaPixels(
       image.readPixels(0, 0, {
         width: 8,
         height: 4,
@@ -250,6 +251,10 @@ test('stale scene backing allocation failure falls back to live viewport renderi
     image: staleImage,
     pageId,
     sceneVersion: 0,
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     positionPreviewVersion: 0,
     fontGeneration: renderer.fontGeneration,
     panX: -1_000,
@@ -291,7 +296,7 @@ test('same-ID graph replacement deletes every document-scoped native path cache'
       'first decoded image'
     ).image
     const pathDeletes = Array.from({ length: 5 }, () => mock(() => undefined))
-    const paths = pathDeletes.map((deletePath) => ({ delete: deletePath }) as Path)
+    const paths = pathDeletes.map((deletePath) => asDouble<Path>({ delete: deletePath }))
     renderer.vectorPathCache.set(first.nodeId, [paths[0]])
     renderer.vectorStrokePathCache.set(first.nodeId, [paths[1]])
     renderer.vectorStrokeOutlineCache.set(`${first.nodeId}|outline`, [paths[2]])

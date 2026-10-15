@@ -5,6 +5,10 @@ export type EditorCommandId =
   | 'edit.redo'
   | 'selection.selectAll'
   | 'selection.selectInverse'
+  | 'selection.selectChildren'
+  | 'selection.selectParent'
+  | 'selection.selectNextSibling'
+  | 'selection.selectPreviousSibling'
   | 'selection.duplicate'
   | 'selection.delete'
   | 'selection.group'
@@ -14,7 +18,9 @@ export type EditorCommandId =
   | 'selection.createComponentSet'
   | 'selection.createInstance'
   | 'selection.detachInstance'
+  | 'selection.detachIcon'
   | 'selection.goToMainComponent'
+  | 'selection.createSlot'
   | 'selection.wrapInAutoLayout'
   | 'selection.toggleMask'
   | 'selection.bringForward'
@@ -39,6 +45,10 @@ export type EditorCommandId =
   | 'view.zoom100'
   | 'view.zoomFit'
   | 'view.zoomSelection'
+  | 'view.zoomNextFrame'
+  | 'view.zoomPreviousFrame'
+  | 'view.nextPage'
+  | 'view.previousPage'
 
 export interface EditorCommand {
   id: EditorCommandId

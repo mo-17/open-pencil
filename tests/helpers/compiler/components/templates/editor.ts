@@ -38,6 +38,9 @@ export async function openComponentGallery(
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   await page.evaluate(async (data) => {
+    const api = window.openPencil
+    if (!api?.getStore) throw new Error('OpenPencil test host unavailable')
+
     const moduleURL = performance
       .getEntriesByType('resource')
       .map((entry) => entry.name)
@@ -50,9 +53,7 @@ export async function openComponentGallery(
     if (!response.ok) throw new Error('Licensed local CJK font unavailable')
     fontManager.markLoaded('Noto Sans SC', 'Regular', await response.arrayBuffer())
     fontManager.setCJKFallbackFamily('Noto Sans SC')
-    await window.openPencil
-      .getStore()
-      .openFigFile(new File([new Uint8Array(data)], 'all-templates.fig'))
+    await api.getStore().openFigFile(new File([new Uint8Array(data)], 'all-templates.fig'))
   }, Array.from(bytes))
   return { canvas, path, bytes }
 }

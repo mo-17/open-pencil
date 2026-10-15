@@ -13,7 +13,7 @@ export const getJSX = defineTool({
   description:
     'Get a structural JSX projection of a node and its children using the render tool syntax. It preserves visible hierarchy, layout, appearance, real lowcode control tags, and interactiveProps, but intentionally omits lowcode behavior fields such as bindings, events, stateOverrides, and renderCondition. Use read_lowcode_node to inspect those fields and update_lowcode_node to write them; use .fig for full semantic persistence.',
   execution: { kind: 'sync', mutation: 'none' },
-  input: v.object({
+  input: v.strictObject({
     id: nodeIdInput,
     path: v.optional(
       v.pipe(

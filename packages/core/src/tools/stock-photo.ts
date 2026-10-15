@@ -1,3 +1,5 @@
+import * as v from 'valibot'
+
 import { defineTool } from './schema'
 import { applyPhoto } from './stock-photo/apply'
 import { getActiveProvider } from './stock-photo/providers'
@@ -24,14 +26,14 @@ export const stockPhoto = defineTool({
     'Containers with content, text, lines, and structural nodes are rejected.',
   execution: { kind: 'async', mutation: 'document' },
   capabilities: ['document:write', 'network:access'],
-  params: {
-    requests: {
-      type: 'string',
-      description:
-        'JSON array: [{"id":"0:5","query":"mountain sunset"},{"id":"0:8","query":"business team","orientation":"square"}]',
-      required: true
-    }
-  },
+  input: v.strictObject({
+    requests: v.pipe(
+      v.string(),
+      v.description(
+        'JSON array: [{"id":"0:5","query":"mountain sunset"},{"id":"0:8","query":"business team","orientation":"square"}]'
+      )
+    )
+  }),
   execute: async (figma, { requests }, context) => {
     const provider = getActiveProvider()
     if (!provider) {
@@ -48,6 +50,11 @@ export const stockPhoto = defineTool({
     )
     const ok = results.filter((result) => result.photo).length
 
-    return { applied: ok, failed: results.length - ok, provider: provider.name, results }
+    return {
+      applied: ok,
+      failed: results.length - ok,
+      provider: provider.name,
+      results
+    }
   }
 })

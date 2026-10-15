@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { Stats } from 'node:fs'
 import { lstat, open, rm } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { basename, join } from 'node:path'
+
+import { resolveWorkspaceRoot } from '@open-pencil/package-artifacts-tools'
 
 export const BACKEND_COMPILER_SIDECAR_NAME = 'openpencil-backend-compiler-sidecar'
 
@@ -40,7 +42,7 @@ type BackendCompilerSidecarFormat =
 export const MIN_BINARY_BYTES = 1_000_000
 export const MAX_BINARY_BYTES = 256 * 1024 * 1024
 
-const REPOSITORY_ROOT = resolve(import.meta.dir, '../../..')
+const REPOSITORY_ROOT = await resolveWorkspaceRoot(import.meta.dir)
 export const DEFAULT_BACKEND_COMPILER_SIDECAR_OUTPUT_DIRECTORY = join(
   REPOSITORY_ROOT,
   'desktop/binaries'

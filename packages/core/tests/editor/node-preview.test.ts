@@ -1,8 +1,9 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 
-import { createEditor } from '@open-pencil/core/editor'
 import { effectiveFigmaRawNodeFields } from '@open-pencil/fig'
-import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import { SceneGraph, hasInstanceOverride, type SceneNode } from '@open-pencil/scene-graph'
+
+import { createEditor } from '#core/editor/create'
 
 describe('owned node previews', () => {
   for (const terminal of ['cancel', 'commit'] as const) {
@@ -459,4 +460,37 @@ describe('owned node previews', () => {
       editor.dispose()
     }
   })
+})
+
+test('an instance preview records only authored changed fields and restores overrides with history', () => {
+  const editor = createEditor()
+  try {
+    const { graph } = editor
+    const component = graph.createNode('COMPONENT', editor.state.currentPageId, { width: 100 })
+    graph.createNode('RECTANGLE', component.id, { width: 50 })
+    const instance = graph.createInstance(component.id, editor.state.currentPageId)
+    if (!instance) throw new Error('Expected an instance')
+    const [child] = graph.getChildren(instance.id)
+    if (!child) throw new Error('Expected an instance child')
+    const preview = editor.beginNodePreview('Resize', { preserveSourceMetadata: true })
+    preview.update(instance.id, { width: 200, x: instance.x }, { deferLayout: true })
+    graph.withLayoutMutations(() => preview.update(child.id, { width: 100 }, { deferLayout: true }))
+    expect(hasInstanceOverride(graph, instance.id, 'width')).toBe(false)
+    preview.commit()
+    expect(hasInstanceOverride(graph, instance.id, 'width')).toBe(true)
+    expect(hasInstanceOverride(graph, instance.id, 'x')).toBe(false)
+    expect(hasInstanceOverride(graph, child.id, 'width')).toBe(false)
+    editor.undoAction()
+    expect([instance.width, child.width]).toEqual([100, 50])
+    expect(hasInstanceOverride(graph, instance.id, 'width')).toBe(false)
+    editor.redoAction()
+    expect([instance.width, child.width]).toEqual([200, 100])
+    expect(hasInstanceOverride(graph, instance.id, 'width')).toBe(true)
+    const cancelled = editor.beginNodePreview()
+    cancelled.update(child.id, { opacity: 0.5 })
+    cancelled.cancel()
+    expect(hasInstanceOverride(graph, child.id, 'opacity')).toBe(false)
+  } finally {
+    editor.dispose()
+  }
 })

@@ -87,7 +87,9 @@ describe('built-in carousel plugin', () => {
       paginationStyle: 'fraction'
     })
     const resolved = resolveCarouselModule(source)
-    expect(resolved?.ok && resolved.config).toEqual(source.config)
+    expect(resolved?.ok).toBe(true)
+    if (!resolved?.ok) throw new Error('Expected canonical carousel config')
+    expect(source.config).toEqual(resolved.config)
     const incomplete = structuredClone(source)
     Reflect.deleteProperty(incomplete.config, 'imageFit')
     expect(resolveCarouselModule(incomplete)?.ok).toBe(false)

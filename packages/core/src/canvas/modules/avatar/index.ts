@@ -42,7 +42,7 @@ function drawFallback(
     { halfLeading: true }
   )
   try {
-    canvas.drawParagraph(paragraph, x, y + (size - paragraph.getHeight()) / 2)
+    paragraph.draw(canvas, x, y + (size - paragraph.getHeight()) / 2)
   } finally {
     paragraph.delete()
   }

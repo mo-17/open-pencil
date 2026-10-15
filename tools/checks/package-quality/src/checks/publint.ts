@@ -5,7 +5,7 @@ export async function checkPublint(root: string): Promise<void> {
   await runPackageChecks(
     (await publicPackageDirs(root)).map((packageDir) => ({
       command: 'bun',
-      args: ['publint', packageDir, '--strict'],
+      args: ['publint', packageDir, '--strict', '--pack', 'npm'],
       cwd: root
     }))
   )

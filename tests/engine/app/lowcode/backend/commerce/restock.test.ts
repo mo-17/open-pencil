@@ -19,6 +19,7 @@ import {
   type RuntimeCommandDatabase,
   type RuntimeCommandQuery
 } from '#tests/engine/compiler/backend/nestjs/commands/helpers'
+import { expectString } from '#tests/helpers/assert'
 
 function fixture() {
   const application = createCommerceApplication('catalog-management', {
@@ -57,7 +58,7 @@ describe('commerce catalog restocking', () => {
     expect(command.return.fields).toEqual(['id', 'title', 'price', 'stock', 'active'])
   })
 
-  test.each(['react', 'vue'] as const)(
+  test.each([...(['react', 'vue'] as const)])(
     '%s provider emits the closed stock allowlist and role command',
     (target) => {
       const { application } = fixture()
@@ -80,7 +81,7 @@ describe('commerce catalog restocking', () => {
       if (!output.ok) throw new Error(JSON.stringify(output.diagnostics))
       const service = output.emission.files.get('backend/nestjs/src/resources/products.service.ts')
       expect(service).toContain('const UPDATE_FIELDS = ')
-      const updateFields = service?.split('const UPDATE_FIELDS = ')[1]?.split('\n')[0]
+      const updateFields = expectString(service).split('const UPDATE_FIELDS = ')[1]?.split('\n')[0]
       for (const field of ['title', 'price', 'active'])
         expect(updateFields).toContain('"id":"' + field + '"')
       expect(updateFields).not.toContain('stock')

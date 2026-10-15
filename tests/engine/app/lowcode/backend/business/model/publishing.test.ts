@@ -188,7 +188,7 @@ for (const variant of variants) {
       const management = policies(app, `${prefix}-management-articles`).map(
         (entry) => entry.principal
       )
-      expect(management).toEqual([
+      expect<unknown>(management).toEqual([
         { kind: 'owner', ownershipId: `own-${prefix}-articles` },
         ...(prefix === 'auto' ? [{ kind: 'role', roleId: 'auto-publisher' }] : [])
       ])

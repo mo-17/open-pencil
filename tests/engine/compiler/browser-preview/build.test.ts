@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
 import { buildBrowserPreviewHTML } from '#compiler/browser-preview/html'
+import * as v from 'valibot'
 
 import { BROWSER_PREVIEW_LIMITS, buildBrowserPreview } from '@open-pencil/compiler/browser-preview'
+
+import { repoPath } from '#tests/helpers/paths'
 
 import { browserPreviewInput, compileBrowserPreviewFixture } from './helpers'
 
@@ -156,9 +159,14 @@ describe('compiler browser preview bundler', () => {
     expect(sizeResult.diagnostics[0]?.code).toBe('browser-preview-file-size-limit')
 
     const dependencyFiles = compileBrowserPreviewFixture()
-    const packageJSON = JSON.parse(String(dependencyFiles.get('package.json'))) as {
-      dependencies: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      String(dependencyFiles.get('package.json'))
+    )
     packageJSON.dependencies['unreviewed-package'] = '1.0.0'
     dependencyFiles.set('package.json', `${JSON.stringify(packageJSON)}\n`)
     const dependency = await buildBrowserPreview(await browserPreviewInput(dependencyFiles))
@@ -178,9 +186,14 @@ describe('compiler browser preview bundler', () => {
     expect(target.diagnostics[0]?.code).toBe('browser-preview-target-invalid')
 
     const mapFiles = compileBrowserPreviewFixture()
-    const mapPackageJSON = JSON.parse(String(mapFiles.get('package.json'))) as {
-      dependencies: Record<string, string>
-    }
+    const mapPackageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      String(mapFiles.get('package.json'))
+    )
     mapPackageJSON.dependencies['maplibre-gl'] = '6.4.1'
     mapFiles.set('package.json', `${JSON.stringify(mapPackageJSON)}\n`)
     mapFiles.set('src/map.ts', "import maplibre from 'maplibre-gl'\nexport default maplibre\n")
@@ -194,9 +207,7 @@ describe('compiler browser preview bundler', () => {
   test('embeds the reviewed 10.5 MiB Noto Sans SC font without relaxing other binary limits', async () => {
     const files = compileBrowserPreviewFixture('Noto Sans SC browser preview')
     const fontPath = 'src/assets/fonts/noto-sans-sc-400-normal.ttf'
-    const font = await readFile(
-      new URL('../../../../packages/core/assets/NotoSansSC-Regular.ttf', import.meta.url)
-    )
+    const font = await readFile(repoPath('packages/core/assets/NotoSansSC-Regular.ttf'))
     expect(font.byteLength).toBeGreaterThan(BROWSER_PREVIEW_LIMITS.maxBinaryFileBytes)
     expect(font.byteLength).toBeLessThanOrEqual(BROWSER_PREVIEW_LIMITS.maxFontFileBytes)
     files.set(fontPath, font)
@@ -234,9 +245,7 @@ describe('compiler browser preview bundler', () => {
 
   test('budgets reviewed CSS image data separately from plain stylesheet output', async () => {
     const files = compileBrowserPreviewFixture()
-    const image = await readFile(
-      new URL('../../../../packages/demos/videos/toolbar.png', import.meta.url)
-    )
+    const image = await readFile(repoPath('packages/demos/videos/toolbar.png'))
     const imagePath = 'src/assets/toolbar.png'
     files.set(imagePath, image)
     const encodedImageBytes = `data:image/png;base64,`.length + 4 * Math.ceil(image.byteLength / 3)
@@ -300,9 +309,7 @@ describe('compiler browser preview bundler', () => {
     })
 
     const tooMany = compileBrowserPreviewFixture()
-    const inter = await readFile(
-      new URL('../../../../packages/core/assets/Inter-Regular.ttf', import.meta.url)
-    )
+    const inter = await readFile(repoPath('packages/core/assets/Inter-Regular.ttf'))
     for (let index = 0; index <= BROWSER_PREVIEW_LIMITS.maxFontAssets; index++) {
       tooMany.set(`src/assets/fonts/inter-${index}.ttf`, inter)
     }

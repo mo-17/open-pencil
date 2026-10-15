@@ -69,7 +69,7 @@ function rename(previousName: string, event: Event): void {
       <button
         type="button"
         :aria-label="panels.lowcodeBackendEnvironmentRemove"
-        class="px-1 text-muted hover:text-red-500"
+        class="px-1 text-muted hover:text-error"
         @click="run(() => removeBackendWorkflowEnvironmentReference(application, reference.name))"
       >
         ×
@@ -98,7 +98,7 @@ function rename(previousName: string, event: Event): void {
       v-if="operationError"
       role="alert"
       data-test-id="lowcode-backend-environment-operation-error"
-      class="mt-1 text-[9px] text-red-500"
+      class="mt-1 text-[9px] text-error"
     >
       {{ operationError }}
     </p>

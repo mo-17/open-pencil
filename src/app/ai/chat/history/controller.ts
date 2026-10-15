@@ -25,7 +25,14 @@ export function createConversationHistory<TChat extends HistoryChat>(
   const readOnly = ref(false)
   const busy = ref(false)
   let ownerRecoveryId: string | null = null
-  let owner: ChatDocumentEditor | null = null
+  // First observation owns promotion for this editor/recovery lifetime. Importing another
+  // graph cannot renew that grant by opening a conversation, creating one, or revisiting it.
+  const recoveryGraphs = new WeakMap<
+    ChatDocumentEditor,
+    Map<string, WeakRef<ChatDocumentEditor['graph']>>
+  >()
+  // Weak, so the history does not keep a closed document's editor alive.
+  let owner: WeakRef<ChatDocumentEditor> | null = null
   let operation: Promise<unknown> = Promise.resolve()
   const session = createHistorySession(() => runtime.resetChat())
   const { flush, storageError } = createHistoryPersistence({
@@ -60,11 +67,23 @@ export function createConversationHistory<TChat extends HistoryChat>(
     return session.detach(flush)
   }
 
+  function rememberRecoveryGraph(editor: ChatDocumentEditor): void {
+    let graphs = recoveryGraphs.get(editor)
+    if (!graphs) {
+      graphs = new Map()
+      recoveryGraphs.set(editor, graphs)
+    }
+    const recoveryId = editor.getRecoveryId()
+    if (!graphs.has(recoveryId)) graphs.set(recoveryId, new WeakRef(editor.graph))
+  }
+
   async function activate(conversation: Conversation) {
-    owner = runtime.getEditor()
-    ownerRecoveryId = owner.getRecoveryId()
+    const editor = runtime.getEditor()
+    owner = new WeakRef(editor)
+    ownerRecoveryId = editor.getRecoveryId()
+    rememberRecoveryGraph(editor)
     session.restoreInterrupted(conversation.interrupted)
-    readOnly.value = conversation.documentId !== chatDocumentId(owner)
+    readOnly.value = conversation.documentId !== chatDocumentId(editor)
     current.value = conversation
     messages.value = restoreMessages(conversation.messages)
     if (conversation.messages.length || conversation.titleSource !== 'fallback') {
@@ -93,7 +112,8 @@ export function createConversationHistory<TChat extends HistoryChat>(
 
   function isIdentityChange(editor: ChatDocumentEditor, documentId: string) {
     return (
-      owner === editor &&
+      owner?.deref() === editor &&
+      recoveryGraphs.get(editor)?.get(editor.getRecoveryId())?.deref() === editor.graph &&
       ownerRecoveryId === editor.getRecoveryId() &&
       current.value &&
       !readOnly.value &&
@@ -116,7 +136,7 @@ export function createConversationHistory<TChat extends HistoryChat>(
     if (isIdentityChange(editor, documentId)) await reassignDocument(editor, documentId)
     if (current.value?.documentId === documentId) {
       readOnly.value = false
-      owner = editor
+      owner = new WeakRef(editor)
       ownerRecoveryId = editor.getRecoveryId()
       return
     }
@@ -130,7 +150,7 @@ export function createConversationHistory<TChat extends HistoryChat>(
 
   function ensureChat() {
     return serialize(async () => {
-      if (readOnly.value && owner === runtime.getEditor()) return null
+      if (readOnly.value && owner?.deref() === runtime.getEditor()) return null
       await loadDocument()
       // A restored transcript does not restore an external agent session.
       if (

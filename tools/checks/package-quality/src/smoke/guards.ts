@@ -79,7 +79,10 @@ export const packagingGuards: PackagingGuard[] = [
     name: 'a source-only Bun condition is reported before it breaks consumers',
     files: ['dist'],
     bunTarget: './src/index.ts',
-    diagnostics: [{ field: 'exports["."].bun', message: 'target is missing (./src/index.ts)' }],
+    diagnostics: [
+      { field: 'exports["."].bun', message: 'target is missing (./src/index.ts)' },
+      { field: 'imports["#fixture/*"]', message: 'target is missing (./src/*.ts)' }
+    ],
     runtimes: { node: 'imports', bun: { failsWith: /Cannot find module '@fixture\/resolution'/ } }
   }
 ]
@@ -130,7 +133,7 @@ function fixtureManifest(guard: PackagingGuard): string {
       version: '1.0.0',
       type: 'module',
       files: guard.files,
-      imports: { '#fixture/*': './src/*.ts' },
+      ...(guard.bunTarget.startsWith('./src/') ? { imports: { '#fixture/*': './src/*.ts' } } : {}),
       exports: {
         '.': {
           types: './dist/index.d.ts',

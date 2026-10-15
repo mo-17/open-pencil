@@ -1,4 +1,4 @@
-import type { Canvas, Paragraph } from 'canvaskit-wasm'
+import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
@@ -10,6 +10,7 @@ import {
 } from '#core/canvas/modules/preview'
 import type { ModuleCanvasAdapter } from '#core/canvas/modules/types'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 import { tabsPreviewGeometry } from '#core/plugins/content/tabs'
 import {
@@ -29,7 +30,7 @@ function prepareParagraph(
   renderer: SkiaRenderer,
   label: SceneNode,
   cssColor: string
-): Paragraph | null {
+): TextLayout | null {
   if (!renderer.fontProvider || !renderer.fontsLoaded) return null
   const readiness = renderer.nodeFontReadiness(label)
   if (readiness !== 'ready' && readiness !== 'substituted') return null
@@ -48,7 +49,7 @@ function drawHeader(
   const { header, tabHeight } = tabsPreviewGeometry(node, config)
   const availableWidth = Math.max(0, header.width - HEADER_PADDING * 2)
   if (availableWidth <= 0 || header.height <= HEADER_PADDING) return
-  const labels: Array<Paragraph | null> = []
+  const labels: Array<TextLayout | null> = []
   canvas.save()
   try {
     for (const tab of config.tabs) {
@@ -86,11 +87,7 @@ function drawHeader(
       }
       if (width > TAB_PADDING_X * 2) {
         paragraph.layout(width - TAB_PADDING_X * 2)
-        canvas.drawParagraph(
-          paragraph,
-          x + TAB_PADDING_X,
-          y + (tabHeight - paragraph.getHeight()) / 2
-        )
+        paragraph.draw(canvas, x + TAB_PADDING_X, y + (tabHeight - paragraph.getHeight()) / 2)
       }
       if (config.orientation === 'horizontal') x += width + HEADER_GAP
       else y += tabHeight + HEADER_GAP
@@ -128,7 +125,7 @@ function drawInlineContent(
       renderer.ck.ClipOp.Intersect,
       true
     )
-    canvas.drawParagraph(paragraph, content.x, content.y)
+    paragraph.draw(canvas, content.x, content.y)
   } finally {
     canvas.restore()
     paragraph.delete()

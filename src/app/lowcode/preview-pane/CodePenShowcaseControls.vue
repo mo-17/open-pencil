@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { compact } from 'es-toolkit/array'
 import { computed, nextTick, ref, useTemplateRef } from 'vue'
+
+import { useCodeMessages } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import {
@@ -34,6 +37,7 @@ const {
   showTrigger?: boolean
 }>()
 
+const codeMessages = useCodeMessages()
 const store = useEditorStore()
 const dialogOpen = ref(false)
 const title = ref('')
@@ -119,10 +123,7 @@ function showcaseInput(): CodePenShowcaseInput {
     target,
     uiKit,
     i18n: i18nEnabled,
-    locales: localesInput
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
+    locales: compact(localesInput.split(',').map((value) => value.trim())),
     title: title.value,
     description: description.value,
     tags: codePenTags(tags.value),
@@ -145,7 +146,7 @@ defineExpose({ openShowcase })
 </script>
 
 <template>
-  <Tip v-if="showTrigger" label="Create a reviewed CodePen showcase draft">
+  <Tip v-if="showTrigger" :label="codeMessages.codePenDraft">
     <button
       type="button"
       data-test-id="lowcode-codepen-showcase-toggle"
@@ -230,7 +231,7 @@ defineExpose({ openShowcase })
 
         <div
           v-if="!available"
-          class="rounded border border-danger/40 bg-danger/5 p-3 text-xs text-danger"
+          class="rounded border border-error/40 bg-error/5 p-3 text-xs text-error"
           role="alert"
         >
           {{ unavailableReason }}
@@ -259,7 +260,7 @@ defineExpose({ openShowcase })
         </p>
         <div
           v-else-if="status.kind === 'error'"
-          class="rounded border border-danger/40 bg-danger/5 p-3 text-xs text-danger"
+          class="rounded border border-error/40 bg-error/5 p-3 text-xs text-error"
           role="alert"
         >
           <p>
@@ -281,7 +282,7 @@ defineExpose({ openShowcase })
 
         <div
           v-if="result"
-          class="flex flex-col gap-2 rounded border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs"
+          class="flex flex-col gap-2 rounded border border-success/30 bg-success/5 p-3 text-xs"
         >
           <div class="font-medium text-surface">Safety checks passed</div>
           <div class="text-muted">
@@ -369,7 +370,7 @@ defineExpose({ openShowcase })
         v-if="!prepared"
         type="button"
         data-test-id="lowcode-codepen-prepare"
-        class="rounded bg-accent px-3 py-1.5 text-xs text-accent-foreground disabled:opacity-40"
+        class="rounded bg-accent px-3 py-1.5 text-xs text-on-accent disabled:opacity-40"
         :disabled="!available || busy || !title.trim()"
         @click="prepareShowcase"
       >
@@ -379,7 +380,7 @@ defineExpose({ openShowcase })
         v-else-if="status.kind === 'ready' || status.kind === 'opening'"
         type="button"
         data-test-id="lowcode-codepen-open"
-        class="rounded bg-accent px-3 py-1.5 text-xs text-accent-foreground disabled:opacity-40"
+        class="rounded bg-accent px-3 py-1.5 text-xs text-on-accent disabled:opacity-40"
         :disabled="busy || !confirmed"
         @click="openReviewedShowcase"
       >

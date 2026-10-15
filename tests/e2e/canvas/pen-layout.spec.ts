@@ -3,12 +3,15 @@ import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 const editor = useEditorSetup('/?test&no-chrome&no-rulers')
 
 test('lays out Pen frames whose default horizontal layout is omitted', async () => {
-  await editor.page.evaluate(() =>
-    window.openPencil?.openFile?.('/tests/fixtures/pen-layout-defaults.pen')
-  )
+  await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.openFile?.('/tests/fixtures/pen-layout-defaults.pen')
+  })
   await editor.canvas.waitForInit()
 
   const geometry = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const graph = window.openPencil?.getStore?.().graph
     if (!graph) throw new Error('OpenPencil graph not initialized')
     const section = graph.getNode('section')

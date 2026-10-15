@@ -40,6 +40,7 @@ export function removeVariable(graph: SceneGraph, id: string): void {
   for (const node of graph.nodes.values()) {
     const hadBinding = Object.values(node.boundVariables).includes(id)
     if (!hadBinding) continue
+    graph.willChangeNode(node)
     node.boundVariables = omitBy(node.boundVariables, (varId) => varId === id) as Record<
       string,
       string
@@ -183,6 +184,20 @@ export function addMode(
   }
 }
 
+/** Add a mode with a new ID from `generateId`; undo and redo replay it with `addMode`. */
+export function createMode(
+  graph: SceneGraph,
+  generateId: () => string,
+  collectionId: string,
+  name: string,
+  sourceMode?: string
+): string | undefined {
+  if (!graph.variableCollections.has(collectionId)) return undefined
+  const modeId = generateId()
+  addMode(graph, collectionId, modeId, name, sourceMode)
+  return modeId
+}
+
 export function removeMode(graph: SceneGraph, collectionId: string, modeId: string): void {
   const collection = graph.variableCollections.get(collectionId)
   if (!collection || collection.modes.length <= 1) return
@@ -309,12 +324,26 @@ export function resolveNumberVariableForNode(
   return typeof value === 'number' ? value : undefined
 }
 
+/** A variable's value in the mode a node is in, aliases followed. */
+export function resolveVariableForNode(
+  graph: SceneGraph,
+  nodeId: string,
+  variableId: string,
+  fallback: VariableModeFallback = 'active'
+): VariableValue | undefined {
+  const variable = graph.variables.get(variableId)
+  if (!variable) return undefined
+  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId, fallback)
+  return resolveVariable(graph, variableId, modeId)
+}
+
 export function resolveStringVariableForNode(
   graph: SceneGraph,
   nodeId: string,
-  variableId: string
+  variableId: string,
+  fallback: VariableModeFallback = 'active'
 ): string | undefined {
-  const value = resolveEffectiveVariableForNode(graph, nodeId, variableId)
+  const value = resolveEffectiveVariableForNode(graph, nodeId, variableId, new Set(), fallback)
   return typeof value === 'string' ? value : undefined
 }
 
@@ -373,6 +402,7 @@ export function bindVariable(
     throw new Error(`Unknown binding field "${field}"`)
   }
 
+  graph.willChangeNode(node)
   node.boundVariables = { ...node.boundVariables, [field]: variableId }
   assignVariableBindingUnits(graph, node, field)
   markBoundVariablesOverrideOnInstance(graph, nodeId, field)
@@ -451,6 +481,7 @@ export function unbindVariable(graph: SceneGraph, nodeId: string, field: string)
   const node = graph.nodes.get(nodeId)
   if (!node) return
   if (!(field in node.boundVariables)) return
+  graph.willChangeNode(node)
   node.boundVariables = omit(node.boundVariables, [field])
   node.variableBindingScales = omit(node.variableBindingScales, [field])
   markBoundVariablesOverrideOnInstance(graph, nodeId, field)

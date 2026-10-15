@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -52,10 +54,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     expect(app).not.toContain('>Hello world<') // literal no longer inlined
 
     // catalog carries the source string
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     expect(Object.values(catalog)).toContain('Hello world')
 
     // runtime + provider + dep
@@ -81,10 +83,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     graph.createNode('TEXT', frame.id, { text: 'Cancel', width: 80, height: 20 })
 
     const out = compileI18n(graph, pageId, true)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     // two "Save" + one "Cancel" → 2 entries
     expect(Object.keys(catalog).length).toBe(2)
     expect(Object.values(catalog).filter((v) => v === 'Save').length).toBe(1)
@@ -105,10 +107,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     })
 
     const out = compileI18n(graph, pageId, true)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     const values = Object.values(catalog)
     expect(values).toContain('Submit')
     expect(values).toContain('Red')
@@ -134,10 +136,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     const comp = out.files.get('src/components/Card.tsx') as string
     expect(comp).toContain("import { FormattedMessage } from 'react-intl'")
     expect(comp).toMatch(/<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"Badge"\} \/>/)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     expect(Object.values(catalog)).toContain('Badge')
   })
 })
@@ -367,10 +369,10 @@ describe('compile — attribute-string i18n (Phase 3 §9 v3)', () => {
     expect(app).toContain('const intl = useIntl()')
     expect(app).not.toContain('placeholder="Email"') // literal no longer emitted
     // placeholder string lands in the catalog like visible text
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     expect(Object.values(catalog)).toContain('Email')
   })
 
@@ -409,10 +411,10 @@ describe('compile — attribute-string i18n (Phase 3 §9 v3)', () => {
       interactiveProps: { placeholder: 'Search' }
     })
     const out = compileI18n(graph, pageId, true)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     // same content-hash → one entry shared by the text and the placeholder
     expect(Object.keys(catalog).length).toBe(1)
     expect(Object.values(catalog)).toEqual(['Search'])
@@ -495,10 +497,10 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     expect(app).toMatch(
       /<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"Welcome, \{userName\}!"\} values=\{\{ userName: userName \}\} \/>/
     )
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     expect(Object.values(catalog)).toContain('Welcome, {userName}!')
   })
 
@@ -574,10 +576,10 @@ describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
       'defaultMessage={"You have {count, plural, one {# item} other {# items}}"}'
     )
     expect(app).toContain('values={{ count: count }}')
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
-      string,
-      string
-    >
+    const catalog = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
     expect(Object.values(catalog)).toContain(
       'You have {count, plural, one {# item} other {# items}}'
     )
@@ -702,8 +704,14 @@ function compileWithTranslations(
 describe('compile — translation authoring data model (Phase 3 §9 v7)', () => {
   test('target stub uses authored translations; missing entries fall back to source', () => {
     const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr'])
-    const en = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
-    const fr = JSON.parse(out.files.get('src/locales/fr.json') as string) as Record<string, string>
+    const en = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/en.json') as string
+    )
+    const fr = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/fr.json') as string
+    )
     // source catalog is unchanged (always the source strings)
     expect(Object.values(en).sort()).toEqual(['Hello', 'Submit'])
     // fr: Hello → translated, Submit → falls back to source
@@ -717,7 +725,10 @@ describe('compile — translation authoring data model (Phase 3 §9 v7)', () => 
     const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, [])
     // es stub emitted from the union of options.locales + translation locales
     expect(out.files.has('src/locales/es.json')).toBe(true)
-    const es = JSON.parse(out.files.get('src/locales/es.json') as string) as Record<string, string>
+    const es = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/es.json') as string
+    )
     expect(Object.values(es).sort()).toEqual(['Enviar', 'Hola'])
     // registered in the runtime + a switcher is emitted
     const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
@@ -737,7 +748,10 @@ describe('compile — translation authoring data model (Phase 3 §9 v7)', () => 
     const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
     expect(runtime).toContain('{ en, fr, de }')
     // de has no authored translations → all entries fall back to source
-    const de = JSON.parse(out.files.get('src/locales/de.json') as string) as Record<string, string>
+    const de = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.record(v.string(), v.string())),
+      out.files.get('src/locales/de.json') as string
+    )
     expect(Object.values(de).sort()).toEqual(['Hello', 'Submit'])
   })
 
@@ -755,17 +769,28 @@ describe('compile — translation authoring data model (Phase 3 §9 v7)', () => 
  * authored translation and which ones are still missing. Emitted only when ≥1
  * target locale exists.
  */
-interface CoverageReport {
-  sourceLocale: string
-  locales: Record<string, { total: number; translated: number; missing: string[] }>
-}
 
 describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
   test('reports per-locale translated counts + the missing source strings', () => {
     const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr', 'de'])
-    const report = JSON.parse(
+    const report = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          sourceLocale: v.string(),
+          locales: v.record(
+            v.string(),
+            v.looseObject({
+              total: v.number(),
+              translated: v.number(),
+              missing: v.array(v.string())
+            })
+          )
+        })
+      ),
       out.files.get('src/locales/_coverage.json') as string
-    ) as CoverageReport
+    )
     expect(report.sourceLocale).toBe('en')
     // two distinct externalized sources: 'Hello' and 'Submit'
     expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Submit'] })
@@ -775,17 +800,47 @@ describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
 
   test('a fully-translated locale reports zero missing', () => {
     const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, ['es'])
-    const report = JSON.parse(
+    const report = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          sourceLocale: v.string(),
+          locales: v.record(
+            v.string(),
+            v.looseObject({
+              total: v.number(),
+              translated: v.number(),
+              missing: v.array(v.string())
+            })
+          )
+        })
+      ),
       out.files.get('src/locales/_coverage.json') as string
-    ) as CoverageReport
+    )
     expect(report.locales.es).toEqual({ total: 2, translated: 2, missing: [] })
   })
 
   test('a blank translation entry counts as missing', () => {
     const out = compileWithTranslations({ fr: { Hello: '   ', Submit: 'Envoyer' } }, ['fr'])
-    const report = JSON.parse(
+    const report = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          sourceLocale: v.string(),
+          locales: v.record(
+            v.string(),
+            v.looseObject({
+              total: v.number(),
+              translated: v.number(),
+              missing: v.array(v.string())
+            })
+          )
+        })
+      ),
       out.files.get('src/locales/_coverage.json') as string
-    ) as CoverageReport
+    )
     expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Hello'] })
   })
 

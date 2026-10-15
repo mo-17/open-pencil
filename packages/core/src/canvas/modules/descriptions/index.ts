@@ -1,4 +1,4 @@
-import type { Canvas, Paragraph } from 'canvaskit-wasm'
+import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -9,13 +9,14 @@ import {
 } from '#core/canvas/modules/preview'
 import type { ModuleCanvasAdapter } from '#core/canvas/modules/types'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import * as descriptions from '#core/plugins/descriptions'
 
 import { descriptionsParagraph } from './paragraph'
 
 interface Cell {
-  label?: Paragraph
-  value?: Paragraph
+  label?: TextLayout
+  value?: TextLayout
   labelHeight: number
   height: number
 }
@@ -39,10 +40,10 @@ function paintCell(
       renderer.fillPaint
     )
   }
-  if (cell.label) canvas.drawParagraph(cell.label, left + metrics.padding, top + metrics.padding)
+  if (cell.label) cell.label.draw(canvas, left + metrics.padding, top + metrics.padding)
   if (cell.value)
-    canvas.drawParagraph(
-      cell.value,
+    cell.value.draw(
+      canvas,
       left + (horizontal ? metrics.labelWidth : 0) + metrics.padding,
       top + (horizontal ? 0 : labelHeight) + metrics.padding
     )
@@ -104,7 +105,11 @@ export function renderDescriptionsModulePreview(
         canvas,
         {
           ...frame,
-          node: { ...node, cornerRadius: config.borderRadius, independentCorners: false }
+          node: {
+            ...node,
+            cornerRadius: config.borderRadius,
+            independentCorners: false
+          }
         },
         config.backgroundColor,
         () => {

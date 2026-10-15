@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { computed, useAttrs } from 'vue'
-
 import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
@@ -49,11 +47,6 @@ const emit = defineEmits<{
 }>()
 
 const { panels } = useI18n()
-const attrs = useAttrs()
-const addDataTestId = computed(() => {
-  const testId = attrs['data-test-id']
-  return typeof testId === 'string' ? testId : 'lowcode-action-add'
-})
 
 function replaceAt(index: number, next: ActionDef): void {
   emit(
@@ -80,7 +73,7 @@ function add(): void {
 </script>
 
 <template>
-  <div class="flex flex-col gap-1.5">
+  <div class="flex flex-col gap-1.5" data-slot="action-list" :data-action-path="actionPathPrefix">
     <ul v-if="actions.length > 0" class="flex flex-col gap-1.5">
       <ActionRow
         v-for="(action, i) in actions"
@@ -99,7 +92,7 @@ function add(): void {
     </ul>
     <button
       type="button"
-      :data-test-id="addDataTestId"
+      data-command="add-action"
       class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
       @click="add"
     >

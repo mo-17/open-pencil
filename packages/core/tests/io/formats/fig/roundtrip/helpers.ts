@@ -143,9 +143,10 @@ function verifyComponentPropertyDefinitions(ctx: VerifierContext): boolean {
   })
 }
 
-function isComponentPropertyAssignments(
-  value: unknown
-): value is SceneNode['componentPropertyAssignments'] {
+/** `SceneNode.componentPropertyAssignments`: property id to assigned value. */
+type ComponentPropertyAssignments = Record<string, string>
+
+function isComponentPropertyAssignments(value: unknown): value is ComponentPropertyAssignments {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   return Object.values(value).every((entry) => typeof entry === 'string')
 }
@@ -180,8 +181,16 @@ export const SCENE_VERIFIERS = new Map<string, Verifier>([
   [
     'pluginData',
     (ctx) => {
-      const ga = ctx.a as Array<{ pluginId: string; key: string; value: string }>
-      const gb = ctx.b as Array<{ pluginId: string; key: string; value: string }>
+      const ga = ctx.a as Array<{
+        pluginId: string
+        key: string
+        value: string
+      }>
+      const gb = ctx.b as Array<{
+        pluginId: string
+        key: string
+        value: string
+      }>
       if (!Array.isArray(ga) || !Array.isArray(gb) || ga.length > gb.length) return false
       for (const e of ga) {
         const found = gb.find((e2) => e2.pluginId === e.pluginId && e2.key === e.key)
@@ -225,11 +234,15 @@ export const SCENE_VERIFIERS = new Map<string, Verifier>([
 
 function verifyAEntries(
   aEntries: Array<{
-    variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+    variableData?: {
+      value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+    }
     variableField?: string
   }>,
   bEntries: Array<{
-    variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+    variableData?: {
+      value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+    }
     variableField?: string
   }>,
   ctx: VerifierContext
@@ -270,11 +283,15 @@ function verifyAEntries(
 
 function verifyBEntries(
   aEntries: Array<{
-    variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+    variableData?: {
+      value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+    }
     variableField?: string
   }>,
   bEntries: Array<{
-    variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+    variableData?: {
+      value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+    }
     variableField?: string
   }>,
   ctx: VerifierContext
@@ -301,7 +318,9 @@ function verifyVariableConsumption(
   ga:
     | {
         entries?: Array<{
-          variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+          variableData?: {
+            value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+          }
           variableField?: string
         }>
       }
@@ -309,7 +328,9 @@ function verifyVariableConsumption(
   gb:
     | {
         entries?: Array<{
-          variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+          variableData?: {
+            value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+          }
           variableField?: string
         }>
       }
@@ -324,7 +345,9 @@ function verifyVariableConsumption(
 
 interface VariableConsumptionMapShape {
   entries?: Array<{
-    variableData?: { value?: { alias?: { guid?: unknown; assetRef?: unknown } } }
+    variableData?: {
+      value?: { alias?: { guid?: unknown; assetRef?: unknown } }
+    }
     variableField?: string
   }>
 }

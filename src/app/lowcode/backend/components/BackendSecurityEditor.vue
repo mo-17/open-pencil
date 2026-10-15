@@ -313,7 +313,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         <button
           type="button"
           :aria-label="panels.lowcodeBackendRemoveRole"
-          class="px-1 text-muted hover:text-red-500"
+          class="px-1 text-muted hover:text-error"
           @click="removeRole(role)"
         >
           ×
@@ -366,7 +366,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         ><button
           type="button"
           :aria-label="panels.lowcodeBackendRemoveRule"
-          class="px-1 text-muted hover:text-red-500"
+          class="px-1 text-muted hover:text-error"
           @click="removeOwnership(rule)"
         >
           ×
@@ -427,7 +427,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
           ><button
             type="button"
             :aria-label="panels.lowcodeBackendRemoveRule"
-            class="px-1 text-muted hover:text-red-500"
+            class="px-1 text-muted hover:text-error"
             @click="removeTenant(rule)"
           >
             ×
@@ -493,7 +493,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         v-if="operationError"
         role="alert"
         data-test-id="lowcode-backend-security-operation-error"
-        class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[9px] text-red-500"
+        class="mt-1 rounded border border-error/40 bg-error/10 px-2 py-1 text-[9px] text-error"
       >
         {{ operationError }}
       </p>
@@ -634,7 +634,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
           ><button
             type="button"
             :aria-label="panels.lowcodeBackendRemoveRule"
-            class="ml-auto text-muted hover:text-red-500"
+            class="ml-auto text-muted hover:text-error"
             @click="run(() => removeBackendRowAccess(application, intent.id))"
           >
             ×
@@ -642,7 +642,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         </div>
       </div>
     </div>
-    <p v-if="operationError" role="alert" class="text-[10px] text-red-500">
+    <p v-if="operationError" role="alert" class="text-[10px] text-error">
       {{ operationError }}
     </p>
   </div>

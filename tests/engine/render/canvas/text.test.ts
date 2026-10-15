@@ -1,46 +1,61 @@
+import { describe, test, expect, mock, spyOn } from 'bun:test'
 /* eslint-disable max-lines -- text rendering scenarios share CanvasKit setup and fixtures */
 
-import { describe, test, expect, mock, spyOn } from 'bun:test'
+import type { SceneNode } from '@open-pencil/scene-graph'
+import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
+import { initCanvasKit } from '#cli/headless'
+import type { SkiaRenderer } from '#core/canvas/renderer'
+import { renderText } from '#core/canvas/scene'
+import {
+  buildParagraph,
+  isNodeFontLoaded,
+  nodeFontReadiness,
+  textVerticalOffset
+} from '#core/canvas/text'
+import { createDerivedGlyphPathCache } from '#core/canvas/text/derived'
 import {
   detectTextDirection,
   resolveTextDirection,
   SceneGraph,
   SkiaRenderer as SkiaRendererClass
-} from '@open-pencil/core'
-import type { SceneNode } from '@open-pencil/scene-graph'
-import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
-
-import { initCanvasKit } from '#cli/headless'
-import type { SkiaRenderer } from '#core/canvas/renderer'
-import { renderText, textVerticalOffset } from '#core/canvas/scene'
-import { buildParagraph, isNodeFontLoaded, nodeFontReadiness } from '#core/canvas/text'
+} from '#core/index'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { fontFaceDemand, fontResolver, missingGlyphCharacters } from '#core/text/resolver'
 
+import { canvasMock } from '#tests/engine/render/canvas/effects/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 import { repoPath } from '#tests/helpers/paths'
 
+import { asDouble, expectRgbaPixels } from './helpers'
+
 function createMockCanvas() {
   return {
-    drawParagraph: mock(() => undefined),
-    drawPicture: mock(() => undefined),
-    drawText: mock(() => undefined),
-    drawPath: mock(() => undefined),
-    drawRect: mock(() => undefined),
-    save: mock(() => undefined),
+    drawParagraph: canvasMock('drawParagraph'),
+    drawPicture: canvasMock('drawPicture'),
+    drawText: canvasMock('drawText'),
+    drawPath: canvasMock('drawPath'),
+    drawRect: canvasMock('drawRect'),
+    save: canvasMock('save'),
     saveLayer: mock(() => undefined),
-    restore: mock(() => undefined),
-    clipRect: mock(() => undefined),
-    translate: mock(() => undefined),
-    scale: mock(() => undefined),
-    rotate: mock(() => undefined)
+    restore: canvasMock('restore'),
+    clipRect: canvasMock('clipRect'),
+    translate: canvasMock('translate'),
+    scale: canvasMock('scale'),
+    rotate: canvasMock('rotate')
   }
 }
 
 function createMockParagraph() {
-  return { delete: mock(() => undefined), getHeight: mock(() => 20) }
+  const paragraph = {
+    delete: mock(() => undefined),
+    getHeight: mock(() => 20),
+    draw: mock((canvas: { drawParagraph: (...args: unknown[]) => void }, x: number, y: number) =>
+      canvas.drawParagraph(paragraph, x, y)
+    )
+  }
+  return paragraph
 }
 
 function createMockPicture() {
@@ -49,10 +64,11 @@ function createMockPicture() {
 
 function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
   const paragraph = createMockParagraph()
-  return {
+  return asDouble<SkiaRenderer & { _paragraph: ReturnType<typeof createMockParagraph> }>({
     fontsLoaded: true,
     fontProvider: {},
     textFont: {},
+    derivedGlyphPathCache: createDerivedGlyphPathCache(),
     fillPaint: { getColor: () => new Float32Array([0, 0, 0, 1]) },
     effectLayerPaint: {
       setBlendMode: mock(() => undefined),
@@ -87,12 +103,11 @@ function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
     buildParagraph: mock(() => paragraph),
     _paragraph: paragraph,
     ...overrides
-  } as SkiaRenderer & { _paragraph: ReturnType<typeof createMockParagraph> }
+  })
 }
 
 function textNode(overrides: Partial<SceneNode> = {}): SceneNode {
-  return {
-    type: 'TEXT',
+  return createDefaultNode(() => '0:1', 'TEXT', {
     text: 'Hello 你好',
     fontSize: 16,
     fontFamily: 'Arial',
@@ -106,9 +121,8 @@ function textNode(overrides: Partial<SceneNode> = {}): SceneNode {
     textDecoration: 'NONE',
     textDirection: 'AUTO',
     styleRuns: [],
-    source: createDefaultSourceMetadata(),
     ...overrides
-  } as SceneNode
+  })
 }
 
 function squareCommandsBlob(): Uint8Array {
@@ -187,6 +201,7 @@ describe('renderText', () => {
       type: 'GRADIENT_LINEAR',
       visible: true,
       opacity: 1,
+      color: { r: 0, g: 0, b: 0, a: 1 },
       gradientStops: [],
       gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
     })
@@ -202,7 +217,9 @@ describe('renderText', () => {
   })
 
   test('keeps native paragraph layout even when outline font data is available', async () => {
-    const interData = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    const interData = await Bun.file(
+      repoPath('packages/core/assets/Inter-Regular.ttf')
+    ).arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', interData)
     const r = createMockRenderer()
     const canvas = createMockCanvas()
@@ -215,6 +232,7 @@ describe('renderText', () => {
         type: 'GRADIENT_LINEAR',
         visible: true,
         opacity: 1,
+        color: { r: 0, g: 0, b: 0, a: 1 },
         gradientStops: [],
         gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
       }
@@ -346,8 +364,8 @@ describe('paragraph font weights', () => {
   test('bold Inter paragraph is wider than regular Inter', async () => {
     const { renderer, surface } = await createTextRenderer()
     await renderer.loadFonts()
-    const regular = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
-    const bold = await Bun.file(repoPath('public/Inter-Bold.ttf')).arrayBuffer()
+    const regular = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
+    const bold = await Bun.file(repoPath('packages/core/assets/Inter-Bold.ttf')).arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', regular)
     fontManager.markLoaded('Inter', 'Bold', bold)
 
@@ -372,7 +390,7 @@ describe('paragraph font weights', () => {
   test('shapes italic text when only the regular family face is available', async () => {
     const { renderer, surface } = await createTextRenderer()
     await renderer.loadFonts()
-    const regular = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    const regular = await Bun.file(repoPath('packages/core/assets/Inter-Regular.ttf')).arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', regular)
     const demand = fontFaceDemand('Inter', 'Regular Italic', 'Synthetic italic')
     fontResolver.reset(demand)
@@ -408,12 +426,12 @@ describe('renderText headless visual', () => {
     const ck = await initCanvasKit()
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
-    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const interData = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     fontProvider.registerFont(interData, 'Inter')
     fontManager.markLoaded('Inter', 'Regular', interData)
-    const manager = fontManager as typeof fontManager & { cjkFallbackFamilies: string[] }
-    const originalFallbacks = [...manager.cjkFallbackFamilies]
-    manager.cjkFallbackFamilies = []
+    const fallbackFamilies = fontManager.getCJKFallbackFamilies()
+    const originalFallbacks = [...fallbackFamilies]
+    fallbackFamilies.length = 0
     const surface = expectDefined(ck.MakeSurface(200, 50), 'CanvasKit surface')
 
     try {
@@ -429,7 +447,7 @@ describe('renderText headless visual', () => {
       expect(missingGlyphCharacters('A𠀀B', paragraph.getShapedLines())).toEqual(['𠀀'])
       paragraph.delete()
     } finally {
-      manager.cjkFallbackFamilies = originalFallbacks
+      fallbackFamilies.splice(0, fallbackFamilies.length, ...originalFallbacks)
       surface.delete()
     }
   })
@@ -438,11 +456,11 @@ describe('renderText headless visual', () => {
     const ck = await initCanvasKit()
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
-    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const interData = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', interData)
-    const manager = fontManager as typeof fontManager & { cjkFallbackFamilies: string[] }
-    const originalFallbacks = [...manager.cjkFallbackFamilies]
-    manager.cjkFallbackFamilies = []
+    const fallbackFamilies = fontManager.getCJKFallbackFamilies()
+    const originalFallbacks = [...fallbackFamilies]
+    fallbackFamilies.length = 0
     const fallbackPack = spyOn(fontManager, 'ensureFallbackPack').mockResolvedValue({})
     const face = fontFaceDemand('Undrawable Sans', 'Regular')
     fontResolver.exhaust(face)
@@ -461,7 +479,7 @@ describe('renderText headless visual', () => {
     } finally {
       fallbackPack.mockRestore()
       fontResolver.reset(face)
-      manager.cjkFallbackFamilies = originalFallbacks
+      fallbackFamilies.splice(0, fallbackFamilies.length, ...originalFallbacks)
       surface.delete()
     }
   })
@@ -470,9 +488,9 @@ describe('renderText headless visual', () => {
     const notoPath = repoPath('tests/fixtures/fonts/NotoSansSC-Regular.ttf')
     const notoData = await Bun.file(notoPath).arrayBuffer()
     fontManager.markLoaded('Noto Sans SC', 'Regular', notoData)
-    const manager = fontManager as typeof fontManager & { cjkFallbackFamilies: string[] }
-    const originalFallbacks = [...manager.cjkFallbackFamilies]
-    manager.cjkFallbackFamilies = []
+    const fallbackFamilies = fontManager.getCJKFallbackFamilies()
+    const originalFallbacks = [...fallbackFamilies]
+    fallbackFamilies.length = 0
 
     try {
       const loaded = isNodeFontLoaded(
@@ -482,7 +500,7 @@ describe('renderText headless visual', () => {
 
       expect(loaded).toBe(true)
     } finally {
-      manager.cjkFallbackFamilies = originalFallbacks
+      fallbackFamilies.splice(0, fallbackFamilies.length, ...originalFallbacks)
     }
   })
 
@@ -491,7 +509,7 @@ describe('renderText headless visual', () => {
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
 
-    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const interData = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', interData)
 
     const notoPath = repoPath('tests/fixtures/fonts/NotoSansSC-Regular.ttf')
@@ -535,13 +553,16 @@ describe('renderText headless visual', () => {
     expect(encoded.length).toBeGreaterThan(200)
 
     const decodedImage = expectDefined(ck.MakeImageFromEncoded(encoded), 'decoded PNG image')
-    const pixels = decodedImage.readPixels(0, 0, {
-      width: 200,
-      height: 50,
-      colorType: ck.ColorType.RGBA_8888,
-      alphaType: ck.AlphaType.Unpremul,
-      colorSpace: ck.ColorSpace.SRGB
-    })
+    const pixels = expectRgbaPixels(
+      decodedImage.readPixels(0, 0, {
+        width: 200,
+        height: 50,
+        colorType: ck.ColorType.RGBA_8888,
+        alphaType: ck.AlphaType.Unpremul,
+        colorSpace: ck.ColorSpace.SRGB
+      }),
+      'decoded CJK pixels'
+    )
     decodedImage.delete()
 
     let darkPixels = 0
@@ -560,7 +581,7 @@ describe('renderText headless visual', () => {
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
 
-    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const interData = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     fontProvider.registerFont(interData, 'Inter')
     fontManager.markLoaded('Inter', 'Regular', interData)
 
@@ -578,6 +599,7 @@ describe('renderText headless visual', () => {
           type: 'GRADIENT_LINEAR',
           opacity: 1,
           visible: true,
+          color: { r: 1, g: 0, b: 0, a: 1 },
           gradientStops: [
             { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
             { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } }
@@ -601,13 +623,16 @@ describe('renderText headless visual', () => {
     surface.flush()
 
     const image = surface.makeImageSnapshot()
-    const pixels = image.readPixels(0, 0, {
-      width: 220,
-      height: 80,
-      colorType: ck.ColorType.RGBA_8888,
-      alphaType: ck.AlphaType.Unpremul,
-      colorSpace: ck.ColorSpace.SRGB
-    })
+    const pixels = expectRgbaPixels(
+      image.readPixels(0, 0, {
+        width: 220,
+        height: 80,
+        colorType: ck.ColorType.RGBA_8888,
+        alphaType: ck.AlphaType.Unpremul,
+        colorSpace: ck.ColorSpace.SRGB
+      }),
+      'gradient text pixels'
+    )
     image.delete()
     surface.delete()
 
@@ -620,8 +645,9 @@ describe('renderText headless visual', () => {
         const g = pixels[i + 1]
         const b = pixels[i + 2]
         if (g > 220) continue
-        if (x < 110 && b > r + 40) blueTextPixels++
-        if (x >= 110 && r > b + 40) redTextPixels++
+        // Figma's identity transform runs left to right: the first stop, red, is on the left.
+        if (x < 110 && r > b + 40) redTextPixels++
+        if (x >= 110 && b > r + 40) blueTextPixels++
       }
     }
 
@@ -634,7 +660,7 @@ describe('renderText headless visual', () => {
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
 
-    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const interData = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     fontProvider.registerFont(interData, 'Inter')
     fontManager.markLoaded('Inter', 'Regular', interData)
 
@@ -677,13 +703,16 @@ describe('renderText headless visual', () => {
     expect(encoded.length).toBeGreaterThan(200)
 
     const decodedImage = expectDefined(ck.MakeImageFromEncoded(encoded), 'decoded PNG image')
-    const pixels = decodedImage.readPixels(0, 0, {
-      width: 220,
-      height: 60,
-      colorType: ck.ColorType.RGBA_8888,
-      alphaType: ck.AlphaType.Unpremul,
-      colorSpace: ck.ColorSpace.SRGB
-    })
+    const pixels = expectRgbaPixels(
+      decodedImage.readPixels(0, 0, {
+        width: 220,
+        height: 60,
+        colorType: ck.ColorType.RGBA_8888,
+        alphaType: ck.AlphaType.Unpremul,
+        colorSpace: ck.ColorSpace.SRGB
+      }),
+      'decoded text pixels'
+    )
     decodedImage.delete()
 
     let darkPixels = 0

@@ -24,6 +24,8 @@ import {
   listAppBackendProviderDescriptors
 } from '@/app/plugins/host/backend-provider'
 
+import { uint8ArrayToArrayBuffer } from '#tests/helpers/fig/fixtures'
+
 async function fixture() {
   const graph = new SceneGraph()
   const bundled = createBundledPluginCatalog().find(
@@ -85,7 +87,7 @@ describe('Backend browser flow .fig persistence', () => {
     }
     graph.createNode('LIST', page.id, { name: 'Owned notes', interactiveProps })
     const bytes = await exportFigFile(graph)
-    const imported = await parseFigFile(bytes.buffer)
+    const imported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
     const nodes = [...imported.getAllNodes()]
     expect(nodes.find((node) => node.name === 'Create note')?.events).toEqual({ onClick })
     expect(nodes.find((node) => node.name === 'Owned notes')?.interactiveProps).toEqual(
@@ -106,7 +108,7 @@ describe('Backend browser flow .fig persistence', () => {
     let imported = graph
     for (let cycle = 0; cycle < 2; cycle++) {
       const bytes = await exportFigFile(imported)
-      imported = await parseFigFile(bytes.buffer)
+      imported = await parseFigFile(uint8ArrayToArrayBuffer(bytes))
       const nodes = [...imported.getAllNodes()]
       const list = nodes.find((node) => node.type === 'LIST')
       if (!list) throw new Error('Missing restored notes list')

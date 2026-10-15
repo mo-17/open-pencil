@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -25,7 +26,9 @@ export async function withCompositionPreview(
     ],
     { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }
   )
-  const files = new Map(JSON.parse(emitted) as [string, string][])
+  const files = new Map(
+    v.parse(v.pipe(v.string(), v.parseJson(), v.array(v.tuple([v.string(), v.string()]))), emitted)
+  )
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

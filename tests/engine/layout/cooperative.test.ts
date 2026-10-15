@@ -38,7 +38,9 @@ describe('cooperative layout', () => {
     const cooperative = makeHorizontalGraph()
 
     computeLayout(sync.graph, sync.frameId)
-    await computeAllLayoutsAsync(cooperative.graph, cooperative.frameId, { timeSliceMs: 0 })
+    await computeAllLayoutsAsync(cooperative.graph, cooperative.frameId, {
+      timeSliceMs: 0
+    })
 
     expect(geometry(cooperative.graph, cooperative.frameId)).toEqual(
       geometry(sync.graph, sync.frameId)
@@ -105,11 +107,16 @@ describe('cooperative layout', () => {
     let outerFrameId = ''
     const depth = 40
     for (let index = 0; index < depth; index++) {
-      const frame = autoFrame(graph, parentId, { width: 300 - index, height: 100 })
+      const frame = autoFrame(graph, parentId, {
+        x: 999,
+        width: 300 - index,
+        height: 100
+      })
       if (index === 0) outerFrameId = frame.id
       parentId = frame.id
     }
-    rect(graph, parentId, 20, 20)
+    const leaf = rect(graph, parentId, 20, 20)
+    graph.updateNode(leaf.id, { x: 999 })
 
     let geometryUpdates = 0
     graph.onNodeEvents({
@@ -126,7 +133,11 @@ describe('cooperative layout', () => {
   })
 
   test('uses the documented priority budgets', () => {
-    expect(LAYOUT_TIME_SLICE_MS).toEqual({ interactive: 2, normal: 5, idle: 8 })
+    expect(LAYOUT_TIME_SLICE_MS).toEqual({
+      interactive: 2,
+      normal: 5,
+      idle: 8
+    })
     expect(layoutTimeSliceMsForPriority('interactive')).toBe(2)
     expect(layoutTimeSliceMsForPriority('normal')).toBe(5)
     expect(layoutTimeSliceMsForPriority('idle')).toBe(8)

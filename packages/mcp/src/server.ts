@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { Server as HttpServer } from 'node:http'
 import { resolve } from 'node:path'
+import { setInterval, clearInterval, setTimeout, clearTimeout } from 'node:timers'
 
 import type { McpServer } from '@modelcontextprotocol/server'
 import { Hono } from 'hono'
@@ -9,18 +10,26 @@ import { resolveCommand } from 'package-manager-detector/commands'
 import { detect, getUserAgent } from 'package-manager-detector/detect'
 import { WebSocketServer, type WebSocket } from 'ws'
 
+import { MCP_AGENT_HEADER } from '@open-pencil/core/constants'
+
 import { bearerToken, isAuthorized, mcpRequestToken } from '#mcp/auth'
 import { createBrowserRPCBridge } from '#mcp/browser-rpc'
 import { MCP_CORS_HEADERS, MCP_CORS_METHODS, MCP_EXPOSED_HEADERS } from '#mcp/http-options'
 import type { RPCJSONObject } from '#mcp/json'
-import { preprocessRPC } from '#mcp/jsx-preprocess'
 import { prepareRootScopedRPCRequest } from '#mcp/root-scoped-rpc'
 import { createMCPSessionManager } from '#mcp/server/sessions'
+import { unrefTimer } from '#mcp/timers'
 import { createToolDescriptors } from '#mcp/tool/manifest'
 import type { ToolDescriptor, ToolPolicy } from '#mcp/tool/metadata'
 import { createPluginMCPController, registerPluginMCPTools } from '#mcp/tool/plugin/catalog'
 import { applyToolPolicy } from '#mcp/tool/policy'
-import { registerTools } from '#mcp/tool/registration'
+import {
+  MCP_AGENT_KINDS,
+  registerTools,
+  type MCPAgentKind,
+  type MCPAgentSession
+} from '#mcp/tool/registration'
+import { scopeRPC, type MCPToolScope } from '#mcp/tool/scope'
 
 import packageJSON from '../package.json' with { type: 'json' }
 import {
@@ -61,7 +70,18 @@ function mcpInstallCommand(): Promise<string> {
 
 export { fail, ok, type MCPContent, type MCPResult } from '#mcp/result'
 
-export { registerTools, type RegisterToolsOptions, type RPCSender } from '#mcp/tool/registration'
+export {
+  MCP_AGENT_KINDS,
+  registerTools,
+  type MCPAgentKind,
+  type MCPAgentSession,
+  type RegisterToolsOptions,
+  type RPCSender
+} from '#mcp/tool/registration'
+
+function agentKindFromHeader(value: string | undefined): MCPAgentKind {
+  return MCP_AGENT_KINDS.find((kind) => kind === value) ?? 'mcp'
+}
 
 export interface ServerOptions {
   /** TCP port for the HTTP + WebSocket server. Ignored when `withTcp` is false. When set to 0 with `withTcp: true`, binds to an ephemeral port. Defaults to 7600. */
@@ -73,6 +93,8 @@ export interface ServerOptions {
   enableEval?: boolean
   /** Tool names omitted from every MCP session. */
   disabledTools?: Iterable<string>
+  /** What clients can reach: the whole document (default) or only the user's selection. */
+  scope?: MCPToolScope
   mcpRoot?: string | null
   /** Auth token for /mcp and /rpc endpoints. Auto-generated (32-hex) when omitted. Pass null explicitly to disable auth. */
   authToken?: string | null
@@ -117,7 +139,10 @@ function createHonoApp(options: {
   mcpSessions: ReturnType<typeof createMCPSessionManager>
   sendToBrowser: (
     msg: RPCJSONObject,
-    options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void }
+    options?: {
+      signal?: AbortSignal
+      onProgress?: (progress: unknown) => void
+    }
   ) => Promise<unknown>
   toolDescriptors: ToolDescriptor[]
 }): Hono {
@@ -129,7 +154,7 @@ function createHonoApp(options: {
     app.use(
       '*',
       cors({
-        origin: corsOrigin,
+        origin: typeof corsOrigin === 'string' ? corsOrigin : [...corsOrigin],
         allowMethods: MCP_CORS_METHODS,
         allowHeaders: MCP_CORS_HEADERS,
         exposeHeaders: MCP_EXPOSED_HEADERS
@@ -166,13 +191,14 @@ function createHonoApp(options: {
   // is a semantic shift from 503 → 502; callers that distinguished 503 may
   // need to handle 502 equivalently.
   app.post('/rpc', async (c) => {
-    let body = await c.req.json().catch(() => null)
+    const body = await c.req.json().catch(() => null)
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return c.json({ error: 'Invalid request body' }, 400)
     }
     try {
-      body = preprocessRPC(body as RPCJSONObject)
-      const result = await sendToBrowser(body as RPCJSONObject, { signal: c.req.raw.signal })
+      const result = await sendToBrowser(body as RPCJSONObject, {
+        signal: c.req.raw.signal
+      })
       return c.json(result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -223,7 +249,10 @@ function createHonoApp(options: {
       mcpSessions.touch(sessionId, existing)
       return existing.handleRequest(c.req.raw)
     }
-    const transport = await mcpSessions.resolveTransport(undefined)
+    const transport = await mcpSessions.resolveTransport(
+      undefined,
+      agentKindFromHeader(c.req.header(MCP_AGENT_HEADER))
+    )
     if ('error' in transport) {
       if (transport.error === 'closed') {
         return c.json({ error: 'MCP server is shutting down' }, 503)
@@ -289,7 +318,7 @@ function wireConnectionHandling(
       }
     }
   }, HEARTBEAT_INTERVAL_MS)
-  heartbeat.unref()
+  unrefTimer(heartbeat)
   wss.on('close', () => clearInterval(heartbeat))
 }
 
@@ -297,7 +326,8 @@ function buildServerContext(options: ServerOptions) {
   const httpPort = options.httpPort ?? 7600
   const toolPolicy: ToolPolicy = {
     allowEval: options.enableEval ?? false,
-    disabledTools: [...new Set(options.disabledTools)]
+    disabledTools: [...new Set(options.disabledTools)],
+    scope: options.scope ?? 'document'
   }
   const mcpRoot = options.mcpRoot ?? null
   const resolvedRoot = mcpRoot ? resolve(mcpRoot) : null
@@ -330,12 +360,23 @@ function buildServerContext(options: ServerOptions) {
     requestPreflight: async (body, sendRPC, sendOptions) =>
       (await prepareRootScopedRPCRequest(body, resolvedRoot, sendRPC, sendOptions)).body
   })
-  const sendToBrowser = browserRPC.sendRPC
+  const sendToBrowser = scopeRPC(browserRPC.sendRPC, toolPolicy.scope)
   const pluginMCP = createPluginMCPController({ sendRPC: sendToBrowser })
   const mcpSessions = createMCPSessionManager({
     serverVersion: MCP_VERSION,
-    registerTools: (mcpServer: McpServer) =>
-      registerTools(mcpServer, { policy: toolPolicy, mcpRoot, sendRPC: sendToBrowser }),
+    registerTools: (mcpServer: McpServer, agentSession: MCPAgentSession) =>
+      registerTools(mcpServer, {
+        policy: toolPolicy,
+        mcpRoot,
+        sendRPC: sendToBrowser,
+        agentSession
+      }),
+    onSessionClosed: (sessionId) => {
+      sendToBrowser({
+        command: 'agent_session_closed',
+        args: { session: sessionId }
+      }).catch(() => undefined)
+    },
     registerPluginTools: (mcpServer: McpServer) =>
       registerPluginMCPTools(mcpServer, {
         catalog: pluginMCP.catalog,
@@ -376,7 +417,8 @@ function buildServerContext(options: ServerOptions) {
     app,
     wss,
     authToken,
-    disabledTools: toolPolicy.disabledTools
+    disabledTools: toolPolicy.disabledTools,
+    scope: toolPolicy.scope
   }
 }
 
@@ -505,6 +547,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerHa
       ctx.authToken,
       MCP_VERSION,
       ctx.disabledTools,
+      ctx.scope,
       state
     )
   } catch (err) {
@@ -580,7 +623,7 @@ function armAppAttachWatchdog(
         console.error('[MCP] Watchdog: failed to close orphaned (no_app) server:', e)
       })
     }, timeoutMs)
-    timer.unref()
+    unrefTimer(timer)
   }
   const unsubscribe = browserRPC.subscribeConnectionChange((connected) => {
     if (connected) clearTimer()

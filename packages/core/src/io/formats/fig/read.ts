@@ -1,6 +1,9 @@
 import {
   assertFigArchiveByteLength,
   type FigArchiveLimits,
+  figArchiveRecordInfo,
+  parseFigBuffer,
+  type FigArchiveRecordInfo,
   type FigSessionCheckpoint
 } from '@open-pencil/fig'
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
@@ -14,6 +17,7 @@ import {
   registerOriginalArchiveRequest,
   releaseFigPopulationWorker
 } from '#core/kiwi/fig/population/client'
+import { localFigArchive, registerFigArchive } from '#core/kiwi/fig/session/archive'
 import { createFigSessionWorker } from '#core/kiwi/fig/session/client'
 import {
   registerReaderRecovery,
@@ -99,9 +103,13 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
   const reader = openReaderSession(buffer, options.populate, options.archiveLimits)
   options.onPages?.(reader.pages)
   throwIfFigParseAborted(options.signal)
-  const original = buffer.slice(0)
-  registerReaderSession(original, reader.session, reader.diagnostics, options.archiveLimits)
-  registerOriginalArchiveRequest(reader.graph, async () => new Uint8Array(original.slice(0)))
+  const bytes = buffer.slice(0)
+  registerReaderSession(bytes, reader.session, reader.diagnostics, options.archiveLimits)
+  // Taken now, while the records are decoded: the archive outlives the reader's session.
+  const archiveInfo = reader.session.archiveRecordInfo()
+  const archive = localFigArchive(bytes, () => archiveInfo)
+  registerFigArchive(reader.graph, archive)
+  registerOriginalArchiveRequest(reader.graph, () => archive.original())
   return reader.graph
 }
 
@@ -226,7 +234,8 @@ function parseViaStartedSessionWorker(
     const succeed = (
       serialized: SerializedSceneGraph,
       checkpoint?: FigSessionCheckpoint,
-      recoveryBuffer?: ArrayBuffer
+      recoveryBuffer?: ArrayBuffer,
+      archiveInfo?: FigArchiveRecordInfo
     ) => {
       if (settled) return
       let graph: SceneGraph | undefined
@@ -238,7 +247,20 @@ function parseViaStartedSessionWorker(
         if (!checkpoint) throw new Error('Missing reader checkpoint')
         if (!recoveryBuffer) throw new Error('Missing reader source archive')
         registerReaderRecovery(graph, recoveryBuffer, checkpoint, options.archiveLimits)
-        registerOriginalArchiveRequest(graph, async () => new Uint8Array(recoveryBuffer.slice(0)))
+        const original = recoveryBuffer
+        const archive = localFigArchive(original, () => {
+          if (archiveInfo) return archiveInfo
+          const parsed = parseFigBuffer(original, {
+            limits: options.archiveLimits
+          })
+          return figArchiveRecordInfo({
+            records: parsed.nodeChanges,
+            blobCount: parsed.blobs.length,
+            imageHashes: parsed.images.map(([hash]) => hash)
+          })
+        })
+        registerFigArchive(graph, archive)
+        registerOriginalArchiveRequest(graph, () => archive.original())
         const recoveredGraph = graph
         if (
           recoveredGraph.getPages(true).some((page) => isReaderPagePending(recoveredGraph, page.id))
@@ -266,15 +288,16 @@ function parseViaStartedSessionWorker(
         return
       }
       if (response.type !== 'graph') return
-      if ('error' in response) {
+      if (response.error || !response.graph) {
+        const phase = response.phase
         fail(
-          isDeterministicWorkerPhase(response.phase)
-            ? new DeterministicFigWorkerError(response.error, response.phase)
-            : new Error(response.error)
+          isDeterministicWorkerPhase(phase)
+            ? new DeterministicFigWorkerError(response.error ?? 'Worker returned no graph', phase)
+            : new Error(response.error ?? 'Worker returned no graph')
         )
         return
       }
-      succeed(response.graph, response.checkpoint, response.originalBuffer)
+      succeed(response.graph, response.checkpoint, response.originalBuffer, response.archiveInfo)
     }
 
     port.addEventListener('message', receive)
@@ -301,7 +324,10 @@ function parseViaStartedSessionWorker(
           type: 'open',
           originalBuffer: buffer,
           returnOriginalBuffer: true,
-          options: { populate: options.populate, archiveLimits: options.archiveLimits },
+          options: {
+            populate: options.populate,
+            archiveLimits: options.archiveLimits
+          },
           port: channel.port2
         },
         [buffer, channel.port2]

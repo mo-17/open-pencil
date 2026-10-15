@@ -1,6 +1,8 @@
 import { mkdir, open, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { compact } from 'es-toolkit'
+
 import { canonicalManifestJSON, parseExactManifestRecord } from '@open-pencil/scene-graph'
 
 import { MARKETPLACE_LIMITS, parseMarketplaceState, type MarketplaceStateV1 } from '../types'
@@ -105,7 +107,7 @@ function createdDirectorySyncPaths(firstCreatedValue: string, parent: string): r
   }
   const paths = [dirname(firstCreated), firstCreated]
   let current = firstCreated
-  for (const part of suffix.split(sep).filter(Boolean)) {
+  for (const part of compact(suffix.split(sep))) {
     current = join(current, part)
     paths.push(current)
   }

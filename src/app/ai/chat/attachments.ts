@@ -2,8 +2,8 @@
 import { isFileUIPart, type FileUIPart, type UIMessage } from 'ai'
 
 import { encodeBase64 } from '@open-pencil/core/bytes'
-import { randomHex } from '@open-pencil/core/random'
 import type { Size } from '@open-pencil/scene-graph/primitives'
+import { randomHex } from '@open-pencil/scene-graph/random'
 
 export const SUPPORTED_VISUAL_ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 export const MAX_VISUAL_ATTACHMENTS = 4

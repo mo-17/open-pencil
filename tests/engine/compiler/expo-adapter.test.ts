@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { translateExpoStyle } from '#compiler/adapters/expo/style'
+import * as v from 'valibot'
 
 import {
   compile,
@@ -41,7 +42,7 @@ describe('Expo React Native compiler adapter', () => {
       layoutMode: 'VERTICAL',
       width: 360,
       height: 640,
-      gap: 12,
+      itemSpacing: 12,
       paddingTop: 16,
       paddingRight: 16,
       paddingBottom: 16,
@@ -54,12 +55,19 @@ describe('Expo React Native compiler adapter', () => {
 
     const output = compile({ graph, pageIds: [pageId], options: expoOptions() })
     const page = textFile(output.files, 'src/pages/index.tsx')
-    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
-      main: string
-      dependencies: Record<string, string>
-      engines: { node: string }
-      scripts: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          main: v.string(),
+          dependencies: v.record(v.string(), v.string()),
+          engines: v.looseObject({ node: v.string() }),
+          scripts: v.record(v.string(), v.string())
+        })
+      ),
+      textFile(output.files, 'package.json')
+    )
 
     expect(output.files.has('App.tsx')).toBe(true)
     expect(output.files.has('app.json')).toBe(true)
@@ -168,9 +176,14 @@ describe('Expo React Native compiler adapter', () => {
       })
     })
     const codes = output.warnings.map((warning) => warning.code)
-    const appJSON = JSON.parse(textFile(output.files, 'app.json')) as {
-      expo: { scheme: string }
-    }
+    const appJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ expo: v.looseObject({ scheme: v.string() }) })
+      ),
+      textFile(output.files, 'app.json')
+    )
 
     expect(output.files.has('app/same.tsx')).toBe(true)
     expect(output.files.has('app/second.tsx')).toBe(true)

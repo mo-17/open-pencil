@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import type { Client } from '@modelcontextprotocol/client'
 import type { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
+import * as v from 'valibot'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -116,6 +117,11 @@ function textContent(content: unknown): string {
     items.find((c) => c.type === 'text'),
     'text content'
   ).text
+}
+
+/** The JSON a tool returned as text, checked against the shape the test expects. */
+function parseTextContent<T>(content: unknown, schema: v.GenericSchema<unknown, T>): T {
+  return v.parse(v.pipe(v.string(), v.parseJson(), schema), textContent(content))
 }
 
 describe('MCP stdio transport', () => {
@@ -251,12 +257,19 @@ describe('MCP stdio transport', () => {
 
     activeBrowser.ws.removeAllListeners('message')
     activeBrowser.ws.on('message', (raw) => {
-      const message = JSON.parse(raw.toString()) as {
-        type?: string
-        id?: string
-        command?: string
-        args?: unknown
-      }
+      const message = v.parse(
+        v.pipe(
+          v.string(),
+          v.parseJson(),
+          v.looseObject({
+            type: v.optional(v.string()),
+            id: v.optional(v.string()),
+            command: v.optional(v.string()),
+            args: v.optional(v.unknown())
+          })
+        ),
+        raw.toString()
+      )
       if (message.type !== 'request' || !message.id) return
       if (message.command === 'plugin_mcp_tools') {
         activeBrowser.ws.send(
@@ -345,11 +358,10 @@ describe('MCP stdio transport', () => {
       arguments: { type: 'FRAME', x: 10, y: 20, width: 200, height: 100, name: 'StdioFrame' }
     })
     expect(result.isError).not.toBe(true)
-    const data = JSON.parse(textContent(result.content)) as {
-      id: string
-      name: string
-      type: string
-    }
+    const data = parseTextContent(
+      result.content,
+      v.object({ id: v.string(), name: v.string(), type: v.string() })
+    )
     expect(data.type).toBe('FRAME')
     expect(data.name).toBe('StdioFrame')
 
@@ -357,7 +369,7 @@ describe('MCP stdio transport', () => {
   }, 10000)
 
   test('tool target fields are sent in the app RPC envelope', async () => {
-    const result = await client.callTool({
+    const result = await requireClient().callTool({
       name: 'create_shape',
       arguments: {
         document_id: 'doc-1',
@@ -393,26 +405,31 @@ describe('MCP stdio transport', () => {
   })
 
   test('list_documents via stdio returns open documents', async () => {
-    const result = await client.callTool({ name: 'list_documents', arguments: {} })
+    const result = await requireClient().callTool({ name: 'list_documents', arguments: {} })
     expect(result.isError).not.toBe(true)
-    const data = JSON.parse(textContent(result.content)) as {
-      documents: Array<{ id: string; current_page_id: string }>
-    }
+    const data = parseTextContent(
+      result.content,
+      v.object({
+        documents: v.array(v.object({ id: v.string(), current_page_id: v.string() }))
+      })
+    )
     expect(data.documents[0].id).toBe('doc-1')
-    expect(data.documents[0].current_page_id).toBe(browser?.graph.getPages()[0].id)
+    expect(data.documents[0].current_page_id).toBe(
+      expectDefined(browser, 'mock browser').graph.getPages()[0].id
+    )
   })
 
   test('save_file via stdio succeeds for an existing path inside the configured root', async () => {
     const result = await requireClient().callTool({ name: 'save_file', arguments: {} })
     expect(result.isError).not.toBe(true)
-    const data = JSON.parse(textContent(result.content)) as { saved: boolean }
+    const data = parseTextContent(result.content, v.object({ saved: v.boolean() }))
     expect(data.saved).toBe(true)
   }, 10000)
 
   test('get_codegen_prompt via stdio returns prompt', async () => {
     const result = await requireClient().callTool({ name: 'get_codegen_prompt', arguments: {} })
     expect(result.isError).not.toBe(true)
-    const data = JSON.parse(textContent(result.content)) as { prompt: string }
+    const data = parseTextContent(result.content, v.object({ prompt: v.string() }))
     expect(data.prompt.length).toBeGreaterThan(100)
   }, 10000)
 
@@ -422,7 +439,7 @@ describe('MCP stdio transport', () => {
       arguments: { type: 'RECTANGLE', x: 0, y: 0, width: 50, height: 50 }
     })
     expect(create.isError).not.toBe(true)
-    const { id } = JSON.parse(textContent(create.content)) as { id: string }
+    const { id } = parseTextContent(create.content, v.object({ id: v.string() }))
 
     expect(getNodeOrThrow(requireGraph(), id)).toBeDefined()
 

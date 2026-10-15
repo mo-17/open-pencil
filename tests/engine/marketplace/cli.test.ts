@@ -17,26 +17,48 @@ afterEach(async () => {
   )
 })
 
+async function declaredCommand(
+  value: ReturnType<typeof declaredSubCommands> extends Promise<infer Commands>
+    ? Commands[keyof Commands]
+    : never
+) {
+  return typeof value === 'function' ? await value() : await value
+}
+
+async function declaredMeta(command: Awaited<ReturnType<typeof declaredCommand>>) {
+  const value = command.meta
+  return typeof value === 'function' ? await value() : await value
+}
+
+async function declaredSubCommands(command: typeof marketplaceCommand) {
+  const value = command.subCommands
+  if (!value) throw new Error('Expected declared CLI subcommands')
+  return typeof value === 'function' ? await value() : await value
+}
+
 describe('marketplace CLI', () => {
-  test('declares stable nested command names instead of deriving them from the entrypoint path', () => {
-    const commands = marketplaceCommand.subCommands
+  test('declares stable nested command names instead of deriving them from the entrypoint path', async () => {
+    const commands = await declaredSubCommands(marketplaceCommand)
     if (!commands) throw new Error('Marketplace CLI must declare subcommands')
-    const publisher = commands.publisher
-    const publication = commands.publication
-    if (!publisher.subCommands || !publication.subCommands) {
-      throw new Error('Marketplace CLI nested commands are missing')
-    }
-    expect(publisher.meta?.name).toBe('publisher')
-    expect(publisher.subCommands.create.meta?.name).toBe('create')
-    expect(commands.serve.args?.['require-admin-assertion']).toMatchObject({
-      type: 'boolean',
-      default: false
-    })
-    expect(commands.serve.args?.['require-admin-assertion']?.description).toContain(
-      'mutations always require V2 operator assertions'
+    const publisher = await declaredCommand(commands.publisher)
+    const publisherCommands = await declaredSubCommands(publisher)
+    const publication = await declaredCommand(commands.publication)
+    const publicationCommands = await declaredSubCommands(publication)
+    expect((await declaredMeta(publisher))?.name).toBe('publisher')
+    expect((await declaredMeta(await declaredCommand(publisherCommands.create)))?.name).toBe(
+      'create'
     )
-    expect(publication.meta?.name).toBe('publication')
-    expect(Object.keys(publication.subCommands)).toEqual([
+    expect((await declaredCommand(commands.serve)).args?.['require-admin-assertion']).toMatchObject(
+      {
+        type: 'boolean',
+        default: false
+      }
+    )
+    expect(
+      (await declaredCommand(commands.serve)).args?.['require-admin-assertion']?.description
+    ).toContain('mutations always require V2 operator assertions')
+    expect((await declaredMeta(publication))?.name).toBe('publication')
+    expect(Object.keys(publicationCommands)).toEqual([
       'request',
       'reserve',
       'cancel',
@@ -45,15 +67,19 @@ describe('marketplace CLI', () => {
       'sign',
       'import'
     ])
-    expect(publication.subCommands.sign.args?.['approve-request-digest']).toMatchObject({
+    expect(
+      (await declaredCommand(publicationCommands.sign)).args?.['approve-request-digest']
+    ).toMatchObject({
       type: 'string',
       required: true
     })
-    expect(publication.subCommands.cancel.args?.['approve-request-digest']).toMatchObject({
+    expect(
+      (await declaredCommand(publicationCommands.cancel)).args?.['approve-request-digest']
+    ).toMatchObject({
       type: 'string',
       required: true
     })
-    expect(publication.subCommands.cancel.args?.reason).toMatchObject({
+    expect((await declaredCommand(publicationCommands.cancel)).args?.reason).toMatchObject({
       type: 'string',
       required: true
     })

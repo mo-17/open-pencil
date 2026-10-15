@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
+import type { StateDef } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -16,7 +17,7 @@ const SUPA_CONFIG = { url: 'https://x.supabase.co', anonKey: 'eyJ.anon.sig' }
 describe('compile — LIST Supabase query datasource (Phase 4 §17.1)', () => {
   function compileList(
     query: Record<string, unknown>,
-    opts: { supabase?: boolean; docStates?: unknown[]; name?: string } = {}
+    opts: { supabase?: boolean; docStates?: StateDef[]; name?: string } = {}
   ): string {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -85,7 +86,7 @@ describe('compile — LIST Supabase query datasource (Phase 4 §17.1)', () => {
   })
 
   // ── §17.2 offset pagination ──
-  const PAGE_STATE = [{ id: 'd1', name: 'page', type: 'number', defaultValue: 0 }]
+  const PAGE_STATE: StateDef[] = [{ id: 'd1', name: 'page', type: 'number', defaultValue: 0 }]
 
   test('offsetExpr + limit emit .range(offset, offset + size - 1) and a page dep', () => {
     const app = compileList(
@@ -115,7 +116,7 @@ describe('compile — LIST Supabase query datasource (Phase 4 §17.1)', () => {
   })
 
   // ── §17.3 dynamic sort ──
-  const SORT_STATE = [
+  const SORT_STATE: StateDef[] = [
     { id: 'd1', name: 'sortCol', type: 'string', defaultValue: 'name' },
     { id: 'd2', name: 'sortAsc', type: 'boolean', defaultValue: true }
   ]

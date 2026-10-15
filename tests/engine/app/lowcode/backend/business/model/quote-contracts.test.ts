@@ -215,7 +215,7 @@ describe('quotation and contract model', () => {
     expect(
       app.commands?.commands
         .flatMap((entry) => entry.steps)
-        .some((step) => step.kind === 'data.mutate' && step.operation === 'delete')
+        .some((step) => step.kind === 'data.mutate' && String(step.operation) === 'delete')
     ).toBe(false)
   })
 

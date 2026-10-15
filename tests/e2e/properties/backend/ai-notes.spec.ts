@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { fromUint8Array } from 'js-base64'
 
+import { parseColor } from '@open-pencil/core/color'
+
+import { NOTES_PALETTE } from '@/app/lowcode/backend/notes-template/presentation'
+
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 test('built-in AI catalog creates functional notes in the live editor', async ({ page }, info) => {
@@ -12,6 +16,8 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
   await page.goto('/')
   await canvas.waitForInit()
   const result = await page.evaluate(async () => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const toolsURL = new URL('/src/app/ai/tools/index.ts', window.location.origin).href
@@ -24,14 +30,20 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
     await editor.switchPage(created.notesPageId)
     editor.zoomToFit()
     const nodes = [...editor.graph.getAllNodes()]
+    const saveButton = nodes.find((node) => node.type === 'BUTTON' && node.name === 'Save note')
     return {
       ...created,
-      saveButtonId: nodes.find((node) => node.type === 'BUTTON' && node.name === 'Save note')?.id,
+      saveButtonId: saveButton?.id,
+      saveButtonFills: saveButton?.fills,
       actions: nodes.flatMap((node) => Object.values(node.events ?? {}).flat()),
       content: nodes.find((node) => node.type === 'TEXTAREA' && node.name === 'content'),
       buttons: nodes.filter((node) => node.type === 'BUTTON').map((node) => node.interactiveProps)
     }
   })
+  const accentInput = parseColor(NOTES_PALETTE.accent)
+  expect(result.saveButtonFills).toContainEqual(
+    expect.objectContaining({ type: 'SOLID', color: accentInput, visible: true })
+  )
   expect(result.status).toBe('created')
   expect(result.authentication.issuer).toBe('http://127.0.0.1:18080/realms/openpencil')
   expect(result.exportPageIds).toHaveLength(2)
@@ -45,6 +57,8 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
   // anything beyond the page-color placeholder has actually reached the scene surface.
   await page.waitForFunction(
     () => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil?.getStore?.()
       if (!editor) return false
       return editor.canvasRenderers.some((renderer) => {
@@ -64,6 +78,8 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
     { timeout: 30_000 }
   )
   const buttonClip = await page.evaluate((buttonId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     const surface = document.querySelector<HTMLCanvasElement>(
       '[data-test-id="scene-canvas-element"]'
@@ -90,29 +106,49 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
     }
   }, result.saveButtonId)
   const buttonImage = await page.screenshot({ clip: buttonClip })
-  const bluePixelRatio = await page.evaluate(async (encoded) => {
-    const image = new Image()
-    image.src = 'data:image/png;base64,' + encoded
-    await image.decode()
-    const sample = document.createElement('canvas')
-    sample.width = image.width
-    sample.height = image.height
-    const context = sample.getContext('2d')
-    if (!context) throw new Error('Screenshot pixel inspection is unavailable')
-    context.drawImage(image, 0, 0)
-    const pixels = context.getImageData(0, 0, image.width, image.height).data
-    let blue = 0
-    for (let index = 0; index < pixels.length; index += 4) {
-      if (
-        pixels[index + 2] > 150 &&
-        pixels[index + 2] - pixels[index] > 70 &&
-        pixels[index + 2] - pixels[index + 1] > 40
-      )
-        blue++
+  await info.attach('ai-notes-save-button', { body: buttonImage, contentType: 'image/png' })
+  const accentPixelRatio = await page.evaluate(
+    async ({ encoded, rgb }) => {
+      const image = new Image()
+      image.src = 'data:image/png;base64,' + encoded
+      await image.decode()
+      const sample = document.createElement('canvas')
+      sample.width = image.width
+      sample.height = image.height
+      const context = sample.getContext('2d')
+      if (!context) throw new Error('Screenshot pixel inspection is unavailable')
+      context.drawImage(image, 0, 0)
+      const pixels = context.getImageData(0, 0, image.width, image.height).data
+      let accent = 0
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (
+          pixels[index] === rgb[0] &&
+          pixels[index + 1] === rgb[1] &&
+          pixels[index + 2] === rgb[2]
+        )
+          accent++
+      }
+      return accent / (image.width * image.height)
+    },
+    {
+      encoded: fromUint8Array(buttonImage),
+      rgb: [
+        Math.round(accentInput.r * 255),
+        Math.round(accentInput.g * 255),
+        Math.round(accentInput.b * 255)
+      ]
     }
-    return blue / (image.width * image.height)
-  }, fromUint8Array(buttonImage))
-  expect(bluePixelRatio).toBeGreaterThan(0.6)
+  )
+  await info.attach('ai-notes-painted-accent-evidence', {
+    body: JSON.stringify({
+      sourcePalette: NOTES_PALETTE.accent,
+      sourceGraphFills: result.saveButtonFills,
+      buttonClip,
+      accentPixelRatio
+    }),
+    contentType: 'application/json'
+  })
+  expect(accentPixelRatio).toBeGreaterThan(0.6)
   canvas.assertNoErrors()
   await page.screenshot({ path: info.outputPath('ai-notes-editor.png'), fullPage: true })
 })

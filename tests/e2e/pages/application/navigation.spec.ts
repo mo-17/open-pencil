@@ -30,8 +30,12 @@ test('application preview preserves the concrete URL and shared state across sel
   await waitForApplicationDocument(editor.page)
   const historyLength = await runtime.locator('body').evaluate(() => history.length)
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
-    const node = store?.graph.getAllNodes().find((item) => item.name === 'Product location')
+    const node = [...(store?.graph.getAllNodes() ?? [])].find(
+      (item) => item.name === 'Product location'
+    )
     if (!store || !node) throw new Error('Product location unavailable')
     store.select([node.id])
   })
@@ -43,8 +47,12 @@ test('application preview preserves the concrete URL and shared state across sel
   await expect(runtime.getByText('Product: 42 / tab: details', { exact: true })).toBeVisible()
   const before = await preview.getAttribute('src')
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
-    const node = store?.graph.getAllNodes().find((item) => item.name === 'Products title')
+    const node = [...(store?.graph.getAllNodes() ?? [])].find(
+      (item) => item.name === 'Products title'
+    )
     if (!store || !node) throw new Error('Product title unavailable')
     store.updateNodeWithUndo(node.id, { text: 'Products screen updated' })
   })
@@ -65,8 +73,12 @@ test('application preview preserves the concrete URL and shared state across sel
   await expect(role).toContainText('Design reference')
   const referenceBefore = await preview.getAttribute('src')
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
-    const node = store?.graph.getAllNodes().find((item) => item.name === 'Reference only')
+    const node = [...(store?.graph.getAllNodes() ?? [])].find(
+      (item) => item.name === 'Reference only'
+    )
     if (!store || !node) throw new Error('Reference node unavailable')
     store.updateNodeWithUndo(node.id, { text: 'Updated design reference' })
     store.select([node.id])
@@ -86,6 +98,8 @@ test('application preview preserves the concrete URL and shared state across sel
   ).toHaveAttribute('aria-disabled', 'true')
   await editor.page.keyboard.press('Escape')
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const products = store?.graph.getPages().find((item) => item.name === 'Products')
     if (!store || !products) throw new Error('Products page unavailable')

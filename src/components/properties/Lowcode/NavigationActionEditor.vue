@@ -36,12 +36,13 @@ function changeTarget(value: string): void {
       action.kind === 'back' ? panels.lowcodeNavigationFallback : panels.lowcodeNavigationRoute
     "
     :aria-invalid="error ? 'true' : undefined"
-    :data-test-id="action.kind === 'back' ? 'lowcode-action-fallback' : 'lowcode-action-to'"
+    data-slot="action-location"
+    :data-property="action.kind === 'back' ? 'fallback' : 'to'"
     spellcheck="false"
     placeholder="/about"
     :class="[
       'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-      error ? 'border-red-500' : 'border-border'
+      error ? 'border-error' : 'border-border'
     ]"
     @change="changeTarget(($event.target as HTMLInputElement).value)"
   />

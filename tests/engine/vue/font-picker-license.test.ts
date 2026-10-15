@@ -2,14 +2,16 @@ import { describe, expect, test } from 'bun:test'
 
 import { nextTick, ref } from 'vue'
 
-import { useFontPicker } from '@open-pencil/vue'
+import type { FontFamilyOption } from '@open-pencil/core/text'
+
+import { useFontPicker } from '#vue/primitives/FontPicker/useFontPicker'
 
 describe('font picker license display', () => {
   test('normalizes unknown licenses and filters every display status', async () => {
     const modelValue = ref('Open Font')
     const picker = useFontPicker({
       modelValue,
-      listFamilies: async () => [
+      listFamilies: async (): Promise<FontFamilyOption[]> => [
         {
           family: 'Open Font',
           source: 'bundled',
@@ -52,7 +54,7 @@ describe('font picker license display', () => {
             restriction: 'embedding'
           }
         },
-        'Unverified Font'
+        { family: 'Unverified Font', source: 'local' }
       ]
     })
 

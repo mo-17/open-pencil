@@ -9,6 +9,8 @@ Press <kbd>⌘</kbd><kbd>J</kbd> (<kbd>Ctrl</kbd> + <kbd>J</kbd>) to open the AI
 
 ## Setup
 
+The first time you open OpenPencil, guided setup asks what AI should help with and what you already use: a [coding agent](./coding-agents) such as Claude Code, Codex, Gemini CLI, or Pi in the desktop app, an API account, or a local or company server. It connects that access and assigns it to the **Design agent** and **Vision** roles, keeping anything you configured by hand. With OpenRouter you can sign in instead of pasting an API key. Skip it to start designing, and run it again from **Settings → AI & agents → Run guided setup**. To configure models by hand:
+
 1. Open the AI chat panel (<kbd>⌘</kbd><kbd>J</kbd>)
 2. Click the settings icon
 3. Add a model and configure its provider, model ID, credentials, and capabilities
@@ -34,7 +36,7 @@ The built-in AI captures this limit when each message starts. Stopping, remainin
 
 ## Tool access
 
-Open **Settings → Tool access** to choose which tools direct AI model connections can use. Search by name or description, expand read-only or side-effect groups, and toggle individual tools or an entire group. Group switches affect all tools in that group, not only search results. **Restore defaults** restores the compact default tool set; extended tools such as `create_component` can be enabled individually.
+Open **Settings → Tool access** to choose which tools direct AI model connections can use. Search by name or description, expand read-only or side-effect groups, and toggle individual tools or an entire group. Group switches affect all tools in that group, not only search results. **Restore defaults** restores the default tool set: the core editing and inspection tools, the library tools (`get_components`, `list_libraries`, `insert_library_component`), comments, variables, `lint` and `lint_fix`, `export_image`, `list_pages`, and `create_page`. Extended tools such as `create_component` can be enabled individually.
 
 Preferences are saved locally and apply to the next message, including in an existing conversation. They do not change an already-running request. Enabling many tools increases the schemas sent to the model.
 
@@ -274,7 +276,7 @@ The configurable tool catalog covers these categories; the tools offered to a mo
 - **Create** — frames, shapes, text, components, pages, and real lowcode controls. Renders JSX for complex layouts without substituting visual Frames for functional controls.
 - **Style** — fills, strokes, effects, opacity, corner radius, blend modes.
 - **Layout** — auto-layout, grid, alignment, spacing, sizing.
-- **Components** — create components, instances, component sets. Manage overrides.
+- **Components** — create components, instances, component sets, and slots. Manage overrides. Give components Reka UI behaviours so they work in preview.
 - **Variables** — create/edit variables, collections, modes. Bind to fills.
 - **Query** — find nodes, XPath selectors, read properties, list pages, fonts, selection.
 - **Inspect** — `get_jsx` for JSX roundtrip view, `diff_create` and `diff_jsx` for structural diffs, `diff_visual` for pixel diffs, `describe` for semantic role and design issue detection.
@@ -302,6 +304,22 @@ visual checks. Enabling this capability does not guarantee an automatic screensh
 
 `diff_visual` compares two rendered nodes and returns changed pixels and regions when enabled.
 
+## Stopping a reply
+
+**Stop** ends a reply at once. A tool call already running finishes, and its edit counts as part of the reply; calls still waiting for their turn change nothing. The reply is marked *Stopped*, its reasoning and any unfinished calls stop showing as running, and your next message tells the assistant whether those calls changed the document.
+
+## Undoing the assistant's edits
+
+Each tool call that changes the document is one step in Edit → Undo. Undoing it with <kbd>⌘</kbd><kbd>Z</kbd> marks the call *Undone* in the chat. A reply with only some edits undone says how many; one with all of them undone is dimmed and marked *Changes reverted*. Redo removes the marks. The marks are saved with the conversation.
+
+**Revert changes** on a reply undoes its edits while nothing has been edited since, and **Restore changes** brings undone edits back while Redo still can. **Regenerate** and editing your last message undo the replaced reply's edits first when they can.
+
+Your next message tells the assistant which of its edits you undid or redid, so it does not build on edits that are gone. If you undo the assistant's edits while it is still working, it hears about it with its next tool call.
+
+## Following the assistant
+
+With **Follow agents** on, the crosshair button at the top of the AI panel, your view follows the assistant while it works, including to another page when it edits layers there. Following ends when the reply finishes, is stopped, or fails. Clicking, scrolling, zooming, switching pages, or Escape stops following yourself.
+
 ## Example Prompts
 
 - "Create a card with a title, description, and a blue button"
@@ -312,12 +330,13 @@ visual checks. Enabling this capability does not guarantee an automatic screensh
 - "Find all text nodes with font size less than 12"
 - "Describe the selected component — what role does it look like?"
 - "Show me the JSX for this frame"
+- "Make this component a switch that I can try in preview"
 
 ## Tips
 
 - Select nodes before asking — the assistant knows what's selected.
 - Be specific about colors, sizes, and positions for precise results.
 - The assistant can modify multiple nodes in one message.
-- You can browse other pages while a reply runs: the assistant keeps working on the page where the message started, and its previews show when you return. While you're away, the chat says which page it is working on, with **Go to page** to return. If the assistant switches pages itself, your view follows.
-- Use "undo" in the editor if you don't like the result — AI mutations support full undo.
+- You can browse other pages while a reply runs: the assistant keeps working on the page where the message started, and its previews show when you return. While you're away, the chat says which page it is working on, with **Go to page** to return.
+- Undo anything you don't like with Edit → Undo or **Revert changes**; the chat and the assistant both see it.
 - All layout is recomputed automatically after each tool execution.

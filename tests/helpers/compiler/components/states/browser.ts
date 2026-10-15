@@ -2,14 +2,10 @@ import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
 
-import { withComponentTemplateFiles } from '../templates/browser'
-import type { compileComponentStates } from './fixture'
-import type { CanvasStateFamily, StateFamily, StateLocale } from './types'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
 
-interface StateFiles {
-  files: [string, string][]
-  warnings: ReturnType<typeof compileComponentStates>['warnings']
-}
+import { withComponentTemplateFiles } from '../templates/browser'
+import type { CanvasStateFamily, StateFamily, StateLocale } from './types'
 
 export async function withComponentStates(
   page: Page,
@@ -19,13 +15,13 @@ export async function withComponentStates(
   run: () => Promise<void>
 ) {
   const source = `import {compileComponentStates} from './tests/helpers/compiler/components/states/fixture';const result=compileComponentStates(${JSON.stringify(target)},${JSON.stringify(family)},${JSON.stringify(locale)});process.stdout.write(JSON.stringify({files:[...result.files],warnings:result.warnings}));`
-  const result = JSON.parse(
+  const result = parseCompilerBrowserOutput(
     execFileSync('bun', ['-e', source], {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024
     })
-  ) as StateFiles
+  )
   expect(result.warnings).toEqual([])
   await withComponentTemplateFiles(page, target, new Map(result.files), run)
 }

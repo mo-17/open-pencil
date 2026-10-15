@@ -1,6 +1,6 @@
 import { effectiveFigmaRawNodeFields } from '#fig/source-metadata'
 
-import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
+import type { NodeChange, Paint, StyleReference } from '@open-pencil/kiwi/fig/codec'
 import { stringToGuid } from '@open-pencil/kiwi/fig/guid'
 import type {
   ComponentPropertyDefinition,
@@ -10,6 +10,8 @@ import type {
 } from '@open-pencil/scene-graph'
 import type { Color, GUID, Matrix } from '@open-pencil/scene-graph/primitives'
 
+import { variableAlias } from '../variable/bindings'
+
 export type KiwiNodeChange = NodeChange & Record<string, unknown>
 
 export type KiwiSymbolOverridePayload = NonNullable<
@@ -17,17 +19,11 @@ export type KiwiSymbolOverridePayload = NonNullable<
 >[number] &
   Record<string, unknown>
 
-/** How a record names a shared style: a local GUID, or a published library asset. */
-export interface StyleReference {
-  guid?: GUID
-  assetRef?: { key: string; version?: string }
-}
-
-/** Published styles by graph and source id, built once with the rest of the context. */
+/** Library styles by source id, built once with the rest of the context. */
 export function buildStyleReferences(graph: SceneGraph): ReadonlyMap<string, StyleReference> {
   const references = new Map<string, StyleReference>()
   for (const node of graph.getAllNodes()) {
-    if (!node.sharedStyleType || !node.source.id) continue
+    if (node.sharedStyleType === null || !node.source.id) continue
     const raw = effectiveFigmaRawNodeFields(node)
     if (typeof raw.key !== 'string') continue
     const reference: StyleReference = {
@@ -45,16 +41,60 @@ export function buildStyleReferences(graph: SceneGraph): ReadonlyMap<string, Sty
 /** Caches shared only within one immutable graph export batch. */
 export interface FigNodeExportCaches {
   styleReferences: ReadonlyMap<string, StyleReference>
+  styleNodeIds?: ReadonlyMap<string, string>
   siblingOrderKeys: Map<string, { keyById: Map<string, string> }>
 }
 
 export function createFigNodeExportCaches(graph: SceneGraph): FigNodeExportCaches {
-  return { styleReferences: buildStyleReferences(graph), siblingOrderKeys: new Map() }
+  return {
+    styleReferences: buildStyleReferences(graph),
+    styleNodeIds: buildStyleNodeIds(graph),
+    siblingOrderKeys: new Map()
+  }
+}
+
+function buildStyleNodeIds(graph: SceneGraph): ReadonlyMap<string, string> {
+  const styleNodeIds = new Map<string, string>()
+  for (const node of graph.getAllNodes())
+    if (node.sharedStyleType !== null && node.source.id) styleNodeIds.set(node.source.id, node.id)
+  return styleNodeIds
+}
+
+/**
+ * The GUID a layer names a style with: the record written for the local style of that ID, or
+ * the GUID the ID spells. Styles made in OpenPencil, by token import or by pasting from another
+ * document, have IDs that spell no GUID, so only their records can name them.
+ */
+export function styleReferenceGuid(
+  context: Pick<SceneNodeToKiwiContext, 'graph' | 'nodeIdToGuid' | 'styleNodeIds'>,
+  id: string
+): GUID {
+  context.styleNodeIds ??= buildStyleNodeIds(context.graph)
+  const styleNodeId = context.styleNodeIds.get(id)
+  const written = styleNodeId ? context.nodeIdToGuid?.get(styleNodeId) : undefined
+  return written ?? context.nodeIdToGuid?.get(id) ?? stringToGuid(id)
+}
+
+/**
+ * How a layer names a style, as Figma writes it: a library style by its key, which Figma
+ * resolves and keeps linked to the library, and a local one by its record.
+ */
+export function exportedStyleReference(
+  context: Pick<
+    SceneNodeToKiwiContext,
+    'graph' | 'nodeIdToGuid' | 'styleNodeIds' | 'styleReferences'
+  >,
+  id: string
+): StyleReference {
+  context.styleReferences ??= buildStyleReferences(context.graph)
+  return context.styleReferences.get(id) ?? { guid: styleReferenceGuid(context, id) }
 }
 
 export interface SceneNodeToKiwiContext {
   styleReferences?: ReadonlyMap<string, StyleReference>
   siblingOrderKeys?: FigNodeExportCaches['siblingOrderKeys']
+  /** Local styles' node IDs by the style IDs layers name them with, built on first use. */
+  styleNodeIds?: ReadonlyMap<string, string>
   graph: SceneGraph
   blobs: Uint8Array[]
   blobIndexByHex?: Map<string, number>
@@ -74,10 +114,23 @@ export interface SceneNodeToKiwiContext {
   propertyIdToGuid: Map<string, GUID>
   componentPropertyDefinitionsById: ReadonlyMap<string, ComponentPropertyDefinition>
   /**
+   * Writing records into the archive a document came from: the layer each archive GUID
+   * belongs to, so a copy that kept its original's `source.id` gets a GUID of its own.
+   */
+  recordOwners?: ReadonlyMap<string, string>
+  /** Positions the caller decided, kept so untouched siblings keep theirs. */
+  orderKeys?: ReadonlyMap<string, string>
+  /** False to write a layer's record alone, as when only some records change. */
+  writeChildren?: boolean
+  /**
    * Receives the content frames of instance slots. Figma stores them on the internal canvas,
    * so the caller re-parents the `isSlotContent` roots there after serializing its nodes.
    */
   slotContentRecords?: KiwiNodeChange[]
+  /** Plugin data a node is written with instead of its own, by node ID. */
+  pluginDataOverrides?: ReadonlyMap<string, PluginDataEntry[]>
+  /** Nodes with their bindings resolved, kept for the length of one export. */
+  resolvedNodes?: WeakMap<SceneNode, SceneNode>
   fractionalPosition: (index: number) => string
   getExportNode: (node: SceneNode) => SceneNode
   getExportChildren: (node: SceneNode) => readonly SceneNode[]
@@ -113,8 +166,14 @@ export interface SceneNodeToKiwiContext {
   ) => KiwiNodeChange[]
 }
 
+/** Figma reads both parts of a GUID as signed 32-bit integers and drops a paste beyond them. */
+const MAX_FIGMA_GUID_PART = 0x7fffffff
+
+/** The GUID an ID spells, or null when it spells none Figma can read. */
 export function parseGuidOrNull(value: string) {
-  return /^\d+:\d+$/.test(value) ? stringToGuid(value) : null
+  if (!/^\d+:\d+$/.test(value)) return null
+  const guid = stringToGuid(value)
+  return guid.sessionID <= MAX_FIGMA_GUID_PART && guid.localID <= MAX_FIGMA_GUID_PART ? guid : null
 }
 
 export function resolveInstanceComponentId(
@@ -141,7 +200,9 @@ export function getOrCreateNodeGuid(
   if (!node) return undefined
   const existing = context.nodeIdToGuid?.get(nodeId)
   if (existing) return existing
-  const importedGuid = node.source.id ? parseGuidOrNull(node.source.id) : null
+  const ownsSource =
+    !node.source.id || !context.recordOwners || context.recordOwners.get(node.source.id) === nodeId
+  const importedGuid = node.source.id && ownsSource ? parseGuidOrNull(node.source.id) : null
 
   // When source.id maps to a GUID value that is already assigned to a
   // different node (e.g. two nodes from different canvases with the same
@@ -156,7 +217,10 @@ export function getOrCreateNodeGuid(
     }
   }
 
-  const guid = importedGuid ?? { sessionID: 1, localID: localIdCounter.value++ }
+  const guid = importedGuid ?? {
+    sessionID: 1,
+    localID: localIdCounter.value++
+  }
   context.nodeIdToGuid?.set(nodeId, guid)
   context.assignedGuidValues?.add(`${guid.sessionID}:${guid.localID}`)
   return guid
@@ -215,7 +279,9 @@ export function applyColorVariableBinding(
     colorVar: {
       dataType: 'ALIAS',
       resolvedDataType: 'COLOR',
-      value: { alias: { guid: context.varIdToGuid?.get(variableId) ?? stringToGuid(variableId) } }
+      value: {
+        alias: variableAlias(context.graph, variableId, context.varIdToGuid)
+      }
     }
   }
 }
@@ -239,7 +305,9 @@ function applyGradientStopBindings(
             dataType: 'ALIAS',
             resolvedDataType: 'COLOR',
             value: {
-              alias: { guid: context.varIdToGuid?.get(variableId) ?? stringToGuid(variableId) }
+              alias: {
+                guid: context.varIdToGuid?.get(variableId) ?? stringToGuid(variableId)
+              }
             }
           }
         }

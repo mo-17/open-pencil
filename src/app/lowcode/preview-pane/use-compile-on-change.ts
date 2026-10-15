@@ -39,6 +39,7 @@ import { createManagedBackendPreviewController } from './managed-backend/control
 import { createManagedBackendPreviewHost } from './managed-backend/host'
 import { watchPreviewSaveSync } from './save-sync'
 import { watchPreviewSourceChanges } from './source-invalidations'
+import { createPreviewSourcePreparation } from './source-preparation'
 
 export { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 
@@ -363,6 +364,14 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     if (!activeHost || !activeHost.isAlive()) return 'superseded' as const
     const generation = ++buildGeneration
     const controller = new AbortController()
+    const ownerGeneration = hostGeneration
+    const source = createPreviewSourcePreparation(
+      store,
+      () =>
+        !buildWasCancelled(request, activeHost, controller) &&
+        hostGeneration === ownerGeneration &&
+        activeHost.isAlive()
+    )
     activeBuildController = controller
     if (activeHost.kind === 'browser-worker') clearRuntimeReadyTimer()
 
@@ -373,11 +382,12 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     }
 
     try {
-      const pages = store.graph.getPages()
+      if (!(await source.prepare())) return 'superseded'
+      const pages = source.graph.getPages()
       const pageIds = pages.length > 1 ? pages.map((page) => page.id) : [store.state.currentPageId]
       const result = await activeHost.build({
         generation,
-        graph: store.graph,
+        graph: source.graph,
         pageIds,
         options: withDefaults({
           packageName: 'openpencil-preview',
@@ -395,14 +405,14 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         signal: controller.signal
       })
 
-      if (buildResultIsStale(request, activeHost, generation, result)) {
+      if (!source.isCurrent() || buildResultIsStale(request, activeHost, generation, result)) {
         if (result.status === 'ready') activeHost.releaseFrame(result.frame)
         return 'superseded'
       }
       if (result.status === 'stale') return 'superseded'
       return publishHostResult(activeHost, generation, result)
     } catch (cause) {
-      if (buildWasCancelled(request, activeHost, controller)) return 'superseded'
+      if (!source.isCurrent()) return 'superseded'
       const message = cause instanceof Error ? cause.message : String(cause)
       publishDiagnostics([], message)
       status.value = { kind: 'error', message }
@@ -410,6 +420,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       console.warn('[preview] compile failed:', cause)
       return 'failed'
     } finally {
+      source.dispose()
       if (activeBuildController === controller) activeBuildController = null
     }
   }

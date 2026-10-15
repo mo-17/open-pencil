@@ -30,7 +30,14 @@ export function moduleValuesGraph() {
     layoutMode: 'VERTICAL',
     itemSpacing: 12,
     events: {
-      onSubmit: [{ kind: 'setState', targetStateId: 'submitted', valueExpr: 'submitted + 1' }]
+      onSubmit: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'submitted',
+          valueExpr: 'submitted + 1'
+        }
+      ]
     }
   })
   function add(

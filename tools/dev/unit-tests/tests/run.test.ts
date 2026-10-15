@@ -154,3 +154,20 @@ test('explicit isolation runs each quick file in a fresh process', async () => {
   expect(plan.every((run) => run.files.length === 1)).toBeTrue()
   expect(options.bunTestArgs).toEqual([])
 })
+
+test('full runs isolate every heavy fixture while coverage keeps shard files together', async () => {
+  const { listHeavyUnitTests, listUnitTests } = await import('../src/shards')
+  const heavy = await listHeavyUnitTests('cli')
+  const all = await listUnitTests('cli', { includeHeavy: true })
+  const full = await buildUnitTestRunPlan('cli', { includeHeavy: true })
+  expect(heavy.length).toBeGreaterThan(0)
+  for (const file of heavy) {
+    const batches = full.filter((run) => run.files.includes(file))
+    expect(batches).toHaveLength(1)
+    expect(batches[0].files).toEqual([file])
+  }
+  expect(full.flatMap((run) => run.files).sort()).toEqual(all.sort())
+  const coverage = await buildUnitTestRunPlan('cli', { includeHeavy: true, coverage: true })
+  expect(coverage).toHaveLength(1)
+  expect(coverage[0].files.sort()).toEqual(all.sort())
+})

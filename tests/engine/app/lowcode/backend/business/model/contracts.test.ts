@@ -46,7 +46,7 @@ function asserted(command: BackendCommandDefinitionIR, name: string) {
 }
 
 describe('business application template contracts', () => {
-  test.each(BUSINESS_TEMPLATE_IDS)(
+  test.each([...BUSINESS_TEMPLATE_IDS])(
     '%s is a normalized ordinary-command application with readable UI projections',
     (kind) => {
       const app = application(kind)
@@ -75,7 +75,7 @@ describe('business application template contracts', () => {
     }
   )
 
-  test.each(BUSINESS_TEMPLATE_IDS)(
+  test.each([...BUSINESS_TEMPLATE_IDS])(
     '%s bootstraps a verified profile without assigning itself a role or another identity',
     (kind) => {
       const app = application(kind)

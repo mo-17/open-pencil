@@ -675,10 +675,16 @@ export function serializeInstanceOverrides(
   const keys = Object.keys(node.overrides)
   if (keys.length === 0) return null
   const table: Record<string, unknown> = {}
+  const savedReferences = new Map<string, string>()
+  for (const [componentId, instanceId] of instanceComponentReferenceMap(graph, node)) {
+    const component = graph.getNode(componentId)
+    savedReferences.set(instanceId, component?.source.id ?? componentId)
+  }
   for (const key of keys) {
     const rootOverride = canonicalRootMotionOverride(key, node.overrides[key])
     if (rootOverride.matched) {
-      if (rootOverride.valid) table[`:${key}`] = rootOverride.value
+      if (rootOverride.valid)
+        table[`:${key}`] = localizeRootMotionOverride(key, rootOverride.value, savedReferences)
       continue
     }
     const colon = key.lastIndexOf(':')
@@ -748,12 +754,20 @@ function instanceComponentReferenceMap(
   instance: SceneNode
 ): Map<string, string> {
   const references = new Map<string, string>()
-  if (instance.componentId) references.set(instance.componentId, instance.id)
+  if (instance.componentId) {
+    references.set(instance.componentId, instance.id)
+    const source = graph.getNode(instance.componentId)?.source.id
+    if (source) references.set(source, instance.id)
+  }
   const queue = [...instance.childIds]
   for (const childId of queue) {
     const child = graph.getNode(childId)
     if (!child) continue
-    if (child.componentId) references.set(child.componentId, child.id)
+    if (child.componentId) {
+      references.set(child.componentId, child.id)
+      const source = graph.getNode(child.componentId)?.source.id
+      if (source) references.set(source, child.id)
+    }
     queue.push(...child.childIds)
   }
   return references

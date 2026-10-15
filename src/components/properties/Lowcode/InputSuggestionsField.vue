@@ -78,7 +78,7 @@ function apply(): void {
       >
       <span class="ml-auto text-[10px] text-muted">{{ draft.length }}/100</span>
     </div>
-    <p v-if="invalid" role="alert" class="text-[10px] text-danger">
+    <p v-if="invalid" role="alert" class="text-[10px] text-error">
       {{ panels.lowcodeInputSuggestionsInvalid }}
     </p>
     <div class="flex gap-1">

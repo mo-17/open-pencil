@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit/array'
 import { shallowRef } from 'vue'
 
 import type { BackendReleaseStateV1 } from '@open-pencil/lowcode/backend'
@@ -97,12 +98,10 @@ export async function runDeploymentPluginSession(
   try {
     const completion = await options.operation()
     const backendDeploymentRequired = completion.result.backendDeploymentRequired
-    const combinedNotice = [
+    const combinedNotice = compact([
       completion.notice,
       ...(backendDeploymentRequired ? [BACKEND_DEPLOYMENT_REQUIRED_NOTICE] : [])
-    ]
-      .filter(Boolean)
-      .join(' ')
+    ]).join(' ')
     const resolvedCompletion = Object.freeze({
       result: completion.result,
       ...(completion.backendRelease ? { backendRelease: completion.backendRelease } : {}),

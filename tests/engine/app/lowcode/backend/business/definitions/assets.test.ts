@@ -13,6 +13,8 @@ import {
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 import type { BusinessActionWhen } from '@/app/lowcode/backend/business/types'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const application = () =>
   createAssetsApplication('asset-pages', {
     kind: 'oidc-pkce',
@@ -131,7 +133,7 @@ describe('asset management page definition', () => {
       '/assets/admin/history'
     ])
     expect(definition.pages.some((entry) => entry.public)).toBe(false)
-    expect(
+    expect<unknown>(
       definition.pages
         .flatMap((entry) => entry.actions)
         .map((entry) => entry.commandId)
@@ -212,7 +214,7 @@ describe('asset management page definition', () => {
       const nodes = [...editor.graph.getAllNodes()]
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind !== 'backendResource') continue
         for (const expression of [
           source.afterExpr,

@@ -1,46 +1,19 @@
 ---
-layout: home
+layout: page
+landing: true
+sidebar: false
+aside: false
 title: OpenPencil — Open-Source Design Editor
-description: Open-source Figma alternative. Opens .fig files, built-in AI, fully programmable.
-
-hero:
-  name: OpenPencil
-  text: Open-Source Design Editor
-  tagline: Opens Figma files. Built-in AI. Fully programmable. Also a toolkit for building custom editors.
-  actions:
-    - theme: brand
-      text: Try Online
-      link: https://app.openpencil.dev/demo
-    - theme: alt
-      text: Download
-      link: https://github.com/open-pencil/open-pencil/releases/latest
-    - theme: alt
-      text: GitHub
-      link: https://github.com/open-pencil/open-pencil
-
-features:
-  - icon: 📂
-    title: Figma-Compatible
-    details: Opens .fig files natively. Copy & paste between Figma and OpenPencil. Kiwi binary codec with round-trip fidelity.
-  - icon: ⚡
-    title: Programmable
-    details: Headless CLI to inspect, export, and analyze .fig files. Figma Plugin API via eval. Tailwind CSS export. JSON output for CI and automation.
-  - icon: 🚀
-    title: Lowcode Apps
-    details: Compile pages into React/Tailwind apps with state, bindings, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy.
-  - icon: 🧩
-    title: Toolkit, not just app
-    details: Build custom editing surfaces with the Vue SDK, embed OpenPencil into other products, or assemble workflow-specific editors around the same core.
-  - icon: 🤖
-    title: AI-Native
-    details: Built-in chat with a curated 50+ tools. MCP server with 140+ design operations for Claude Code, Cursor, and Windsurf.
-  - icon: 📖
-    title: Open Source
-    details: MIT license. Read and modify everything — the editor, the engine, the file codec, the CLI.
-  - icon: 🖥️
-    title: Free & Local
-    details: No account, no server, no internet required. ~7 MB desktop app via Homebrew, or use the web app.
-  - icon: 👥
-    title: Real-Time Collaboration
-    details: P2P via WebRTC — no server. Share a link, edit together with live cursors and follow mode.
+description: Open-source design editor that opens Figma .fig files, runs locally, and is fully programmable by you or your AI agent.
 ---
+
+<script setup>
+import LandingPage from '#docs/theme/landing/LandingPage.vue'
+import { en } from '#docs/theme/landing/content/messages/en'
+</script>
+
+<LandingPage :messages="en" />
+
+## Lowcode application authoring
+
+This fork adds React/Vue application compilation, Flutter previews, state, forms, data bindings, workflows, Backend providers and Motion. See [Lowcode apps](/user-guide/lowcode-apps).

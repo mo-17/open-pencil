@@ -95,7 +95,7 @@ test('number stepper has explicit default and hidden states, undoable placement 
   expect(props?.showStepper).toBeUndefined()
   expect(props?.stepperPlacement).toBeUndefined()
   expect(props?.min).toBeUndefined()
-  await page.getByTestId('lowcode-interactive-showPasswordToggle').click()
+  await page.getByRole('checkbox', { name: 'Show password reveal button', exact: true }).click()
   expect((await savedInputFields(page, ids.number)).properties?.showPasswordToggle).toBe(true)
   const password = page.getByTestId('lowcode-interactive-value')
   await expect(password).toHaveAttribute('type', 'password')

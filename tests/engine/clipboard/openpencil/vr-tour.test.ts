@@ -7,7 +7,7 @@ import {
   createVRTourSampleScenes,
   VR_TOUR_SAMPLE_ASSETS
 } from '@open-pencil/core/plugins'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { validateModuleInstance, SceneGraph } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { captureClipboardSnapshot } from '#core/editor/clipboard/snapshot'
@@ -132,7 +132,9 @@ describe('VR sample image clipboard carrier', () => {
     'does not attach VR sample bytes for an invalid %s',
     (field) => {
       const { graph, node } = sampleGraph()
-      const module = structuredClone(expectDefined(node.interactiveProps?.module, 'VR module'))
+      const result = validateModuleInstance(node.interactiveProps?.module)
+      if (!result.ok) throw new Error(result.reason)
+      const module = structuredClone(result.value)
       if (field === 'pluginId') module.pluginId = 'example.other'
       if (field === 'moduleType') module.moduleType = 'other'
       if (field === 'configVersion') module.configVersion = 99

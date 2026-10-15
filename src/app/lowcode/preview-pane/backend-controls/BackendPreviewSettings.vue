@@ -155,7 +155,7 @@ async function chooseCA() {
       <p v-if="presetId === 'oidc'" class="mt-1 leading-relaxed text-muted">
         {{ text.oidcRequirements }}
       </p>
-      <ul v-if="preset.issues.length" class="mt-2 space-y-1 text-amber-500">
+      <ul v-if="preset.issues.length" class="mt-2 space-y-1 text-warning">
         <li v-for="issue in preset.issues" :key="issue">{{ issueLabels[issue] }}</li>
       </ul>
       <button
@@ -240,7 +240,7 @@ async function chooseCA() {
             {{ text.chooseCA }}
           </button>
         </div>
-        <p v-if="caError" role="status" class="mt-2 text-amber-500">{{ text.chooseCAFailed }}</p>
+        <p v-if="caError" role="status" class="mt-2 text-warning">{{ text.chooseCAFailed }}</p>
       </div>
     </details>
     <div class="space-y-3 border-t border-border pt-3">

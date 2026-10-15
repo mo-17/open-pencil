@@ -168,6 +168,8 @@ test.afterAll(async () => {
 
 async function currentLibraryText(): Promise<string[]> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return [...store.graph.getAllNodes()]
@@ -184,10 +186,14 @@ test('ACK: libraries panel accepts local component update with undo redo', async
     })
   })
   await editor.page.evaluate(async () => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     await window.openPencil?.openFile?.('/ack/consumer-imported.fig')
   })
   await editor.canvas.waitForRender()
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.clearSelection()
@@ -258,10 +264,14 @@ test('ACK: remote libraries stage, import, check, and explicitly accept updates'
   })
 
   await editor.page.evaluate(async () => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     await window.openPencil?.openFile?.('/ack/consumer-remote.fig')
   })
   await editor.canvas.waitForRender()
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.clearSelection()
@@ -324,6 +334,8 @@ async function currentRemoteLibraryState(): Promise<{
   manifestSource?: string
 }> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const root = store.graph.getNode(store.graph.rootId)

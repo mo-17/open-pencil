@@ -2,7 +2,11 @@ import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
+import { runCommand } from 'citty'
+
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const SCENARIOS = [
   'production-http',
@@ -18,7 +22,7 @@ const TARGETS = ['react', 'vue'] as const
 export type DeployRuntimeScenario = (typeof SCENARIOS)[number]
 export type DeployRuntimeTarget = (typeof TARGETS)[number]
 
-const ROOT = resolve(import.meta.dir, '../../../..')
+const ROOT = repoPath()
 const PROVIDER_URL = 'https://api.netlify.com/api/v1/sites/local-preflight-site/deploys'
 
 /** Isolate module mocks, process.exit, public build variables, and fetch in a child process. */
@@ -61,7 +65,10 @@ export async function runDeployRuntimeScenario(
     ])
     let requests: string[] = []
     try {
-      requests = readFileSync(requestsPath, 'utf8').trim().split('\n').filter(Boolean)
+      requests = readFileSync(requestsPath, 'utf8')
+        .trim()
+        .split('\n')
+        .filter((line) => line.length > 0)
     } catch (cause) {
       if (!(cause instanceof Error) || !('code' in cause) || cause.code !== 'ENOENT') throw cause
     }
@@ -159,27 +166,25 @@ async function runIsolatedCommand(): Promise<void> {
   } else if (scenario === 'https-to-http') {
     override = 'http://127.0.0.1:54321'
   }
-  await command.run({
-    args: {
-      _: [],
-      file: join(tmpdir(), 'openpencil-cli-preflight-memory.fig'),
-      provider: 'netlify',
-      environment: 'production',
-      token: 'local-fixture-not-a-real-token',
-      site: 'local-preflight-site',
+  await runCommand(command, {
+    rawArgs: [
+      join(tmpdir(), 'openpencil-cli-preflight-memory.fig'),
+      '--provider',
+      'netlify',
+      '--environment',
+      'production',
+      '--token',
+      'local-fixture-not-a-real-token',
+      '--site',
+      'local-preflight-site',
+      '--target',
       target,
-      json: true,
-      ...(override
-        ? {
-            'supabase-url': override,
-            'supabase-publishable-key':
-              scenario === 'incomplete-override' ? undefined : 'sb_publishable_override_fixture',
-            'supabase-schema': 'app'
-          }
-        : {})
-    },
-    rawArgs: [],
-    cmd: command
+      '--json',
+      ...(override ? ['--supabase-url', override, '--supabase-schema', 'app'] : []),
+      ...(override && scenario !== 'incomplete-override'
+        ? ['--supabase-publishable-key', 'sb_publishable_override_fixture']
+        : [])
+    ]
   })
 }
 

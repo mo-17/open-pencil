@@ -1,6 +1,8 @@
-> Security vulnerability? Do not open a public PR. Report it privately through GitHub Security Advisories: https://github.com/open-pencil/open-pencil/security/advisories/new
+<!--
+Security vulnerability? Do not open a public PR. Report it privately through GitHub Security Advisories: https://github.com/open-pencil/open-pencil/security/advisories/new
 
 Before opening a PR, read `CONTRIBUTING.md` and `AGENTS.md`. PRs should explain the intent, meaningful changes, and validation. Placeholder, non-English, unrelated, or otherwise unreviewable PRs may be closed by maintainers.
+-->
 
 ### Summary
 
@@ -23,4 +25,4 @@ Models: None
 <!-- List commands actually run and their results, plus relevant checks not run and why. Note changelog status. Replace these examples; do not claim unperformed validation. -->
 
 - Checks/tests: commands and results, or not run and why.
-- Changelog: updated, or not needed and why.
+- Changelog: fragment added under `changes/<PR>/`, or not needed and why.

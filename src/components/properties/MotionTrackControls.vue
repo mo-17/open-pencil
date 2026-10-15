@@ -124,7 +124,7 @@ function onRenameKeydown(event: KeyboardEvent): void {
       <input
         :value="track.id"
         class="h-6 min-w-0 flex-1 rounded border bg-input px-1.5 font-mono text-[10px] text-surface outline-none focus:border-accent"
-        :class="renameError ? 'border-red-500' : 'border-border'"
+        :class="renameError ? 'border-error' : 'border-border'"
         :aria-label="panels.motionRenameTrack"
         :aria-invalid="renameError ? 'true' : undefined"
         data-test-id="motion-track-name"
@@ -156,7 +156,7 @@ function onRenameKeydown(event: KeyboardEvent): void {
         <icon-lucide-arrow-down class="size-3" />
       </IconButton>
     </div>
-    <p v-if="renameError" class="text-[10px] text-red-500" data-test-id="motion-track-name-error">
+    <p v-if="renameError" class="text-[10px] text-error" data-test-id="motion-track-name-error">
       {{ renameError }}
     </p>
     <PanelFieldGroup v-if="motionVersion === 3" :label="panels.motionTrackLabel">

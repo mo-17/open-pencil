@@ -1,5 +1,12 @@
 {
   "toolOptions": "Opzioni di {tool}",
   "removeGradientStop": "Rimuovi punto sfumatura",
-  "showUI": "Mostra interfaccia ({shortcut})"
+  "cornerRadius": "Raggio",
+  "pointCount": "Numero",
+  "starRatio": "Rapporto",
+  "showUI": "Mostra interfaccia ({shortcut})",
+  "previewing": "Anteprima",
+  "resetPreview": "Ripristina",
+  "leavePreview": "Esci dall’anteprima ({shortcut})",
+  "startPreview": "Anteprima ({shortcut})"
 }

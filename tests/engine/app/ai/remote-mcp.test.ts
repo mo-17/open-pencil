@@ -40,6 +40,8 @@ import { appCredentialServices } from '@/app/settings/credentials/app'
 import { appCredentialRefs } from '@/app/settings/credentials/persistence'
 import { credentialKey } from '@/app/settings/credentials/reference'
 
+import { executeAITool } from '#tests/helpers/ai/tools'
+
 const PUBLIC_SERVER: RemoteMCPServer = {
   id: 'mcp-0123456789abcdef',
   name: 'Public docs',
@@ -56,14 +58,7 @@ const PRIVATE_SERVER: RemoteMCPServer = {
   auth: { type: 'bearer', credentialProfileId: PRIVATE_SERVER_ID }
 }
 
-type ToolDefinition = {
-  name: string
-  description?: string
-  inputSchema: {
-    type: 'object'
-    properties?: Record<string, object>
-  }
-}
+type ToolDefinition = Awaited<ReturnType<RemoteMCPClient['listTools']>>['tools'][number]
 
 function toolDefinition(name: string): ToolDefinition {
   return {
@@ -345,8 +340,14 @@ describe('remote MCP runtime', () => {
         const chunks: Uint8Array[] = []
         for await (const chunk of request) chunks.push(chunk)
         const body = Buffer.concat(chunks).toString('utf8')
-        const parsedBody = body ? (JSON.parse(body) as { method?: unknown }) : undefined
-        if (typeof parsedBody?.method === 'string') protocolMethods.push(parsedBody.method)
+        const parsedBody: unknown = body ? JSON.parse(body) : undefined
+        if (
+          parsedBody &&
+          typeof parsedBody === 'object' &&
+          'method' in parsedBody &&
+          typeof parsedBody.method === 'string'
+        )
+          protocolMethods.push(parsedBody.method)
         const result = await serverTransport.handleRequest(
           new Request('http://127.0.0.1/mcp', {
             method: request.method,
@@ -403,7 +404,8 @@ describe('remote MCP runtime', () => {
       expect(protocolMethods).toContain('notifications/initialized')
       expect(protocolMethods).toContain('tools/list')
 
-      const result = await remoteTool.execute?.(
+      const result = await executeAITool(
+        remoteTool,
         { value: 'hello' },
         { toolCallId: 'tool-loopback', messages: [] }
       )
@@ -466,7 +468,8 @@ describe('remote MCP runtime', () => {
     expect(remoteTool.needsApproval).toBeTrue()
     expect(client.connectCount).toBe(1)
     expect(remoteTool.execute).toBeDefined()
-    const result = await remoteTool.execute?.(
+    const result = await executeAITool(
+      remoteTool,
       { value: 'hello' },
       { toolCallId: 'tool-1', messages: [] }
     )
@@ -477,7 +480,7 @@ describe('remote MCP runtime', () => {
     await runtime.dispose()
     expect(client.closeCount).toBe(1)
     await expect(
-      remoteTool.execute?.({ value: 'again' }, { toolCallId: 'tool-2', messages: [] })
+      executeAITool(remoteTool, { value: 'again' }, { toolCallId: 'tool-2', messages: [] })
     ).rejects.toThrow('is closed')
   })
 
@@ -580,7 +583,7 @@ describe('remote MCP runtime', () => {
     })
     const remoteTool = runtime.tools[namespacedRemoteMCPToolName(PUBLIC_SERVER.id, 'large_result')]
     await expect(
-      remoteTool.execute?.({}, { toolCallId: 'tool-large', messages: [] })
+      executeAITool(remoteTool, {}, { toolCallId: 'tool-large', messages: [] })
     ).rejects.toThrow(`more than ${MAX_REMOTE_MCP_TOOL_RESULT_BYTES} bytes`)
     await runtime.dispose()
   })

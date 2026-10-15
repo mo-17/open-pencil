@@ -5,9 +5,11 @@ const editor = useEditorSetup()
 
 test('autosave triggers after scene changes with a file handle', async () => {
   const writeCount = await editor.page.evaluate(() => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     let writes = 0
     const lastModified = Date.now()
-    const mockWritable = {
+    const mockWritable: Pick<FileSystemWritableFileStream, 'write' | 'close'> = {
       write: async () => {
         writes++
       },
@@ -34,7 +36,7 @@ test('autosave triggers after scene changes with a file handle', async () => {
     // Since fileHandle is a closure variable, we need to trigger the save path
     // The cleanest way: mock showSaveFilePicker to return our handle
     const lastModified = Date.now()
-    const mockWritable = {
+    const mockWritable: Pick<FileSystemWritableFileStream, 'write' | 'close'> = {
       write: async () => undefined,
       close: async () => undefined
     }
@@ -55,6 +57,8 @@ test('autosave triggers after scene changes with a file handle', async () => {
 
   // Check that the scene version changed
   const versionAfterDraw = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.state.sceneVersion

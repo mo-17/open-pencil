@@ -4,6 +4,8 @@ import { expect, type Page } from '@playwright/test'
 
 import type { CompileWarning } from '@open-pencil/compiler'
 
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
+
 import { withComponentTemplateFiles } from '../components/templates/browser'
 
 export interface ApplicationBrowserOutput {
@@ -16,7 +18,7 @@ export async function withApplicationMode(
   target: 'react' | 'vue',
   run: () => Promise<void>
 ): Promise<void> {
-  const result = JSON.parse(
+  const result = parseCompilerBrowserOutput(
     execFileSync(
       'bun',
       [
@@ -25,7 +27,7 @@ export async function withApplicationMode(
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as ApplicationBrowserOutput
+  )
   expect(result.warnings).toEqual([])
   await withComponentTemplateFiles(page, target, new Map(result.files), run)
 }

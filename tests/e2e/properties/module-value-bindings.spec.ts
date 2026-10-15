@@ -20,6 +20,8 @@ for (const renderer of ['retained', 'tiled'] as const)
       'cascader'
     ])
     const form = await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil.getStore()
       editor.updateNode(editor.state.currentPageId, {
         state: [
@@ -46,12 +48,16 @@ for (const renderer of ['retained', 'tiled'] as const)
     const ids: string[] = []
     const saved = (id: string) =>
       page.evaluate((nodeId) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const node = window.openPencil.getStore().graph.getNode(nodeId)
         return { bindings: node?.bindings, props: node?.interactiveProps }
       }, id)
     for (const module of ['slider', 'rating', 'date-range', 'cascader'] as const) {
       await insertExpansionModule(page, module)
       const id = await page.evaluate((formId) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore(),
           id = [...editor.state.selectedIds][0]
         editor.graph.reparentNode(id, formId)
@@ -83,7 +89,7 @@ for (const renderer of ['retained', 'tiled'] as const)
           module === 'slider' ? 'docState' : 'ref'
         )
         const endRules = page
-          .getByTestId('module-value-validation')
+          .locator('[data-slot="module-value"][data-mode="validation"]')
           .locator('[data-module-value-field="endValue"]')
         await endRules.getByTestId('lowcode-validation-required').click()
         canvas.assertNoErrors()
@@ -91,7 +97,7 @@ for (const renderer of ['retained', 'tiled'] as const)
         expect((await saved(id)).props?.endValidation).toEqual({ required: true })
       }
       const rules = page
-        .getByTestId('module-value-validation')
+        .locator('[data-slot="module-value"][data-mode="validation"]')
         .locator('[data-module-value-field="value"]')
       await rules.getByTestId('lowcode-validation-required').click()
       await expect(rules.getByTestId('lowcode-validation-required')).toBeChecked()
@@ -116,7 +122,7 @@ for (const renderer of ['retained', 'tiled'] as const)
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true')
     await selectContentLayer(page, ids[0])
     const field = page
-      .getByTestId('module-value-validation')
+      .locator('[data-slot="module-value"][data-mode="validation"]')
       .locator('[data-module-value-field="value"]')
       .getByTestId('lowcode-validation-message-required')
     await field.fill('Stale selection draft')

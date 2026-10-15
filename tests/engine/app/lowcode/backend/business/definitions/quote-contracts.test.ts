@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const definition = quoteContractsDefinition()
 const application = () =>
   createContractsApplication('contracts-pages', {
@@ -41,7 +43,7 @@ describe('quotation and contract pages', () => {
       expect(nodes.length).toBeLessThan(20000)
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource')
           for (const expression of [
             source.afterExpr,
@@ -62,7 +64,7 @@ describe('quotation and contract pages', () => {
   test('preflights every command with actual field sources and no public or payment page', () => {
     const app = application()
     expect(() => preflightBusinessPages(app, definition)).not.toThrow()
-    expect(
+    expect<unknown>(
       definition.pages
         .flatMap((page) => page.actions)
         .map((entry) => entry.commandId)

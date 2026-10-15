@@ -13,6 +13,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const authentication = {
   kind: 'oidc-pkce' as const,
   issuer: 'https://identity.example.com',
@@ -61,7 +63,7 @@ for (const fixture of [
       expect(new Set(definition.pages.map((page) => page.path)).size).toBe(fixture.pages - 1)
       const actions = definition.pages.flatMap((page) => page.actions)
       expect(actions).toHaveLength(fixture.commands)
-      expect(actions.map((entry) => entry.commandId).sort()).toEqual(
+      expect<unknown>(actions.map((entry) => entry.commandId).sort()).toEqual(
         application.commands?.commands.map((entry) => entry.id).sort()
       )
       for (const entry of actions) {
@@ -143,7 +145,7 @@ for (const fixture of [
         const nodes = [...editor.graph.getAllNodes()]
         for (const node of nodes) {
           if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-          const source = node.interactiveProps?.dataSourceRef
+          const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
           if (source?.kind === 'backendResource') {
             for (const expression of [
               source.afterExpr,

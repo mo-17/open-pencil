@@ -24,6 +24,8 @@ for (const renderer of ['retained', 'tiled'] as const)
       await page.getByTestId(`plugin-enabled-open-pencil.${module}`).click()
       await page.getByTestId('app-settings-done').click()
       await page.evaluate((kind) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         const type = kind === 'chart' ? 'object' : 'array'
         const value =
@@ -80,6 +82,8 @@ for (const renderer of ['retained', 'tiled'] as const)
       })
       expect(docImage.equals(boundImage)).toBe(false)
       await page.evaluate((kind) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         editor.updateNode(editor.graph.rootId, {
           lowcodeDocumentState: [
@@ -100,11 +104,18 @@ for (const renderer of ['retained', 'tiled'] as const)
         path: info.outputPath(`${renderer}-${module}-invalid.png`)
       })
       expect(invalidImage.equals(docImage)).toBe(false)
-      await page.evaluate(() => {
+      await page.evaluate(async () => {
+        const { readModuleInstance } = await import('/packages/scene-graph/src/module.ts')
+
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         const node = editor.graph.getNode([...editor.state.selectedIds][0])
         if (!node) throw new Error('No selected module')
-        const key = node.interactiveProps?.module?.moduleType === 'chart' ? 'data' : 'rows'
+        const key =
+          readModuleInstance(node.interactiveProps?.module)?.moduleType === 'chart'
+            ? 'data'
+            : 'rows'
         const binding = node.bindings?.[key]
         if (binding?.kind !== 'docState') throw new Error('History lost document binding')
       })

@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { DEFAULT_SHADOW_COLOR } from '@open-pencil/core/constants'
 import { vectorNetworkToSVGPaths } from '@open-pencil/core/io/formats/svg'
 import {
@@ -345,15 +347,14 @@ function lowerUnsupportedVectorMotion(
   const supportsFillPaint = node.fillGeometry.length > 0
   const supportsStrokePaint = node.strokeGeometry.length > 0
   const channels = getMotionChannels(spec.tracks.flatMap((track) => track.keyframes))
-  const unsupportedStroke = [channels.strokeWidth ? 'strokeWidth' : '', channels.trim ? 'trim' : '']
-    .filter(Boolean)
-    .join(', ')
-  const unsupportedPaint = [
+  const unsupportedStroke = compact([
+    channels.strokeWidth ? 'strokeWidth' : '',
+    channels.trim ? 'trim' : ''
+  ]).join(', ')
+  const unsupportedPaint = compact([
     channels.fillColor && !supportsFillPaint ? 'fillColor' : '',
     channels.strokeColor && !supportsStrokePaint ? 'strokeColor' : ''
-  ]
-    .filter(Boolean)
-    .join(', ')
+  ]).join(', ')
   if (!unsupportedStroke && !unsupportedPaint) return spec
   if (unsupportedStroke) {
     warnings.push({

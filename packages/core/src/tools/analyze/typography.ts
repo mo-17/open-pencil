@@ -1,27 +1,34 @@
 import { orderBy, sortBy } from 'es-toolkit/array'
+import * as v from 'valibot'
 
 import { lowcodeTextNode } from '#core/text/lowcode'
 import { defineTool } from '#core/tools/schema'
+
+import { analysisLimitInput } from './input'
 
 export const analyzeTypography = defineTool({
   name: 'analyze_typography',
   description:
     'Analyze typography usage across the current page, including visible BUTTON, INPUT, and TEXTAREA text. Shows font families, sizes, weights, and their frequencies.',
   execution: { kind: 'sync', mutation: 'none' },
-  params: {
-    limit: { type: 'number', description: 'Max styles to return (default: 30)' },
-    group_by: {
-      type: 'string',
-      description: 'Group results by a property',
-      enum: ['family', 'size', 'weight']
-    }
-  },
+  input: v.strictObject({
+    limit: analysisLimitInput,
+    group_by: v.optional(
+      v.pipe(v.picklist(['family', 'size', 'weight']), v.description('Group results by a property'))
+    )
+  }),
   execute: (figma, args) => {
     const limit = args.limit
     const page = figma.currentPage
     const styleMap = new Map<
       string,
-      { family: string; size: number; weight: number; lineHeight: string; count: number }
+      {
+        family: string
+        size: number
+        weight: number
+        lineHeight: string
+        count: number
+      }
     >()
     let totalTextNodes = 0
 

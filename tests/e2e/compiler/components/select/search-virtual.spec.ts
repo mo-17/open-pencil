@@ -181,10 +181,29 @@ async function exerciseSmallLists(page: Page) {
   await expect(lastEnabled).toBeInViewport()
   await keyboard.press('Enter')
   await expect(keyboard).toContainText('Keyboard 098')
-  await page.locator('form').evaluate((element) => (element as HTMLFormElement).reset())
-  await expect(keyboard).toContainText('Keyboard 000')
   await expectCityState(page, 'city-9999', 2)
   await expect(page.getByText('Category[] Clearable[ready]', { exact: true })).toBeVisible()
+  await page.locator('form').evaluate(
+    (element: HTMLFormElement) =>
+      new Promise<void>((resolve) => {
+        element.addEventListener('__openPencilFormResetAccepted', () => resolve(), { once: true })
+        element.reset()
+      })
+  )
+  await expect(keyboard).toContainText('Keyboard 000')
+  await expectCityState(page, 'city-8765', 2, 'city-9999')
+  await expect(page.getByText('Category[] Clearable[]', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('combobox', { name: 'Clearable required choice', exact: true })
+  ).toContainText('Choose or clear')
+  // The declared city default is absent from the replacement options. Keep it unavailable;
+  // native FormData must not silently submit the first available replacement instead.
+  expect(
+    await page.locator('form').evaluate((element: HTMLFormElement) => {
+      const data = new FormData(element)
+      return { destination: data.get('destination'), disabled: data.has('disabledDestination') }
+    })
+  ).toEqual({ destination: null, disabled: false })
 }
 
 for (const variant of ['react', 'vue', 'shadcn'] as const) {

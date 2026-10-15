@@ -9,28 +9,49 @@ async function activeSlide(carousel: Locator, title: string) {
 }
 
 async function watchCarouselTimers(page: Page) {
-  await page.addInitScript(() => {
+  return page.evaluateHandle(() => {
     const timers = new Set<number>()
-    const set = window.setInterval.bind(window)
-    const clear = window.clearInterval.bind(window)
-    window.setInterval = (handler, delay, ...args) => {
-      const id = set(handler, delay, ...args)
-      if (delay === 2000) timers.add(id)
-      return id
+    const originalSet = window.setInterval
+    const originalClear = window.clearInterval
+    const set: Window['setInterval'] = originalSet.bind(window)
+    const clear: Window['clearInterval'] = originalClear.bind(window)
+    Object.defineProperty(window, 'setInterval', {
+      configurable: true,
+      writable: true,
+      value: (handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+        const id = set(handler, delay, ...args)
+        if (delay === 2000) timers.add(id)
+        return id
+      }
+    })
+    Object.defineProperty(window, 'clearInterval', {
+      configurable: true,
+      writable: true,
+      value: (id?: number) => {
+        if (id !== undefined) timers.delete(id)
+        clear(id)
+      }
+    })
+    return {
+      timers,
+      restore() {
+        Object.defineProperty(window, 'setInterval', {
+          configurable: true,
+          writable: true,
+          value: originalSet
+        })
+        Object.defineProperty(window, 'clearInterval', {
+          configurable: true,
+          writable: true,
+          value: originalClear
+        })
+      }
     }
-    window.clearInterval = (id) => {
-      if (typeof id === 'number') timers.delete(id)
-      clear(id)
-    }
-    Reflect.set(window, '__openpencilCarouselTimers', timers)
   })
 }
 
-async function timerCount(page: Page) {
-  return page.evaluate(() => {
-    const timers: unknown = Reflect.get(window, '__openpencilCarouselTimers')
-    return timers instanceof Set ? timers.size : -1
-  })
+async function timerCount(watcher: Awaited<ReturnType<typeof watchCarouselTimers>>) {
+  return watcher.evaluate((state) => state.timers.size)
 }
 
 for (const target of ['react', 'vue'] as const) {
@@ -136,39 +157,46 @@ for (const target of ['react', 'vue'] as const) {
   }) => {
     test.setTimeout(90_000)
     await page.clock.install()
-    await watchCarouselTimers(page)
     await withCarouselRuntime(page, target, async () => {
-      const carousel = page.getByRole('region', { name: 'Featured work', exact: true })
-      const outside = page.getByRole('button', { name: 'Outside focus', exact: true })
-      await page.getByRole('checkbox', { name: 'Autoplay', exact: true }).check()
-      await outside.focus()
-      await page.mouse.move(700, 500)
-      await expect.poll(() => timerCount(page)).toBe(1)
-      await page.clock.fastForward(2100)
-      await activeSlide(carousel, 'Second slide')
-      await carousel.hover()
-      await expect.poll(() => timerCount(page)).toBe(0)
-      await page.clock.fastForward(4500)
-      await activeSlide(carousel, 'Second slide')
-      await page.mouse.move(700, 500)
-      await carousel.getByRole('link', { name: 'Second slide', exact: true }).focus()
-      await expect.poll(() => timerCount(page)).toBe(0)
-      await page.clock.fastForward(4500)
-      await activeSlide(carousel, 'Second slide')
-      await outside.focus()
-      await expect.poll(() => timerCount(page)).toBe(1)
-      await page.clock.fastForward(2100)
-      await activeSlide(carousel, 'Third slide')
-      await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck()
-      await expect.poll(() => timerCount(page)).toBe(0)
-      await page.clock.fastForward(4500)
-      await activeSlide(carousel, 'Third slide')
-      await expect(carousel.getByRole('button', { name: 'Next slide', exact: true })).toBeDisabled()
-      await page.getByRole('checkbox', { name: 'Loop', exact: true }).check()
-      await expect.poll(() => timerCount(page)).toBe(1)
-      await page.getByRole('checkbox', { name: 'Show carousel', exact: true }).uncheck()
-      await expect(carousel).toHaveCount(0)
-      await expect.poll(() => timerCount(page)).toBe(0)
+      const watcher = await watchCarouselTimers(page)
+      try {
+        const carousel = page.getByRole('region', { name: 'Featured work', exact: true })
+        const outside = page.getByRole('button', { name: 'Outside focus', exact: true })
+        await page.getByRole('checkbox', { name: 'Autoplay', exact: true }).check()
+        await outside.focus()
+        await page.mouse.move(700, 500)
+        await expect.poll(() => timerCount(watcher)).toBe(1)
+        await page.clock.fastForward(2100)
+        await activeSlide(carousel, 'Second slide')
+        await carousel.hover()
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+        await page.clock.fastForward(4500)
+        await activeSlide(carousel, 'Second slide')
+        await page.mouse.move(700, 500)
+        await carousel.getByRole('link', { name: 'Second slide', exact: true }).focus()
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+        await page.clock.fastForward(4500)
+        await activeSlide(carousel, 'Second slide')
+        await outside.focus()
+        await expect.poll(() => timerCount(watcher)).toBe(1)
+        await page.clock.fastForward(2100)
+        await activeSlide(carousel, 'Third slide')
+        await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck()
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+        await page.clock.fastForward(4500)
+        await activeSlide(carousel, 'Third slide')
+        await expect(
+          carousel.getByRole('button', { name: 'Next slide', exact: true })
+        ).toBeDisabled()
+        await page.getByRole('checkbox', { name: 'Loop', exact: true }).check()
+        await expect.poll(() => timerCount(watcher)).toBe(1)
+        await page.getByRole('checkbox', { name: 'Show carousel', exact: true }).uncheck()
+        await expect(carousel).toHaveCount(0)
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+      } finally {
+        await watcher.evaluate((state) => state.restore())
+        await watcher.dispose()
+      }
     })
   })
 
@@ -178,34 +206,39 @@ for (const target of ['react', 'vue'] as const) {
     test.setTimeout(90_000)
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.clock.install()
-    await watchCarouselTimers(page)
     await withCarouselRuntime(page, target, async () => {
-      const carousel = page.getByRole('region', { name: 'Featured work', exact: true })
-      const outside = page.getByRole('button', { name: 'Outside focus', exact: true })
-      await page.getByRole('checkbox', { name: 'Autoplay', exact: true }).check()
-      await outside.focus()
-      await expect.poll(() => timerCount(page)).toBe(0)
-      await page.clock.fastForward(4500)
-      await activeSlide(carousel, 'First slide')
-      await carousel.getByRole('button', { name: 'Next slide', exact: true }).click()
-      await activeSlide(carousel, 'Second slide')
-      await expect(carousel.locator('[data-active]')).toHaveCSS('transition-duration', '0s')
-      await page.emulateMedia({ reducedMotion: 'no-preference' })
-      await outside.focus()
-      await page.mouse.move(700, 500)
-      await expect.poll(() => timerCount(page)).toBe(1)
-      await carousel.getByRole('button', { name: 'Pause carousel', exact: true }).click()
-      await outside.focus()
-      await page.mouse.move(700, 500)
-      await expect.poll(() => timerCount(page)).toBe(0)
-      await page.clock.fastForward(4500)
-      await activeSlide(carousel, 'Second slide')
-      await carousel.getByRole('button', { name: 'Resume carousel', exact: true }).click()
-      await outside.focus()
-      await page.mouse.move(700, 500)
-      await expect.poll(() => timerCount(page)).toBe(1)
-      await page.clock.fastForward(2100)
-      await activeSlide(carousel, 'Third slide')
+      const watcher = await watchCarouselTimers(page)
+      try {
+        const carousel = page.getByRole('region', { name: 'Featured work', exact: true })
+        const outside = page.getByRole('button', { name: 'Outside focus', exact: true })
+        await page.getByRole('checkbox', { name: 'Autoplay', exact: true }).check()
+        await outside.focus()
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+        await page.clock.fastForward(4500)
+        await activeSlide(carousel, 'First slide')
+        await carousel.getByRole('button', { name: 'Next slide', exact: true }).click()
+        await activeSlide(carousel, 'Second slide')
+        await expect(carousel.locator('[data-active]')).toHaveCSS('transition-duration', '0s')
+        await page.emulateMedia({ reducedMotion: 'no-preference' })
+        await outside.focus()
+        await page.mouse.move(700, 500)
+        await expect.poll(() => timerCount(watcher)).toBe(1)
+        await carousel.getByRole('button', { name: 'Pause carousel', exact: true }).click()
+        await outside.focus()
+        await page.mouse.move(700, 500)
+        await expect.poll(() => timerCount(watcher)).toBe(0)
+        await page.clock.fastForward(4500)
+        await activeSlide(carousel, 'Second slide')
+        await carousel.getByRole('button', { name: 'Resume carousel', exact: true }).click()
+        await outside.focus()
+        await page.mouse.move(700, 500)
+        await expect.poll(() => timerCount(watcher)).toBe(1)
+        await page.clock.fastForward(2100)
+        await activeSlide(carousel, 'Third slide')
+      } finally {
+        await watcher.evaluate((state) => state.restore())
+        await watcher.dispose()
+      }
     })
   })
 }

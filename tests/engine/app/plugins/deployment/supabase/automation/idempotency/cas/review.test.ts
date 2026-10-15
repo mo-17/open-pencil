@@ -187,9 +187,9 @@ describe('Supabase Backend Automation idempotency CAS review', () => {
     if (!context) throw new Error('Expected a trusted CAS review context.')
     const values = context.parameters
 
-    expect(SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_PARAMETER_SCHEMA.map(({ name }) => name)).toEqual(
-      SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_PARAMETER_ORDER
-    )
+    expect(SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_PARAMETER_SCHEMA.map(({ name }) => name)).toEqual([
+      ...SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_PARAMETER_ORDER
+    ])
     expect(values).toHaveLength(27)
     expect(values).toEqual([
       await digestBackendAutomationIdempotencyCASProposal(candidate.proposal),

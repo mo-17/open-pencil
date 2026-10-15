@@ -110,7 +110,7 @@ function onTransition(id: string, event: Event): void {
         <input
           v-model="transitionKeyDraft"
           data-test-id="motion-transition-key"
-          class="mt-1 w-full rounded border border-border bg-transparent px-2 py-1 text-[11px] text-foreground"
+          class="mt-1 w-full rounded border border-border bg-transparent px-2 py-1 text-[11px] text-surface"
           maxlength="64"
           :placeholder="panels.motionTransitionKeyHint"
           @blur="commitTransitionKey"
@@ -123,7 +123,8 @@ function onTransition(id: string, event: Event): void {
         v-for="(connection, index) in connections"
         :key="connection.id"
         class="space-y-2 rounded border border-border p-2"
-        :data-test-id="`motion-prototype-connection-${connection.id}`"
+        data-slot="prototype-connection"
+        :data-connection-id="connection.id"
       >
         <div class="flex items-center justify-between gap-2">
           <span class="truncate text-[10px] font-medium">
@@ -131,7 +132,7 @@ function onTransition(id: string, event: Event): void {
           </span>
           <button
             type="button"
-            class="text-[10px] text-danger hover:underline"
+            class="text-[10px] text-error hover:underline"
             @click="removeConnection(connection.id)"
           >
             {{ panels.motionPrototypeRemove }}
@@ -142,8 +143,10 @@ function onTransition(id: string, event: Event): void {
           <label class="text-[10px] text-muted">
             {{ panels.motionTrigger }}
             <select
-              :data-test-id="`motion-prototype-trigger-${connection.id}`"
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              data-slot="prototype-connection-field"
+              :data-connection-id="connection.id"
+              data-property="trigger"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.trigger.kind"
               @change="onTrigger(connection.id, $event)"
             >
@@ -158,7 +161,7 @@ function onTransition(id: string, event: Event): void {
               min="0"
               max="60000"
               step="10"
-              class="mt-1 w-full rounded border border-border bg-transparent px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-transparent px-1 py-1 text-[10px] text-surface"
               :value="connection.trigger.delayMs"
               @change="updateDelay(connection.id, numberValue($event))"
             />
@@ -168,8 +171,10 @@ function onTransition(id: string, event: Event): void {
         <label class="block text-[10px] text-muted">
           {{ panels.motionPrototypeAction }}
           <select
-            :data-test-id="`motion-prototype-action-${connection.id}`"
-            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+            data-slot="prototype-connection-field"
+            :data-connection-id="connection.id"
+            data-property="action"
+            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
             :value="connection.action.kind"
             @change="onAction(connection.id, $event)"
           >
@@ -185,8 +190,10 @@ function onTransition(id: string, event: Event): void {
           <label class="block text-[10px] text-muted">
             {{ panels.motionPrototypeTarget }}
             <select
-              :data-test-id="`motion-prototype-target-${connection.id}`"
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              data-slot="prototype-connection-field"
+              :data-connection-id="connection.id"
+              data-property="target"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.action.targetNodeId"
               @change="updateTarget(connection.id, value($event))"
             >
@@ -201,7 +208,7 @@ function onTransition(id: string, event: Event): void {
           <label class="text-[10px] text-muted">
             {{ panels.motionPrototypePlacement }}
             <select
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.action.placement"
               @change="
                 updateOverlayPlacement(
@@ -231,8 +238,10 @@ function onTransition(id: string, event: Event): void {
         <label class="block text-[10px] text-muted">
           {{ panels.motionPrototypeTransition }}
           <select
-            :data-test-id="`motion-prototype-transition-${connection.id}`"
-            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+            data-slot="prototype-connection-field"
+            :data-connection-id="connection.id"
+            data-property="transition"
+            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
             :value="connection.transition.kind"
             @change="onTransition(connection.id, $event)"
           >
@@ -250,7 +259,7 @@ function onTransition(id: string, event: Event): void {
               min="1"
               max="60000"
               step="10"
-              class="mt-1 w-full rounded border border-border bg-transparent px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-transparent px-1 py-1 text-[10px] text-surface"
               :value="connection.transition.durationMs"
               @change="updateDuration(connection.id, numberValue($event))"
             />
@@ -258,7 +267,7 @@ function onTransition(id: string, event: Event): void {
           <label class="text-[10px] text-muted">
             {{ panels.motionEasing }}
             <select
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.transition.easing"
               @change="updateEasing(connection.id, value($event) as MotionEasingName)"
             >
@@ -273,7 +282,7 @@ function onTransition(id: string, event: Event): void {
         >
           {{ panels.motionDirection }}
           <select
-            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
             :value="connection.transition.direction"
             @change="updateDirection(connection.id, value($event) as PrototypeTransitionDirection)"
           >
@@ -289,7 +298,7 @@ function onTransition(id: string, event: Event): void {
         >
           {{ panels.motionPrototypeFallback }}
           <select
-            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+            class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
             :value="connection.transition.fallback"
             @change="
               updateSmartMatchFallback(
@@ -307,7 +316,7 @@ function onTransition(id: string, event: Event): void {
           <label class="text-[10px] text-muted">
             {{ panels.motionPrototypeInterruption }}
             <select
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.interruption ?? 'replace'"
               @change="
                 updateInterruption(
@@ -323,7 +332,7 @@ function onTransition(id: string, event: Event): void {
           <label class="text-[10px] text-muted">
             {{ panels.motionPrototypePlayback }}
             <select
-              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-foreground"
+              class="mt-1 w-full rounded border border-border bg-panel px-1 py-1 text-[10px] text-surface"
               :value="connection.playback ?? 'forward'"
               @change="
                 updatePlayback(
@@ -349,7 +358,7 @@ function onTransition(id: string, event: Event): void {
       </button>
     </template>
 
-    <p v-if="errorMessage" role="alert" class="text-[10px] leading-4 text-danger">
+    <p v-if="errorMessage" role="alert" class="text-[10px] leading-4 text-error">
       {{ errorMessage }}
     </p>
   </fieldset>

@@ -109,6 +109,7 @@ export {
   readGoogleDriveStoredAuthority,
   readOneDriveStoredAuthority,
   readStoredStorageAuthority,
+  isStorageConfigured,
   storageCredentialRefs,
   storageCredentialStatuses
 } from './runtime'

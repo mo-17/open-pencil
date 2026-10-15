@@ -3,7 +3,10 @@ import type { CanvasHelper } from '#tests/helpers/canvas'
 /** Observe the active content bounds; all insertion goes through the ordinary drawing tool. */
 export async function drawPopoverContentRectangle(canvas: CanvasHelper) {
   const point = await canvas.page.evaluate(() => {
-    const editor = window.openPencil.getStore()
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const rootId = editor.state.contentEdit?.rootId
     const root = rootId ? editor.graph.getNode(rootId) : undefined
     if (!root) throw new Error('Popover content editing has not started')

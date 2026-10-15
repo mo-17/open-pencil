@@ -1,5 +1,6 @@
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { selectedContentNodeId } from '#tests/helpers/plugins/content-components'
 
 test('drawer content is created, edited and restored through the normal inspector', async ({
   page
@@ -27,12 +28,15 @@ test('drawer content is created, edited and restored through the normal inspecto
   await expect(banner).toBeVisible()
   const initialBanner = await banner.textContent()
   const point = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     const root =
       editor.state.contentEdit?.rootId && editor.graph.getNode(editor.state.contentEdit.rootId)
     if (!root) throw new Error('Missing drawer edit surface')
     const origin = editor.graph.getAbsolutePosition(root.id)
     return {
+      rootId: root.id,
       x: (origin.x + root.width - 90) * editor.state.zoom + editor.state.panX,
       y: (origin.y + root.height - 55) * editor.state.zoom + editor.state.panY,
       width: 60 * editor.state.zoom,
@@ -40,8 +44,15 @@ test('drawer content is created, edited and restored through the normal inspecto
     }
   })
   await canvas.drawRect(point.x, point.y, point.width, point.height)
+  const rectangleId = await selectedContentNodeId(page)
+  expect(
+    await page.evaluate((nodeId) => {
+      const node = window.openPencil?.getStore?.().graph.getNode(nodeId)
+      return { type: node?.type, parentId: node?.parentId }
+    }, rectangleId)
+  ).toEqual({ type: 'RECTANGLE', parentId: point.rootId })
   await expect(
-    page.getByTestId('layers-item').filter({ has: page.getByText('Rectangle', { exact: true }) })
+    page.locator(`[data-node-id="${rectangleId}"]`).getByTestId('layers-item')
   ).toBeVisible()
   await page.screenshot({ path: info.outputPath('drawer-editing.png') })
   await page.getByTestId('modal-finish-content').click()
@@ -50,10 +61,12 @@ test('drawer content is created, edited and restored through the normal inspecto
   await page.getByTestId('modal-edit-content').click()
   await expect(banner).toHaveText(initialBanner ?? '')
   await expect(
-    page.getByTestId('layers-item').filter({ has: page.getByText('Rectangle', { exact: true }) })
+    page.locator(`[data-node-id="${rectangleId}"]`).getByTestId('layers-item')
   ).toBeVisible()
   await page.getByTestId('modal-finish-content').click()
   await page.evaluate(async () => {
+    if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     })

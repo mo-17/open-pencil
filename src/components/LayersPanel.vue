@@ -3,7 +3,7 @@ import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { tv } from 'tailwind-variants'
 import { computed, ref, watch } from 'vue'
 
-import { useI18n } from '@open-pencil/vue'
+import { useI18n, vTestId } from '@open-pencil/vue'
 
 import { useAssetLibraryRequest } from '@/app/assets/navigation'
 import { getActiveEditorStore } from '@/app/editor/active-store'
@@ -56,9 +56,7 @@ const splitterStyles = tv(splitterTheme)({ direction: 'vertical' })
       >
         <template #option="{ option }">
           <span
-            :data-test-id="
-              option.value === 'file' ? 'left-panel-layers-tab' : 'left-panel-assets-tab'
-            "
+            v-test-id="option.value === 'file' ? 'left-panel-layers-tab' : 'left-panel-assets-tab'"
             class="truncate"
           >
             {{ option.label }}

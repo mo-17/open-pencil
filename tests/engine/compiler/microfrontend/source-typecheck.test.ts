@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { afterAll, describe, setDefaultTimeout, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -21,7 +21,7 @@ function generatedProject(target: 'react' | 'vue'): string {
   graph.updateNode(home.id, { name: 'Home' })
   graph.createNode('TEXT', home.id, {
     name: 'Welcome',
-    characters: 'Welcome',
+    text: 'Welcome',
     width: 200,
     height: 32
   })

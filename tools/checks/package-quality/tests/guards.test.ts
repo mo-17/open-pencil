@@ -21,7 +21,10 @@ describe('packaging guards', () => {
     expect(guard).toMatchObject({
       files: ['dist'],
       bunTarget: './src/index.ts',
-      diagnostics: [{ field: 'exports["."].bun', message: 'target is missing (./src/index.ts)' }]
+      diagnostics: [
+        { field: 'exports["."].bun', message: 'target is missing (./src/index.ts)' },
+        { field: 'imports["#fixture/*"]', message: 'target is missing (./src/*.ts)' }
+      ]
     })
     expect(guard.runtimes.node).toBe('imports')
     const bun = guard.runtimes.bun

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
+import type { StateDef } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -15,7 +16,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * per-field below; rules = core (required/pattern/length/range) + customExpr.
  */
 describe('compile — form validation (Phase 4 §19)', () => {
-  const EMAIL_DOC = [{ id: 'd1', name: 'email', type: 'string', defaultValue: '' }]
+  const EMAIL_DOC: StateDef[] = [{ id: 'd1', name: 'email', type: 'string', defaultValue: '' }]
 
   /** Build a single page with one controlled INPUT bound to `email` carrying
    *  the given validation config, optionally inside a <form>. */

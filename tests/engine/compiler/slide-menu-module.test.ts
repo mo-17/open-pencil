@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import * as v from 'valibot'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -74,9 +76,14 @@ describe('compiler trusted slide-menu module adapter', () => {
     })
     const app = out.files.get('src/App.tsx') as string
     const runtime = out.files.get('src/__openpencil_slide_menu.tsx') as string
-    const pkg = JSON.parse(out.files.get('package.json') as string) as {
-      dependencies: Record<string, string>
-    }
+    const pkg = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      out.files.get('package.json') as string
+    )
 
     expect(app).toContain("import OpenPencilSlideMenu from './__openpencil_slide_menu'")
     expect(app).toContain('<OpenPencilSlideMenu config={{')

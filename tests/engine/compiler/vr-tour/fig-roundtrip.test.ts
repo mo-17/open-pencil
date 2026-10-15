@@ -13,6 +13,7 @@ import {
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '#tests/helpers/assert'
+import { repoPath } from '#tests/helpers/paths'
 
 test('real VR samples survive FIG save/reopen and remain in React and Vue exports', async () => {
   await initCodec()
@@ -25,18 +26,16 @@ test('real VR samples survive FIG save/reopen and remain in React and Vue export
   )
   const samples = VR_TOUR_SAMPLE_ASSETS.map((sample) => ({
     ...sample,
-    bytes: new Uint8Array(
-      readFileSync(
-        new URL(`../../../../packages/demos/vr-tour/${sample.fileName}`, import.meta.url)
-      )
-    )
+    bytes: new Uint8Array(readFileSync(repoPath(`packages/demos/vr-tour/${sample.fileName}`)))
   }))
   for (const sample of samples) graph.images.set(sample.graphImageHash, sample.bytes)
 
   const file = await exportFigFile(graph)
   const reopened = await parseFigFile(file.buffer as ArrayBuffer)
   const tour = expectDefined(
-    reopened.getAllNodes().find((node) => resolveVRTourModule(node.interactiveProps?.module)?.ok),
+    [...reopened.getAllNodes()].find(
+      (node) => resolveVRTourModule(node.interactiveProps?.module)?.ok
+    ),
     'reopened VR tour'
   )
   const resolved = resolveVRTourModule(tour.interactiveProps?.module)

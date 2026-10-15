@@ -1,3 +1,5 @@
+import { parseCSSRules } from '#dom-css/runtime/css-rules'
+
 import { colorToCSS } from '@open-pencil/scene-graph/color'
 
 import type { DesignDocument } from '../src/index'
@@ -144,3 +146,19 @@ export const tailwindInputClasses = [
   'text-sm',
   'text-slate-900'
 ] as const
+
+/** Every style rule of a stylesheet, by selector, including ones inside media queries. */
+export function cssRules(css: string): Map<string, Record<string, string>> {
+  return new Map(parseCSSRules(css).map((rule) => [rule.selectorText, rule.style]))
+}
+
+/** The text of an exported file, such as a generated component or its stylesheet. */
+export function fileText(
+  files: readonly { path: string; content: string | Uint8Array }[],
+  path: string
+) {
+  const content = files.find((file) => file.path === path)?.content
+  if (content === undefined)
+    throw new Error(`No ${path} among ${files.map((file) => file.path).join(', ')}`)
+  return typeof content === 'string' ? content : new TextDecoder().decode(content)
+}

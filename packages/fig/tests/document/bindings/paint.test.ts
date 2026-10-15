@@ -14,7 +14,14 @@ function setup(alpha: number, opacity: number) {
     a: alpha
   })
   const node = graph.createNode('RECTANGLE', graph.getPages()[0].id, {
-    fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity, visible: true }],
+    fills: [
+      {
+        type: 'SOLID',
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        opacity,
+        visible: true
+      }
+    ],
     boundVariables: { 'fills/0/color': variable.id }
   })
   return { graph, node }
@@ -52,7 +59,7 @@ test('a bound stroke follows the same rule', () => {
         opacity: 1,
         visible: true,
         weight: 1,
-        align: 'CENTER'
+        align: 'INSIDE'
       }
     ],
     boundVariables: { 'strokes/0/color': variable.id }

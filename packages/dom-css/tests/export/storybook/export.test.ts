@@ -3,9 +3,11 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { BLUE_500, card, designSystem } from '#dom-css-tests/export/token-fixtures'
 import { exportStorybook } from '#dom-css/index'
 
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { es } from '@open-pencil/emit'
+import { emptyBehaviour, SceneGraph, withBehaviour } from '@open-pencil/scene-graph'
 
 function buttonGraph() {
   const graph = new SceneGraph()
@@ -39,14 +41,16 @@ function buttonGraph() {
 
 interface Story {
   name: string
-  args: Record<string, string>
+  tags?: string[]
+  args: Record<string, string | boolean>
   parameters?: { design: { name: string; type: string; url: string }[] }
 }
 
 interface StoryModule {
   default: {
     title: string
-    args: Record<string, string>
+    tags: string[]
+    args: Record<string, string | boolean>
     argTypes: Record<string, unknown>
     render: (args: object) => string
   }
@@ -55,6 +59,14 @@ interface StoryModule {
 
 function storyExport(module: StoryModule, name: string): Story {
   return module[name] as Story
+}
+
+/** The modules a story file imports, read from its syntax rather than its text. */
+function importSources(content: string): string[] {
+  return es
+    .children(es.parseModule(content), 'body')
+    .filter((node) => node.type === 'ImportDeclaration')
+    .map((node) => String(es.child(node, 'source')?.value))
 }
 
 async function importStory(content: string): Promise<StoryModule> {
@@ -92,6 +104,241 @@ describe('exportStorybook', () => {
     expect(() => story.default.render({ Size: 'Huge' })).toThrow('Button has no variant ["Huge"]')
   })
 
+  it('tags its stories so Storybook can show one per component, or hide a page', async () => {
+    const { graph } = buttonGraph()
+    const [file] = await exportStorybook(graph, { framework: 'html' })
+    const story = await importStory(String(file?.content))
+    expect(story.default.tags).toEqual(['openpencil', 'page:library'])
+    // The variant the design shows at rest is the Default story; each other one is a variant.
+    expect(storyExport(story, 'Default')).toMatchObject({
+      name: 'Default',
+      args: { Size: 'Small' }
+    })
+    expect(storyExport(story, 'Default').tags).toBeUndefined()
+    expect(storyExport(story, 'Large').tags).toEqual(['variant'])
+  })
+
+  it('writes each file as its plan says: renamed, Default alone, a gallery, or not at all', async () => {
+    const { graph, page } = buttonGraph()
+    graph.createNode('COMPONENT', page.id, { name: 'Badge', width: 10, height: 10 })
+    graph.createNode('COMPONENT', page.id, { name: 'Internal', width: 10, height: 10 })
+    const files = await exportStorybook(graph, {
+      framework: 'html',
+      renderDesignImage: () => Promise.resolve(new Uint8Array([1])),
+      plan: ({ name }) => {
+        if (name === 'Internal') return { stories: 'none' }
+        if (name === 'Badge') return { stories: 'single', title: 'Kit/Button' }
+        return { stories: 'gallery', title: 'Kit/Button' }
+      }
+    })
+    // Only the Default story each file keeps gets a design image.
+    expect(files.map((file) => file.path)).toEqual([
+      'Button.design/Default.png',
+      'Button.stories.ts',
+      'Badge.design/Default.png',
+      'Badge.stories.ts'
+    ])
+    const button = await importStory(String(files[1]?.content))
+    // A gallery keeps Default, with its controls, and lays every variant out in one story.
+    expect(
+      Object.keys(button)
+        .filter((key) => key !== 'default')
+        .sort()
+    ).toEqual(['Default', 'Gallery'])
+    const gallery = button.Gallery as { render: () => string }
+    expect(gallery.render()).toContain('&lt;b&gt;Small&lt;/b&gt;')
+    expect(gallery.render().match(/<figure/g)).toHaveLength(2)
+    expect(gallery.render()).toContain(
+      '<figcaption style="font: 12px system-ui, sans-serif; color: #6b7280">Large</figcaption>'
+    )
+    // Renamed titles stay apart, as titles that collide always do.
+    const badge = await importStory(String(files[3]?.content))
+    expect([button.default.title, badge.default.title]).toEqual(['Kit/Button', 'Kit/Button 2'])
+    expect(Object.keys(badge).filter((key) => key !== 'default')).toEqual(['Default'])
+  })
+
+  it('ships the design tokens its styles refer to, which every story file loads', async () => {
+    const graph = designSystem()
+    const page = graph.addPage('Library')
+    const badge = graph.createNode('COMPONENT', page.id, { name: 'Badge' })
+    card(graph, badge.id, BLUE_500)
+    const files = await exportStorybook(graph, { framework: 'html', document: 'Kit' })
+    const tokens = String(files.find((file) => file.path === 'openpencil/kit/tokens.css')?.content)
+    // The story refers to the variable; the tokens define it.
+    const story = String(files.find((file) => file.path === 'Badge.stories.ts')?.content)
+    expect(story).toContain('var(--color-primary)')
+    expect(tokens).toContain('--color-primary:')
+    expect(importSources(story)).toContain('./openpencil/kit/tokens.css')
+  })
+
+  it("ships the fonts its text uses in the document's folder, loaded before text draws", async () => {
+    const { graph } = buttonGraph()
+    const requested: { family: string; weight: number }[] = []
+    const files = await exportStorybook(graph, {
+      framework: 'html',
+      document: 'Kit',
+      fonts: (fonts, folder) => {
+        requested.push(...fonts)
+        return Promise.resolve(
+          fonts.map((font) => ({
+            ...font,
+            style: font.style ?? 'normal',
+            format: 'woff2' as const,
+            path: `${folder}/${font.family.toLowerCase()}-${font.weight}.woff2`,
+            content: new Uint8Array([1])
+          }))
+        )
+      }
+    })
+    expect(requested.map((font) => font.family)).toEqual(['Inter'])
+    const css = String(files.find((file) => file.path === 'openpencil/kit/fonts.css')?.content)
+    expect(files.map((file) => file.path)).toContain('openpencil/kit/fonts/inter-400.woff2')
+    expect(css).toContain('url("fonts/inter-400.woff2")')
+    expect(css).toContain('font-display: block')
+    const story = String(files.find((file) => file.path === 'Button.stories.ts')?.content)
+    expect(importSources(story)).toContain('./openpencil/kit/fonts.css')
+
+    // A caller exporting several documents into one place names each one's folder.
+    const named = await exportStorybook(graph, {
+      framework: 'html',
+      folder: 'openpencil/kit-design',
+      fonts: (fonts, folder) =>
+        Promise.resolve(
+          fonts.map((font) => ({
+            ...font,
+            style: 'normal',
+            format: 'woff2' as const,
+            path: `${folder}/face.woff2`,
+            content: new Uint8Array([1])
+          }))
+        )
+    })
+    expect(named.map((file) => file.path)).toContain('openpencil/kit-design/fonts.css')
+
+    // With no font files found, nothing is written and stories import nothing.
+    const without = await exportStorybook(graph, {
+      framework: 'html',
+      fonts: () => Promise.resolve([])
+    })
+    expect(without.map((file) => file.path)).toEqual(['Button.stories.ts'])
+    expect(importSources(String(without[0]?.content))).not.toContain('./openpencil/kit/fonts.css')
+  })
+
+  it('gives a component with a behaviour its own props instead of variant selects', async () => {
+    const graph = new SceneGraph()
+    const page = graph.addPage('Library')
+    const set = graph.createNode('COMPONENT_SET', page.id, {
+      name: 'Switch',
+      componentPropertyDefinitions: [
+        {
+          id: 'state',
+          name: 'State',
+          type: 'VARIANT',
+          defaultValue: 'Off',
+          variantOptions: ['Off', 'On']
+        },
+        {
+          id: 'interaction',
+          name: 'Interaction',
+          type: 'VARIANT',
+          defaultValue: 'Default',
+          variantOptions: ['Default', 'Hover', 'Disabled']
+        }
+      ]
+    })
+    // Each variant has its own width, so the rendered HTML shows which one a story picked.
+    let width = 40
+    for (const state of ['Off', 'On'])
+      for (const interaction of ['Default', 'Hover', 'Disabled'])
+        graph.createNode('COMPONENT', set.id, {
+          name: `State=${state}, Interaction=${interaction}`,
+          width: width++,
+          height: 20,
+          componentPropertyValues: { State: state, Interaction: interaction }
+        })
+    graph.updateNode(set.id, {
+      pluginData: withBehaviour(set, {
+        ...emptyBehaviour('switch'),
+        booleans: { value: { propertyId: 'state', on: 'On', off: 'Off' } },
+        states: { propertyId: 'interaction', rest: 'Default', hover: 'Hover', disabled: 'Disabled' }
+      })
+    })
+
+    const story = await importStory(
+      String((await exportStorybook(graph, { framework: 'html' }))[0]?.content)
+    )
+    expect(story.default.argTypes).toEqual({
+      checked: { control: 'boolean' },
+      Interaction: { table: { disable: true } },
+      disabled: { control: 'boolean' }
+    })
+    expect(story.default.args).toEqual({ checked: false, Interaction: 'Default', disabled: false })
+    const render = (args: object) => story.default.render(args)
+    expect(render({ checked: true, Interaction: 'Default', disabled: false })).toContain(
+      'width: 43px'
+    )
+    expect(render({ checked: false, Interaction: 'Hover', disabled: false })).toContain(
+      'width: 41px'
+    )
+    expect(render({ checked: true, Interaction: 'Default', disabled: true })).toContain(
+      'width: 45px'
+    )
+    // Each state remains a story; a disabled one clears to the rest state.
+    expect(storyExport(story, 'OnHover')).toMatchObject({
+      args: { checked: true, Interaction: 'Hover', disabled: false }
+    })
+    expect(storyExport(story, 'OffDisabled')).toMatchObject({
+      args: { checked: false, Interaction: 'Default', disabled: true }
+    })
+  })
+
+  it('draws a variant as it stands alone: hugging its content, sized with its borders', async () => {
+    const graph = new SceneGraph()
+    const page = graph.addPage('Library')
+    const tag = graph.createNode('COMPONENT', page.id, {
+      name: 'Tag',
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'HUG',
+      counterAxisSizing: 'HUG',
+      paddingLeft: 8,
+      paddingRight: 8
+    })
+    graph.createNode('FRAME', tag.id, {
+      name: 'Dot',
+      width: 20,
+      height: 20,
+      strokes: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          weight: 2,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE'
+        }
+      ]
+    })
+    const [file] = await exportStorybook(graph, { framework: 'html' })
+    const html = (await importStory(String(file?.content))).default.render({})
+    // The design hugs the tag, where a block would fill the story's canvas.
+    expect(html).toMatch(/^<div style="[^"]*width: fit-content/)
+    // The dot is 20px with its border, as the design draws it.
+    const dot = /<div style="([^"]*width: 20px[^"]*)">/.exec(html)?.[1] ?? ''
+    expect(dot).toContain('box-sizing: border-box')
+
+    // A set's variant drops where the set places it.
+    const { graph: buttons, page: library } = buttonGraph()
+    for (const [index, variant] of buttons
+      .getChildren(buttons.getChildren(library.id)[0]?.id ?? '')
+      .entries())
+      buttons.updateNode(variant.id, { x: 20 + index * 100, y: 20 })
+    const [set] = await exportStorybook(buttons, { framework: 'html' })
+    const large = (await importStory(String(set?.content))).default.render({ Size: 'Large' })
+    const root = /^<div style="([^"]*)"/.exec(large)?.[1] ?? ''
+    expect(root).not.toMatch(/(^|; )(left|top):/)
+    expect(root).not.toContain('position: absolute')
+  })
+
   it('groups slash-named components and keeps standalone ones apart', async () => {
     const graph = new SceneGraph()
     const page = graph.addPage('Icons')
@@ -123,10 +370,11 @@ describe('exportStorybook', () => {
     expect(story.default.render({ Variant: 'Chip 2' })).toContain('width: 60px')
   })
 
-  it('emits framework-specific render wrappers', async () => {
+  it('emits framework-specific render wrappers for components it does not generate', async () => {
     const { graph } = buttonGraph()
-    const react = String((await exportStorybook(graph, { framework: 'react' }))[0]?.content)
-    const vue = String((await exportStorybook(graph, { framework: 'vue' }))[0]?.content)
+    const plan = () => ({ generate: false })
+    const react = String((await exportStorybook(graph, { framework: 'react', plan }))[0]?.content)
+    const vue = String((await exportStorybook(graph, { framework: 'vue', plan }))[0]?.content)
 
     expect(react).toContain("from '@storybook/react-vite'")
     expect(react).toContain('dangerouslySetInnerHTML')
@@ -149,7 +397,7 @@ describe('exportStorybook', () => {
     })
 
     expect(files.map((file) => file.path)).toEqual([
-      'Button.design/Small.png',
+      'Button.design/Default.png',
       'Button.design/Large.png',
       'Button.stories.ts'
     ])
@@ -160,6 +408,23 @@ describe('exportStorybook', () => {
     expect(image?.url).toEndWith('/Button.design/Large.png')
     // A second `Size=Large` layer makes that name ambiguous, so the story links to the set.
     expect(link?.url).toEndWith('node=Button')
+  })
+
+  it('titles stories by the document, and by page when several have components', async () => {
+    const { graph } = buttonGraph()
+    const title = async (files: { content: string | Uint8Array }[], index = 0) =>
+      (await importStory(String(files[index]?.content))).default.title
+    expect(await title(await exportStorybook(graph, { framework: 'html', document: 'Kit' }))).toBe(
+      'Kit/Button'
+    )
+
+    const forms = graph.addPage('Forms')
+    graph.createNode('COMPONENT', forms.id, { name: 'Input', width: 10, height: 10 })
+    const files = await exportStorybook(graph, { framework: 'html', document: 'Kit' })
+    expect([await title(files, 0), await title(files, 1)]).toEqual([
+      'Kit/Library/Button',
+      'Kit/Forms/Input'
+    ])
   })
 
   it('gives same-named components on a page distinct titles', async () => {

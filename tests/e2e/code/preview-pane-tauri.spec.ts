@@ -94,7 +94,7 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
       internals.runCallback = (id: number, value: unknown) => {
         callbacks.get(id)?.(value)
       }
-      tauriWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {}
+      tauriWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= { unregisterListener: () => undefined }
       tauriWindow.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener = (
         _event: string,
         eventId: number
@@ -170,13 +170,10 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
           tauriWindow.__OP_PREVIEW_SPAWNS__?.push(args)
           const onEvent = args?.onEvent as { id?: number } | undefined
           if (!onEvent?.id) throw new Error('Missing shell event channel')
+          const shellChannelId = onEvent.id
           const shellArgs = args?.args
           const shellOptions = args?.options
-          const isMicrofrontendBuild =
-            Array.isArray(shellArgs) &&
-            shellArgs.includes('build') &&
-            shellArgs.includes('--packaging') &&
-            shellArgs.includes('microfrontend')
+          const isMicrofrontendBuild = args?.program === 'lowcode-microfrontend'
           const isCodePenSidecar =
             args?.program === 'binaries/openpencil-codepen-sidecar' &&
             typeof shellOptions === 'object' &&
@@ -185,20 +182,38 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
             Object.getOwnPropertyDescriptor(shellOptions, 'sidecar')?.value === true
           if (isCodePenSidecar) {
             codePenEventChannelId = onEvent.id
-            previewEventIndexes.set(onEvent.id, 0)
+            previewEventIndexes.set(shellChannelId, 0)
             return 3
           }
           if (isMicrofrontendBuild) {
+            if (
+              !Array.isArray(shellArgs) ||
+              shellArgs.length !== 3 ||
+              shellArgs[0] !== 'tools/dev/lowcode/src/native-cli.ts' ||
+              shellArgs[1] !== 'build' ||
+              typeof shellArgs[2] !== 'string'
+            ) {
+              throw new Error('Invalid scoped microfrontend build request')
+            }
+            const buildArgs: unknown = JSON.parse(shellArgs[2])
+            if (
+              !Array.isArray(buildArgs) ||
+              !buildArgs.every((argument: unknown) => typeof argument === 'string')
+            ) {
+              throw new Error('Invalid microfrontend build arguments')
+            }
             const flagValue = (flag: string): string => {
-              const index = shellArgs.indexOf(flag)
-              const value = shellArgs[index + 1]
-              if (typeof value !== 'string') throw new Error(`Missing ${flag} build argument`)
+              const index = buildArgs.indexOf(flag)
+              const value = buildArgs[index + 1]
+              if (index === -1 || typeof value !== 'string') {
+                throw new Error(`Missing ${flag} build argument`)
+              }
               return value
             }
-            previewEventIndexes.set(onEvent.id, 0)
+            previewEventIndexes.set(shellChannelId, 0)
             window.setTimeout(() => {
               emitShellEvent(
-                onEvent.id,
+                shellChannelId,
                 'Stdout',
                 JSON.stringify({
                   outDir: flagValue('-o'),
@@ -211,15 +226,15 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
                   }
                 }) + '\n'
               )
-              emitShellEvent(onEvent.id, 'Terminated', { code: 0, signal: null })
+              emitShellEvent(shellChannelId, 'Terminated', { code: 0, signal: null })
             }, 0)
             return 2
           }
           previewEventChannelId = onEvent.id
-          previewEventIndexes.set(onEvent.id, 0)
+          previewEventIndexes.set(shellChannelId, 0)
           window.setTimeout(() => {
             emitPreviewStdout(
-              onEvent.id,
+              shellChannelId,
               JSON.stringify({
                 type: 'ready',
                 url: 'http://127.0.0.1:60140/',
@@ -233,12 +248,10 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
           if (typeof args?.buffer === 'string') {
             tauriWindow.__OP_PREVIEW_STDIN__?.push(args.buffer)
             if (args.pid === 3 && codePenEventChannelId !== null) {
-              const request = JSON.parse(args.buffer) as {
-                requestId: string
-                target: 'react' | 'vue'
-                packageName: string
-                options?: { title?: string }
-              }
+              const { parseCodePenSidecarRequest } =
+                await import('/packages/codepen-sidecar/src/protocol.ts')
+              const request = parseCodePenSidecarRequest(args.buffer)
+
               const callbackId = codePenEventChannelId
               window.setTimeout(() => {
                 emitShellEvent(
@@ -269,8 +282,14 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
               }, 0)
               return null
             }
-            const command = JSON.parse(args.buffer) as { type?: unknown }
-            if (command.type === 'update' && previewEventChannelId !== null) {
+            const command: unknown = JSON.parse(args.buffer)
+            if (
+              command &&
+              typeof command === 'object' &&
+              'type' in command &&
+              command.type === 'update' &&
+              previewEventChannelId !== null
+            ) {
               const callbackId = previewEventChannelId
               const acknowledge = (): void => {
                 emitPreviewStdout(callbackId, JSON.stringify({ type: 'updated' }) + '\n')
@@ -314,7 +333,7 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
           return null
         }
         if (cmd === 'plugin:event|emit') return null
-        if (cmd === 'take_pending_open') return []
+        if (cmd === 'take_pending_open' || cmd === 'take_pending_rooms') return []
         if (cmd === 'list_system_fonts') return []
         return null
       }
@@ -352,6 +371,7 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   await installTauriPreviewMock(page)
   await installPreviewIframeRoute(page)
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -436,6 +456,7 @@ test('Tauri preview waits for the initial VFS acknowledgement before mounting', 
   await installPreviewIframeRoute(page)
   await page.setViewportSize({ width: 2200, height: 900 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -449,7 +470,13 @@ test('Tauri preview waits for the initial VFS acknowledgement before mounting', 
       page.evaluate(() =>
         ((window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []).some((raw) => {
           try {
-            return (JSON.parse(raw) as { type?: unknown }).type === 'update'
+            const command: unknown = JSON.parse(raw)
+            return (
+              command !== null &&
+              typeof command === 'object' &&
+              'type' in command &&
+              command.type === 'update'
+            )
           } catch {
             return false
           }
@@ -473,6 +500,7 @@ test('Tauri preview latches WebDriver automation to exactly one acknowledged rel
   await installPreviewIframeRoute(page)
   await page.setViewportSize({ width: 2200, height: 900 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   const newDocument = page.getByTestId('home-new-document')
   if (await newDocument.isVisible()) await newDocument.click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
@@ -556,6 +584,7 @@ test('Tauri preview removes the iframe when its sidecar exits', async ({ browser
   await installPreviewIframeRoute(page)
   await page.setViewportSize({ width: 2200, height: 900 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -578,6 +607,7 @@ test('Tauri compiler preview popout opens, refocuses, and survives pane collapse
   await installPreviewIframeRoute(page)
   await page.setViewportSize({ width: 2200, height: 900 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -716,7 +746,13 @@ test('Tauri compiler preview popout opens, refocuses, and survives pane collapse
         previewSpawns: (window as TauriWindow).__OP_PREVIEW_SPAWNS__?.length ?? 0,
         sidecarClosed: ((window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []).some((raw) => {
           try {
-            return (JSON.parse(raw) as { type?: unknown }).type === 'close'
+            const command: unknown = JSON.parse(raw)
+            return (
+              command !== null &&
+              typeof command === 'object' &&
+              'type' in command &&
+              command.type === 'close'
+            )
           } catch {
             return false
           }
@@ -740,6 +776,7 @@ test('Tauri preview toolbar switches and persists layout without recompiling', a
   await installTauriPreviewMock(page)
   await installPreviewIframeRoute(page)
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
   await expect(page.getByTestId('lowcode-preview-toolbar')).toHaveAttribute(
@@ -753,7 +790,7 @@ test('Tauri preview toolbar switches and persists layout without recompiling', a
     () => (window as TauriWindow).__OP_PREVIEW_SPAWNS__?.length ?? 0
   )
 
-  await page.getByTestId('settings-preview-toolbar-layout-adaptive').click()
+  await page.locator('[data-slot="preview-toolbar-layout-option"][data-layout="adaptive"]').click()
   await expect(page.getByTestId('lowcode-preview-toolbar')).toHaveAttribute(
     'data-layout',
     'adaptive'
@@ -779,6 +816,7 @@ test('Tauri preview toolbar switches and persists layout without recompiling', a
   await expect(page.getByTestId('lowcode-preview-settings-toggle')).toBeFocused()
 
   await page.reload()
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await expect(page.getByTestId('lowcode-preview-toolbar')).toHaveAttribute(
     'data-layout',
@@ -787,7 +825,7 @@ test('Tauri preview toolbar switches and persists layout without recompiling', a
 
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-appearance').click()
-  await page.getByTestId('settings-preview-toolbar-layout-compact').click()
+  await page.locator('[data-slot="preview-toolbar-layout-option"][data-layout="compact"]').click()
   await expect(page.getByTestId('lowcode-preview-toolbar')).toHaveAttribute(
     'data-layout',
     'compact'
@@ -833,6 +871,7 @@ test('Tauri grouped preview toolbar responds to pane width without overflow', as
 
   await page.setViewportSize({ width: 3200, height: 1000 })
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -873,14 +912,9 @@ test('Tauri grouped preview toolbar responds to pane width without overflow', as
 
   const previewSpawnCount = await page.evaluate(
     () =>
-      ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter((entry) => {
-        const args = (entry as { args?: unknown }).args
-        return !(
-          Array.isArray(args) &&
-          args.includes('--packaging') &&
-          args.includes('microfrontend')
-        )
-      }).length
+      ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter(
+        (entry) => (entry as { program?: unknown }).program !== 'lowcode-microfrontend'
+      ).length
   )
   await submit.click()
   await expect(page.getByTestId('lowcode-microfrontend-export-success')).toContainText(
@@ -894,26 +928,37 @@ test('Tauri grouped preview toolbar responds to pane width without overflow', as
     .poll(() =>
       page.evaluate(
         () =>
-          ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter((entry) => {
-            const args = (entry as { args?: unknown }).args
-            return (
-              Array.isArray(args) && args.includes('--packaging') && args.includes('microfrontend')
-            )
-          }).length
+          ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter(
+            (entry) => (entry as { program?: unknown }).program === 'lowcode-microfrontend'
+          ).length
       )
     )
     .toBe(1)
-  const buildArgs = await page.evaluate(() => {
-    const entry = ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).find((candidate) => {
-      const args = (candidate as { args?: unknown }).args
-      return Array.isArray(args) && args.includes('--packaging') && args.includes('microfrontend')
-    })
-    return (entry as { args?: unknown } | undefined)?.args
+  const buildRequest = await page.evaluate(() => {
+    const entry = ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).find(
+      (candidate) => (candidate as { program?: unknown }).program === 'lowcode-microfrontend'
+    )
+    return entry as { program?: unknown; args?: unknown } | undefined
   })
+  expect(buildRequest?.program).toBe('lowcode-microfrontend')
+  const commandArgs = buildRequest?.args
+  expect(Array.isArray(commandArgs)).toBe(true)
+  if (!Array.isArray(commandArgs)) throw new Error('Expected a microfrontend command argv')
+  expect(commandArgs).toHaveLength(3)
+  expect(commandArgs[0]).toBe('tools/dev/lowcode/src/native-cli.ts')
+  expect(commandArgs[1]).toBe('build')
+  const serializedArgs = commandArgs[2]
+  expect(typeof serializedArgs).toBe('string')
+  if (typeof serializedArgs !== 'string') throw new Error('Expected serialized build arguments')
+  const buildArgs: unknown = JSON.parse(serializedArgs)
   expect(Array.isArray(buildArgs)).toBe(true)
-  if (!Array.isArray(buildArgs)) throw new Error('Expected a microfrontend build argv')
+  if (
+    !Array.isArray(buildArgs) ||
+    !buildArgs.every((argument: unknown) => typeof argument === 'string')
+  ) {
+    throw new Error('Expected a microfrontend build argv')
+  }
   const flagValue = (flag: string) => buildArgs[buildArgs.indexOf(flag) + 1]
-  expect(buildArgs[1]).toBe('build')
   expect(flagValue('--packaging')).toBe('microfrontend')
   expect(flagValue('--app-id')).toBe('openpencil.checkout')
   expect(flagValue('--app-version')).toBe('1.2.3')
@@ -922,14 +967,9 @@ test('Tauri grouped preview toolbar responds to pane width without overflow', as
     .poll(() =>
       page.evaluate(
         () =>
-          ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter((entry) => {
-            const args = (entry as { args?: unknown }).args
-            return !(
-              Array.isArray(args) &&
-              args.includes('--packaging') &&
-              args.includes('microfrontend')
-            )
-          }).length
+          ((window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []).filter(
+            (entry) => (entry as { program?: unknown }).program !== 'lowcode-microfrontend'
+          ).length
       )
     )
     .toBe(previewSpawnCount)
@@ -1027,6 +1067,7 @@ test('Tauri compiler preview can be closed, restored, and stays closed after rel
   const page = await browser.newPage()
   await installTauriPreviewMock(page)
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
 
@@ -1045,6 +1086,7 @@ test('Tauri compiler preview can be closed, restored, and stays closed after rel
   // follow its latest emitted value so this remount does not reopen preview.
   await page.keyboard.press('Meta+T')
   await expect(page.getByTestId('tabbar-tab')).toHaveCount(2)
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await expect(open).toBeVisible()
   await page.getByTestId('tabbar-tab').first().click()
   await expect(open).toBeVisible()
@@ -1054,7 +1096,13 @@ test('Tauri compiler preview can be closed, restored, and stays closed after rel
       page.evaluate(() =>
         ((window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []).some((raw) => {
           try {
-            return (JSON.parse(raw) as { type?: unknown }).type === 'close'
+            const command: unknown = JSON.parse(raw)
+            return (
+              command !== null &&
+              typeof command === 'object' &&
+              'type' in command &&
+              command.type === 'close'
+            )
           } catch {
             return false
           }
@@ -1063,6 +1111,7 @@ test('Tauri compiler preview can be closed, restored, and stays closed after rel
     )
     .toBe(true)
   await page.reload()
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await expect(page.getByTestId('lowcode-preview-open')).toBeVisible()
   await page.getByTestId('lowcode-preview-open').click()
@@ -1075,11 +1124,14 @@ test('Tauri preview compiles rounded card parents with overflow clipping', async
   const page = await browser.newPage()
   await installTauriPreviewMock(page)
   await page.goto('/')
+  await page.getByRole('button', { name: 'New design', exact: true }).click()
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
   await expect(page.getByTestId('lowcode-preview-pane')).toBeVisible()
 
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -1116,12 +1168,25 @@ test('Tauri preview compiles rounded card parents with overflow clipping', async
     const writes = (window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []
     return writes.some((raw) => {
       try {
-        const message = JSON.parse(raw) as {
-          type?: unknown
-          files?: Array<[string, string]>
-        }
-        if (message.type !== 'update') return false
-        const app = message.files?.find(([path]) => path === 'src/App.tsx')?.[1]
+        const message: unknown = JSON.parse(raw)
+        if (
+          !message ||
+          typeof message !== 'object' ||
+          !('type' in message) ||
+          message.type !== 'update' ||
+          !('files' in message) ||
+          !Array.isArray(message.files)
+        )
+          return false
+        const entry: unknown = message.files.find(
+          (entry: unknown) =>
+            Array.isArray(entry) &&
+            entry.length === 2 &&
+            entry[0] === 'src/App.tsx' &&
+            typeof entry[1] === 'string'
+        )
+        const app = Array.isArray(entry) ? entry[1] : undefined
+
         return (
           typeof app === 'string' &&
           app.includes('Clip ACK Marker') &&

@@ -16,7 +16,7 @@ test('settings tabs associate panels and support vertical keyboard navigation', 
   await expect(general).toHaveAttribute('aria-selected', 'true')
   await expect(dialog).toHaveScreenshot('settings-tabs-general.png')
   await general.focus()
-  for (const section of ['appearance', 'performance', 'plugins', 'ai']) {
+  for (const section of ['appearance', 'performance', 'plugins', 'toolbar', 'ai']) {
     await page.keyboard.press('ArrowDown')
     const tab = page.getByTestId(`settings-section-${section}`)
     await expect(tab).toBeFocused()

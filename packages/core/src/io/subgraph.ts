@@ -1,6 +1,16 @@
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, styleRunReferences } from '@open-pencil/scene-graph'
 
 import type { ExportTarget } from './types'
+
+export interface ExtractOptions {
+  /** Every variant of an instance's set, not only its main component, so it can switch variant. */
+  componentSets?: boolean
+  /**
+   * Use the source's variables, collections, and images instead of copies, for a read-only view
+   * rebuilt often, such as preview's. A copy may change its tables without touching the source.
+   */
+  shareTables?: boolean
+}
 
 export interface ExtractedGraph {
   graph: SceneGraph
@@ -18,7 +28,8 @@ function includeReferencedStyles(source: SceneGraph, ids: Set<string>): void {
       node.strokeStyleId,
       node.textStyleId,
       node.effectStyleId,
-      node.gridStyleId
+      node.gridStyleId,
+      ...styleRunReferences(node.styleRuns).styles
     ]) {
       if (styleId) referencedStyleIds.add(styleId)
     }
@@ -30,7 +41,11 @@ function includeReferencedStyles(source: SceneGraph, ids: Set<string>): void {
   }
 }
 
-function cloneIntoGraph(source: SceneGraph, ids: Set<string>): SceneGraph {
+function cloneIntoGraph(
+  source: SceneGraph,
+  ids: Set<string>,
+  { shareTables = false }: ExtractOptions = {}
+): SceneGraph {
   const graph = new SceneGraph()
   graph.rootId = source.rootId
   graph.nodes = new Map()
@@ -57,7 +72,14 @@ function cloneIntoGraph(source: SceneGraph, ids: Set<string>): SceneGraph {
   for (const id of sortedIds) {
     const node = source.getNode(id)
     if (!node) continue
-    graph.nodes.set(id, structuredClone(node))
+    const copy = structuredClone(node)
+    graph.nodes.set(id, copy)
+    // Syncing and swapping find an instance through its component's index.
+    if (copy.type === 'INSTANCE' && copy.componentId) {
+      const instances = graph.instanceIndex.get(copy.componentId) ?? new Set<string>()
+      instances.add(id)
+      graph.instanceIndex.set(copy.componentId, instances)
+    }
   }
 
   const rootClone = graph.getNode(source.rootId)
@@ -76,6 +98,18 @@ function cloneIntoGraph(source: SceneGraph, ids: Set<string>): SceneGraph {
     node.childIds = node.childIds.filter((childId) => ids.has(childId))
   }
 
+  if (shareTables) {
+    graph.images = source.images
+    graph.variables = source.variables
+    graph.variableCollections = source.variableCollections
+  } else copyReferencedTables(source, graph)
+
+  graph.clearAbsPosCache()
+  return graph
+}
+
+/** The images and variables the copied layers use, with their collections, copied in. */
+function copyReferencedTables(source: SceneGraph, graph: SceneGraph): void {
   const { imageHashes, variableIds } = collectReferencedResources(source, graph)
 
   for (const imageHash of imageHashes) {
@@ -98,9 +132,6 @@ function cloneIntoGraph(source: SceneGraph, ids: Set<string>): SceneGraph {
     }
     graph.variableCollections.get(collection.id)?.variableIds.push(variableId)
   }
-
-  graph.clearAbsPosCache()
-  return graph
 }
 
 function collectReferencedResources(source: SceneGraph, graph: SceneGraph) {
@@ -110,9 +141,11 @@ function collectReferencedResources(source: SceneGraph, graph: SceneGraph) {
     for (const fill of node.fills) {
       if (fill.type === 'IMAGE' && fill.imageHash) imageHashes.add(fill.imageHash)
     }
-    for (const variableId of Object.values(node.boundVariables)) {
-      collectVariableClosure(source, variableId, variableIds)
-    }
+    const bound = [
+      ...Object.values(node.boundVariables),
+      ...styleRunReferences(node.styleRuns).variables
+    ]
+    for (const variableId of bound) collectVariableClosure(source, variableId, variableIds)
   }
   return { imageHashes, variableIds }
 }
@@ -169,7 +202,11 @@ function resolveInstanceComponentId(source: SceneGraph, componentId: string): st
   return componentId
 }
 
-function collectComponentDependencies(source: SceneGraph, ids: Set<string>) {
+function collectComponentDependencies(
+  source: SceneGraph,
+  ids: Set<string>,
+  { componentSets = false }: ExtractOptions = {}
+) {
   let changed = true
   while (changed) {
     changed = false
@@ -177,10 +214,13 @@ function collectComponentDependencies(source: SceneGraph, ids: Set<string>) {
       const node = source.getNode(id)
       if (node?.type !== 'INSTANCE' || !node.componentId) continue
       const componentId = resolveInstanceComponentId(source, node.componentId)
-      if (ids.has(componentId)) continue
+      const component = source.getNode(componentId)
+      const set = component?.parentId ? source.getNode(component.parentId) : undefined
+      const dependency = componentSets && set?.type === 'COMPONENT_SET' ? set.id : componentId
+      if (ids.has(dependency)) continue
       const before = ids.size
-      collectAncestors(source, componentId, ids)
-      collectDescendants(source, componentId, ids)
+      collectAncestors(source, dependency, ids)
+      collectDescendants(source, dependency, ids)
       changed ||= ids.size !== before
     }
   }
@@ -211,7 +251,11 @@ function ancestorChain(source: SceneGraph, id: string): string[] {
   return chain.reverse()
 }
 
-function collectSelectionIds(source: SceneGraph, nodeIds: string[]): Set<string> {
+function collectSelectionIds(
+  source: SceneGraph,
+  nodeIds: string[],
+  options: ExtractOptions = {}
+): Set<string> {
   const ids = new Set<string>([source.rootId])
   const pageIds = new Set<string>()
 
@@ -230,7 +274,7 @@ function collectSelectionIds(source: SceneGraph, nodeIds: string[]): Set<string>
     ids.add(pageId)
   }
 
-  collectComponentDependencies(source, ids)
+  collectComponentDependencies(source, ids, options)
   return ids
 }
 
@@ -253,11 +297,12 @@ function rootNodeIds(source: SceneGraph): Set<string> {
 export function extractPageContext(
   source: SceneGraph,
   pageId: string,
-  nodeIds: string[]
+  nodeIds: string[],
+  options: ExtractOptions = {}
 ): SceneGraph {
-  const ids = collectSelectionIds(source, nodeIds)
+  const ids = collectSelectionIds(source, nodeIds, options)
   ids.add(pageId)
-  return cloneIntoGraph(source, ids)
+  return cloneIntoGraph(source, ids, options)
 }
 
 export function extractExportGraph(source: SceneGraph, target: ExportTarget): ExtractedGraph {

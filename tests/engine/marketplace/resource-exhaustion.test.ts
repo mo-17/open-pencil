@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+
+import * as v from 'valibot'
 
 import {
   MARKETPLACE_PUBLIC_AUDIT_PAGE_LIMITS,
@@ -18,12 +19,16 @@ import {
   marketplaceAuditEventHash,
   marketplaceAuditPayloadDigest,
   parseMarketplaceState,
+  parseMarketplaceAuditEvent,
+  parseMarketplaceControlJSON,
   type MarketplaceAuditEventV1,
   type MarketplaceStateV1
 } from '@open-pencil/marketplace'
 
+import { repoPath } from '#tests/helpers/paths'
+
 const NOW = '2026-08-24T00:00:00.000Z'
-const SOURCE_ROOT = fileURLToPath(new URL('../../../packages/marketplace/src/', import.meta.url))
+const SOURCE_ROOT = repoPath('packages/marketplace/src')
 const temporaryDirectories: string[] = []
 
 interface Deferred<Value> {
@@ -32,11 +37,11 @@ interface Deferred<Value> {
   reject(error: unknown): void
 }
 
-interface PublicAuditResponse {
-  events: MarketplaceAuditEventV1[]
-  head: string | null
-  nextAfter?: number
-}
+const PublicAuditResponse = v.looseObject({
+  events: v.array(v.pipe(v.unknown(), v.transform(parseMarketplaceAuditEvent))),
+  head: v.nullable(v.string()),
+  nextAfter: v.optional(v.number())
+})
 
 function deferred<Value>(): Deferred<Value> {
   let resolve!: (value: Value) => void
@@ -247,18 +252,22 @@ describe('Marketplace anonymous-read resource bounds', () => {
     const first = await app.request('http://localhost/v1/audit')
     expect(first.status).toBe(200)
     expect(first.headers.get('cache-control')).toBe('no-store')
-    const firstPage = (await first.json()) as PublicAuditResponse
+    const firstPage = parseMarketplaceControlJSON(await first.text(), (value) =>
+      v.parse(PublicAuditResponse, value)
+    )
     expect(firstPage.events).toHaveLength(MARKETPLACE_PUBLIC_AUDIT_PAGE_LIMITS.defaultPageSize)
     expect(firstPage.nextAfter).toBe(MARKETPLACE_PUBLIC_AUDIT_PAGE_LIMITS.defaultPageSize)
-    expect(firstPage.head).toBe(state.auditEvents.at(-1)?.eventHash)
+    expect(firstPage.head).toBe(state.auditEvents.at(-1)?.eventHash ?? null)
 
     const second = await app.request(
       `http://localhost/v1/audit?after=${firstPage.nextAfter}&limit=1`
     )
     expect(second.status).toBe(200)
-    const secondPage = (await second.json()) as PublicAuditResponse
+    const secondPage = parseMarketplaceControlJSON(await second.text(), (value) =>
+      v.parse(PublicAuditResponse, value)
+    )
     expect(secondPage.events).toHaveLength(1)
-    expect(secondPage.events[0]?.previousHash).toBe(firstPage.events.at(-1)?.eventHash)
+    expect(secondPage.events[0]?.previousHash).toBe(firstPage.events.at(-1)?.eventHash ?? null)
     expect(secondPage.nextAfter).toBeUndefined()
     expect(secondPage.head).toBe(firstPage.head)
 

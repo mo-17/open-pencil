@@ -27,7 +27,7 @@ function expectStackGeometry(graph: SceneGraph, rootId: string) {
   }
 }
 
-test.each(getComponentTemplates('en'))(
+test.each([...getComponentTemplates('en')])(
   '$id is laid out on first insertion and after undo/redo without an unrelated state write',
   ({ id }) => {
     const editor = createEditor()

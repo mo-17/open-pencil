@@ -16,7 +16,10 @@ export async function prepareInputFields(page: Page, renderer = 'retained') {
 /** Test fixture only; subsequent editing and selection use the visible design panel. */
 export async function inputFieldsFixture(page: Page) {
   return page.evaluate(() => {
-    const editor = window.openPencil.getStore()
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const editor = initializedEditorBridge.getStore()
     const first = editor.createShape('INPUT', 120, 140, 320, 44)
     const second = editor.createShape('INPUT', 120, 220, 320, 44)
     const multiple = editor.createShape('SELECT', 120, 300, 320, 44)
@@ -59,7 +62,10 @@ export async function inputFieldsFixture(page: Page) {
 
 export async function savedInputFields(page: Page, id: string) {
   return page.evaluate((nodeId) => {
-    const node = window.openPencil.getStore().graph.getNode(nodeId)
+    const initializedEditorBridge = window.openPencil
+    if (!initializedEditorBridge?.getStore) throw new Error('OpenPencil store not initialized')
+
+    const node = initializedEditorBridge.getStore().graph.getNode(nodeId)
     return { properties: node?.interactiveProps, binding: node?.bindings?.value }
   }, id)
 }

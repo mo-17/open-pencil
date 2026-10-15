@@ -9,7 +9,7 @@ import {
   VR_TOUR_PLUGIN_ID
 } from '@open-pencil/core/plugins'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
-import { useI18n, useSceneComputed, useViewportKind } from '@open-pencil/vue'
+import { vTestId, useI18n, useSceneComputed, useViewportKind } from '@open-pencil/vue'
 
 import { requestEffectPickLibrary } from '@/app/assets/navigation'
 import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
@@ -1242,8 +1242,8 @@ function confirmResetLocalState(): void {
         <p class="min-w-0 flex-1">{{ recordIssueLabel(issue) }}</p>
         <button
           type="button"
-          class="shrink-0 rounded border border-danger/40 px-2 py-1 text-[10px] text-danger hover:bg-danger/10"
-          :data-test-id="`plugin-reset-local-state-${issue.pluginId}`"
+          class="shrink-0 rounded border border-error/40 px-2 py-1 text-[10px] text-error hover:bg-error/10"
+          v-test-id="`plugin-reset-local-state-${issue.pluginId}`"
           @click="pendingResetPluginId = issue.pluginId"
         >
           {{ dialogs.pluginResetLocalState }}
@@ -1273,7 +1273,7 @@ function confirmResetLocalState(): void {
           :key="item.package.manifest.plugin.id"
           class="rounded border border-border bg-panel-field p-3"
           :data-plugin-id="item.package.manifest.plugin.id"
-          :data-test-id="`plugin-catalog-${item.package.manifest.plugin.id}`"
+          v-test-id="`plugin-catalog-${item.package.manifest.plugin.id}`"
         >
           <div class="flex items-start gap-3">
             <div class="min-w-0 flex-1">
@@ -1306,7 +1306,7 @@ function confirmResetLocalState(): void {
               <div
                 v-if="marketplace"
                 class="mt-2 rounded border border-border/70 px-2 py-1.5 text-[9px] text-muted"
-                :data-test-id="`plugin-marketplace-listing-${item.package.manifest.plugin.id}`"
+                v-test-id="`plugin-marketplace-listing-${item.package.manifest.plugin.id}`"
               >
                 <div class="flex flex-wrap items-center gap-1">
                   <span>{{ dialogs.pluginMarketplaceChannels }}</span>
@@ -1345,7 +1345,9 @@ function confirmResetLocalState(): void {
                 <p
                   v-if="!moduleCompatibility(item.package.manifest.plugin.id, contribution).ok"
                   class="mt-1 text-[9px] text-error"
-                  :data-test-id="`plugin-adapter-compatibility-${item.package.manifest.plugin.id}-${contribution.moduleType}`"
+                  v-test-id="
+                    `plugin-adapter-compatibility-${item.package.manifest.plugin.id}-${contribution.moduleType}`
+                  "
                 >
                   {{
                     contributionDisplayName(
@@ -1369,14 +1371,16 @@ function confirmResetLocalState(): void {
                 )"
                 :key="`${failure.kind}:${failure.contributionId}:${failure.status}`"
                 class="mt-1 text-[9px] text-error"
-                :data-test-id="`plugin-host-compatibility-${item.package.manifest.plugin.id}-${failure.kind}-${failure.contributionId}`"
+                v-test-id="
+                  `plugin-host-compatibility-${item.package.manifest.plugin.id}-${failure.kind}-${failure.contributionId}`
+                "
               >
                 {{ failure.contributionId }} · {{ failure.reason }}
               </p>
               <p
                 v-if="connectorCompatibilityReason(item.package.manifest)"
                 class="mt-1 text-[9px] text-error"
-                :data-test-id="`plugin-connector-compatibility-${item.package.manifest.plugin.id}`"
+                v-test-id="`plugin-connector-compatibility-${item.package.manifest.plugin.id}`"
               >
                 {{ connectorCompatibilityReason(item.package.manifest) }}
               </p>
@@ -1389,7 +1393,7 @@ function confirmResetLocalState(): void {
                 busyPluginId === item.package.manifest.plugin.id ||
                 !hasCompatibleContributions(item.package.manifest)
               "
-              :data-test-id="`plugin-install-${item.package.manifest.plugin.id}`"
+              v-test-id="`plugin-install-${item.package.manifest.plugin.id}`"
               @click="install(item.package.manifest.plugin.id, $event)"
             >
               {{
@@ -1434,7 +1438,7 @@ function confirmResetLocalState(): void {
           :key="pluginId(plugin)"
           class="rounded border border-border bg-panel-field p-3"
           :data-plugin-id="pluginId(plugin)"
-          :data-test-id="`plugin-installed-${pluginId(plugin)}`"
+          v-test-id="`plugin-installed-${pluginId(plugin)}`"
         >
           <div class="flex items-start gap-3">
             <div class="min-w-0 flex-1">
@@ -1535,7 +1539,7 @@ function confirmResetLocalState(): void {
           <div
             v-if="plugin.installedState?.pending"
             class="mt-3 rounded border border-warning/30 bg-warning/5 p-2.5"
-            :data-test-id="`plugin-update-review-${pluginId(plugin)}`"
+            v-test-id="`plugin-update-review-${pluginId(plugin)}`"
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="text-[10px] font-medium text-surface">
@@ -1698,7 +1702,7 @@ function confirmResetLocalState(): void {
               v-if="pendingUpdateCompatibilityFailures(plugin).length > 0"
               class="mt-2 rounded border border-error/30 bg-error/5 px-2 py-1.5 text-[9px] text-error"
               role="alert"
-              :data-test-id="`plugin-update-compatibility-${pluginId(plugin)}`"
+              v-test-id="`plugin-update-compatibility-${pluginId(plugin)}`"
             >
               <p
                 v-for="failure in pendingUpdateCompatibilityFailures(plugin)"
@@ -1718,7 +1722,7 @@ function confirmResetLocalState(): void {
                   isPluginExportActive(pluginId(plugin)) ||
                   pendingUpdateCompatibilityFailures(plugin).length > 0
                 "
-                :data-test-id="`plugin-update-accept-${pluginId(plugin)}`"
+                v-test-id="`plugin-update-accept-${pluginId(plugin)}`"
                 @click="acceptUpdate(plugin, $event)"
               >
                 {{ dialogs.pluginAcceptUpdate }}
@@ -1727,7 +1731,7 @@ function confirmResetLocalState(): void {
                 type="button"
                 class="rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover disabled:opacity-50"
                 :disabled="busyPluginId === pluginId(plugin)"
-                :data-test-id="`plugin-update-reject-${pluginId(plugin)}`"
+                v-test-id="`plugin-update-reject-${pluginId(plugin)}`"
                 @click="rejectUpdate(plugin)"
               >
                 {{ dialogs.pluginRejectUpdate }}
@@ -1738,7 +1742,7 @@ function confirmResetLocalState(): void {
           <section
             v-if="plugin.package.trustSource === 'publisher-signature'"
             class="mt-3 rounded border border-border/70 bg-panel px-2.5 py-2"
-            :data-test-id="`plugin-runtime-${pluginId(plugin)}`"
+            v-test-id="`plugin-runtime-${pluginId(plugin)}`"
           >
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div class="min-w-0">
@@ -1786,7 +1790,7 @@ function confirmResetLocalState(): void {
               </p>
               <p
                 class="mt-0.5 break-all"
-                :data-test-id="`plugin-runtime-publisher-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-publisher-${pluginId(plugin)}`"
               >
                 {{
                   dialogs.pluginPackageReviewPublisherAuthority({
@@ -1800,7 +1804,7 @@ function confirmResetLocalState(): void {
               </p>
               <p
                 class="mt-0.5 flex flex-wrap items-center gap-1 break-all"
-                :data-test-id="`plugin-runtime-provenance-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-provenance-${pluginId(plugin)}`"
               >
                 <AppBadge tone="neutral">
                   {{
@@ -1831,7 +1835,7 @@ function confirmResetLocalState(): void {
                   Boolean(plugin.blockedReason) ||
                   runtimeBusyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-runtime-review-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-review-${pluginId(plugin)}`"
                 @click="reviewRuntime(pluginId(plugin))"
               >
                 {{ dialogs.pluginRuntimeReview }}
@@ -1845,7 +1849,7 @@ function confirmResetLocalState(): void {
                   runtimeGrantActive(runtimePolicy, runtimeReview) ||
                   runtimeBusyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-runtime-grant-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-grant-${pluginId(plugin)}`"
                 @click="grantRuntime(pluginId(plugin), runtimeReview)"
               >
                 {{ dialogs.pluginRuntimeGrant }}
@@ -1858,7 +1862,7 @@ function confirmResetLocalState(): void {
                   Boolean(runtimePolicy.revokedAt) ||
                   runtimeBusyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-runtime-revoke-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-revoke-${pluginId(plugin)}`"
                 @click="revokeRuntime(pluginId(plugin))"
               >
                 {{ dialogs.pluginRuntimeRevoke }}
@@ -1870,7 +1874,7 @@ function confirmResetLocalState(): void {
                   !runtimeGrantActive(runtimePolicy, runtimeReview) ||
                   runtimeBusyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-runtime-run-${pluginId(plugin)}`"
+                v-test-id="`plugin-runtime-run-${pluginId(plugin)}`"
                 @click="runRuntime(pluginId(plugin))"
               >
                 {{ dialogs.pluginRuntimeRun }}
@@ -1915,7 +1919,7 @@ function confirmResetLocalState(): void {
                   busyPluginId === pluginId(plugin) ||
                   (isEffectPickLibrary(plugin, contribution) && isMobile)
                 "
-                :data-test-id="`plugin-add-${pluginId(plugin)}-${contribution.moduleType}`"
+                v-test-id="`plugin-add-${pluginId(plugin)}-${contribution.moduleType}`"
                 @click="addModule(plugin, contribution)"
               >
                 <icon-lucide-library
@@ -1944,7 +1948,9 @@ function confirmResetLocalState(): void {
               <span
                 v-if="!moduleCompatibility(pluginId(plugin), contribution).ok"
                 class="max-w-44 text-[9px] text-error"
-                :data-test-id="`plugin-adapter-compatibility-${pluginId(plugin)}-${contribution.moduleType}`"
+                v-test-id="
+                  `plugin-adapter-compatibility-${pluginId(plugin)}-${contribution.moduleType}`
+                "
               >
                 {{
                   moduleCompatibilityLabel(
@@ -1968,7 +1974,7 @@ function confirmResetLocalState(): void {
                   hostBusyKey !== null ||
                   busyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-command-${pluginId(plugin)}-${contribution.commandId}`"
+                v-test-id="`plugin-command-${pluginId(plugin)}-${contribution.commandId}`"
                 @click="runCommand(plugin, contribution)"
               >
                 <icon-lucide-clipboard-copy class="mr-1 inline size-3" />
@@ -2003,7 +2009,7 @@ function confirmResetLocalState(): void {
                   appPluginExportSessionSnapshot !== null ||
                   busyPluginId === pluginId(plugin)
                 "
-                :data-test-id="`plugin-exporter-${pluginId(plugin)}-${contribution.exporterId}`"
+                v-test-id="`plugin-exporter-${pluginId(plugin)}-${contribution.exporterId}`"
                 @click="runExporter(plugin, contribution)"
               >
                 <icon-lucide-package-open class="mr-1 inline size-3" />
@@ -2024,7 +2030,7 @@ function confirmResetLocalState(): void {
               <div
                 v-if="pluginExporterStageLabel(pluginId(plugin), contribution.exporterId)"
                 class="flex min-h-11 w-full min-w-64 items-center justify-between gap-2 rounded border border-accent/30 bg-accent/5 px-2"
-                :data-test-id="`plugin-export-progress-${pluginId(plugin)}-${contribution.exporterId}`"
+                v-test-id="`plugin-export-progress-${pluginId(plugin)}-${contribution.exporterId}`"
               >
                 <p
                   class="flex min-w-0 items-center gap-1.5 text-[10px] text-surface"
@@ -2041,9 +2047,9 @@ function confirmResetLocalState(): void {
                 <button
                   v-if="supportsPluginExporterCancellation(pluginId(plugin), contribution)"
                   type="button"
-                  class="min-h-11 shrink-0 rounded px-2 text-[10px] font-medium text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+                  class="min-h-11 shrink-0 rounded px-2 text-[10px] font-medium text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                   :disabled="appPluginExportSessionSnapshot?.stage === 'cancelling'"
-                  :data-test-id="`plugin-export-cancel-${pluginId(plugin)}-${contribution.exporterId}`"
+                  v-test-id="`plugin-export-cancel-${pluginId(plugin)}-${contribution.exporterId}`"
                   @click="cancelAppPluginExport(pluginId(plugin))"
                 >
                   {{ dialogs.pluginExportCancel }}
@@ -2054,7 +2060,7 @@ function confirmResetLocalState(): void {
               type="button"
               class="rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
               :disabled="busyPluginId === pluginId(plugin)"
-              :data-test-id="`plugin-pin-${pluginId(plugin)}`"
+              v-test-id="`plugin-pin-${pluginId(plugin)}`"
               @click="setPinned(plugin)"
             >
               {{ plugin.pinnedDigest ? dialogs.pluginUnpin : dialogs.pluginPin }}
@@ -2069,7 +2075,7 @@ function confirmResetLocalState(): void {
                 isDeploymentPluginSessionActive(pluginId(plugin)) ||
                 isPluginExportActive(pluginId(plugin))
               "
-              :data-test-id="`plugin-rollback-${pluginId(plugin)}`"
+              v-test-id="`plugin-rollback-${pluginId(plugin)}`"
               @click="requestRollback(plugin)"
             >
               {{ dialogs.pluginRollback }} ·
@@ -2077,13 +2083,13 @@ function confirmResetLocalState(): void {
             </button>
             <button
               type="button"
-              class="ml-auto rounded px-2 py-1 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
+              class="ml-auto rounded px-2 py-1 text-[10px] text-error hover:bg-error/10 disabled:opacity-50"
               :disabled="
                 busyPluginId === pluginId(plugin) ||
                 isDeploymentPluginSessionActive(pluginId(plugin)) ||
                 isPluginExportActive(pluginId(plugin))
               "
-              :data-test-id="`plugin-uninstall-${pluginId(plugin)}`"
+              v-test-id="`plugin-uninstall-${pluginId(plugin)}`"
               @click="pendingUninstallId = pluginId(plugin)"
             >
               {{ dialogs.pluginUninstall }}
@@ -2173,7 +2179,7 @@ function confirmResetLocalState(): void {
             v-for="dependency in documentDependencies.dependencies"
             :key="dependency.pluginId"
             class="flex items-start gap-2 rounded border border-border/70 px-2 py-1.5"
-            :data-test-id="`plugin-document-dependency-${dependency.pluginId}`"
+            v-test-id="`plugin-document-dependency-${dependency.pluginId}`"
           >
             <div class="min-w-0 flex-1">
               <p class="truncate text-[10px] font-medium text-surface">
@@ -2241,7 +2247,7 @@ function confirmResetLocalState(): void {
       <AccessibilityAuditReport :data="hostActionData" />
       <ApplicationSecurityReadinessReport :data="hostActionData" />
       <PluginExporterResult :data="hostActionData" />
-      <p v-if="operationError" class="text-[10px] text-danger" role="alert">
+      <p v-if="operationError" class="text-[10px] text-error" role="alert">
         {{ operationError }}
       </p>
     </div>
@@ -2285,7 +2291,7 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        class="rounded bg-error-fill px-3 py-1.5 text-xs text-white disabled:opacity-50"
         :disabled="
           pendingUninstall
             ? isDeploymentPluginSessionActive(pluginId(pendingUninstall)) ||
@@ -2329,7 +2335,7 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        class="rounded bg-error-fill px-3 py-1.5 text-xs text-white disabled:opacity-50"
         :disabled="
           pendingResetIssue
             ? isDeploymentPluginSessionActive(pendingResetIssue.pluginId) ||
@@ -2382,7 +2388,7 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white"
+        class="rounded bg-error-fill px-3 py-1.5 text-xs text-white"
         data-test-id="plugin-replace-pin-confirm"
         @click="confirmPinReplacement"
       >
@@ -2427,7 +2433,7 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        class="rounded bg-error-fill px-3 py-1.5 text-xs text-white disabled:opacity-50"
         :disabled="
           pendingRollbackPlugin
             ? isDeploymentPluginSessionActive(pluginId(pendingRollbackPlugin.plugin)) ||

@@ -49,34 +49,32 @@ test('appearance fields share control height and show variable actions', async (
   await applyVariable.hover()
   await expect(applyVariable).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
+  // The shared picker opens beside the panel, to the left of its trigger, like Figma's.
   await applyVariable.click()
-  const search = editor.page.locator('input[data-slot="search"]')
-  const picker = editor.page.locator('[data-slot=content]').filter({ has: search })
+  const picker = editor.page.getByRole('dialog', { name: 'Apply variable' })
   await expect(picker).toBeVisible()
+  await expect(picker).toHaveAttribute('data-side', 'left')
   const triggerBox = expectDefined(await applyVariable.boundingBox(), 'variable trigger bounds')
   const pickerBox = expectDefined(await picker.boundingBox(), 'variable picker bounds')
-  await expect(picker).toHaveAttribute('data-side', 'bottom')
-  expect(pickerBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height)
-  expect(Math.abs(pickerBox.x + pickerBox.width - (triggerBox.x + triggerBox.width))).toBeLessThan(
-    4
-  )
-  await search.press('Escape')
+  expect(pickerBox.x + pickerBox.width).toBeLessThanOrEqual(triggerBox.x)
+  // Escape closes the picker once it holds focus, as it does for a person.
+  await expect(picker.getByRole('textbox', { name: 'Search…' })).toBeFocused()
+  await editor.page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
 
-  // Move the anchor near the bottom without changing its actual panel layout.
+  // Near the bottom of the window it shifts up to stay fully visible.
   const viewport = editor.page.viewportSize()
   if (!viewport) throw new Error('Viewport unavailable')
-  await editor.page.setViewportSize({
-    width: viewport.width,
-    height: Math.ceil(triggerBox.y + triggerBox.height + 24)
-  })
+  const height = Math.ceil(triggerBox.y + triggerBox.height + 24)
+  await editor.page.setViewportSize({ width: viewport.width, height })
   try {
     await applyVariable.click()
-    await expect(picker).toHaveAttribute('data-side', 'top')
-    const flipped = expectDefined(await picker.boundingBox(), 'flipped picker bounds')
-    const anchor = expectDefined(await applyVariable.boundingBox(), 'edge trigger bounds')
-    expect(flipped.y).toBeGreaterThanOrEqual(8)
-    expect(flipped.y + flipped.height).toBeLessThanOrEqual(anchor.y)
-    await search.press('Escape')
+    await expect(picker).toBeVisible()
+    await expect(picker.getByRole('textbox', { name: 'Search…' })).toBeFocused()
+    const shifted = expectDefined(await picker.boundingBox(), 'shifted picker bounds')
+    expect(shifted.y).toBeGreaterThanOrEqual(0)
+    expect(shifted.y + shifted.height).toBeLessThanOrEqual(height)
+    await editor.page.keyboard.press('Escape')
   } finally {
     await editor.page.setViewportSize(viewport)
   }
@@ -104,7 +102,9 @@ test('property fields show only the most specific tooltip', async () => {
   await editor.canvas.clearCanvas()
   await editor.canvas.drawRect(200, 200, 80, 80)
 
-  const widthField = propertyField(editor.page, 'width')
+  const widthField = propertyField(editor.page, 'width').and(
+    editor.page.locator('[data-slot="root"]')
+  )
   const variableTrigger = widthField.getByRole('button', { name: 'Apply variable' })
   const tooltips = editor.page.getByRole('tooltip')
 
@@ -121,7 +121,9 @@ test('property fields show only the most specific tooltip', async () => {
   await expect(tooltips).toHaveText('Apply variable')
   await expect(tooltips).toHaveCount(1)
 
-  await propertyField(editor.page, 'height').hover({ position: { x: 40, y: 12 } })
+  await propertyField(editor.page, 'height')
+    .and(editor.page.locator('[data-slot="root"]'))
+    .hover({ position: { x: 40, y: 12 } })
   await expect(tooltips).toHaveText('Height')
   await expect(tooltips).toHaveCount(1)
 })
@@ -132,7 +134,7 @@ test('NumberField drag changes X position', async () => {
   const before = await getSelectedNode(editor.page)
   const initialX = expectDefined(before, 'selected rectangle before drag').x
 
-  const xField = propertyField(editor.page, 'x')
+  const xField = propertyField(editor.page, 'x').and(editor.page.locator('[data-slot="root"]'))
   await editor.canvas.dragNumberField(xField, 50)
 
   const after = await getSelectedNode(editor.page)
@@ -170,6 +172,54 @@ test('independent corners toggle shows four corner inputs', async () => {
   editor.canvas.assertNoErrors()
 })
 
+test('moving to a neighbouring control shows its tooltip without the delay', async () => {
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(200, 200, 80, 80)
+
+  const fillItem = propertyItems(editor.page, 'fills').first()
+  const tooltips = editor.page.getByRole('tooltip')
+  await expect(fillItem).toBeVisible()
+  await editor.page.clock.install()
+  await editor.page.clock.pauseAt(Date.now() + 1_000)
+
+  await fillItem.getByRole('button', { name: 'Toggle visibility' }).hover()
+  await editor.page.clock.runFor(500)
+  await expect(tooltips).toHaveText('Toggle visibility')
+
+  await fillItem.getByRole('button', { name: 'Remove fill' }).hover()
+  await editor.page.clock.runFor(50)
+  await expect(tooltips).toHaveText('Remove fill')
+
+  await editor.page.mouse.move(500, 400)
+  await editor.page.clock.runFor(1_000)
+  await fillItem.getByRole('button', { name: 'Toggle visibility' }).hover()
+  await editor.page.clock.runFor(50)
+  await expect(tooltips).toHaveCount(0)
+  await editor.page.clock.resume()
+})
+
+test('a picker focusing its first control on open shows no tooltip until keyboard focus', async () => {
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(200, 200, 80, 80)
+
+  const fillSwatch = propertyItems(editor.page, 'fills').first().getByTestId('fill-picker-swatch')
+  await expect(fillSwatch).toBeVisible()
+  await editor.page.clock.install()
+  await editor.page.clock.pauseAt(Date.now() + 1_000)
+
+  await fillSwatch.click()
+  await expect(editor.page.getByTestId('fill-picker-tab-solid')).toBeFocused()
+  await editor.page.clock.runFor(1_000)
+  await expect(editor.page.getByRole('tooltip')).toHaveCount(0)
+
+  await editor.page.keyboard.press('Tab')
+  await expect(editor.page.getByTestId('fill-picker-tab-gradient')).toBeFocused()
+  await editor.page.clock.runFor(1_000)
+  await expect(editor.page.getByRole('tooltip')).toHaveText('Linear')
+  await editor.page.keyboard.press('Escape')
+  await editor.page.clock.resume()
+})
+
 test('fill gradient switch changes fill type', async () => {
   await editor.canvas.clearCanvas()
   await editor.canvas.pressKey('Escape')
@@ -201,6 +251,8 @@ test('variable bind badge appears on fill', async () => {
   await editor.canvas.drawRect(200, 200, 80, 80)
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const col = store.graph.createCollection('Colors')
@@ -221,6 +273,8 @@ test('fill color can bind an existing variable', async () => {
   await editor.canvas.drawRect(200, 200, 80, 80)
 
   const variableId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const col = store.graph.createCollection('Colors')
@@ -256,12 +310,16 @@ test('fill color can bind an existing variable', async () => {
   await editor.canvas.waitForRender()
   await expect(fillItem.getByText('test-brand-red')).toHaveCount(0)
   const undoLabel = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.undo.undoLabel
   })
   expect(undoLabel).toBe('Change fill color')
   const boundVariableId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -272,12 +330,16 @@ test('fill color can bind an existing variable', async () => {
   await editor.canvas.undo()
   await editor.canvas.waitForRender()
   const undoLabelAfter = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.undo.undoLabel
   })
   expect(undoLabelAfter).toBe('Bind variable')
   const restoredBinding = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -293,6 +355,8 @@ test('bound fill picker opens non-destructively and Escape rolls back color edit
   await editor.canvas.drawRect(200, 200, 80, 80)
 
   const before = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const collection = store.graph.createCollection('Colors')
@@ -316,6 +380,8 @@ test('bound fill picker opens non-destructively and Escape rolls back color edit
   await expect(fillItem.getByText('rollback-brand')).toBeVisible()
 
   const opened = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -331,6 +397,8 @@ test('bound fill picker opens non-destructively and Escape rolls back color edit
   await editor.canvas.waitForRender()
 
   const after = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -356,6 +424,8 @@ test('fill color can create and bind a variable', async () => {
 
   await expect(fillItem.getByText('Surface/default')).toBeVisible()
   const boundVariable = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -373,6 +443,8 @@ test('gradient stop color can bind, create, and detach variables', async () => {
   await editor.canvas.drawRect(200, 200, 80, 80)
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const collection = store.graph.createCollection('Gradient Colors')
@@ -388,6 +460,7 @@ test('gradient stop color can bind, create, and detach variables', async () => {
       fills: [
         {
           type: 'GRADIENT_LINEAR',
+          color: { r: 1, g: 0, b: 0, a: 1 },
           visible: true,
           opacity: 1,
           gradientStops: [
@@ -415,16 +488,27 @@ test('gradient stop color can bind, create, and detach variables', async () => {
     await expect(editor.page.getByTestId('fill-picker-gradient-bar')).toBeVisible()
   }
 
-  await openGradientStopEditor()
-  await expect(editor.page.getByTestId('fill-gradient-stop-apply-variable-0')).toBeVisible()
+  const stopRows = editor.page.locator('[data-slot="stop"]').filter({
+    has: editor.page.locator('input[maxlength="6"]')
+  })
+  const firstStop = stopRows.nth(0)
+  const applyVariable = firstStop.getByRole('button', { name: 'Apply variable', exact: true })
+  const detachVariable = firstStop.getByRole('button', { name: 'Detach variable', exact: true })
 
-  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0').click()
+  await openGradientStopEditor()
+  await expect(stopRows).toHaveCount(2)
+  await expect(firstStop).toHaveAttribute('data-selected', '')
+  await expect(applyVariable).toBeVisible()
+
+  await applyVariable.click()
   await editor.page.getByText('Gradient/start', { exact: true }).click()
   await editor.canvas.waitForRender()
 
   await openGradientStopEditor()
-  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeVisible()
+  await expect(detachVariable).toBeVisible()
   const boundExisting = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -432,9 +516,11 @@ test('gradient stop color can bind, create, and detach variables', async () => {
   })
   expect(boundExisting).not.toBeNull()
 
-  await editor.page.getByTestId('fill-gradient-stop-unbind-variable-0').click()
+  await detachVariable.click()
   await editor.canvas.waitForRender()
   const detachedExisting = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -443,15 +529,17 @@ test('gradient stop color can bind, create, and detach variables', async () => {
   expect(detachedExisting).toBeNull()
 
   await openGradientStopEditor()
-  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0').click()
+  await applyVariable.click()
   await editor.page.getByText(/Create color variable from #?[0-9A-F]{6}/).click()
   await editor.page.getByPlaceholder('Variable name').fill('Gradient/created-stop')
   await editor.page.getByRole('button', { name: 'Create', exact: true }).click()
   await editor.canvas.waitForRender()
 
   await openGradientStopEditor()
-  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeVisible()
+  await expect(detachVariable).toBeVisible()
   const createdBinding = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -461,13 +549,15 @@ test('gradient stop color can bind, create, and detach variables', async () => {
   })
   expect(createdBinding).toBe('Gradient/created-stop')
 
-  const hexInput = editor.page.locator('[role="dialog"] input[maxlength="6"]').first()
+  const hexInput = firstStop.locator('input[maxlength="6"]')
   await hexInput.fill('00FF00')
   await hexInput.blur()
   await editor.canvas.waitForRender()
 
-  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeHidden()
+  await expect(detachVariable).toBeHidden()
   const directStop = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -480,14 +570,16 @@ test('gradient stop color can bind, create, and detach variables', async () => {
       : null
   })
   expect(directStop?.binding).toBeNull()
-  expect(directStop?.color.g).toBe(1)
+  expect(directStop?.color?.g).toBe(1)
   editor.canvas.assertNoErrors()
 })
 
 test('width can create, bind, and detach a number variable', async () => {
   await editor.canvas.clearCanvas()
   await editor.canvas.drawRect(200, 200, 80, 80)
-  const widthField = propertyField(editor.page, 'width')
+  const widthField = propertyField(editor.page, 'width').and(
+    editor.page.locator('[data-slot="root"]')
+  )
 
   await widthField.getByLabel('Apply variable').click()
   await editor.page.getByText('Create number variable from 80').click()
@@ -497,6 +589,8 @@ test('width can create, bind, and detach a number variable', async () => {
 
   await expect(widthField.getByText('Card/width')).toBeVisible()
   const boundVariable = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -515,6 +609,8 @@ test('width can create, bind, and detach a number variable', async () => {
 
   await expect(widthField.getByText('Card/width')).toHaveCount(0)
   const directWidth = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -539,6 +635,8 @@ test('bound NumberField detach edit is one undo step', async () => {
 
   const readState = () =>
     editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const id = [...store.state.selectedIds][0]
@@ -564,7 +662,9 @@ test('bound NumberField detach edit is one undo step', async () => {
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })
 
   await field.getByLabel('Apply variable').click()
-  const variableSearch = editor.page.getByRole('combobox', { name: 'Search…', exact: true })
+  const variableSearch = editor.page
+    .getByRole('dialog', { name: 'Apply variable' })
+    .getByRole('textbox', { name: 'Search…', exact: true })
   await expect(variableSearch).toBeVisible()
   await variableSearch.press('Escape')
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })

@@ -1,4 +1,6 @@
 export { APP_DATABASE_NAMES } from './database-names'
-export { defineAppDatabase, openAppDatabase } from './client'
+export { connectAppDatabase, defineAppDatabase } from './client'
 export { openIdb, reqToPromise, runIdbReadonlyRequest, txDone } from './raw'
-export type { AppDatabaseDefinition } from './client'
+export type { AppDatabase, AppDatabaseDefinition } from './client'
+export { binaryStorage, readStoredBinary } from './binary'
+export type { StoreBinary, StoredBinary } from './binary'

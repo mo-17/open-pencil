@@ -81,7 +81,7 @@ describe('merchant commerce AI authoring', () => {
     }
   })
 
-  test.each(MODES)(
+  test.each([...MODES])(
     '%s preserves existing pages and undoes the complete model and page set',
     async (mode) => {
       const { editor, tool } = await setup()
@@ -90,7 +90,7 @@ describe('merchant commerce AI authoring', () => {
       const result = await tool.execute({ authentication: 'local-keycloak', mode, locale: 'zh-CN' })
       expect(result).toMatchObject({ status: 'created', mode })
       const pageIds = result.exportPageIds as string[]
-      expect(pageIds).toEqual(result.pageIds)
+      expect(result.pageIds).toEqual(pageIds)
       expect(pageIds).toHaveLength(mode === 'single-merchant' ? 5 : 7)
       expect(editor.graph.getPages().map((page) => page.id)).toEqual([...previousPages, ...pageIds])
       const paths = result.paths as Record<string, string>
@@ -120,7 +120,7 @@ describe('merchant commerce AI authoring', () => {
     expect(readBackendProviderDocumentRequest(editor.graph)?.application.auth.tenants).toEqual([])
   })
 
-  test.each(MODES)(
+  test.each([...MODES])(
     '%s reaches React and Vue source export and connected preview admission',
     async (mode) => {
       const { editor, pluginStore, result, request } = await createApplication(mode)
@@ -177,7 +177,7 @@ describe('merchant commerce AI authoring', () => {
     }
   )
 
-  test.each(MODES)(
+  test.each([...MODES])(
     '%s operations edition preserves runnable pages and provider preview admission',
     async (mode) => {
       const { editor, tool, pluginStore } = await setup()
@@ -275,7 +275,7 @@ describe('merchant commerce AI authoring', () => {
     expect(editor.undo.canUndo).toBe(false)
   })
 
-  test.each(MODES)(
+  test.each([...MODES])(
     '%s preserves an existing authentication or Backend declaration',
     async (mode) => {
       const { editor, tool } = await setup()
@@ -306,7 +306,9 @@ describe('merchant commerce AI authoring', () => {
     const tools = createAITools(editor, {
       commerce: {
         pluginStore,
-        ready: () => pluginStore.setEnabled(NESTJS_BACKEND_PROVIDER_PLUGIN_ID, false)
+        ready: async () => {
+          await pluginStore.setEnabled(NESTJS_BACKEND_PROVIDER_PLUGIN_ID, false)
+        }
       }
     })
     expect(

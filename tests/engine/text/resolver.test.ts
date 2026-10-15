@@ -250,7 +250,7 @@ describe('FontResolver', () => {
       }
       const settlements: Array<{ state: string; nodeIds: string[] }> = []
       const onSettled: FontResolutionSettled = (snapshot, nodeIds) => {
-        settlements.push({ state: snapshot.state, nodeIds })
+        settlements.push({ state: snapshot.state, nodeIds: [...nodeIds] })
       }
       const first = resolver.demandForNode(demand, 'node-a', onSettled)
       const second = resolver.demandForNode(demand, 'node-b', onSettled)

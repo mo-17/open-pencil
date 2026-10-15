@@ -1,13 +1,11 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { drawGeneratedEffect } from '#core/canvas/generated-effect'
-import type { SkiaRenderer } from '#core/canvas/renderer'
 import { headlessRenderNodes } from '#core/io/formats/raster/headless'
 
+import { asRenderer, asCanvas } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 import { generatedEffect } from '#tests/helpers/generated-effect'
 
@@ -29,7 +27,7 @@ describe('CanvasKit generated-effect rendering', () => {
       setBlendMode: mock(() => undefined)
     }
     // oxlint-disable-next-line open-pencil/no-broad-double-cast -- Focused protocol mock avoids initializing CanvasKit in this unit test.
-    const renderer = {
+    const renderer = asRenderer({
       ck: {
         BlendMode: {
           SrcOver: 'src-over',
@@ -42,16 +40,16 @@ describe('CanvasKit generated-effect rendering', () => {
         XYWHRect: mock((...values: number[]) => values)
       },
       generatedEffectPaint: paint
-    } as unknown as SkiaRenderer
+    })
     // oxlint-disable-next-line open-pencil/no-broad-double-cast -- Focused protocol mock avoids initializing CanvasKit in this unit test.
-    const canvas = {
+    const canvas = asCanvas({
       save: mock(() => undefined),
       restore: mock(() => undefined),
       clipRect: mock(() => undefined),
       drawCircle: mock(() => undefined),
       drawRect: mock(() => undefined),
       rotate: mock(() => undefined)
-    } as unknown as Canvas
+    })
 
     drawGeneratedEffect(renderer, canvas, node, {
       generatedEffectTimeMs: 500,
@@ -74,21 +72,21 @@ describe('CanvasKit generated-effect rendering', () => {
       generatedEffect: generatedEffect('noise')
     })
     // oxlint-disable-next-line open-pencil/no-broad-double-cast -- Focused protocol mock avoids initializing CanvasKit in this unit test.
-    const renderer = {
+    const renderer = asRenderer({
       ck: { BlendMode: { SrcOver: 0, Screen: 1, Multiply: 2, Overlay: 3 } },
       generatedEffectPaint: {
         setColor: mock(() => undefined),
         setBlendMode: mock(() => undefined)
       }
-    } as unknown as SkiaRenderer
+    })
     // oxlint-disable-next-line open-pencil/no-broad-double-cast -- Focused protocol mock avoids initializing CanvasKit in this unit test.
-    const canvas = {
+    const canvas = asCanvas({
       save: mock(() => undefined),
       restore: mock(() => undefined),
       clipRect: mock(() => undefined),
       drawCircle: mock(() => undefined),
       drawRect: mock(() => undefined)
-    } as unknown as Canvas
+    })
 
     drawGeneratedEffect(renderer, canvas, node, { generatedEffectMode: 'disable' })
     expect(canvas.save).not.toHaveBeenCalled()
@@ -106,6 +104,7 @@ describe('CanvasKit generated-effect rendering', () => {
     const spec = generatedEffect('noise')
     spec.blendMode = 'normal'
     spec.opacity = 1
+    if (spec.params.preset !== 'noise') throw new Error('Expected noise params')
     spec.params.tint = { r: 1, g: 0, b: 0, a: 1 }
     const node = graph.createNode('RECTANGLE', page.id, {
       width: 64,

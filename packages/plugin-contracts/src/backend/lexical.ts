@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit'
 export const BACKEND_PROVIDER_LEXICAL_LIMITS = Object.freeze({
   maxSymbolLength: 64
 })
@@ -140,14 +141,15 @@ const FORMAT_CONTROL = /\p{Cf}/u
 const HIGH_ENTROPY_TOKEN = /[A-Za-z0-9_+/=-]{20,}/gu
 
 export function backendProviderTextWords(value: string): readonly string[] {
-  return value
-    .normalize('NFKC')
-    .replace(/\bPostgreSQL\b/giu, 'postgresql')
-    .replace(/\bMySQL\b/giu, 'mysql')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean)
+  return compact(
+    value
+      .normalize('NFKC')
+      .replace(/\bPostgreSQL\b/giu, 'postgresql')
+      .replace(/\bMySQL\b/giu, 'mysql')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+  )
 }
 
 function containsHighEntropyToken(value: string): boolean {

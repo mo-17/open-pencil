@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit'
+
 import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
 import {
   lowerLegacySupabaseApplication,
@@ -38,7 +40,7 @@ export class BackendProviderCompilationError extends Error {
   readonly diagnostics: readonly BackendDiagnostic[]
 
   constructor(diagnostics: readonly BackendDiagnostic[]) {
-    const codes = [...new Set(diagnostics.map((entry) => entry.code))].sort()
+    const codes = uniq(diagnostics.map((entry) => entry.code)).sort()
     super(`Backend Provider compilation failed closed: ${codes.join(', ')}`)
     this.name = 'BackendProviderCompilationError'
     this.diagnostics = Object.freeze([...diagnostics])

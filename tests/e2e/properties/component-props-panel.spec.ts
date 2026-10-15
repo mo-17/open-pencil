@@ -11,6 +11,8 @@ type InstanceChildIds = {
 
 async function setupVariantInstance() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -86,6 +88,8 @@ async function setupVariantInstance() {
 
 async function selectedInstanceChildren(): Promise<InstanceChildIds> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const instanceId = [...store.state.selectedIds][0]
@@ -106,6 +110,8 @@ async function selectedInstanceChildren(): Promise<InstanceChildIds> {
 
 async function selectedInstanceSnapshot() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const instanceId = [...store.state.selectedIds][0]
@@ -140,12 +146,16 @@ test('component props panel edits variant, text, and fill props', async () => {
   const afterSwitch = await selectedInstanceChildren()
   expect(afterSwitch.componentId).toBe(ids.secondaryId)
 
-  const textInput = editor.page.getByTestId(`component-prop-text-${afterSwitch.textId}`)
+  const textInput = editor.page.locator(
+    `[data-slot="component-property"][data-node-id="${afterSwitch.textId}"][data-property="text"]`
+  )
   await textInput.fill('Launch')
   await textInput.press('Tab')
   await editor.canvas.waitForRender()
 
-  const fillInput = editor.page.getByTestId(`component-prop-fill-${afterSwitch.rectId}`)
+  const fillInput = editor.page.locator(
+    `[data-slot="component-property"][data-node-id="${afterSwitch.rectId}"][data-property="fill"]`
+  )
   await fillInput.fill('#00ff00')
   await fillInput.press('Tab')
   await editor.canvas.waitForRender()
@@ -160,8 +170,16 @@ test('component props panel edits variant, text, and fill props', async () => {
     fillColor: { r: 0, g: 1, b: 0, a: 1 }
   })
 
-  await editor.page.getByTestId(`component-prop-text-reset-${afterSwitch.textId}`).click()
-  await editor.page.getByTestId(`component-prop-fill-reset-${afterSwitch.rectId}`).click()
+  await editor.page
+    .locator(
+      `[data-slot="component-property-reset"][data-command="reset-component-property"][data-node-id="${afterSwitch.textId}"][data-property="text"]`
+    )
+    .click()
+  await editor.page
+    .locator(
+      `[data-slot="component-property-reset"][data-command="reset-component-property"][data-node-id="${afterSwitch.rectId}"][data-property="fill"]`
+    )
+    .click()
   await editor.canvas.waitForRender()
 
   expect(await selectedInstanceSnapshot()).toMatchObject({

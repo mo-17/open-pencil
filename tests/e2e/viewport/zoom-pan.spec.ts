@@ -11,10 +11,12 @@ test.describe('Zoom and pan', () => {
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage()
     helper = new CanvasHelper(page)
-    await page.goto('http://localhost:1420/?test&no-chrome&no-rulers')
+    await page.goto('/?test&no-chrome&no-rulers')
     await helper.waitForInit()
 
     await page.evaluate((count: number) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const cols = Math.ceil(Math.sqrt(count))
@@ -40,6 +42,8 @@ test.describe('Zoom and pan', () => {
 
   test('wheel zoom updates viewport correctly', async () => {
     const before = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return { panX: store.state.panX, panY: store.state.panY, zoom: store.state.zoom }
@@ -55,6 +59,8 @@ test.describe('Zoom and pan', () => {
     await helper.page.waitForTimeout(50)
 
     const after = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return { panX: store.state.panX, panY: store.state.panY, zoom: store.state.zoom }
@@ -66,6 +72,8 @@ test.describe('Zoom and pan', () => {
 
   test('wheel pan updates viewport correctly', async () => {
     const before = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return { panX: store.state.panX, panY: store.state.panY }
@@ -80,6 +88,8 @@ test.describe('Zoom and pan', () => {
     await helper.page.waitForTimeout(50)
 
     const after = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return { panX: store.state.panX, panY: store.state.panY }
@@ -102,6 +112,8 @@ test.describe('Zoom and pan', () => {
     await helper.page.waitForTimeout(50)
 
     const state = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       return { zoom: store.state.zoom }
@@ -114,6 +126,8 @@ test.describe('Zoom and pan', () => {
 
   test('shallowReactive: selection replace triggers UI update', async () => {
     const result = await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -139,6 +153,8 @@ test.describe('Zoom and pan', () => {
   test('useRafFn loop picks up renderVersion changes', async () => {
     // Ensure clean state, wait for any pending renders
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.state.panX = 0
@@ -153,6 +169,8 @@ test.describe('Zoom and pan', () => {
 
     // Change fill color — always visible
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -172,6 +190,8 @@ test.describe('Zoom and pan', () => {
 
     // Restore
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -192,6 +212,8 @@ test.describe('Zoom and pan', () => {
     const before = await helper.screenshotCanvas()
 
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       const pageNode = store.graph.getNode(store.state.currentPageId)
@@ -208,6 +230,8 @@ test.describe('Zoom and pan', () => {
     expect(Buffer.from(before)).not.toEqual(Buffer.from(after))
 
     await helper.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.clearSelection()
@@ -219,6 +243,8 @@ test.describe('Zoom and pan', () => {
     const ITERATIONS = 500
 
     const results = await helper.page.evaluate((iterations: number) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
 

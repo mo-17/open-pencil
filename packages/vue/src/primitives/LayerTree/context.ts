@@ -7,14 +7,15 @@ export interface LayerNode {
   id: string
   name: string
   type: string
-  // Phase 2 §6 — tightened from `string` to `LayoutMode` so consumers using
-  // `nodeIcon()` (and any other `isAutoLayoutMode`-based dispatch) type-check
-  // against the FREE variant. Population sites already feed real LayoutMode
-  // values from `SceneNode.layoutMode`.
   layoutMode: LayoutMode
+  /** Whether the layer holds a slot property's content. */
+  slot?: boolean
+  /** Whether the layer is an icon from a set. */
+  icon?: boolean
   visible: boolean
   locked: boolean
   moduleIdentity?: Pick<ModuleInstanceV1, 'pluginId' | 'moduleType'>
+  modeIds?: string[]
   children?: LayerNode[]
 }
 

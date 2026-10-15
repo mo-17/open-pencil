@@ -11,6 +11,8 @@ import {
 } from '@/app/lowcode/backend/business/pages/module'
 import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 
+import { readBackendResourceDataSource } from '#tests/helpers/lowcode/backend-bindings'
+
 const definition = enterpriseApprovalsDefinition()
 const application = () =>
   createApprovalsApplication('approvals-pages', {
@@ -40,7 +42,7 @@ describe('enterprise approval page definition', () => {
       const nodes = [...editor.graph.getAllNodes()]
       for (const node of nodes) {
         if (node.renderCondition) expect(parseExpression(node.renderCondition).ok).toBe(true)
-        const source = node.interactiveProps?.dataSourceRef
+        const source = readBackendResourceDataSource(node.interactiveProps?.dataSourceRef)
         if (source?.kind === 'backendResource')
           for (const expression of [
             source.afterExpr,
@@ -83,7 +85,7 @@ describe('enterprise approval page definition', () => {
     expect(() => preflightBusinessPages(app, definition)).not.toThrow()
     const actions = definition.pages.flatMap((page) => page.actions)
     expect(actions).toHaveLength(14)
-    expect(actions.map((entry) => entry.commandId).sort()).toEqual(
+    expect<unknown>(actions.map((entry) => entry.commandId).sort()).toEqual(
       app.commands?.commands.map((entry) => entry.id).sort()
     )
     for (const entry of actions.filter(

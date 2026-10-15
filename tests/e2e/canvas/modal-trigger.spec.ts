@@ -24,6 +24,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     })
     const nodeIds = await page.evaluate(
       async ({ trigger }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const editor = window.openPencil.getStore()
         const moduleURL = performance
           .getEntriesByType('resource')
@@ -82,9 +84,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       },
       { trigger }
     )
-    await page.evaluate(() => window.openPencil.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil.test?.navigation?.waitForSettlement()
+    })
     await canvas.canvas.screenshot({ path: info.outputPath(`${renderer}-modal-trigger-live.png`) })
     const png = await page.evaluate(async ({ root }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const bytes = await window.openPencil.getStore().renderExportImage([root], 1, 'PNG')
       if (!bytes) throw new Error('Modal PNG unavailable')
       return Array.from(bytes)

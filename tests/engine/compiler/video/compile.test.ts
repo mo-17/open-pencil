@@ -91,7 +91,7 @@ test('invalid or wrong-kind video bindings remain present as undefined, without 
   graph.updateNode(frame.id, {
     bindings: {
       src: { kind: 'expr', expr: 'unknownSelection.src' },
-      poster: { kind: 'state', statePath: 'selectedMedia' }
+      poster: { kind: 'ref', stateId: 'selectedMedia' }
     }
   })
   const ir = collectTree(graph, pageId)

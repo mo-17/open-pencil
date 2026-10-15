@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { nativeBorderRadius, nativeTextSize } from '../native-shared'
 import type { ExpoStyleResult, ExpoStyleValue, ExpoWarningSink } from './types'
 
@@ -399,7 +401,7 @@ export function translateExpoStyle(
   warn: ExpoWarningSink
 ): ExpoStyleResult {
   const result: ExpoStyleResult = { style: {} }
-  for (const utility of className.split(/\s+/).filter(Boolean)) {
+  for (const utility of compact(className.split(/\s+/))) {
     if (VARIANT_PREFIX_RE.test(utility)) {
       warn({
         code: 'expo-style-variant-unsupported',

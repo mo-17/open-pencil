@@ -67,7 +67,7 @@ const detailInvalid = computed(() => (model.dirty || model.configured) && !model
         v-if="expressionInvalid"
         :id="`${id}-expression-error`"
         role="alert"
-        class="text-[10px] text-danger"
+        class="text-[10px] text-error"
       >
         {{ messages.applicationGuardExpressionInvalid }}
       </p>
@@ -95,7 +95,7 @@ const detailInvalid = computed(() => (model.dirty || model.configured) && !model
         v-if="detailInvalid"
         :id="`${id}-detail-error`"
         role="alert"
-        class="text-[10px] text-danger"
+        class="text-[10px] text-error"
       >
         {{
           enter ? messages.applicationGuardFallbackInvalid : messages.applicationGuardMessageInvalid

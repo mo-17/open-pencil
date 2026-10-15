@@ -10,6 +10,8 @@ import {
   PROGRESS_MODULE_DEFAULT_CONFIG
 } from '#core/plugins/progress'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('linear Progress paints the real percentage and shapes Chinese labels', async () => {
@@ -110,8 +112,7 @@ test('invalid Progress configuration is not painted as a working module', async 
     graph.getPages()[0].id,
     createProgressModuleFrameOverrides()
   )
-  if (!node.interactiveProps?.module) throw new Error('Missing progress module')
-  node.interactiveProps.module.config.value = 101
+  expectModuleInstance(node.interactiveProps?.module).config.value = 101
   try {
     expect(renderProgressModulePreview(h.renderer, h.canvas, node)).toBe(false)
     expect(progressTextNode(node)).toBeNull()

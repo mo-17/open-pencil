@@ -7,6 +7,8 @@ import { fontFaceDemand, fontManager, fontResolver } from '@open-pencil/core/tex
 
 import { useNodeFontStatus } from '#vue/shared/font-status/use'
 
+const regularFontAsset = new URL(import.meta.resolve('@open-pencil/core/assets/Inter-Regular.ttf'))
+
 function textNode(family: string) {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
@@ -22,7 +24,7 @@ describe('useNodeFontStatus', () => {
     const family = `PendingFont_${Date.now()}`
     const node = textNode(family)
     const demand = fontFaceDemand(family, 'Regular', node.text)
-    const fontData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const fontData = await Bun.file(regularFontAsset).arrayBuffer()
     fontResolver.reset(demand)
     const resolution = fontResolver.demand(demand)
     const scope = effectScope()
@@ -60,7 +62,7 @@ describe('useNodeFontStatus', () => {
     const family = `RetryFont_${Date.now()}`
     const node = textNode(family)
     const demand = fontFaceDemand(family, 'Regular', node.text)
-    const fontData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const fontData = await Bun.file(regularFontAsset).arrayBuffer()
     fontResolver.exhaust(demand)
     const scope = effectScope()
     const status = scope.run(() => useNodeFontStatus(() => node))
@@ -85,11 +87,7 @@ describe('useNodeFontStatus', () => {
     const node = textNode(family)
     const demand = fontFaceDemand(family, 'Regular', node.text)
     fontResolver.exhaust(demand)
-    fontManager.markLoaded(
-      family,
-      'Regular',
-      await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
-    )
+    fontManager.markLoaded(family, 'Regular', await Bun.file(regularFontAsset).arrayBuffer())
     const scope = effectScope()
     const status = scope.run(() => useNodeFontStatus(() => node))
     if (!status) throw new Error('Font status scope did not initialize')
@@ -104,7 +102,7 @@ describe('useNodeFontStatus', () => {
     const family = `JoinedRetryFont_${Date.now()}`
     const node = textNode(family)
     const demand = fontFaceDemand(family, 'Regular', node.text)
-    const fontData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const fontData = await Bun.file(regularFontAsset).arrayBuffer()
     let release: ((data: ArrayBuffer | null) => void) | undefined
     fontManager.setHostFontLoader(
       () =>

@@ -112,7 +112,8 @@ defineExpose({ focusStudioConfig })
         :key="option.id"
         type="button"
         :aria-pressed="workspace === option.id"
-        :data-test-id="`design-panel-workspace-${option.id}`"
+        data-slot="inspector-workspace"
+        :data-workspace="option.id"
         class="min-w-0 truncate rounded px-1 py-1 text-[10px] font-medium text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent aria-pressed:bg-panel aria-pressed:text-surface aria-pressed:shadow-sm"
         @click="selectWorkspace(option.id)"
       >
@@ -173,14 +174,17 @@ defineExpose({ focusStudioConfig })
             <li
               v-for="(section, index) in sections"
               :key="section.id"
-              :data-test-id="`design-panel-studio-row-${section.id}`"
+              data-slot="inspector-section"
+              :data-section-id="section.id"
               class="flex min-w-0 items-center gap-1 rounded px-1.5 py-1 hover:bg-hover"
             >
               <button
                 type="button"
                 :aria-label="sectionToggleLabel(section)"
                 :aria-pressed="section.visible"
-                :data-test-id="`design-panel-studio-row-${section.id}-toggle`"
+                data-slot="inspector-section-action"
+                data-command="toggle-section"
+                :data-section-id="section.id"
                 class="flex size-6 shrink-0 items-center justify-center rounded text-muted outline-none hover:bg-panel hover:text-surface focus-visible:ring-1 focus-visible:ring-accent aria-pressed:text-accent"
                 @click="emit('toggle-section', section.id)"
               >
@@ -198,7 +202,9 @@ defineExpose({ focusStudioConfig })
               <button
                 type="button"
                 :aria-label="sectionMoveLabel(section, 'up')"
-                :data-test-id="`design-panel-studio-row-${section.id}-up`"
+                data-slot="inspector-section-action"
+                data-command="move-section-up"
+                :data-section-id="section.id"
                 :disabled="index === 0"
                 class="flex size-6 shrink-0 items-center justify-center rounded text-muted outline-none hover:bg-panel hover:text-surface focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-30"
                 @click="emit('move-section', section.id, 'up')"
@@ -208,7 +214,9 @@ defineExpose({ focusStudioConfig })
               <button
                 type="button"
                 :aria-label="sectionMoveLabel(section, 'down')"
-                :data-test-id="`design-panel-studio-row-${section.id}-down`"
+                data-slot="inspector-section-action"
+                data-command="move-section-down"
+                :data-section-id="section.id"
                 :disabled="index === sections.length - 1"
                 class="flex size-6 shrink-0 items-center justify-center rounded text-muted outline-none hover:bg-panel hover:text-surface focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-30"
                 @click="emit('move-section', section.id, 'down')"

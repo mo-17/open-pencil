@@ -31,7 +31,7 @@ export function applicationShellFixture() {
       width: 180,
       height: 48,
       interactiveProps: { text },
-      events: { onClick: [{ kind: 'navigate', to }] }
+      events: { onClick: [{ id: 'fixture-action-1', kind: 'navigate', to }] }
     })
   }
   const toHome = nav(sidebar, 'Shell Home', '/home')

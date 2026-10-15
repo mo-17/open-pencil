@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { compile, withDefaults, type CompilerTarget } from '@open-pencil/compiler'
+import {
+  compile,
+  withDefaults,
+  type CompilerTarget,
+  type CompilerRouter
+} from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { auditLowcodeNavigation, validateLowcodeBackFallback } from '@open-pencil/lowcode'
 import { SceneGraph, type ActionDef } from '@open-pencil/scene-graph'
@@ -39,7 +44,7 @@ function fixture(actions: ActionDef[]) {
 
 function generate(target: CompilerTarget, actions: ActionDef[]) {
   const f = fixture(actions)
-  const routers: Partial<Record<CompilerTarget, string>> = {
+  const routers: Partial<Record<CompilerTarget, CompilerRouter>> = {
     react: 'react-router-v6',
     vue: 'vue-router-v4',
     flutter: 'flutter-router',
@@ -67,7 +72,7 @@ describe('Authored navigation history actions', () => {
   test('IR preserves replacement metadata and parameter bindings without graph mutation', () => {
     const { graph, home, button } = fixture([replace, back])
     const before = structuredClone(button.events)
-    const tree = collectTree(graph, home.id, withDefaults({ router: 'react-router-v6' }))
+    const tree = collectTree(graph, home.id)
     const walk = JSON.stringify(tree.children)
     expect(walk).toContain('"history":"replace"')
     expect(walk).toContain('"kind":"back","fallback":"/home?category=active#list"')
@@ -205,7 +210,7 @@ describe('Authored navigation history actions', () => {
           consequent: [{ id: 'back', kind: 'back', fallback: target }]
         }
       ])
-      const tree = collectTree(f.graph, f.home.id, withDefaults({ router: 'react-router-v6' }))
+      const tree = collectTree(f.graph, f.home.id)
       expect(tree.warnings.some((w) => w.code === 'action-back-invalid-fallback')).toBe(true)
       expect(auditLowcodeNavigation(f.graph).summary.invalidEdges).toBe(1)
     }
@@ -223,7 +228,7 @@ describe('Authored navigation history actions', () => {
         ]
       }
     })
-    const tree = collectTree(f.graph, f.home.id, withDefaults({ router: 'react-router-v6' }))
+    const tree = collectTree(f.graph, f.home.id)
     expect(tree.warnings.some((w) => w.code === 'action-navigate-invalid-history')).toBe(true)
   })
 

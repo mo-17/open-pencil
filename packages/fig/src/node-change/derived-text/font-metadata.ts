@@ -33,7 +33,11 @@ export function buildDerivedTextFontMetaData(
     if (seen.has(key)) return
     seen.add(key)
     fontMeta.push({
-      key: { family: normalized, style: weightToFigmaStyle(weight, italic), postscript: '' },
+      key: {
+        family: normalized,
+        style: weightToFigmaStyle(weight, italic),
+        postscript: ''
+      },
       fontLineHeight: naturalLineHeightRatio(runtime, normalized, style, fontSize),
       fontDigest: digestMap.get(key),
       fontStyle: italic ? 'ITALIC' : 'NORMAL',

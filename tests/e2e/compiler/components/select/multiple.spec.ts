@@ -75,10 +75,31 @@ for (const variant of ['react', 'vue', 'shadcn'] as const) {
       await page.getByRole('option', { name: 'Alpha', exact: true }).click()
       await local.press('Escape')
       await expect(local).toContainText('Alpha')
-      await native.evaluate((el: HTMLSelectElement) => el.form?.reset())
+      await expect.poll(values).toEqual(['a', 'b'])
+      const changes = page.getByText(/^Changes\[\d+\]$/)
+      const changesBeforeReset = await changes.innerText()
+      const blurs = page.getByText(/^Blurs\[\d+\]$/)
+      const blursBeforeReset = await blurs.innerText()
+      await native.evaluate((el: HTMLSelectElement) => {
+        const form = el.form
+        if (!form) throw new Error('The SELECT must retain its native form owner')
+        return new Promise<void>((resolve) => {
+          form.addEventListener('__openPencilFormResetAccepted', () => resolve(), { once: true })
+          form.reset()
+        })
+      })
       await expect(local).toContainText('Beta')
       await expect(local).not.toContainText('Alpha')
-      await expect.poll(values).toEqual(['a', 'b'])
+      await expect.poll(values).toEqual(['a'])
+      await expect(topics).toContainText('Alpha')
+      await expect(topics).not.toContainText('北京 Beijing')
+      await expect(changes).toHaveText(changesBeforeReset)
+      await expect(blurs).toHaveText(blursBeforeReset)
+      expect(
+        await native.evaluate((el: HTMLSelectElement) =>
+          el.form ? new FormData(el.form).getAll('topics') : []
+        )
+      ).toEqual(['a'])
       await expect(
         page.getByRole('combobox', { name: 'Disabled topics', exact: true })
       ).toBeDisabled()

@@ -4,6 +4,8 @@ import { expect, type Page } from '@playwright/test'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
+import { parseJSONBytes } from '#tests/helpers/serialization'
+
 export type CodePaintObservation = Pick<SceneNode, 'id' | 'width' | 'pluginData' | 'strokes'>
 
 export async function openCodePaintDocument(
@@ -13,7 +15,7 @@ export async function openCodePaintDocument(
 ): Promise<void> {
   const data =
     bytes ??
-    (JSON.parse(
+    parseJSONBytes(
       execFileSync(
         'bun',
         [
@@ -22,7 +24,7 @@ export async function openCodePaintDocument(
         ],
         { encoding: 'utf8' }
       )
-    ) as number[])
+    )
   await page.evaluate(async (content) => {
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor not initialized')

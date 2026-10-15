@@ -7,7 +7,10 @@ import {
   isBundledFontWebRuntime
 } from './bundled-font-loader.browser'
 
-export { MAX_BUNDLED_FONT_WORKER_BYTES } from './bundled-font-loader.browser'
+export {
+  isBundledFontWebRuntime,
+  MAX_BUNDLED_FONT_WORKER_BYTES
+} from './bundled-font-loader.browser'
 
 /** Bun/Node entrypoint. Vite aliases this module to the browser-only implementation. */
 export async function fetchBundledFontBytes(value: string): Promise<ArrayBuffer> {

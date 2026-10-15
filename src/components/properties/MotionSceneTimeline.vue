@@ -30,7 +30,7 @@ const scene = provideMotionSceneTimelineView()
         </li>
       </ul>
     </div>
-    <p v-if="scene.errorMessage" role="alert" class="mt-2 text-[10px] leading-4 text-danger">
+    <p v-if="scene.errorMessage" role="alert" class="mt-2 text-[10px] leading-4 text-error">
       {{ scene.errorMessage }}
     </p>
   </section>

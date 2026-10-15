@@ -1,11 +1,11 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { renderShapeUncached } from '#core/canvas/scene'
 import { renderSwitchContent, withSwitchSurface } from '#core/canvas/switch'
+
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
 
 import { createMockCanvas, createMockRenderer, mockCalls } from './effects/helpers'
 
@@ -20,7 +20,7 @@ describe('SWITCH canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
 
-    renderShapeUncached(renderer, canvas as Canvas, node, graph)
+    renderShapeUncached(renderer, asCanvas(canvas), node, graph)
 
     expect(canvas.drawCircle).toHaveBeenCalledTimes(1)
     expect(mockCalls(renderer.drawNodeFill as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
@@ -43,7 +43,7 @@ describe('SWITCH canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderSwitchContent(renderer, canvas as Canvas, node, graph)
+    renderSwitchContent(renderer, asCanvas(canvas), node, graph)
 
     expect(mockCalls(canvas.drawCircle)[0]?.[0]).toBeCloseTo(checked ? 32 : 12)
     expect(mockCalls(canvas.drawCircle)[0]?.[1]).toBeCloseTo(12)
@@ -64,7 +64,7 @@ describe('SWITCH canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderSwitchContent(renderer, canvas as Canvas, node, graph)
+    renderSwitchContent(renderer, asCanvas(canvas), node, graph)
 
     expect(mockCalls(canvas.drawCircle)[0]?.[0]).toBeCloseTo(12)
     expect(node.interactiveProps?.checked).toBe(true)
@@ -84,8 +84,8 @@ describe('SWITCH canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    withSwitchSurface(renderer, canvas as Canvas, node, graph, (surface) => {
-      renderSwitchContent(renderer, canvas as Canvas, surface, graph)
+    withSwitchSurface(renderer, asCanvas(canvas), node, graph, (surface) => {
+      renderSwitchContent(renderer, asCanvas(canvas), surface, graph)
     })
 
     expect(renderer.ck.LTRBRect).toHaveBeenCalledWith(0, 0, 320, 44)
@@ -105,7 +105,7 @@ describe('SWITCH canvas content', () => {
       const node = graph.createNode('SWITCH', graph.getPages()[0].id, size)
       const canvas = createMockCanvas()
 
-      renderSwitchContent(createMockRenderer(), canvas as Canvas, node, graph)
+      renderSwitchContent(createMockRenderer(), asCanvas(canvas), node, graph)
 
       expect(canvas.drawCircle).not.toHaveBeenCalled()
       expect(canvas.save).not.toHaveBeenCalled()
@@ -118,7 +118,7 @@ describe('SWITCH canvas content', () => {
     const canvas = createMockCanvas()
     const renderer = createMockRenderer()
 
-    renderSwitchContent(renderer, canvas as Canvas, node, graph)
+    renderSwitchContent(renderer, asCanvas(canvas), node, graph)
 
     expect(renderer.ck.LTRBRect).toHaveBeenCalledWith(0, 0, 2, 1)
     expect(mockCalls(canvas.drawCircle)[0]?.[0]).toBeCloseTo(0.5)
@@ -136,7 +136,7 @@ describe('SWITCH canvas content', () => {
     const renderer = createMockRenderer()
 
     expect(() =>
-      withSwitchSurface(renderer, canvas as Canvas, node, graph, () => {
+      withSwitchSurface(renderer, asCanvas(canvas), node, graph, () => {
         throw new Error('render failure')
       })
     ).toThrow('render failure')

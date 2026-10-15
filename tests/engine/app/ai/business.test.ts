@@ -20,7 +20,7 @@ describe('business template AI entry', () => {
       expect(designSystemPromptFor('direct')).toContain(kind)
   })
 
-  test.each(BUSINESS_TEMPLATE_IDS)(
+  test.each([...BUSINESS_TEMPLATE_IDS])(
     'creates %s in a single undo without deploying or granting roles',
     async (kind) => {
       const value = await businessBrowserFixture(kind, 'vue')

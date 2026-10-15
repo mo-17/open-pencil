@@ -40,7 +40,7 @@ interface MutableCaptureHighWater {
   withinReceiptCountLimit: boolean
 }
 
-interface MutableCaptureRow {
+interface MutableCaptureRow extends Record<string, unknown> {
   highWater: MutableCaptureHighWater
   extension?: boolean
 }
@@ -401,7 +401,7 @@ describe('Supabase locked high-water capture', () => {
 
     for (const entry of cases) {
       const fixture = await createBackfillLockedHighWaterCaptureFixture()
-      const row = structuredClone(lockedHighWaterResponse(fixture)) as MutableCaptureRow
+      const row = structuredClone(lockedHighWaterResponse(fixture))
       entry.mutate(row)
       await captureError(
         captureSupabaseBackfillLockedHighWaterV1(

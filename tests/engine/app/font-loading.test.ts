@@ -30,7 +30,9 @@ describe('app font loading', () => {
   })
 
   test('ensureGraphFonts loads fallback packs when loaded primary font misses CJK glyphs', async () => {
-    const interData = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    const interData = await Bun.file(
+      repoPath('packages/core/assets/Inter-Regular.ttf')
+    ).arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', interData)
 
     const graph = new SceneGraph()
@@ -79,12 +81,13 @@ describe('app font loading', () => {
 
     fontManager.blockNodesUntilFontsResolve([text.id])
     fontManager.loadFont = async (_family, _style, _characters, options) => {
-      receivedSignal = options?.signal
+      const signal = options instanceof AbortSignal ? options : options?.signal
+      receivedSignal = signal
       return new Promise((_resolve, reject) => {
-        options?.signal?.addEventListener(
+        signal?.addEventListener(
           'abort',
           () => {
-            const reason = options.signal?.reason
+            const reason = signal?.reason
             reject(reason instanceof Error ? reason : new Error('aborted'))
           },
           { once: true }

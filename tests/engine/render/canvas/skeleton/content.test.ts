@@ -10,6 +10,8 @@ import {
   SKELETON_MODULE_DEFAULT_CONFIG
 } from '#core/plugins/skeleton'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('text Skeleton paints the authored rows, gaps and shortened last line without animation', async () => {
@@ -97,7 +99,7 @@ test('circular Skeleton has empty corners and an invalid envelope retains static
     expect(h.rgb(first, 5, 16)).toEqual([255, 255, 255])
     expect(h.rgb(first, 29, 40)).toEqual([226, 232, 240])
     if (!node.interactiveProps?.module) throw new Error('Missing skeleton')
-    node.interactiveProps.module.config.rows = 99
+    expectModuleInstance(node.interactiveProps?.module).config.rows = 99
     expect(renderSkeletonModulePreview(h.renderer, h.canvas, node)).toBe(false)
     expect(skeletonTextNode(node)).toBeNull()
   } finally {

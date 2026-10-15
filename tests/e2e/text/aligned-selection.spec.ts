@@ -11,6 +11,8 @@ test('centered and bottom-aligned text selection follows the rendered text', asy
   ] as const) {
     const geometry = await editor.page.evaluate(
       ({ horizontal, vertical }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         const id = store.createShape('TEXT', 300, 250, 220, 120)
@@ -36,6 +38,8 @@ test('centered and bottom-aligned text selection follows the rendered text', asy
 
     await editor.page.keyboard.press('Escape')
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       const selectedId = store?.state.selectedIds.values().next().value
       if (selectedId) store?.graph.deleteNode(selectedId)

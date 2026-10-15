@@ -160,9 +160,9 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
       })
     )
 
-    expect(SUPABASE_PG_CATALOG_FIXED_QUERIES.map(({ queryId }) => queryId)).toEqual(
-      SUPABASE_PG_CATALOG_QUERY_IDS
-    )
+    expect(SUPABASE_PG_CATALOG_FIXED_QUERIES.map(({ queryId }) => queryId)).toEqual([
+      ...SUPABASE_PG_CATALOG_QUERY_IDS
+    ])
     for (const definition of SUPABASE_PG_CATALOG_FIXED_QUERIES) {
       expect(definition.parameterOrder).toEqual(['schema', 'rowLimit'])
       expect(definition.sql).toMatch(/^(?:SELECT|WITH)\b/u)
@@ -204,7 +204,9 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
     )
     expect(fixedSql).not.toMatch(/::(?:text|integer|boolean|jsonb|regclass|oid|"char")\b/u)
     expect(fixedSql).toContain("'pg_catalog.pg_class'::pg_catalog.regclass")
-    expect(captured?.queries.map(({ queryId }) => queryId)).toEqual(SUPABASE_PG_CATALOG_QUERY_IDS)
+    expect(captured?.queries.map(({ queryId }) => queryId)).toEqual([
+      ...SUPABASE_PG_CATALOG_QUERY_IDS
+    ])
     expect(captured?.queries.every((query) => !Object.hasOwn(query, 'sql'))).toBe(true)
     expect(captured).toMatchObject({
       projectRef: PROJECT_REF,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { pathToFileURL } from 'node:url'
 
 import { PLUGIN_RUNTIME_COMPUTE_ABI } from '@open-pencil/plugin-contracts'
 
@@ -9,6 +10,8 @@ import {
   type PluginRuntimeWorkerResponse
 } from '@/app/plugins/runtime'
 import { createPluginRuntimeWorkerRequestHandler } from '@/app/plugins/runtime/worker-handler'
+
+import { repoPath } from '#tests/helpers/paths'
 
 function unsignedLeb(value: number): number[] {
   const encoded: number[] = []
@@ -124,10 +127,9 @@ async function handlerResponse(value: unknown): Promise<PluginRuntimeWorkerRespo
 async function actualWorkerResponse(
   value: PluginRuntimeWorkerRequest
 ): Promise<PluginRuntimeWorkerResponse> {
-  const worker = new Worker(
-    new URL('../../../../../src/app/plugins/runtime/wasm-worker.ts', import.meta.url),
-    { type: 'module' }
-  )
+  const worker = new Worker(pathToFileURL(repoPath('src/app/plugins/runtime/wasm-worker.ts')), {
+    type: 'module'
+  })
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       worker.terminate()

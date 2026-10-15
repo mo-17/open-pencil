@@ -11,11 +11,8 @@ import {
   type AliyunDriveOAuthClient,
   type AliyunDriveOAuthPublicMetadata
 } from '@/app/integrations/storage/aliyun-drive/oauth/envelope'
-import type { AliyunDriveOAuthError } from '@/app/integrations/storage/aliyun-drive/oauth/errors'
-import {
-  createAliyunDriveOAuthRuntime,
-  type AliyunDriveOAuthMetadataStore
-} from '@/app/integrations/storage/aliyun-drive/oauth/runtime'
+import type { AliyunDriveOAuthMetadataStore } from '@/app/integrations/storage/aliyun-drive/oauth/metadata'
+import { createAliyunDriveOAuthRuntime } from '@/app/integrations/storage/aliyun-drive/oauth/runtime'
 import { createAliyunDriveOAuthSession } from '@/app/integrations/storage/aliyun-drive/oauth/session'
 import {
   CredentialStoreError,
@@ -29,6 +26,13 @@ import type {
   AliyunDriveNativeBridge,
   AliyunDriveNativeRefreshResult
 } from '@/app/tauri/aliyun-drive'
+
+function refreshGrantJSON(raw: string) {
+  const grant = parseAliyunDriveAuthorizationEnvelopeJSON(raw)
+  if (grant.grantType !== 'refresh-grant')
+    throw new TypeError('Expected a persisted refresh grant.')
+  return grant
+}
 
 const REDIRECT_URI = 'http://127.0.0.1:43127/oauth/aliyun-drive/callback'
 const AUTHORIZATION_VERSION = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -204,9 +208,7 @@ describe('Aliyun Drive OAuth runtime', () => {
       authority: { accountId: 'user-1', authorizationVersion: AUTHORIZATION_VERSION }
     })
     expect(events).toEqual(['native:self-hosted-confidential', 'credential-set', 'returned'])
-    expect(parseAliyunDriveAuthorizationEnvelopeJSON(vault.value ?? '').refreshToken).toBe(
-      'refresh-new'
-    )
+    expect(refreshGrantJSON(vault.value ?? '').refreshToken).toBe('refresh-new')
   })
 
   test('accepts an exact rotated-token readback when the credential write throws after committing', async () => {
@@ -242,9 +244,7 @@ describe('Aliyun Drive OAuth runtime', () => {
     await expect(runtime.resolveAccessToken()).resolves.toMatchObject({ accessToken: 'access-new' })
     expect(refreshCalls).toBe(1)
     expect(vault.sets).toHaveLength(1)
-    expect(parseAliyunDriveAuthorizationEnvelopeJSON(vault.value ?? '').refreshToken).toBe(
-      'refresh-new'
-    )
+    expect(refreshGrantJSON(vault.value ?? '').refreshToken).toBe('refresh-new')
   })
 
   test('fails closed without restoring a consumed refresh token when the write did not commit', async () => {
@@ -274,12 +274,8 @@ describe('Aliyun Drive OAuth runtime', () => {
       now: () => NOW
     })
 
-    await expect(runtime.resolveAccessToken()).rejects.toMatchObject<
-      Partial<AliyunDriveOAuthError>
-    >({ code: 'persistence-failed' })
-    await expect(runtime.resolveAccessToken()).rejects.toMatchObject<
-      Partial<AliyunDriveOAuthError>
-    >({ code: 'persistence-failed' })
+    await expect(runtime.resolveAccessToken()).rejects.toMatchObject({ code: 'persistence-failed' })
+    await expect(runtime.resolveAccessToken()).rejects.toMatchObject({ code: 'persistence-failed' })
     expect(refreshCalls).toBe(1)
     expect(vault.value).toBe(previousRaw)
     expect(vault.sets).toHaveLength(1)
@@ -309,18 +305,14 @@ describe('Aliyun Drive OAuth runtime', () => {
       now: () => NOW
     })
 
-    await expect(runtime.resolveAccessToken()).rejects.toMatchObject<
-      Partial<AliyunDriveOAuthError>
-    >({ code: 'persistence-failed' })
+    await expect(runtime.resolveAccessToken()).rejects.toMatchObject({ code: 'persistence-failed' })
     await expect(runtime.resolveAccessToken()).rejects.toMatchObject({
       code: 'persistence-failed'
     })
     await expect(runtime.getAuthority()).rejects.toMatchObject({ code: 'persistence-failed' })
     expect(refreshCalls).toBe(1)
     expect(vault.sets).toHaveLength(1)
-    expect(parseAliyunDriveAuthorizationEnvelopeJSON(vault.value ?? '').refreshToken).toBe(
-      'refresh-new'
-    )
+    expect(refreshGrantJSON(vault.value ?? '').refreshToken).toBe('refresh-new')
   })
 
   test('keeps a sticky failure when rotated-token readback becomes locked', async () => {
@@ -359,9 +351,7 @@ describe('Aliyun Drive OAuth runtime', () => {
     })
     expect(refreshCalls).toBe(1)
     expect(vault.sets).toHaveLength(1)
-    expect(parseAliyunDriveAuthorizationEnvelopeJSON(vault.value ?? '').refreshToken).toBe(
-      'refresh-new'
-    )
+    expect(refreshGrantJSON(vault.value ?? '').refreshToken).toBe('refresh-new')
   })
 
   test('does not reuse a refresh token after native returns an unrotated grant', async () => {
@@ -433,9 +423,9 @@ describe('Aliyun Drive OAuth runtime', () => {
       }),
       now: () => NOW
     })
-    await expect(expiredRuntime.resolveAccessToken()).rejects.toMatchObject<
-      Partial<AliyunDriveOAuthError>
-    >({ code: 'reconnect-required' })
+    await expect(expiredRuntime.resolveAccessToken()).rejects.toMatchObject({
+      code: 'reconnect-required'
+    })
     expect(refreshCalls).toBe(0)
   })
 
@@ -632,14 +622,14 @@ describe('Aliyun Drive OAuth session', () => {
   test('persists self-hosted public PKCE as access-only with its expiry', async () => {
     const vault: MemoryVault = { value: null, status: 'missing', sets: [] }
     const publicStore = metadataStore()
-    let request: AliyunDriveNativeAuthorizeRequest | null = null
+    const requests: AliyunDriveNativeAuthorizeRequest[] = []
     const session = createAliyunDriveOAuthSession({
       profileId: 'default',
       ...credentials(vault),
       metadataStore: publicStore.store,
       native: nativeBridge({
         authorize(value) {
-          request = value
+          requests.push(value)
           const result: AliyunDriveNativeAuthorizeResult = {
             grantType: 'access-grant',
             accessToken: 'public-access',
@@ -656,7 +646,7 @@ describe('Aliyun Drive OAuth session', () => {
 
     const connected = await session.connect({ oauthClient: PUBLIC_CLIENT })
 
-    expect(request?.oauthClient).toEqual(PUBLIC_CLIENT)
+    expect(requests[0]?.oauthClient).toEqual(PUBLIC_CLIENT)
     expect(connected.grantType).toBe('access-grant')
     expect(connected.accessExpiresAt).toBe(NOW + 30 * 24 * 60 * 60 * 1_000)
     expect(parseAliyunDriveAuthorizationEnvelopeJSON(vault.value ?? '').grantType).toBe(

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { vueAdapter } from '#compiler/adapters/vue'
 import type { ComponentDef, IRElement, IRTree } from '#compiler/ir/types'
 import { toUint8Array } from 'js-base64'
+import * as v from 'valibot'
 import { compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
 import { compile, withDefaults, type CompilerFontManifest } from '@open-pencil/compiler'
@@ -178,10 +179,17 @@ describe('Vue compiler adapter', () => {
 
     const output = compile({ graph, pageIds: [pageId], options: vueOptions(), fontManifest })
     const page = textFile(output.files, 'src/pages/index.vue')
-    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
-      dependencies: Record<string, string>
-      scripts: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.record(v.string(), v.string()),
+          scripts: v.record(v.string(), v.string())
+        })
+      ),
+      textFile(output.files, 'package.json')
+    )
     const assetPath = [...output.files.keys()].find((path) =>
       path.startsWith('src/assets/openpencil-image-')
     )

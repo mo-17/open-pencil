@@ -94,7 +94,7 @@ describe('built-in modal plugin', () => {
     expect(resolved?.ok).toBe(true)
     if (!resolved?.ok) throw new Error('expected legacy modal module to resolve')
     expect(resolved.instance.configVersion).toBe(1)
-    expect(Object.keys(resolved.config)).toEqual(LEGACY_CONFIG_KEYS)
+    expect(Object.keys(resolved.config)).toEqual([...LEGACY_CONFIG_KEYS])
     expect(resolved.config.content).toBe('Existing document text')
     expect(Object.hasOwn(resolved.config, 'contentChildName')).toBe(false)
     expect(legacy).toEqual(before)

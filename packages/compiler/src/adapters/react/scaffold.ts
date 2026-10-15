@@ -8,6 +8,7 @@ import { pageViewportNodes } from '#compiler/adapters/page-viewport/project'
 import { reactPageViewportBoundary } from '#compiler/adapters/page-viewport/source'
 import { nodesUseMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import type { IRNode, IRTree } from '#compiler/ir/types'
+import { compact } from 'es-toolkit'
 
 import { reactGuardPageImports, reactGuardLeaveHook } from '../application-guards/emit'
 import { buildGuardedReactRouterApp } from '../application-guards/project'
@@ -455,12 +456,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // §17: per-LIST Supabase fetch hooks. Emitted after the state / docState /
   // router hooks above so their effect deps (page-state, doc-state, `$params`)
   // reference locals already declared.
-  const listQueryLines = [
+  const listQueryLines = compact([
     ...(ir.listQueries ?? []).map(emitListQueryHook),
     reactBackendQueryLines(ir)
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ]).join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
   // Phase 4 §19: the field-errors store + `__validators` map + validate

@@ -8,7 +8,9 @@ import { openReaderSession } from '#core/kiwi/fig/session/reader'
 async function sessionWithComponent() {
   await initCodec()
   const source = new SceneGraph()
-  const component = source.createNode('COMPONENT', source.getPages()[0].id, { name: 'Component' })
+  const component = source.createNode('COMPONENT', source.getPages()[0].id, {
+    name: 'Component'
+  })
   source.createNode('RECTANGLE', component.id, { name: 'Delete me' })
   const bytes = await exportFigFile(source)
   return openReaderSession(bytes.slice().buffer as ArrayBuffer, 'all')
@@ -16,9 +18,7 @@ async function sessionWithComponent() {
 
 test('loaded structural component edits can be checkpointed and exported', async () => {
   const session = await sessionWithComponent()
-  const component = Array.from(session.graph.getAllNodes()).find(
-    (node) => node.name === 'Component'
-  )
+  const component = [...session.graph.getAllNodes()].find((node) => node.name === 'Component')
   if (!component) throw new Error('Missing component')
   session.graph.deleteNode(session.graph.getChildren(component.id)[0].id)
   expect(() => session.checkpoint()).not.toThrow()

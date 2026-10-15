@@ -1,14 +1,10 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, spyOn, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { createReloadActions } from '@/app/document/io/read'
 import { captureReloadState, resolveReloadPageId } from '@/app/document/io/reload-state'
-
-import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
-
-import { createOwnershipWorker } from '#tests/helpers/worker'
 
 function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
   const graph = new SceneGraph()
@@ -22,12 +18,6 @@ function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
     graph.updateNode(node.id, { source: { ...node.source, id: page.sourceId } })
   }
   return graph
-}
-
-function trackGraphResource(graph: SceneGraph) {
-  const terminate = mock(() => undefined)
-  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
-  return terminate
 }
 
 describe('document reload', () => {
@@ -53,9 +43,7 @@ describe('document reload', () => {
     const stale = graphWithPages([{ name: 'Stale', sourceId: 'source-1' }])
     const latest = graphWithPages([{ name: 'Latest', sourceId: 'source-1' }])
     const editor = createEditor({ graph: original, skipInitialGraphSetup: true })
-    const terminateOriginal = trackGraphResource(original)
-    const terminateStale = trackGraphResource(stale)
-    const terminateLatest = trackGraphResource(latest)
+    const releaseGraphResources = spyOn(editor, 'releaseGraphResources')
     const reads = [
       Promise.withResolvers<SceneGraph | null>(),
       Promise.withResolvers<SceneGraph | null>()
@@ -78,8 +66,7 @@ describe('document reload', () => {
     })
     const computeLayouts = mock(async () => undefined)
     const setSavedVersion = mock(() => undefined)
-    const replaceGraph = mock(editor.replaceGraph)
-    editor.replaceGraph = replaceGraph
+    const replaceGraph = spyOn(editor, 'replaceGraph')
     const { reloadFromDisk } = createReloadActions(
       {
         editor,
@@ -91,37 +78,51 @@ describe('document reload', () => {
       { readSource, computeLayouts }
     )
 
-    const first = reloadFromDisk()
-    await firstStarted.promise
-    const second = reloadFromDisk()
+    const pendingReloads: Promise<void>[] = []
+    try {
+      const first = reloadFromDisk()
+      pendingReloads.push(first)
+      await firstStarted.promise
+      const second = reloadFromDisk()
+      pendingReloads.push(second)
 
-    reads[0].resolve(stale)
-    await secondStarted.promise
-    expect(replaceGraph).not.toHaveBeenCalled()
-    expect(terminateStale).toHaveBeenCalledTimes(1)
+      reads[0].resolve(stale)
+      await secondStarted.promise
+      expect(replaceGraph).not.toHaveBeenCalled()
+      expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+      expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(stale)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === original)).toBe(false)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === latest)).toBe(false)
 
-    reads[1].resolve(latest)
-    await Promise.all([first, second])
+      reads[1].resolve(latest)
+      await Promise.all([first, second])
 
-    expect(maxActiveReads).toBe(1)
-    expect(readSource).toHaveBeenCalledTimes(2)
-    expect(computeLayouts).toHaveBeenCalledTimes(1)
-    expect(replaceGraph).toHaveBeenCalledTimes(1)
-    expect(editor.graph).toBe(latest)
-    expect(editor.state.currentPageId).toBe(latest.getPages()[0].id)
-    expect(editor.state.loading).toBe(false)
-    expect(setSavedVersion).toHaveBeenCalledTimes(1)
-    expect(terminateOriginal).toHaveBeenCalledTimes(1)
-    expect(terminateLatest).not.toHaveBeenCalled()
-    editor.releaseGraphResources()
+      expect(maxActiveReads).toBe(1)
+      expect(readSource).toHaveBeenCalledTimes(2)
+      expect(computeLayouts).toHaveBeenCalledTimes(1)
+      expect(replaceGraph).toHaveBeenCalledTimes(1)
+      expect(editor.graph).toBe(latest)
+      expect(editor.state.currentPageId).toBe(latest.getPages()[0].id)
+      expect(editor.state.loading).toBe(false)
+      expect(setSavedVersion).toHaveBeenCalledTimes(1)
+      expect(releaseGraphResources).toHaveBeenCalledTimes(2)
+      expect(releaseGraphResources.mock.calls[1]?.[0]).toBe(original)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === latest)).toBe(false)
+    } finally {
+      for (const read of reads) read.resolve(null)
+      await Promise.allSettled(pendingReloads)
+      replaceGraph.mockRestore()
+      releaseGraphResources.mockRestore()
+      editor.releaseGraphResources()
+      editor.dispose()
+    }
   })
 
   test('releases an imported graph when injected layout preparation fails', async () => {
     const original = graphWithPages([{ name: 'Original', sourceId: 'source-1' }])
     const imported = graphWithPages([{ name: 'Imported', sourceId: 'source-1' }])
     const editor = createEditor({ graph: original, skipInitialGraphSetup: true })
-    const terminateOriginal = trackGraphResource(original)
-    const terminateImported = trackGraphResource(imported)
+    const releaseGraphResources = spyOn(editor, 'releaseGraphResources')
     const { reloadFromDisk } = createReloadActions(
       {
         editor,
@@ -138,12 +139,18 @@ describe('document reload', () => {
       }
     )
 
-    await expect(reloadFromDisk()).rejects.toThrow('layout failed')
+    try {
+      await expect(reloadFromDisk()).rejects.toThrow('layout failed')
 
-    expect(editor.graph).toBe(original)
-    expect(terminateImported).toHaveBeenCalledTimes(1)
-    expect(terminateOriginal).not.toHaveBeenCalled()
-    editor.releaseGraphResources()
+      expect(editor.graph).toBe(original)
+      expect(releaseGraphResources).toHaveBeenCalledTimes(1)
+      expect(releaseGraphResources.mock.calls[0]?.[0]).toBe(imported)
+      expect(releaseGraphResources.mock.calls.some(([graph]) => graph === original)).toBe(false)
+    } finally {
+      releaseGraphResources.mockRestore()
+      editor.releaseGraphResources()
+      editor.dispose()
+    }
   })
 
   test('keeps the restored page observable during graph replacement', async () => {
@@ -182,7 +189,7 @@ describe('document reload', () => {
     await reloadFromDisk()
 
     expect(editor.state.currentPageId).toBe(importedTargetPage.id)
-    expect(pageAtGraphReplacement).toBe(importedTargetPage.id)
+    expect<string | null>(pageAtGraphReplacement).toBe(importedTargetPage.id)
     expect(pageChanges).toEqual([importedTargetPage.id])
   })
 

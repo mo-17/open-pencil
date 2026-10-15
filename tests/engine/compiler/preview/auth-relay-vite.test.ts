@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import { createServer, type Server } from 'node:http'
 
+import * as v from 'valibot'
+
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 
 async function listen(server: Server): Promise<number> {
@@ -78,7 +80,14 @@ test('Vite registers the relay only for a checked local backend and preserves no
     })
     expect(crossOrigin.status).toBe(403)
     expect(crossOrigin.headers.get('access-control-allow-origin')).toBeNull()
-    const ticket = (await registered.json()) as { requestId: string; pollToken: string }
+    const ticket = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ requestId: v.string(), pollToken: v.string() })
+      ),
+      await registered.text()
+    )
     const external = await fetch(
       origin + '/_openpencil/auth/callback?state=' + 'e'.repeat(43) + '&code=external',
       { headers: { accept: 'text/html' } }

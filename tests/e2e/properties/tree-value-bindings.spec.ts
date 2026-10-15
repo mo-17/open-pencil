@@ -23,6 +23,8 @@ test('Tree panel selects exact page/document types, edits its FORM field name an
 }) => {
   const canvas = await prepareExpansionModules(page, 'retained', ['tree'])
   const formId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore()
     editor.updateNode(editor.state.currentPageId, {
       state: [
@@ -52,6 +54,8 @@ test('Tree panel selects exact page/document types, edits its FORM field name an
   })
   await insertExpansionModule(page, 'tree')
   const treeId = await page.evaluate((form) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil.getStore(),
       id = [...editor.state.selectedIds][0]
     editor.graph.reparentNode(id, form)
@@ -69,32 +73,31 @@ test('Tree panel selects exact page/document types, edits its FORM field name an
   await fieldName.fill('categories')
   await fieldName.press('Enter')
   expect(
-    await page.evaluate(
-      (id) => window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.moduleFieldNames,
-      treeId
-    )
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.moduleFieldNames
+    }, treeId)
   ).toEqual({ value: 'categories' })
   const selectionMode = expansionField(page, 'selectionMode').getByRole('combobox')
   await selectionMode.click()
   await selectionMode.selectOption('multiple')
   await expect
     .poll(() =>
-      page.evaluate(
-        (id) =>
-          (
-            window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module as
-              | { config?: { selectionMode?: string } }
-              | undefined
-          )?.config?.selectionMode,
-        treeId
-      )
+      page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return (
+          window.openPencil.getStore().graph.getNode(id)?.interactiveProps?.module as
+            | { config?: { selectionMode?: string } }
+            | undefined
+        )?.config?.selectionMode
+      }, treeId)
     )
     .toBe('multiple')
   expect(
-    await page.evaluate(
-      (id) => window.openPencil.getStore().graph.getNode(id)?.bindings?.value,
-      treeId
-    )
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.bindings?.value
+    }, treeId)
   ).toEqual({ kind: 'ref', stateId: 'category' })
   await binding.click()
   await expect(page.getByRole('option', { name: /invalid/i })).toBeVisible()
@@ -103,17 +106,20 @@ test('Tree panel selects exact page/document types, edits its FORM field name an
   await expect(page.getByRole('option', { name: /Bind to: category/ })).toHaveCount(0)
   await page.getByRole('option', { name: /docCategories/ }).click()
   expect(
-    await page.evaluate(
-      (id) => window.openPencil.getStore().graph.getNode(id)?.bindings?.value,
-      treeId
-    )
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.bindings?.value
+    }, treeId)
   ).toEqual({ kind: 'docState', docStateName: 'docCategories' })
   const rules = page
-    .getByTestId('module-value-validation')
+    .locator('[data-slot="module-value"][data-mode="validation"]')
     .locator('[data-module-value-field="value"]')
   await rules.getByTestId('lowcode-validation-required').click()
   await expect(rules.getByTestId('lowcode-validation-required')).toBeChecked()
-  await page.evaluate((id) => window.openPencil.getStore().select([id]), formId)
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil.getStore().select([id])
+  }, formId)
   await expect(page.getByTestId('lowcode-form-overview')).toBeVisible()
   await expect(page.locator('[data-form-submission-name]')).toContainText('categories')
   canvas.assertNoErrors()
@@ -127,7 +133,7 @@ for (const renderer of ['retained', 'tiled'] as const)
       const canvas = await prepareExpansionModules(page, renderer, ['tree'])
       await insertExpansionModule(page, 'tree')
       const treeId = await prepareTreeControlFixture(page, presentation),
-        bindingPanel = page.getByTestId('module-value-binding'),
+        bindingPanel = page.locator('[data-slot="module-value"][data-mode="binding"]'),
         readOnly = bindingPanel.getByRole('switch', { name: 'Read only', exact: true }),
         disabled = expansionField(page, 'disabled').getByRole('checkbox')
       await expect(readOnly).not.toBeChecked()

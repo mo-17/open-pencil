@@ -18,7 +18,9 @@ import { useI18n } from '@open-pencil/vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
+import { AppConfirmationDialog } from '@/components/ui/dialog'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
+import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 import iconButtonTheme from '@/theme/button/icon-button'
 import { chatHistoryTheme } from '@/theme/chat/history'
@@ -38,6 +40,7 @@ const emit = defineEmits<{
   select: [id: string]
   create: []
   rename: [id: string, title: string]
+  saveTrace: [id: string]
   delete: [id: string]
 }>()
 const { ai } = useI18n()
@@ -159,6 +162,7 @@ function closeMenu(event: Event) {
           </PopoverContent>
         </PopoverPortal>
       </PopoverRoot>
+      <slot name="actions" />
       <IconButton :label="ai.newChat" :disabled="disabled" size="sm" @click="emit('create')"
         ><icon-lucide-plus :class="styles.icon()"
       /></IconButton>
@@ -179,10 +183,19 @@ function closeMenu(event: Event) {
             :class="menu.content"
             @close-auto-focus="closeMenu"
           >
-            <DropdownMenuItem :class="item" @select="rename">{{ ai.renameChat }}</DropdownMenuItem>
-            <DropdownMenuItem :class="item" @select="confirmDelete">{{
-              ai.deleteChat
-            }}</DropdownMenuItem>
+            <MenuScrollArea>
+              <DropdownMenuItem :class="item" @select="rename">{{
+                ai.renameChat
+              }}</DropdownMenuItem>
+              <DropdownMenuItem
+                :class="item"
+                @select="selectedId && emit('saveTrace', selectedId)"
+                >{{ ai.saveChatTrace }}</DropdownMenuItem
+              >
+              <DropdownMenuItem :class="item" @select="confirmDelete">{{
+                ai.deleteChat
+              }}</DropdownMenuItem>
+            </MenuScrollArea>
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>
@@ -201,14 +214,15 @@ function closeMenu(event: Event) {
         }}</AppButton>
       </div>
     </form>
-    <div v-if="confirming" :class="styles.form()" @keydown.esc.stop="confirming = false">
-      <p :class="styles.confirmation()">{{ ai.deleteChatConfirmation }}</p>
-      <div :class="styles.actions()">
-        <AppButton size="xs" @click="confirming = false">{{ ai.cancelChatAction }}</AppButton
-        ><AppButton size="xs" color="error" :disabled="disabled" @click="remove">{{
-          ai.deleteChat
-        }}</AppButton>
-      </div>
-    </div>
+    <AppConfirmationDialog
+      v-model:open="confirming"
+      :heading="ai.deleteChatConfirmation"
+      :description="ai.deleteChatDescription({ title: selected?.title ?? '' })"
+      :cancel-label="ai.cancelChatAction"
+      :confirm-label="ai.deleteChat"
+      tone="danger"
+      :confirm-disabled="disabled"
+      @confirm="remove"
+    />
   </div>
 </template>

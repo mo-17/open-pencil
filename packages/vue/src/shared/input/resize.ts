@@ -4,7 +4,7 @@ import { toRaw } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
 import { calibratePathTextLayout, reflowPathTextGlyphs } from '@open-pencil/core/text'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import { recapturedAspectRatio, type SceneNode } from '@open-pencil/scene-graph'
 import { copyStrokes } from '@open-pencil/scene-graph/copy'
 import {
   computeConstrainedResizeChanges,
@@ -67,12 +67,18 @@ function resizeChanges(
   disableSnapping: boolean
 ) {
   const { origRect } = d
+  const aspect =
+    disableSnapping && !constrain
+      ? null
+      : (d.lockedAspectRatio ??
+        (constrain && origRect.height > 0 ? origRect.width / origRect.height : null))
+  d.freesLock = disableSnapping && d.lockedAspectRatio !== null
   const calculatedRect = calculateResizeRect(
     d.handle,
     origRect,
     cx - d.startX,
     cy - d.startY,
-    constrain
+    aspect
   )
   const requestedRect =
     constrain ||
@@ -130,7 +136,9 @@ function applyConstrainedChildren(
       const reflow = reflowedPathTextChanges(orig, width / orig.width, height / orig.height)
       if (reflow) Object.assign(childChanges, reflow)
     }
-    d.preview?.update(childId, childChanges, { deferLayout: true })
+    editor.graph.withLayoutMutations(() =>
+      d.preview?.update(childId, childChanges, { deferLayout: true })
+    )
     editor.renderer?.invalidateVectorPath(childId)
   }
 }
@@ -204,17 +212,30 @@ export function commitResizePreview(dragState: DragResize, editor: Editor) {
   const d = toRaw(dragState)
   optionalEditorState(editor)?.snapGuides.splice(0)
   if (!d.preview || d.preview.closed) return
-  // Finalize every actual geometry change, including layout ancestors and
-  // siblings. Metadata joins the same undo entry and keeps its layout provenance.
-  d.preview.commit((node, before) => {
-    const moved = (['x', 'y', 'width', 'height'] as const).some(
-      (key) => before[key] !== undefined && before[key] !== node[key]
-    )
-    if (!moved) return undefined
-    return {
-      source: resizedSource(node, before, node.id === d.nodeId ? d.originalSizing : undefined)
-    }
-  })
+  const root = editor.graph.getNode(d.nodeId)
+  const adoptsLayers =
+    root?.type === 'SECTION' &&
+    d.appliedRect !== undefined &&
+    (['x', 'y', 'width', 'height'] as const).some((key) => d.appliedRect?.[key] !== d.origRect[key])
+  const commit = () => {
+    // Finalize every actual geometry change, including layout ancestors and
+    // siblings. Metadata joins the same undo entry and keeps its layout provenance.
+    d.preview?.commit((node, before) => {
+      const moved = (['x', 'y', 'width', 'height'] as const).some(
+        (key) => before[key] !== undefined && before[key] !== node[key]
+      )
+      if (!moved) return undefined
+      return {
+        ...(node.id === d.nodeId && d.freesLock
+          ? recapturedAspectRatio(node, node.width, node.height)
+          : {}),
+        source: resizedSource(node, before, node.id === d.nodeId ? d.originalSizing : undefined)
+      }
+    })
+    if (adoptsLayers) editor.adoptCoveredLayers(d.nodeId)
+  }
+  if (adoptsLayers) editor.undo.runBatch('Resize', commit)
+  else commit()
 }
 
 export function cancelResizePreview(dragState: DragResize) {

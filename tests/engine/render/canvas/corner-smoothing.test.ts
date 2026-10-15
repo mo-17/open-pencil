@@ -1,12 +1,13 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Canvas } from 'canvaskit-wasm'
-
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { drawNodeFill } from '#core/canvas/fills'
-import type { SkiaRenderer } from '#core/canvas/renderer'
 import { makeSmoothRRectPath } from '#core/canvas/shapes'
+
+import { canvasMock } from '#tests/engine/render/canvas/effects/helpers'
+
+import { asCanvas, asRenderer } from './helpers'
 
 function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id
@@ -38,22 +39,22 @@ function createRenderer() {
     }
   }
 
-  const renderer = {
+  const renderer = asRenderer({
     ck: {
       PathBuilder: MockPathBuilder,
       LTRBRect: mock((l, t, r, b) => new Float32Array([l, t, r, b]))
     },
     fillPaint: {}
-  } as SkiaRenderer
+  })
 
   return { renderer, paths }
 }
 
 function createCanvas() {
   return {
-    drawPath: mock(() => undefined),
-    drawRRect: mock(() => undefined),
-    drawRect: mock(() => undefined)
+    drawPath: canvasMock('drawPath'),
+    drawRRect: canvasMock('drawRRect'),
+    drawRect: canvasMock('drawRect')
   }
 }
 
@@ -113,7 +114,7 @@ describe('canvas corner smoothing', () => {
     const { renderer } = createRenderer()
     const canvas = createCanvas()
 
-    drawNodeFill(renderer, canvas as Canvas, node, new Float32Array([0, 0, 120, 80]), true)
+    drawNodeFill(renderer, asCanvas(canvas), node, new Float32Array([0, 0, 120, 80]), true)
 
     expect(canvas.drawPath).toHaveBeenCalled()
     expect(canvas.drawRRect).not.toHaveBeenCalled()

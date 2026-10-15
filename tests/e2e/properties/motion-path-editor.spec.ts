@@ -18,6 +18,8 @@ interface PathNodeSnapshot {
 
 async function createNestedCubicPathNode(): Promise<string> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -74,6 +76,8 @@ async function createNestedCubicPathNode(): Promise<string> {
 
 async function createSiblingNode(): Promise<string> {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -92,6 +96,8 @@ async function createSiblingNode(): Promise<string> {
 
 async function nodeSnapshot(nodeId: string): Promise<PathNodeSnapshot> {
   return editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const node = store?.graph.getNode(id)
     if (!node) throw new Error('Motion path node not found')
@@ -134,7 +140,9 @@ test('drags a cubic control on the canvas with one undo, Escape cancel, and keyb
   await edit.click()
 
   const overlay = editor.page.getByTestId('motion-path-overlay')
-  const control = editor.page.getByTestId('motion-path-handle-segment-0-control1')
+  const control = editor.page.locator(
+    '[data-slot="motion-path-handle"][data-motion-path-handle="segment-0-control1"]'
+  )
   await expect(overlay).toBeVisible()
   await expect(control).toBeVisible()
   const controlBox = await control.boundingBox()
@@ -155,7 +163,9 @@ test('drags a cubic control on the canvas with one undo, Escape cancel, and keyb
   await editor.canvas.redo()
   expect((await nodeSnapshot(nodeId)).control1).toEqual(dragged.control1)
 
-  const currentControl = editor.page.getByTestId('motion-path-handle-segment-0-control1')
+  const currentControl = editor.page.locator(
+    '[data-slot="motion-path-handle"][data-motion-path-handle="segment-0-control1"]'
+  )
   const currentBox = await currentControl.boundingBox()
   if (!currentBox) throw new Error('Expected updated motion path control geometry')
   const currentX = currentBox.x + currentBox.width / 2
@@ -176,10 +186,16 @@ test('drags a cubic control on the canvas with one undo, Escape cancel, and keyb
   await editor.canvas.undo()
   expect((await nodeSnapshot(nodeId)).control1).toEqual(dragged.control1)
 
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().clearSelection())
-  await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toHaveCount(0)
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().clearSelection()
+  })
+  await expect(editor.page.locator('[data-slot="motion-path-handle"]')).toHaveCount(0)
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPathEdit ?? null)
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.motionPathEdit ?? null
+    })
   ).toBeNull()
 })
 
@@ -198,6 +214,8 @@ test('clears path editing when activating a same-page pane with another selectio
   await expect(panes.nth(1)).toHaveAttribute('data-active-pane', 'true')
 
   await editor.page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([nodeId])
@@ -206,7 +224,10 @@ test('clears path editing when activating a same-page pane with another selectio
   await headers.nth(0).click({ position: { x: 20, y: 15 } })
   await expect(panes.nth(0)).toHaveAttribute('data-active-pane', 'true')
   expect(
-    await editor.page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([pathNodeId])
 
   const motion = propertySection(editor.page, 'Motion')
@@ -214,15 +235,26 @@ test('clears path editing when activating a same-page pane with another selectio
   const edit = motion.getByTestId('motion-path-edit-canvas')
   await edit.scrollIntoViewIfNeeded()
   await edit.click()
-  await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toBeVisible()
+  await expect(editor.page.locator('[data-slot="motion-path-handle"]')).toHaveCount(4)
+  await expect(
+    editor.page.locator(
+      '[data-slot="motion-path-handle"][data-motion-path-handle="segment-0-control1"]'
+    )
+  ).toBeVisible()
 
   await headers.nth(1).click({ position: { x: 20, y: 15 } })
   await expect(panes.nth(1)).toHaveAttribute('data-active-pane', 'true')
   expect(
-    await editor.page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([siblingNodeId])
-  await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toHaveCount(0)
+  await expect(editor.page.locator('[data-slot="motion-path-handle"]')).toHaveCount(0)
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPathEdit ?? null)
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.motionPathEdit ?? null
+    })
   ).toBeNull()
 })

@@ -6,6 +6,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { SkiaRenderer, type SubtreePictureCacheEntry } from '#core/canvas/renderer'
 
+import { asDouble, asRenderer } from './helpers'
+
 function surface() {
   return { delete: mock() } as Surface & { delete: ReturnType<typeof mock> }
 }
@@ -15,7 +17,9 @@ describe('renderer surface replacement', () => {
     const previous = surface()
     const next = surface()
     const buildSurface = surface()
-    const retainedImage = { delete: mock() } as CKImage & { delete: ReturnType<typeof mock> }
+    const retainedImage = { delete: mock() } as CKImage & {
+      delete: ReturnType<typeof mock>
+    }
     const subtreePicture = { delete: mock() }
     const geometry = {
       pageId: 'page',
@@ -40,6 +44,7 @@ describe('renderer surface replacement', () => {
     const renderer: Pick<
       SkiaRenderer,
       | 'surface'
+      | 'liveImages'
       | 'tiledScene'
       | 'sceneBacking'
       | 'sceneBackingBuild'
@@ -54,7 +59,7 @@ describe('renderer surface replacement', () => {
       | 'replaceSurface'
     > = {
       surface: previous,
-      tiledScene: { destroy: mock() } as SkiaRenderer['tiledScene'],
+      tiledScene: asDouble<SkiaRenderer['tiledScene']>({ destroy: mock() }),
       sceneBacking: { ...geometry, image: retainedImage },
       sceneBackingBuild: {
         ...geometry,
@@ -65,17 +70,18 @@ describe('renderer surface replacement', () => {
         startedAt: 0
       },
       sceneBackingNeedsCrispRender: false,
+      liveImages: new Map(),
       sceneBackingAllocationFailed: true,
       subtreePictureCache: new Map([
         [
           'node',
-          {
+          asDouble<SubtreePictureCacheEntry>({
             picture: subtreePicture,
             pageId: 'page',
             sceneVersion: 1,
             positionPreviewVersion: 1,
             fontGeneration: 1
-          } as SubtreePictureCacheEntry
+          })
         ]
       ]),
       subtreePictureCachePageId: 'page',
@@ -86,7 +92,7 @@ describe('renderer surface replacement', () => {
       replaceSurface: SkiaRenderer.prototype.replaceSurface
     }
 
-    renderer.replaceSurface.call(renderer as SkiaRenderer, next)
+    renderer.replaceSurface.call(asRenderer(renderer), next)
 
     expect(renderer.tiledScene.destroy).toHaveBeenCalledTimes(1)
     expect(previous.delete).toHaveBeenCalledTimes(1)

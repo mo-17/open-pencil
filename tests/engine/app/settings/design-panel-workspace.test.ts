@@ -31,7 +31,7 @@ describe('design panel workspace settings', () => {
     expect(DESIGN_PANEL_STUDIO_LAYOUT_STORAGE_KEY).toBe('open-pencil:design-panel-studio-layout:v1')
   })
 
-  test.each(DESIGN_PANEL_WORKSPACES)('accepts and preserves the %s workspace', (value) => {
+  test.each([...DESIGN_PANEL_WORKSPACES])('accepts and preserves the %s workspace', (value) => {
     const writes: string[] = []
 
     expect(repairStoredDesignPanelWorkspace(value, (workspace) => writes.push(workspace))).toBe(
@@ -143,15 +143,15 @@ describe('design panel workspace settings', () => {
   })
 
   test('classic remains unchanged while focused hides only its secondary sections', () => {
-    expect(getDesignPanelSectionOrder('single', 'classic')).toEqual(
-      DEFAULT_DESIGN_PANEL_SECTION_ORDER.single
-    )
+    expect(getDesignPanelSectionOrder('single', 'classic')).toEqual([
+      ...DEFAULT_DESIGN_PANEL_SECTION_ORDER.single
+    ])
     expect(isDesignPanelSectionHidden('single', 'lowcode-advanced')).toBe(false)
 
     designPanelWorkspace.value = 'focused'
-    expect(getDesignPanelSectionOrder('single', 'focused')).toEqual(
-      DEFAULT_DESIGN_PANEL_SECTION_ORDER.single
-    )
+    expect(getDesignPanelSectionOrder('single', 'focused')).toEqual([
+      ...DEFAULT_DESIGN_PANEL_SECTION_ORDER.single
+    ])
     expect(isDesignPanelSectionHidden('single', 'position')).toBe(false)
     expect(isDesignPanelSectionHidden('single', 'lowcode-advanced')).toBe(true)
     expect(isDesignPanelSectionHidden('empty', 'assets-variables')).toBe(false)

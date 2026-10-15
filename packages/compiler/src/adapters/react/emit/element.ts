@@ -25,6 +25,7 @@ import type {
   IRUpload
 } from '#compiler/ir/types'
 import { moduleContentNodes } from '#compiler/modules/content-slots'
+import { compact } from 'es-toolkit'
 
 import { collectReferences, emitExpression } from '@open-pencil/lowcode'
 
@@ -510,7 +511,7 @@ function hasClickPrototype(prototype: IRPrototypeDecoration['prototype']): boole
 }
 
 function joinAttrs(...parts: readonly string[]): string {
-  return parts.filter(Boolean).join(' ')
+  return compact(parts).join(' ')
 }
 
 /**

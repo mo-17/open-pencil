@@ -17,6 +17,7 @@ import {
   MEDIA_REMOTE_URL,
   mediaConfigs
 } from '#tests/helpers/compiler/modules/vue-media/fixture'
+import { asDouble } from '#tests/helpers/doubles'
 
 interface Kernel {
   validateAnimationData(data: unknown): typeof MEDIA_ANIMATION
@@ -52,7 +53,9 @@ function kernel(fetcher: typeof fetch = fetch): Kernel {
   ) as Kernel
 }
 function response(source: string | Uint8Array, url = MEDIA_REMOTE_URL, type = 'application/json') {
-  const result = new Response(source, { headers: { 'content-type': type } })
+  const result = new Response(typeof source === 'string' ? source : Uint8Array.from(source), {
+    headers: { 'content-type': type }
+  })
   Object.defineProperty(result, 'url', { value: url })
   return result
 }
@@ -114,10 +117,14 @@ test('Lottie public HTTPS boundary rejects local hosts, IPs, credentials, fragme
 
 test('Lottie bounded stream enforces response authority, MIME, byte budget and UTF8', async () => {
   const requests: RequestInit[] = []
-  const valid = kernel((async (_input, init) => {
-    requests.push(init ?? {})
-    return response(JSON.stringify(MEDIA_ANIMATION))
-  }) as typeof fetch)
+  const valid = kernel(
+    asDouble<typeof fetch>(
+      async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requests.push(init ?? {})
+        return response(JSON.stringify(MEDIA_ANIMATION))
+      }
+    )
+  )
   expect(await valid.fetchBoundedAnimationData(MEDIA_REMOTE_URL, new AbortController())).toEqual(
     MEDIA_ANIMATION
   )
@@ -134,19 +141,21 @@ test('Lottie bounded stream enforces response authority, MIME, byte budget and U
     response('x'.repeat(LOTTIE_MODULE_LIMITS.dataBytes + 1)),
     response(new Uint8Array([255]))
   ]) {
-    const runtime = kernel((async () => bad) as typeof fetch)
+    const runtime = kernel(asDouble<typeof fetch>(async () => bad))
     await expect(
       runtime.fetchBoundedAnimationData(MEDIA_REMOTE_URL, new AbortController())
     ).rejects.toThrow()
   }
   const controller = new AbortController(),
     runtime = kernel(
-      (async (_input, init) =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-            once: true
+      asDouble<typeof fetch>(
+        async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+              once: true
+            })
           })
-        })) as typeof fetch
+      )
     )
   const pending = runtime.fetchBoundedAnimationData(MEDIA_REMOTE_URL, controller)
   controller.abort()

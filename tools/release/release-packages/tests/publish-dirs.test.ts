@@ -7,13 +7,20 @@ import {
   DEFAULT_PACKAGES,
   discoverPublishPackages,
   PREPARED_PUBLISH_PLAN,
+  parsePreparedPublishPlan,
   PUBLIC_PACKAGE_NAME_MAP,
   PUBLISH_REPOSITORY_URL,
   preparePublishDirectories,
   publishPackageJSON,
   remapPublicPackageSpecifiersInText
 } from '#release/publish-dirs'
-import type { PreparedPublishPlan } from '#release/publish-dirs'
+import * as v from 'valibot'
+
+import {
+  parseJSONObject,
+  parseWorkspace,
+  parseWorkspacePackageJSON
+} from '@open-pencil/package-artifacts-tools'
 
 const VERSION = '0.13.2'
 const LICENSE_BYTES = Buffer.from('OpenPencil fixture license\n\0binary-safe\n')
@@ -141,8 +148,12 @@ async function fixtureRoot(): Promise<string> {
   return root
 }
 
-async function readJSON<T>(path: string): Promise<T> {
-  return JSON.parse(await readFile(path, 'utf8')) as T
+async function readJSON<T>(path: string, decode: (source: string) => T): Promise<T> {
+  return decode(await readFile(path, 'utf8'))
+}
+
+function readManifest(path: string) {
+  return readJSON(path, (source) => parseWorkspacePackageJSON(source, path))
 }
 
 afterEach(async () => {
@@ -152,6 +163,37 @@ afterEach(async () => {
 })
 
 describe('publishPackageJSON', () => {
+  test('preserves runtime aliases and removes only package development aliases', () => {
+    const source = {
+      name: '@open-pencil/core',
+      imports: {
+        '#core/*': './src/*',
+        '#core-tests/*': './tests/*',
+        '#runtime/missing': './missing.ts'
+      },
+      files: ['dist', 'src']
+    }
+    expect(publishPackageJSON(source, VERSION).imports).toEqual({
+      '#core/*': './src/*',
+      '#runtime/missing': './missing.ts'
+    })
+    expect(source.imports['#core-tests/*']).toBe('./tests/*')
+    expect(
+      publishPackageJSON(
+        {
+          name: '@open-pencil/cli',
+          files: ['bin', 'dist'],
+          imports: { '#cli/*': './src/*.ts', '#cli-tests/*': './tests/*.ts' }
+        },
+        VERSION
+      ).imports
+    ).toBeUndefined()
+    expect(publishPackageJSON({ ...source, files: ['dist'] }, VERSION).imports).toEqual({
+      '#core/*': './src/*',
+      '#runtime/missing': './missing.ts'
+    })
+  })
+
   test('maps package metadata and exact workspace dependency keys', () => {
     const json = publishPackageJSON(
       {
@@ -274,15 +316,23 @@ describe('preparePublishDirectories', () => {
       coreVersion: VERSION,
       outRoot,
       packages: DEFAULT_PACKAGES,
-      root
+      root,
+      listPackageFiles: fixturePackageFiles
     })
 
     expect(await readFile(join(outRoot, 'scene-graph/dist/index.js'), 'utf8')).toBe(
       "import '@open-pencil-lowcode/core/motion'\nexport const yoga = '@open-pencil/yoga-layout'\n"
     )
     expect(
-      await readJSON<{ sources: string[]; sourcesContent: string[] }>(
-        join(outRoot, 'scene-graph/dist/index.js.map')
+      await readJSON(join(outRoot, 'scene-graph/dist/index.js.map'), (source) =>
+        v.parse(
+          v.pipe(
+            v.string(),
+            v.parseJson(),
+            v.looseObject({ sources: v.array(v.string()), sourcesContent: v.array(v.string()) })
+          ),
+          source
+        )
       )
     ).toEqual({
       sources: ['../src/index.ts'],
@@ -292,7 +342,7 @@ describe('preparePublishDirectories', () => {
       '# @open-pencil-lowcode/scene-graph\n\nWorks with @open-pencil/yoga-layout.\n'
     )
     expect(await readFile(join(outRoot, 'kiwi/NOTICE'), 'utf8')).toBe(KIWI_NOTICE)
-    const coreManifest = await readJSON<Record<string, unknown>>(join(outRoot, 'core/package.json'))
+    const coreManifest = await readManifest(join(outRoot, 'core/package.json'))
     expect(coreManifest.name).toBe('@open-pencil-lowcode/core')
     expect(await readFile(join(outRoot, 'core/src/index.ts'), 'utf8')).toContain('#core/value')
     expect(await readFile(join(outRoot, 'core/src/value.ts'), 'utf8')).toContain('42')
@@ -303,7 +353,7 @@ describe('preparePublishDirectories', () => {
       type: 'git',
       url: PUBLISH_REPOSITORY_URL
     })
-    expect(await readJSON<PreparedPublishPlan>(join(outRoot, PREPARED_PUBLISH_PLAN))).toEqual({
+    expect(await readJSON(join(outRoot, PREPARED_PUBLISH_PLAN), parsePreparedPublishPlan)).toEqual({
       packages: DEFAULT_PACKAGES.map((pkg) => ({
         dir: basename(pkg.dir),
         name: `@open-pencil-lowcode/${basename(pkg.dir)}`,
@@ -321,7 +371,7 @@ describe('preparePublishDirectories', () => {
   test('rejects a public manifest dependency on a private workspace', async () => {
     const root = await fixtureRoot()
     const manifestPath = join(root, 'packages/cli/package.json')
-    const manifest = await readJSON<Record<string, unknown>>(manifestPath)
+    const manifest = await readManifest(manifestPath)
     manifest.dependencies = { '@open-pencil/compiler': 'workspace:*' }
     await writeJSON(manifestPath, manifest)
 
@@ -340,7 +390,9 @@ describe('preparePublishDirectories', () => {
   test('rejects a newly added public workspace without an explicit publish mapping', async () => {
     const root = await fixtureRoot()
     const rootManifestPath = join(root, 'package.json')
-    const rootManifest = await readJSON<{ version: string; workspaces: string[] }>(rootManifestPath)
+    const rootManifest = await readJSON(rootManifestPath, (source) =>
+      parseWorkspace(parseJSONObject(source, rootManifestPath), rootManifestPath)
+    )
     rootManifest.workspaces.push('packages/new-public')
     await writeJSON(rootManifestPath, rootManifest)
     await mkdir(join(root, 'packages/new-public'), { recursive: true })
@@ -417,7 +469,7 @@ test('rejects conflicting publication settings before preparing a fork release',
     { access: 'restricted' },
     { provenance: false },
     { registry: 'https://other.invalid/' }
-  ]) {
+  ] as const) {
     expect(() =>
       publishPackageJSON({ name: '@open-pencil/core', version: VERSION, publishConfig }, VERSION)
     ).toThrow('conflicts with the public npm release policy')

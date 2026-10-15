@@ -236,9 +236,7 @@ describe('Vue trusted module runtimes', () => {
       tag: 'div',
       className: 'w-40',
       attrs: {},
-      children: [
-        { kind: 'text', sourceId: 'fallback-copy', value: 'Static future-module fallback' }
-      ],
+      children: [{ kind: 'text', value: 'Static future-module fallback' }],
       module: {
         pluginId: 'open-pencil.future-module',
         moduleType: 'future-module',

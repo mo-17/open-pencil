@@ -1,6 +1,9 @@
-import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+import { pick } from 'es-toolkit'
+
+import { createsComponentCycle, isAutoLayoutMode, TRANSFORM_FIELDS } from '@open-pencil/scene-graph'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
+import { prepareSlotEdits } from '#core/editor/components/slots'
 import type { EditorContext } from '#core/editor/types'
 import { computeLayout } from '#core/layout'
 
@@ -14,7 +17,10 @@ export function createStructureReorderActions(ctx: EditorContext) {
     if (node.parentId !== parentId) {
       const absPos = ctx.graph.getAbsolutePosition(nodeId)
       const parentAbs = ctx.graph.getAbsolutePosition(parentId)
-      ctx.graph.updateNode(nodeId, { x: absPos.x - parentAbs.x, y: absPos.y - parentAbs.y })
+      ctx.graph.updateNode(nodeId, {
+        x: absPos.x - parentAbs.x,
+        y: absPos.y - parentAbs.y
+      })
     }
 
     ctx.graph.reorderChild(nodeId, parentId, insertIndex)
@@ -32,6 +38,7 @@ export function createStructureReorderActions(ctx: EditorContext) {
     const origX = node.x
     const origY = node.y
     const origIndex = ctx.graph.getNode(origParentId)?.childIds.indexOf(nodeId) ?? -1
+    if (!prepareSlotEdits(ctx, [origParentId, parentId])) return
 
     doReorderChild(nodeId, parentId, insertIndex)
 
@@ -53,46 +60,73 @@ export function createStructureReorderActions(ctx: EditorContext) {
     })
   }
 
+  /**
+   * Moves a layer to `insertIndex` among `newParentId`'s children, counted without the layer. A
+   * new parent keeps the layer where it is drawn, as moving it into a frame on the canvas does, and
+   * is refused when it would put a component inside itself.
+   */
   function reorderChildWithUndo(nodeId: string, newParentId: string, insertIndex: number) {
     assertNodeEditable(ctx.graph, nodeId)
     assertNodeEditable(ctx.graph, newParentId)
     const node = ctx.graph.getNode(nodeId)
     if (!node) return
     const origParentId = node.parentId ?? ctx.state.currentPageId
+    const reparents = origParentId !== newParentId
+    if (reparents && createsComponentCycle(ctx.graph, nodeId, newParentId)) return
+    if (!prepareSlotEdits(ctx, [origParentId, newParentId])) return
     const origIndex = ctx.graph.getNode(origParentId)?.childIds.indexOf(nodeId) ?? 0
-    const origX = node.x
-    const origY = node.y
+    const origPlace = pick(node, TRANSFORM_FIELDS)
 
-    ctx.graph.reorderChild(nodeId, newParentId, insertIndex)
-    ctx.runLayoutForNode(newParentId)
-    if (origParentId !== newParentId) ctx.runLayoutForNode(origParentId)
+    const place = () => {
+      if (reparents) ctx.graph.reparentNode(nodeId, newParentId)
+      ctx.graph.reorderChild(nodeId, newParentId, insertIndex)
+      ctx.runLayoutForNode(newParentId)
+      if (reparents) ctx.runLayoutForNode(origParentId)
+    }
+    place()
 
     ctx.undo.push({
       label: 'Reorder',
-      forward: () => {
-        ctx.graph.reorderChild(nodeId, newParentId, insertIndex)
-        ctx.runLayoutForNode(newParentId)
-        if (origParentId !== newParentId) ctx.runLayoutForNode(origParentId)
-      },
+      forward: place,
       inverse: () => {
         ctx.graph.reorderChild(nodeId, origParentId, origIndex)
-        ctx.graph.updateNode(nodeId, { x: origX, y: origY })
+        ctx.graph.updateNode(nodeId, origPlace)
         ctx.runLayoutForNode(origParentId)
-        if (origParentId !== newParentId) ctx.runLayoutForNode(newParentId)
+        if (reparents) ctx.runLayoutForNode(newParentId)
       }
     })
   }
 
+  /**
+   * Puts a frame's children in `childIds`. Only the children it moves need to be editable, so a
+   * read-only library layer that keeps its place does not block reordering its siblings.
+   */
   function applyChildOrder(parentId: string, childIds: readonly string[]) {
     assertNodeEditable(ctx.graph, parentId)
-    for (const childId of childIds) assertNodeEditable(ctx.graph, childId)
     const current = ctx.graph.getNode(parentId)?.childIds ?? []
+    const moved = childIds.filter((childId, index) => current[index] !== childId)
+    for (const childId of moved) assertNodeEditable(ctx.graph, childId)
     for (const [index, childId] of childIds.entries()) {
-      if (current[index] === childId) continue
+      if (ctx.graph.getNode(parentId)?.childIds[index] === childId) continue
       ctx.graph.insertChildAt(childId, parentId, index)
     }
     ctx.runLayoutForNode(parentId)
     ctx.requestRender()
+  }
+
+  /** Puts a frame's children in `order` as one undo step, laying the frame out once. */
+  function setChildOrder(parentId: string, order: readonly string[], label = 'Reorder') {
+    const before = ctx.graph.getNode(parentId)?.childIds
+    if (!before || order.every((id, index) => id === before[index])) return
+    if (!prepareSlotEdits(ctx, [parentId])) return
+    const previous = [...before]
+    const next = [...order]
+    applyChildOrder(parentId, next)
+    ctx.undo.push({
+      label,
+      forward: () => applyChildOrder(parentId, next),
+      inverse: () => applyChildOrder(parentId, previous)
+    })
   }
 
   function moveSelectionInZOrder(
@@ -180,6 +214,7 @@ export function createStructureReorderActions(ctx: EditorContext) {
 
   return {
     reorderInAutoLayout,
+    setChildOrder,
     reorderChildWithUndo,
     bringForward,
     sendBackward,

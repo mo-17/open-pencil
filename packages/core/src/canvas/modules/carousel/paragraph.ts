@@ -1,10 +1,11 @@
-import type { Canvas, Paragraph } from 'canvaskit-wasm'
+import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
 import { withModulePreviewRectClip } from '#core/canvas/modules/preview'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { withTextParagraph } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 
@@ -18,7 +19,7 @@ function withCarouselParagraph(
   cssColor: string,
   bounds: Rect,
   alignment: SceneNode['textAlignHorizontal'],
-  use: (paragraph: Paragraph) => number
+  use: (paragraph: TextLayout) => number
 ): number | null {
   if (!text || bounds.width <= 0 || bounds.height <= 0) return 0
   if (!renderer.fontProvider || !renderer.fontsLoaded) return null
@@ -66,7 +67,7 @@ export function drawCarouselText(
     alignment,
     (paragraph) =>
       withModulePreviewRectClip(renderer, canvas, bounds, () => {
-        canvas.drawParagraph(paragraph, bounds.x, bounds.y)
+        paragraph.draw(canvas, bounds.x, bounds.y)
         return paragraph.getHeight()
       })
   )

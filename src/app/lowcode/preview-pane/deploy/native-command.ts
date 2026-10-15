@@ -1,3 +1,4 @@
+import { LOCAL_PROCESS_CREDENTIAL_ENV, resolvePreviewNativeCommand } from '../host/native-command'
 import type { PreviewNativeChild, PreviewNativeCommand } from '../host/native-command'
 
 interface DeployNativeOutput {
@@ -24,6 +25,11 @@ export const createDeployNativeCommand: CreateDeployNativeCommand = async (
   args,
   options
 ) => {
+  const resolved = resolvePreviewNativeCommand(program, args)
+  if (resolved.command !== 'lowcode-deploy') throw new Error('Unreviewed deployment command.')
   const { Command } = await import('@tauri-apps/plugin-shell')
-  return Command.create(program, args, options)
+  return Command.create(resolved.command, resolved.args, {
+    ...options,
+    env: { ...LOCAL_PROCESS_CREDENTIAL_ENV, ...options.env }
+  })
 }

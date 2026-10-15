@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
+import { repoPath } from '#core-tests/helpers/paths'
 import type { CanvasKit, Image, Surface } from 'canvaskit-wasm'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -96,7 +97,7 @@ describe('EffectPick static canvas content', () => {
     const renderer = new SkiaRenderer(ck, surface)
     const provider = ck.TypefaceFontProvider.Make()
     const semibold = await Bun.file(
-      new URL('../../../assets/Inter-SemiBold.ttf', import.meta.url)
+      repoPath('packages/core/assets/Inter-SemiBold.ttf')
     ).arrayBuffer()
     fontManager.attachProvider(ck, provider)
     fontManager.markLoaded('Inter', 'SemiBold', semibold)
@@ -265,11 +266,9 @@ describe('EffectPick static canvas content', () => {
     const surface = expectDefined(ck.MakeSurface(256, 133))
     const renderer = new SkiaRenderer(ck, surface)
     const provider = ck.TypefaceFontProvider.Make()
-    const inter = await Bun.file(
-      new URL('../../../assets/Inter-SemiBold.ttf', import.meta.url)
-    ).arrayBuffer()
+    const inter = await Bun.file(repoPath('packages/core/assets/Inter-SemiBold.ttf')).arrayBuffer()
     const noto = await Bun.file(
-      new URL('../../../assets/NotoSansSC-Regular.ttf', import.meta.url)
+      repoPath('packages/core/assets/NotoSansSC-Regular.ttf')
     ).arrayBuffer()
     const previousFallbacks = [...fontManager.getCJKFallbackFamilies()]
     fontManager.attachProvider(ck, provider)

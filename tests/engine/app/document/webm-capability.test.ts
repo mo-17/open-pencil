@@ -34,7 +34,12 @@ function installWebCodecsProbe(
 ): void {
   Object.defineProperty(globalThis, 'VideoEncoder', {
     configurable: true,
-    value: { isConfigSupported: probe }
+    value: Object.assign(
+      function ProbeEncoder() {
+        return { state: 'unconfigured' }
+      },
+      { isConfigSupported: probe }
+    )
   })
   Object.defineProperty(globalThis, 'VideoFrame', { configurable: true, value: globalThis.Object })
   Object.defineProperty(globalThis, 'createImageBitmap', {

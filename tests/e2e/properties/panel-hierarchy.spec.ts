@@ -7,6 +7,8 @@ for (const type of ['TEXT', 'RECTANGLE', 'FRAME'] as const) {
     await page.goto('/?test')
     await new CanvasHelper(page).waitForInit()
     await page.evaluate((type) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const editor = window.openPencil?.getStore?.()
       if (!editor) throw new Error('Editor unavailable')
       const id = editor.createShape(type, 100, 100, 240, 80)
@@ -29,6 +31,8 @@ test('missing paint styles stay visible and detachable', async ({ page }) => {
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const editor = window.openPencil?.getStore?.()
     if (!editor) throw new Error('Editor unavailable')
     const id = editor.createShape('RECTANGLE', 100, 100, 240, 80)

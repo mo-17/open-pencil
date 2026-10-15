@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { uniAppAdapter } from '#compiler/adapters/uni-app'
 import type { ComponentDef, IRElement, IREventHandler, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { withDefaults } from '@open-pencil/compiler'
 
@@ -60,12 +61,6 @@ function scriptSetup(source: string): string {
   const match = /<script setup>\s*([\s\S]*?)\s*<\/script>/.exec(source)
   if (!match) throw new Error('Missing script setup block')
   return match[1]
-}
-
-interface UniAppManifest {
-  appid?: string
-  name: string
-  'mp-weixin': { appid?: string }
 }
 
 describe('uni-app mini-program adapter', () => {
@@ -143,10 +138,26 @@ describe('uni-app mini-program adapter', () => {
     )
 
     const page = textFile(output.files, 'pages/home/index.vue')
-    const manifest = JSON.parse(textFile(output.files, 'manifest.json')) as UniAppManifest
-    const pages = JSON.parse(textFile(output.files, 'pages.json')) as {
-      pages: Array<{ path: string }>
-    }
+    const manifest = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          appid: v.optional(v.string()),
+          name: v.string(),
+          'mp-weixin': v.looseObject({ appid: v.optional(v.string()) })
+        })
+      ),
+      textFile(output.files, 'manifest.json')
+    )
+    const pages = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ pages: v.array(v.looseObject({ path: v.string() })) })
+      ),
+      textFile(output.files, 'pages.json')
+    )
 
     expect(output.files.has('App.vue')).toBe(true)
     expect(output.files.has('main.js')).toBe(true)

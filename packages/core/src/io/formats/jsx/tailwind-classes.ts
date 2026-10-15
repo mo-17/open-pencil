@@ -1,3 +1,4 @@
+import { compact } from 'es-toolkit'
 import { twirl } from 'twirlwind'
 
 import {
@@ -897,7 +898,7 @@ function fontSizeClasses(value: string | undefined): string[] {
 }
 
 function expandBorderRadius(value: string): [string, string, string, string] | null {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
+  const parts = compact(value.trim().split(/\s+/))
   if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]]
   if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]]
   if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]]

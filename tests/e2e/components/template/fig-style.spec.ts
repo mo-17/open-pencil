@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerFigOutput } from '#tests/helpers/compiler/output'
 
 for (const target of ['react', 'vue'] as const) {
   test(`${target} preserves text field styles and bindings from an on-disk FIG`, async ({
@@ -14,7 +15,7 @@ for (const target of ['react', 'vue'] as const) {
     const suppliedPath = process.env.OPENPENCIL_TEMPLATE_FIG_PATH
     const path = suppliedPath ? resolve(suppliedPath) : info.outputPath('all-templates.fig')
     if (!suppliedPath) mkdirSync(dirname(path), { recursive: true })
-    const compiled = JSON.parse(
+    const compiled = parseCompilerFigOutput(
       execFileSync(
         'bun',
         [
@@ -25,7 +26,7 @@ for (const target of ['react', 'vue'] as const) {
         ],
         { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
       )
-    ) as { files: [string, string][]; sha256: string; byteLength: number }
+    )
     await withComponentTemplateFiles(page, target, new Map(compiled.files), async () => {
       const measurements = []
       const input = page.locator('input[aria-label="输入内容"]')

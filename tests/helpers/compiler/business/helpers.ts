@@ -3,14 +3,29 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
+import * as v from 'valibot'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
-import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import {
+  parseBackendApplicationSpecV1,
+  type BackendApplicationSpecV1
+} from '@open-pencil/lowcode/backend'
+import { canonicalManifestJSON } from '@open-pencil/scene-graph'
 
+import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
 import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
+import { preflightBusinessPages } from '@/app/lowcode/backend/business/pages/preflight'
 import type { BusinessTemplateDefinition } from '@/app/lowcode/backend/business/types'
 
 import { installBusinessTransport } from '#tests/engine/app/lowcode/backend/business/browser/transport/helpers'
+
+const EmittedBusinessFixture = v.object({
+  files: v.array(v.tuple([v.string(), v.string()])),
+  application: v.unknown(),
+  definition: v.unknown(),
+  apiBasePath: v.string(),
+  paths: v.record(v.string(), v.string())
+})
 
 export const BUSINESS_BROWSER_USER_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -38,13 +53,15 @@ export async function withBusinessBrowser(
     ],
     { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
   )
-  const fixture = JSON.parse(emitted) as {
-    files: [string, string][]
-    application: BackendApplicationSpecV1
-    definition: BusinessTemplateDefinition
-    apiBasePath: string
-    paths: Record<string, string>
+  const decoded = v.parse(v.pipe(v.string(), v.parseJson(), EmittedBusinessFixture), emitted)
+  const application = parseBackendApplicationSpecV1(decoded.application)
+  if (!application.ok) throw new Error('Invalid generated business Backend application')
+  const definition = businessTemplateDefinition(kind)
+  if (canonicalManifestJSON(decoded.definition) !== canonicalManifestJSON(definition)) {
+    throw new Error('Generated business definition differs from the reviewed template')
   }
+  preflightBusinessPages(application.value, definition)
+  const fixture = { ...decoded, application: application.value, definition }
   const { createPreviewServer } = await import(
     pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
   )

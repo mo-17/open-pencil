@@ -20,3 +20,11 @@ function validatePackageIdentity(manifest: Record<string, unknown>, path: string
 export function parsePackageManifest(text: string, context: string): PackageManifest {
   return validatePackageIdentity(parseJSONObject(text, context), context)
 }
+
+/** Validate fields present in private or intermediate workspace manifests before publication. */
+export function parseWorkspacePackageJSON(text: string, context: string) {
+  const parsed = v.safeParse(v.partial(packageManifestSchema), parseJSONObject(text, context))
+  if (!parsed.success)
+    throw new Error(`${context}: invalid package fields: ${v.summarize(parsed.issues)}`)
+  return parsed.output
+}

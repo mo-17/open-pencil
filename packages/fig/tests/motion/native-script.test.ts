@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   applyFigmaNativeMotionTransaction,
   buildFigmaMotionPluginScript,
@@ -412,7 +414,10 @@ describe('@open-pencil/fig native Motion script transaction', () => {
     const node = new MockMotionNode()
     expect((await runScript(motion('slide'), node)).result.status).toBe('applied')
     const raw = node.getSharedPluginData('openpencil', 'nativeMotionAdapterV1')
-    const forged = JSON.parse(raw) as { sourceSignature: string }
+    const forged = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ sourceSignature: v.string() })),
+      raw
+    )
     forged.sourceSignature = createFigmaNativeMotionPlan(motion('opacity')).sourceSignature ?? ''
     node.setSharedPluginData('openpencil', 'nativeMotionAdapterV1', JSON.stringify(forged))
     const before = node.snapshot()

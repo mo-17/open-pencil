@@ -2,7 +2,11 @@ import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const ROOT = resolve(import.meta.dir, '../../../../..')
+import { compact } from 'es-toolkit'
+
+import { repoPath } from '#tests/helpers/paths'
+
+const ROOT = repoPath()
 const READ_MODULE_URL = pathToFileURL(
   resolve(ROOT, 'packages/core/src/io/formats/fig/read.ts')
 ).href
@@ -114,5 +118,5 @@ test('FIG workers obey a bounded dynamic global concurrency gate', async () => {
     process.exited
   ])
 
-  expect(exitCode, [stdout, stderr].filter(Boolean).join('\n')).toBe(0)
+  expect(exitCode, compact([stdout, stderr]).join('\n')).toBe(0)
 }, 10_000)

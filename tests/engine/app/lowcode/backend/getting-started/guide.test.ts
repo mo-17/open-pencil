@@ -18,7 +18,7 @@ import {
 } from './helpers'
 
 describe('saved backend getting started guide', () => {
-  test.each(BUSINESS_TEMPLATE_IDS)(
+  test.each([...BUSINESS_TEMPLATE_IDS])(
     'recognizes %s standalone with complete bilingual preparation',
     (kind) => {
       const application = business(kind)
@@ -55,7 +55,7 @@ describe('saved backend getting started guide', () => {
     const application = enterprise()
     const before = JSON.stringify(application)
     const guide = createBackendGettingStartedGuide(application, 'zh-CN')
-    expect(guide?.modules.map((module) => module.kind)).toEqual(enterpriseKinds)
+    expect<unknown>(guide?.modules.map((module) => module.kind)).toEqual(enterpriseKinds)
     expect(guide?.roles).toEqual([
       'crm-manager',
       'asset-manager',
@@ -86,7 +86,7 @@ describe('saved backend getting started guide', () => {
     changeRoleReferences(application, 'recruitment-hr', 'custom-hr')
     expect(parseBackendApplicationSpecV1(application).ok).toBe(true)
     const guide = createBackendGettingStartedGuide(application, 'en')
-    expect(guide?.modules.map((module) => module.kind)).toEqual(enterpriseKinds)
+    expect<unknown>(guide?.modules.map((module) => module.kind)).toEqual(enterpriseKinds)
     expect(guide?.modules.find((module) => module.kind === 'recruitment-hr')?.roles).toEqual([])
     expect(guide?.roles).not.toContain('recruitment-hr')
     expect(guide?.roles).not.toContain('custom-hr')

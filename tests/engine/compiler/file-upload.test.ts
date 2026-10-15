@@ -3,11 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import type { StateDef } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 const SUPA_CONFIG = { url: 'https://x.supabase.co', anonKey: 'eyJ.anon.sig' }
-const URL_STATE = [{ id: 'd1', name: 'avatarUrl', type: 'string', defaultValue: '' }]
+const URL_STATE: StateDef[] = [{ id: 'd1', name: 'avatarUrl', type: 'string', defaultValue: '' }]
 
 function backendStorage(access: 'private' | 'public-read'): BackendApplicationSpecV1 {
   return {
@@ -50,7 +51,7 @@ function backendStorage(access: 'private' | 'public-read'): BackendApplicationSp
 describe('compile — file upload (Phase 4 §18)', () => {
   function compileUpload(
     upload: Record<string, unknown>,
-    opts: { supabase?: boolean; docStates?: unknown[]; extraProps?: Record<string, unknown> } = {}
+    opts: { supabase?: boolean; docStates?: StateDef[]; extraProps?: Record<string, unknown> } = {}
   ): string {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

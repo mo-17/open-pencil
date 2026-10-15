@@ -12,12 +12,12 @@ import {
   marketplaceReleaseCoordinateKey,
   type MarketplaceAuditEventV1,
   type MarketplaceArtifactStore,
-  type MarketplaceListingMetadataV1,
   type MarketplaceMutationContext,
   type MarketplaceReleaseChannel,
   type MarketplaceReleaseV1,
   type MarketplaceRepository,
   type MarketplaceService,
+  type MarketplaceStateV1,
   type MarketplaceSubmissionV1,
   type SubmitMarketplacePluginInput
 } from '@open-pencil/marketplace'
@@ -41,23 +41,17 @@ const REVISED_AT = '2026-08-05T12:00:02.000Z'
 const CHANGES_REASON = 'Replace the unsafe connector declaration before review continues'
 const VALIDATION_REASON = 'Automated validation rejected the submitted payload'
 
-interface Phase4RevisionRecord {
-  readonly revision: number
-  readonly signingKeyId: string
-  readonly authenticatedRequestKeyId: string
-  readonly manifestDigest: string
-  readonly artifactDigest: string
-  readonly listingDigest: string
-  readonly listing: { readonly summary: string }
-  readonly runtimeCoordinate: { readonly packageDigest: string } | null
-}
+type Phase4Submission = MarketplaceSubmissionV1
 
-interface Phase4Submission extends MarketplaceSubmissionV1 {
-  readonly revision: number
-  readonly signingKeyId: string
-  readonly authenticatedRequestKeyId: string
-  readonly listingDigest: string
-  readonly revisionHistory: readonly Phase4RevisionRecord[]
+type MutableState<T> = T extends readonly (infer Item)[]
+  ? MutableState<Item>[]
+  : T extends object
+    ? { -readonly [Key in keyof T]: MutableState<T[Key]> }
+    : T
+
+/** Own snapshots are verified repository data; adversarial cases mutate only their detached copy. */
+function mutableState(state: MarketplaceStateV1): MutableState<MarketplaceStateV1> {
+  return structuredClone(state) as MutableState<MarketplaceStateV1>
 }
 
 interface Phase4ValidationResult {
@@ -166,6 +160,9 @@ function repositoryHarness(): RepositoryHarness {
       validationFailure = reason
     },
     repository: {
+      nonces: backing.nonces,
+      inspectPublisherMutation: backing.inspectPublisherMutation.bind(backing),
+      executePublisherMutation: backing.executePublisherMutation.bind(backing),
       snapshot() {
         counts.snapshots++
         return backing.snapshot()
@@ -676,13 +673,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
     const input = await submissionInput(value.publisher.privateKey)
     await value.service.submit(input, publisherContext(SUBMITTED_AT))
     const state = await value.service.snapshot()
-    const tamperedListing = structuredClone(state) as {
-      submissions: Array<{
-        listing: MarketplaceListingMetadataV1
-        listingDigest: string
-        authenticatedRequestKeyId: string | null
-      }>
-    }
+    const tamperedListing = mutableState(state)
     const submission = tamperedListing.submissions.at(0)
     if (!submission) throw new TypeError('Expected revision-one submission fixture')
     submission.listing = { ...submission.listing, description: 'Tampered after creation' }
@@ -691,9 +682,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /creation audit payload/i
     )
 
-    const tamperedRequestKey = structuredClone(state) as {
-      submissions: Array<{ authenticatedRequestKeyId: string | null }>
-    }
+    const tamperedRequestKey = mutableState(state)
     const requestIdentity = tamperedRequestKey.submissions.at(0)
     if (!requestIdentity) throw new TypeError('Expected request-key submission fixture')
     requestIdentity.authenticatedRequestKeyId = 'acme.release.tampered'
@@ -701,12 +690,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /creation audit payload/i
     )
 
-    const downgradedIdentity = structuredClone(state) as {
-      submissions: Array<{
-        signingKeyId: string | null
-        authenticatedRequestKeyId: string | null
-      }>
-    }
+    const downgradedIdentity = mutableState(state)
     const downgraded = downgradedIdentity.submissions.at(0)
     if (!downgraded) throw new TypeError('Expected downgrade submission fixture')
     downgraded.signingKeyId = null
@@ -715,9 +699,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /creation audit payload/i
     )
 
-    const forgedApproval = structuredClone(state) as {
-      submissions: Array<{ status: string; statusReason: string | null }>
-    }
+    const forgedApproval = mutableState(state)
     const forged = forgedApproval.submissions.at(0)
     if (!forged) throw new TypeError('Expected approval submission fixture')
     forged.status = 'approved'
@@ -747,9 +729,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
     const state = await value.service.snapshot()
     const attacker = await keyPair()
 
-    const swappedPublicKey = structuredClone(state) as {
-      publisherKeys: Array<{ publicKeyPem: string }>
-    }
+    const swappedPublicKey = mutableState(state)
     const swappedKey = swappedPublicKey.publisherKeys.at(0)
     if (!swappedKey) throw new TypeError('Expected publisher key fixture')
     swappedKey.publicKeyPem = await exportEd25519PublicKeyPem(attacker.publicKey)
@@ -757,16 +737,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /publisher key.*registration audit/i
     )
 
-    const weakRegistration = structuredClone(state) as {
-      publisherKeys: Array<{
-        keyId: string
-        notAfter: string
-        notBefore: string
-        predecessorKeyId: string | null
-        publisherId: string
-      }>
-      auditEvents: MarketplaceAuditEventV1[]
-    }
+    const weakRegistration = mutableState(state)
     const registeredKey = weakRegistration.publisherKeys.at(0)
     if (!registeredKey) throw new TypeError('Expected publisher key fixture')
     const weakDigest = await marketplaceAuditPayloadDigest({
@@ -795,9 +766,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /publisher key.*registration audit/i
     )
 
-    const renamedPublisher = structuredClone(state) as {
-      publishers: Array<{ displayName: string }>
-    }
+    const renamedPublisher = mutableState(state)
     const renamed = renamedPublisher.publishers.at(0)
     if (!renamed) throw new TypeError('Expected publisher fixture')
     renamed.displayName = 'Attacker Plugins'
@@ -805,9 +774,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /publisher.*creation audit/i
     )
 
-    const resurrectedPublisher = structuredClone(state) as {
-      publishers: Array<{ status: string; statusReason: string | null }>
-    }
+    const resurrectedPublisher = mutableState(state)
     const publisher = resurrectedPublisher.publishers.at(0)
     if (!publisher) throw new TypeError('Expected publisher fixture')
     publisher.status = 'active'
@@ -816,14 +783,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /publisher.*current status audit/i
     )
 
-    const resurrectedKey = structuredClone(state) as {
-      publisherKeys: Array<{
-        status: string
-        statusReason: string | null
-        revokedAt: string | null
-        revocationReason: string | null
-      }>
-    }
+    const resurrectedKey = mutableState(state)
     const key = resurrectedKey.publisherKeys.at(0)
     if (!key) throw new TypeError('Expected publisher key fixture')
     key.status = 'active'
@@ -834,9 +794,7 @@ describe('Phase 4 marketplace submission validation and revision', () => {
       /publisher key.*current status audit/i
     )
 
-    const resurrectedOwnership = structuredClone(state) as {
-      ownerships: Array<{ status: string; statusReason: string | null }>
-    }
+    const resurrectedOwnership = mutableState(state)
     const ownership = resurrectedOwnership.ownerships.at(0)
     if (!ownership) throw new TypeError('Expected ownership fixture')
     ownership.status = 'active'
@@ -951,17 +909,14 @@ describe('Phase 4 marketplace impact authority', () => {
       runtimePackageDigest: currentSubmission.runtimeCoordinate?.packageDigest ?? null,
       submissionId: currentSubmission.id
     })
-    const legacyState = structuredClone(currentState) as {
-      submissions: Array<Record<string, unknown>>
-      auditEvents: MarketplaceAuditEventV1[]
-    }
+    const legacyState = mutableState(currentState)
     for (const legacySubmission of legacyState.submissions) {
-      delete legacySubmission.listingDigest
-      delete legacySubmission.signingKeyId
-      delete legacySubmission.authenticatedRequestKeyId
-      delete legacySubmission.revision
-      delete legacySubmission.revisionCreatedAt
-      delete legacySubmission.revisionHistory
+      Reflect.deleteProperty(legacySubmission, 'listingDigest')
+      Reflect.deleteProperty(legacySubmission, 'signingKeyId')
+      Reflect.deleteProperty(legacySubmission, 'authenticatedRequestKeyId')
+      Reflect.deleteProperty(legacySubmission, 'revision')
+      Reflect.deleteProperty(legacySubmission, 'revisionCreatedAt')
+      Reflect.deleteProperty(legacySubmission, 'revisionHistory')
     }
     const rebuiltAudit: MarketplaceAuditEventV1[] = []
     for (const event of legacyState.auditEvents) {
@@ -977,7 +932,7 @@ describe('Phase 4 marketplace impact authority', () => {
         eventHash: await marketplaceAuditEventHash(nextFields)
       })
     }
-    legacyState.auditEvents = rebuiltAudit
+    Reflect.set(legacyState, 'auditEvents', rebuiltAudit)
     const legacyService = phase4Service(
       createMarketplaceService({
         repository: createMemoryMarketplaceRepository({ initialState: legacyState }),
@@ -1005,12 +960,7 @@ describe('Phase 4 marketplace impact authority', () => {
       'submission.signing_key_pinned',
       'release.published'
     ])
-    const tamperedPin = structuredClone(state) as {
-      submissions: Array<{
-        listing: MarketplaceListingMetadataV1
-        listingDigest: string
-      }>
-    }
+    const tamperedPin = mutableState(state)
     const pinnedSubmission = tamperedPin.submissions.at(0)
     if (!pinnedSubmission) throw new TypeError('Expected pinned legacy submission fixture')
     pinnedSubmission.listing = {

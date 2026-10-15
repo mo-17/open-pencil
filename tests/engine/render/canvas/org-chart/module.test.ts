@@ -11,6 +11,8 @@ import {
 } from '#core/plugins/org-chart'
 import { collectGraphFontRequirements, requiredNodeFontFaces } from '#core/text/requirements'
 
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { carouselPixelHarness } from '../carousel/helpers'
 
 test('Org Chart canvas paints cards and connectors with readable CJK paragraphs and preloads hidden branches', async () => {
@@ -97,7 +99,7 @@ test('Org Chart rejects foreign or malformed module identity without painting', 
     graph.getPages()[0].id,
     createOrgChartModuleFrameOverrides()
   )
-  const module = node.interactiveProps?.module
+  const module = expectModuleInstance(node.interactiveProps?.module)
   if (!module) throw new Error('Expected module')
   module.configVersion = 99
   try {

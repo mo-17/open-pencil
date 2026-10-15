@@ -1,49 +1,90 @@
+import { compact } from 'es-toolkit/array'
+
 import { jsx, type SyntaxNode } from '@open-pencil/emit'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
-import { collectProps, NODE_TYPE_TO_TAG, type JSXProp } from './props'
-import { valueSyntax } from './value'
-
-function propValue(value: JSXProp[1]): SyntaxNode | null {
-  if (value === true) return null
-  if (typeof value === 'string') return jsx.stringValue(value)
-  return jsx.container(valueSyntax(value))
-}
-
-/**
- * A prop as a JSX attribute: `true` prints the bare name, strings as attribute strings, and
- * other values as expressions, with paint and effect helpers as calls.
- */
-function propAttribute([name, value]: JSXProp): SyntaxNode {
-  return jsx.attribute(name, propValue(value))
-}
+import { rekaExport, type RekaExport } from './behaviours'
+import { iconProps } from './icons'
+import { collectProps, NODE_TYPE_TO_TAG } from './props'
+import { textChildren } from './text'
+import { propAttribute } from './value'
 
 /** Design JSX with the layer behind each element, in the order elements open. */
 export interface DesignJSXWithLayers {
   code: string
-  /** One id per JSX element, in pre-order, so editors can link elements to layers. */
-  layerIds: string[]
+  /**
+   * One entry per JSX element, in pre-order, so editors can link elements to layers: the
+   * layer's id, or `null` for an element no layer is, such as a `<Span>` or `<Paragraph>`.
+   */
+  layerIds: Array<string | null>
 }
 
+const NO_REKA: RekaExport = {
+  tags: new Map(),
+  props: new Map(),
+  flatten: new Set()
+}
+
+function mergeReka(outer: RekaExport, inner: RekaExport | null): RekaExport {
+  if (!inner) return outer
+  return {
+    tags: new Map([...outer.tags, ...inner.tags]),
+    props: new Map([...outer.props, ...inner.props]),
+    flatten: new Set([...outer.flatten, ...inner.flatten])
+  }
+}
+
+/** How many JSX elements the syntax holds, as an editor finds them in pre-order. */
+function elementCount(nodes: readonly SyntaxNode[]): number {
+  let count = 0
+  for (const node of nodes) {
+    if (node.type !== 'JSXElement') continue
+    const children = (node as { children?: SyntaxNode[] }).children ?? []
+    count += 1 + elementCount(children)
+  }
+  return count
+}
+
+/**
+ * A layer and the layers below it as JSX elements. A component with a behaviour is written as
+ * Reka UI elements; a container JSX leaves implicit is written as its children alone.
+ */
 function nodeToJSX(
   node: SceneNode,
   graph: SceneGraph,
   depth: number,
-  layerIds?: string[]
-): SyntaxNode | null {
-  const tag = NODE_TYPE_TO_TAG[node.type]
-  if (!tag) return null
-  layerIds?.push(node.id)
-  const attributes = collectProps(node, graph).map(propAttribute)
-  if (node.type === 'TEXT' || (node.type === 'BUTTON' && node.childIds.length === 0)) {
-    const text = node.type === 'TEXT' ? node.text : buttonLabel(node)
-    return jsx.element(tag, attributes, text ? [jsx.text(text)] : [], depth, true)
-  }
+  layerIds?: Array<string | null>,
+  outer: RekaExport = NO_REKA
+): SyntaxNode[] {
+  const reka = mergeReka(outer, rekaExport(graph, node))
   // Hidden children export with `visible={false}` rather than disappearing.
-  const children = graph
-    .getChildren(node.id)
-    .flatMap((child) => nodeToJSX(child, graph, depth + 1, layerIds) ?? [])
-  return jsx.element(tag, attributes, children, depth)
+  const children = (childDepth: number) =>
+    graph
+      .getChildren(node.id)
+      .flatMap((child) => nodeToJSX(child, graph, childDepth, layerIds, reka))
+  if (reka.flatten.has(node.id)) return children(depth)
+  // An icon is written by name; its paths are the icon set's to draw again.
+  const icon = iconProps(node, graph)
+  if (icon) {
+    layerIds?.push(node.id)
+    return [jsx.element('Icon', icon.map(propAttribute), [], depth)]
+  }
+  const tag = reka.tags.get(node.id) ?? NODE_TYPE_TO_TAG[node.type]
+  if (!tag) return []
+  layerIds?.push(node.id)
+  const ownProps = reka.props.get(node.id)
+  // An item names its component; the instance's own layers are the component's to write.
+  if (ownProps?.some(([name]) => name === 'of'))
+    return [jsx.element(tag, ownProps.map(propAttribute), [], depth)]
+  const attributes = [...collectProps(node, graph), ...(ownProps ?? [])].map(propAttribute)
+  if (node.type === 'BUTTON' && node.childIds.length === 0)
+    return [jsx.element(tag, attributes, [jsx.text(buttonLabel(node))], depth, true)]
+  if (node.type === 'TEXT') {
+    const { children: content, inline } = textChildren(node, depth)
+    for (let count = elementCount(content); count > 0; count--) layerIds?.push(null)
+    return [jsx.element(tag, attributes, content, depth, inline)]
+  }
+  return [jsx.element(tag, attributes, children(depth + 1), depth)]
 }
 
 /** A JSX attribute as the export prints it: its name and its source, such as `w={320}`. */
@@ -85,10 +126,21 @@ export interface DesignJSXElement {
   tag: string
   /** Each attribute as `sceneNodeAttributes` prints it, keyed by name: `w={320}`. */
   attributes: Record<string, string>
-  /** Text content of a text layer as JSX writes it, else `null`. */
+  /**
+   * A text layer's content as JSX writes it between its tags, `<Span>`s and `<Paragraph>`s
+   * included, for an element at the start of its line; `null` for no content or another layer.
+   */
   text: string | null
   /** The layers written as child elements, in order. */
   childIds: string[]
+}
+
+/** What a text's element holds between its tags, printed as `sceneNodeToJSX` prints it. */
+function textContent(node: SceneNode, tag: string): string | null {
+  const { children, inline } = textChildren(node, 0)
+  if (children.length === 0) return null
+  const printed = jsx.printJSX(jsx.element(tag, [], children, 0, inline))
+  return printed.slice(tag.length + 2, printed.lastIndexOf(`</${tag}>`))
 }
 
 export function designJSXElement(nodeId: string, graph: SceneGraph): DesignJSXElement | null {
@@ -104,8 +156,8 @@ export function designJSXElement(nodeId: string, graph: SceneGraph): DesignJSXEl
       .map(({ name, source }) => [name, source])
   )
   if (isText) {
-    const content = node.type === 'TEXT' ? node.text : buttonLabel(node)
-    const text = content ? jsx.printJSX(jsx.text(content)) : null
+    const text =
+      node.type === 'TEXT' ? textContent(node, tag) : jsx.printJSX(jsx.text(buttonLabel(node)))
     return { tag, attributes, text, childIds: [] }
   }
   const childIds = graph
@@ -117,7 +169,7 @@ export function designJSXElement(nodeId: string, graph: SceneGraph): DesignJSXEl
 
 export function sceneNodeToJSX(nodeId: string, graph: SceneGraph): string {
   const node = graph.getNode(nodeId)
-  const syntax = node ? nodeToJSX(node, graph, 0) : null
+  const syntax = node ? nodeToJSX(node, graph, 0).at(0) : undefined
   return syntax ? jsx.printJSX(syntax) : ''
 }
 
@@ -129,15 +181,14 @@ export function selectionToJSXWithLayers(
   nodeIds: string[],
   graph: SceneGraph
 ): DesignJSXWithLayers {
-  const layerIds: string[] = []
-  const code = nodeIds
-    .map((id) => {
+  const layerIds: Array<string | null> = []
+  const code = compact(
+    nodeIds.map((id) => {
       const node = graph.getNode(id)
-      const syntax = node ? nodeToJSX(node, graph, 0, layerIds) : null
+      const syntax = node ? nodeToJSX(node, graph, 0, layerIds).at(0) : undefined
       return syntax ? jsx.printJSX(syntax) : ''
     })
-    .filter(Boolean)
-    .join('\n\n')
+  ).join('\n\n')
   return { code, layerIds }
 }
 

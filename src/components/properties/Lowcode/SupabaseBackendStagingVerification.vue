@@ -207,14 +207,14 @@ onScopeDispose(() => {
         <label class="text-[11px] text-muted">
           {{ panels.lowcodeSupabaseBackendCapabilityTitle }}
         </label>
-        <span class="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase text-amber-500">
+        <span class="rounded bg-warning/10 px-1.5 py-0.5 text-[9px] uppercase text-warning">
           {{ panels.lowcodeSupabaseBackendStagingBadge }}
         </span>
       </div>
       <p class="mt-0.5 text-[10px] text-muted">
         {{ panels.lowcodeSupabaseBackendCapabilityDescription }}
       </p>
-      <p class="mt-0.5 text-[10px] text-amber-500">
+      <p class="mt-0.5 text-[10px] text-warning">
         {{ panels.lowcodeSupabaseBackendCapabilityTransientNotice }}
       </p>
     </div>
@@ -300,7 +300,7 @@ onScopeDispose(() => {
       type="button"
       data-test-id="lowcode-supabase-backend-capability-verify"
       :disabled="!canVerify"
-      class="rounded border border-amber-500/50 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+      class="rounded border border-warning/50 px-2 py-1 text-[11px] text-warning hover:bg-warning/10 disabled:cursor-not-allowed disabled:opacity-50"
       @click="runVerification"
     >
       {{
@@ -313,7 +313,7 @@ onScopeDispose(() => {
     <p
       v-if="errorMessage"
       data-test-id="lowcode-supabase-backend-capability-error"
-      class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      class="rounded border border-error/40 bg-error/10 px-2 py-1 text-[10px] text-error"
     >
       {{ errorMessage }}
     </p>
@@ -327,15 +327,15 @@ onScopeDispose(() => {
         :class="[
           'text-[10px]',
           verification.result.value.receipt.outcome === 'succeeded'
-            ? 'text-green-500'
-            : 'text-amber-500'
+            ? 'text-success'
+            : 'text-warning'
         ]"
       >
         {{ outcomeLabel }}
       </p>
       <p
         v-if="verification.result.value.receipt.outcome === 'outcome-unknown'"
-        class="text-[10px] text-amber-500"
+        class="text-[10px] text-warning"
       >
         {{ panels.lowcodeSupabaseBackendStagingNoRetry }}
       </p>
@@ -373,17 +373,17 @@ onScopeDispose(() => {
             :class="[
               'shrink-0',
               gate.status === 'passed'
-                ? 'text-green-500'
+                ? 'text-success'
                 : gate.status === 'failed'
-                  ? 'text-red-500'
-                  : 'text-amber-500'
+                  ? 'text-error'
+                  : 'text-warning'
             ]"
           >
             {{ gateLabel(gate.status) }}
           </span>
         </li>
       </ul>
-      <p class="text-[10px] text-amber-500">
+      <p class="text-[10px] text-warning">
         {{ panels.lowcodeSupabaseBackendStagingProductionBlocked }}
       </p>
     </article>

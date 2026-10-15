@@ -1,6 +1,4 @@
-import { expect, mock, test } from 'bun:test'
-
-import type { Canvas } from 'canvaskit-wasm'
+import { expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { createSlideMenuModuleFrameOverrides } from '@open-pencil/core/plugins'
@@ -10,7 +8,10 @@ import { RenderChunkIndex } from '#core/canvas/renderer/chunks'
 import { modalHidesContent, resolveModalContent } from '#core/plugins/content/modal'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 
-import { createMockCanvas } from '../effects/helpers'
+import { canvasMock, createMockCanvas } from '#tests/engine/render/canvas/effects/helpers'
+import { asCanvas } from '#tests/engine/render/canvas/helpers'
+import { expectModuleInstance } from '#tests/helpers/assert'
+
 import { moduleTextRenderer, paragraphText } from '../modules/helpers'
 
 test('mapped drawer content stays in its own editable layout and cannot intercept the closed trigger', () => {
@@ -49,8 +50,8 @@ test('mapped drawer content stays in its own editable layout and cannot intercep
     }
     for (const character of '编辑抽屉')
       expect(collectGraphFontRequirements(editor.graph, [host.id]).characters).toContain(character)
-    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
-    expect(renderSlideMenuModulePreview(moduleTextRenderer(), canvas as Canvas, host)).toBe(true)
+    const canvas = { ...createMockCanvas(), drawParagraph: canvasMock('drawParagraph') }
+    expect(renderSlideMenuModulePreview(moduleTextRenderer(), asCanvas(canvas), host)).toBe(true)
     expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
       '编辑抽屉'
     ])
@@ -79,7 +80,7 @@ test('unreviewed frames and legacy drawer children preserve ordinary presentatio
     })
     expect(modalHidesContent(host)).toBe(false)
     expect(editor.getCanvasSelectionChildren(host.id).map((node) => node.id)).toEqual([child.id])
-    const module = host.interactiveProps?.module
+    const module = expectModuleInstance(host.interactiveProps?.module)
     if (!module) throw new Error('Drawer envelope unavailable')
     editor.graph.updateNode(host.id, {
       interactiveProps: {

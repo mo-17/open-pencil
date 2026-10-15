@@ -1,6 +1,7 @@
 import type { Locator } from '@playwright/test'
 
 import {
+  MOTION_PRESET_IDS,
   TEAM_MOTION_LIBRARY_FORMAT,
   TEAM_MOTION_LIBRARY_SCHEMA_VERSION,
   exportTeamMotionPublicKey,
@@ -12,13 +13,19 @@ import {
 } from '@open-pencil/scene-graph'
 
 import { expect, test, useEditorSetupWithClear } from '#tests/e2e/fixtures'
-import { readMotionActionSnapshot, readSelectedMotion } from '#tests/helpers/motion'
+import {
+  readMotionActionSnapshot,
+  readSelectedMotion,
+  readSelectedPositions
+} from '#tests/helpers/motion'
 import { chooseAppSelect, propertySection } from '#tests/helpers/properties'
 
 const editor = useEditorSetupWithClear()
 
 async function createRectangles(count: number) {
   return editor.page.evaluate((total) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const ids = Array.from({ length: total }, (_, index) =>
@@ -78,6 +85,8 @@ async function signedTeamMotionFixture(libraryId: string) {
 
 async function setupMotionActions() {
   return editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const page = store.graph.getNode(store.state.currentPageId)
@@ -157,7 +166,11 @@ async function openMotionTimeline(): Promise<Locator> {
   await editor.canvas.waitForRender()
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
   const timeline = section.getByTestId('motion-timeline')
   await timeline.scrollIntoViewIfNeeded()
   return timeline
@@ -178,7 +191,9 @@ async function selectedMotionTrack(index = 0): Promise<MotionTrack> {
 async function dragAndDuplicateTimelineKeyframe(timeline: Locator): Promise<void> {
   await timeline.getByTestId('motion-playhead').fill('200')
   await timeline.getByTestId('motion-add-keyframe').click()
-  const marker = timeline.getByTestId('motion-keyframe-slide-up-1')
+  const marker = timeline.locator(
+    '[data-slot="motion-keyframe"][data-track-id="slide-up"][data-keyframe-index="1"][data-occurrence-index="0"]'
+  )
   const rail = marker.locator('..')
   await marker.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
   const railBox = await rail.boundingBox()
@@ -198,7 +213,11 @@ async function dragAndDuplicateTimelineKeyframe(timeline: Locator): Promise<void
   await editor.canvas.undo()
   expect((await selectedMotionTrack()).keyframes[1]?.offset).toBe(0.4)
 
-  await timeline.getByTestId('motion-keyframe-slide-up-1').click()
+  await timeline
+    .locator(
+      '[data-slot="motion-keyframe"][data-track-id="slide-up"][data-keyframe-index="1"][data-occurrence-index="0"]'
+    )
+    .click()
   await timeline.getByTestId('motion-duplicate-keyframe').click()
   expect((await selectedMotionTrack()).keyframes.map((keyframe) => keyframe.offset)).toEqual([
     0, 0.4, 0.7, 1
@@ -207,11 +226,15 @@ async function dragAndDuplicateTimelineKeyframe(timeline: Locator): Promise<void
 
 async function editTimelineCubicEasing(timeline: Locator): Promise<void> {
   await chooseAppSelect(editor.page, timeline.getByTestId('motion-keyframe-easing'), 'Cubic Bézier')
-  await expect(timeline.getByTestId('motion-keyframe-easing-curve')).toBeVisible()
+  await expect(
+    timeline.locator('[data-slot="motion-easing-curve"][data-property="motion-keyframe-easing"]')
+  ).toBeVisible()
   expect((await selectedMotionTrack()).keyframes[2]?.easing).toMatchObject({ type: 'cubicBezier' })
 
-  const curve = timeline.getByTestId('motion-keyframe-easing-curve')
-  const control = timeline.getByTestId('motion-keyframe-easing-control-1')
+  const curve = timeline.locator(
+    '[data-slot="motion-easing-curve"][data-property="motion-keyframe-easing"]'
+  )
+  const control = curve.locator('[data-slot="cubic-bezier-control"][data-control-point="1"]')
   const curveBox = await curve.boundingBox()
   const controlBox = await control.boundingBox()
   if (!curveBox || !controlBox) throw new Error('Expected cubic Bézier editor geometry')
@@ -227,16 +250,33 @@ async function editTimelineCubicEasing(timeline: Locator): Promise<void> {
   )
   await editor.page.mouse.up()
   const draggedEasing = (await selectedMotionTrack()).keyframes[2]?.easing
-  const draggedX1 = typeof draggedEasing === 'object' ? draggedEasing.x1 : undefined
+  const draggedX1 =
+    typeof draggedEasing === 'object' && draggedEasing.type === 'cubicBezier'
+      ? draggedEasing.x1
+      : undefined
   expect(draggedX1).toBeGreaterThan(0.25)
   expect(draggedX1).toBeLessThanOrEqual(1)
+  if (draggedX1 === undefined) throw new Error('Expected dragged cubic Bézier control')
+  await expect(control).toBeFocused()
+  const selectedPositions = await readSelectedPositions(editor.page)
+  await control.press('ArrowRight')
+  expect(await readSelectedPositions(editor.page)).toEqual(selectedPositions)
+  const keyboardEasing = (await selectedMotionTrack()).keyframes[2]?.easing
+  if (typeof keyboardEasing !== 'object' || keyboardEasing.type !== 'cubicBezier') {
+    throw new Error('Expected keyboard-updated cubic Bézier easing')
+  }
+  expect(keyboardEasing.x1).toBeCloseTo(Math.min(1, draggedX1 + 0.01), 3)
 
   const preciseX1 = timeline.locator('[data-property="motion-keyframe-easing-x1"]')
   await preciseX1.click()
   await preciseX1.locator('input[data-slot="input"]').fill('0.42')
   await preciseX1.locator('input[data-slot="input"]').press('Enter')
   const preciseEasing = (await selectedMotionTrack()).keyframes[2]?.easing
-  expect(typeof preciseEasing === 'object' ? preciseEasing.x1 : undefined).toBe(0.42)
+  expect(
+    typeof preciseEasing === 'object' && preciseEasing.type === 'cubicBezier'
+      ? preciseEasing.x1
+      : undefined
+  ).toBe(0.42)
 }
 
 async function organizeTimelineTracks(timeline: Locator): Promise<void> {
@@ -259,7 +299,9 @@ async function editTimelineV2Easings(timeline: Locator): Promise<void> {
 
   await chooseAppSelect(editor.page, timeline.getByTestId('motion-track-easing'), 'Hold')
   expect((await selectedMotionTrack()).timing.easing).toEqual({ type: 'hold' })
-  await expect(timeline.getByTestId('motion-easing-curve')).toHaveCount(0)
+  await expect(
+    timeline.locator('[data-slot="motion-easing-curve"][data-property="motion-easing"]')
+  ).toHaveCount(0)
 
   await chooseAppSelect(editor.page, timeline.getByTestId('motion-track-easing'), 'Steps')
   await expect(timeline.getByTestId('motion-easing-steps')).toBeVisible()
@@ -333,34 +375,58 @@ async function expectMotionV2ChannelControls(timeline: Locator): Promise<void> {
     'paddingLeft'
   ]
   for (const channel of numericChannels) {
-    await expect(timeline.getByTestId(`motion-v2-toggle-${channel}`)).toHaveCount(1)
+    await expect(
+      timeline.locator(`[data-slot="motion-channel-toggle"][data-channel="${channel}"]`)
+    ).toHaveCount(1)
   }
   for (const channel of ['fillColor', 'strokeColor', 'shadowColor']) {
-    await expect(timeline.getByTestId(`motion-v2-${channel}`)).toHaveCount(1)
+    await expect(
+      timeline.locator(`[data-slot="motion-color-channel"][data-property="motion-v2-${channel}"]`)
+    ).toHaveCount(1)
   }
 
-  await expect(timeline.getByTestId('motion-v2-fillColor').getByRole('checkbox')).toBeEnabled()
-  await expect(timeline.getByTestId('motion-v2-strokeColor').getByRole('checkbox')).toBeDisabled()
-  await expect(timeline.getByTestId('motion-v2-toggle-strokeWidth')).toBeDisabled()
-  await expect(timeline.getByTestId('motion-v2-toggle-cornerRadius')).toBeEnabled()
-  await expect(timeline.getByTestId('motion-v2-toggle-trimStart')).toBeDisabled()
-  await expect(timeline.getByTestId('motion-v2-toggle-gap')).toBeDisabled()
-  await expect(timeline.getByTestId('motion-v2-channel-gap')).toHaveAttribute(
-    'data-capability-disabled',
-    'true'
-  )
-  await expect(timeline.getByTestId('motion-v2-toggle-gap')).toHaveAttribute(
-    'aria-description',
-    /\S+/
-  )
-  await timeline.getByTestId('motion-v2-channel-gap').hover()
+  await expect(
+    timeline
+      .locator('[data-slot="motion-color-channel"][data-property="motion-v2-fillColor"]')
+      .getByRole('checkbox')
+  ).toBeEnabled()
+  await expect(
+    timeline
+      .locator('[data-slot="motion-color-channel"][data-property="motion-v2-strokeColor"]')
+      .getByRole('checkbox')
+  ).toBeDisabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="strokeWidth"]')
+  ).toBeDisabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="cornerRadius"]')
+  ).toBeEnabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="trimStart"]')
+  ).toBeDisabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="gap"]')
+  ).toBeDisabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel"][data-channel="gap"]')
+  ).toHaveAttribute('data-capability-disabled', 'true')
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="gap"]')
+  ).toHaveAttribute('aria-description', /\S+/)
+  await timeline.locator('[data-slot="motion-channel"][data-channel="gap"]').hover()
   await expect(timeline.page().getByRole('tooltip')).toHaveText(/\S+/)
-  await expect(timeline.getByTestId('motion-v2-toggle-blur')).toBeEnabled()
-  await expect(timeline.getByTestId('motion-v2-shadowColor').getByRole('checkbox')).toBeEnabled()
+  await expect(
+    timeline.locator('[data-slot="motion-channel-toggle"][data-channel="blur"]')
+  ).toBeEnabled()
+  await expect(
+    timeline
+      .locator('[data-slot="motion-color-channel"][data-property="motion-v2-shadowColor"]')
+      .getByRole('checkbox')
+  ).toBeEnabled()
 }
 
 async function editMotionV2WidthAndFill(timeline: Locator): Promise<void> {
-  await timeline.getByTestId('motion-v2-toggle-width').check()
+  await timeline.locator('[data-slot="motion-channel-toggle"][data-channel="width"]').check()
   expect((await selectedMotionTrack()).keyframes.map((keyframe) => keyframe.width)).toEqual([
     100, 100
   ])
@@ -372,7 +438,10 @@ async function editMotionV2WidthAndFill(timeline: Locator): Promise<void> {
     160, 100
   ])
 
-  await timeline.getByTestId('motion-v2-fillColor').getByRole('checkbox').check()
+  await timeline
+    .locator('[data-slot="motion-color-channel"][data-property="motion-v2-fillColor"]')
+    .getByRole('checkbox')
+    .check()
   const fillRed = timeline.locator('[data-property="motion-v2-fillColor-r"]')
   await fillRed.click()
   await fillRed.locator('input[data-slot="input"]').fill('0.4')
@@ -443,9 +512,21 @@ test('single-selection presets are keyboard accessible and expose motion control
   await section.scrollIntoViewIfNeeded()
   await expect(section).toBeVisible()
   await expect(section.getByRole('group', { name: 'Presets' })).toBeVisible()
-  await expect(section.getByTestId(/^motion-preset-apply-builtin:/)).toHaveCount(8)
+  await expect
+    .poll(() =>
+      section
+        .locator(
+          '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key^="builtin:"]'
+        )
+        .evaluateAll((buttons) =>
+          buttons.map((button) => button.getAttribute('data-preset-key')).sort()
+        )
+    )
+    .toEqual(MOTION_PRESET_IDS.map((id) => `builtin:${id}`).sort())
 
-  const fadeIn = section.getByTestId('motion-preset-apply-builtin:fade-in')
+  const fadeIn = section.locator(
+    '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:fade-in"]'
+  )
   await fadeIn.focus()
   await expect(fadeIn).toBeFocused()
   await fadeIn.press('Space')
@@ -464,11 +545,17 @@ test('single-selection presets are keyboard accessible and expose motion control
   const stopPreview = section.getByRole('button', { name: 'Stop preview', exact: true })
   await expect(stopPreview).toBeVisible()
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().isMotionPreviewActive())
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().isMotionPreviewActive()
+    })
   ).toBe(true)
   await expect(preview).toBeVisible({ timeout: 2_000 })
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().isMotionPreviewActive())
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().isMotionPreviewActive()
+    })
   ).toBe(false)
 
   await preview.click()
@@ -476,7 +563,10 @@ test('single-selection presets are keyboard accessible and expose motion control
   await stopPreview.click()
   await expect(preview).toBeVisible()
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().isMotionPreviewActive())
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().isMotionPreviewActive()
+    })
   ).toBe(false)
   await expect(section.getByRole('button', { name: 'Clear motion' })).toBeEnabled()
 })
@@ -487,7 +577,11 @@ test('Figma native adapter exposes only compatible Motion as a safe selection sc
 
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:fade-in').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:fade-in"]'
+    )
+    .click()
 
   const adapter = section.getByTestId('figma-motion-adapter')
   await expect(adapter).toBeVisible()
@@ -515,6 +609,8 @@ test('Figma native adapter exposes only compatible Motion as a safe selection sc
   ).toContain('"conflictPolicy": "replace-owned"')
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const id = store ? [...store.state.selectedIds][0] : undefined
     const node = id ? store?.graph.getNode(id) : undefined
@@ -537,15 +633,20 @@ test('preset cards preview without authoring and stop on pointer leave or Escape
 
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  const slideUp = section.getByTestId('motion-preset-apply-builtin:slide-up')
-  const undoLabelBeforePreview = await editor.page.evaluate(
-    () => window.openPencil?.getStore?.().undo.undoLabel
+  const slideUp = section.locator(
+    '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
   )
+  const undoLabelBeforePreview = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undoLabel
+  })
 
   await slideUp.hover()
   expect((await selectedMotion())[0]).toBeUndefined()
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return {
         active: store?.hasMotionPreview(),
@@ -560,19 +661,28 @@ test('preset cards preview without authoring and stop on pointer leave or Escape
   })
 
   await slideUp.dispatchEvent('pointerleave')
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    false
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(false)
   expect((await selectedMotion())[0]).toBeUndefined()
 
   await slideUp.focus()
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    true
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(true)
   await editor.page.keyboard.press('Escape')
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    false
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(false)
   expect((await selectedMotion())[0]).toBeUndefined()
 })
 
@@ -584,13 +694,23 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
   await section.scrollIntoViewIfNeeded()
   const search = section.getByTestId('motion-preset-search')
   await search.fill('slide')
-  await expect(section.getByTestId(/^motion-preset-card-/)).toHaveCount(1)
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await expect(section.locator('[data-slot="motion-preset"]')).toHaveCount(1)
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
 
   await search.fill('')
-  await section.getByTestId('motion-preset-favorite-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="toggle-preset-favorite"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
   await chooseAppSelect(editor.page, section.getByTestId('motion-preset-category'), 'Favorites')
-  await expect(section.getByTestId('motion-preset-card-builtin:slide-up')).toBeVisible()
+  await expect(
+    section.locator('[data-slot="motion-preset"][data-preset-key="builtin:slide-up"]')
+  ).toBeVisible()
   expect(
     await editor.page.evaluate(() => {
       const storageName = 'localStorage'
@@ -604,7 +724,7 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
   await dialog.getByTestId('motion-preset-custom-submit').click()
 
   await chooseAppSelect(editor.page, section.getByTestId('motion-preset-category'), 'My presets')
-  const userCard = section.getByTestId(/^motion-preset-card-user:user-/)
+  const userCard = section.locator('[data-slot="motion-preset"][data-preset-key^="user:user-"]')
   await expect(userCard).toHaveCount(1)
   await expect(userCard).toContainText('卡片入场')
 
@@ -639,19 +759,27 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
     restoredSection.getByTestId('motion-preset-category'),
     'Favorites'
   )
-  await expect(restoredSection.getByTestId('motion-preset-card-builtin:slide-up')).toBeVisible()
+  await expect(
+    restoredSection.locator('[data-slot="motion-preset"][data-preset-key="builtin:slide-up"]')
+  ).toBeVisible()
   await chooseAppSelect(
     editor.page,
     restoredSection.getByTestId('motion-preset-category'),
     'My presets'
   )
-  const restoredUserCard = restoredSection.getByTestId(/^motion-preset-card-user:user-/)
+  const restoredUserCard = restoredSection.locator(
+    '[data-slot="motion-preset"][data-preset-key^="user:user-"]'
+  )
   await expect(restoredUserCard).toContainText('卡片入场')
-  await restoredUserCard.getByTestId(/^motion-preset-apply-user:user-/).click()
+  await restoredUserCard
+    .locator('[data-slot="motion-preset-action"][data-command="apply-preset"]')
+    .click()
   const appliedSnapshot = (await selectedMotion())[0]
   expect(appliedSnapshot?.preset?.id).toMatch(/^user-/)
 
-  await restoredUserCard.getByTestId(/^motion-preset-rename-/).click()
+  await restoredUserCard
+    .locator('[data-slot="motion-preset-action"][data-command="rename-preset"]')
+    .click()
   await dialog.getByTestId('motion-preset-custom-name').fill('卡片入场 2')
   await dialog.getByTestId('motion-preset-custom-description').fill('用于共享卡片的强调动效')
   await chooseAppSelect(
@@ -664,6 +792,8 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
   await expect(restoredUserCard).toContainText('用于共享卡片的强调动效')
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const id = store ? [...store.state.selectedIds][0] : undefined
     const node = id ? store?.graph.getNode(id) : undefined
@@ -675,8 +805,12 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
     })
     store.requestRender()
   })
-  await restoredUserCard.getByTestId(/^motion-preset-update-current-/).click()
-  await restoredUserCard.getByTestId(/^motion-preset-apply-user:user-/).click()
+  await restoredUserCard
+    .locator('[data-slot="motion-preset-action"][data-command="update-preset"]')
+    .click()
+  await restoredUserCard
+    .locator('[data-slot="motion-preset-action"][data-command="apply-preset"]')
+    .click()
   expect((await selectedMotion())[0]?.tracks[0]?.timing.durationMs).toBe(777)
   const updatedAppliedSnapshot = (await selectedMotion())[0]
 
@@ -686,7 +820,9 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
   expect(editedExport).toContain('用于共享卡片的强调动效')
   expect(editedExport).toContain('"category": "emphasis"')
 
-  await restoredUserCard.getByTestId(/^motion-preset-delete-/).click()
+  await restoredUserCard
+    .locator('[data-slot="motion-preset-action"][data-command="delete-preset"]')
+    .click()
   await editor.page.getByTestId('motion-preset-delete-confirm').click()
   await expect(restoredUserCard).toHaveCount(0)
   expect((await selectedMotion())[0]).toEqual(updatedAppliedSnapshot)
@@ -701,9 +837,9 @@ test('preset library searches, persists favorites, and exchanges Chinese persona
     mimeType: 'application/json',
     buffer: Buffer.from(exported)
   })
-  await expect(restoredSection.getByTestId(/^motion-preset-card-user:user-/)).toContainText(
-    '卡片入场'
-  )
+  await expect(
+    restoredSection.locator('[data-slot="motion-preset"][data-preset-key^="user:user-"]')
+  ).toContainText('卡片入场')
   expect((await selectedMotion())[0]).toEqual(updatedAppliedSnapshot)
 })
 
@@ -760,20 +896,34 @@ test('shared presets expose source status and require explicit acceptance before
   await section.getByTestId('motion-shared-json-input').fill(JSON.stringify(manifest('v1', 240)))
   await section.getByTestId('motion-shared-accept-json').click()
 
-  const library = section.getByTestId('motion-shared-library-travel-motion')
-  await expect(library).toContainText('旅行产品动效')
-  await expect(section.getByTestId('motion-shared-source-travel-motion')).toContainText(sourceURL)
-  await expect(section.getByTestId('motion-shared-status-travel-motion')).toContainText(
-    'Up to date'
+  const library = section.locator(
+    '[data-slot="motion-shared-library"][data-library-id="travel-motion"]'
   )
+  await expect(library).toContainText('旅行产品动效')
+  await expect(
+    section.locator('[data-slot="library-source"][data-library-id="travel-motion"]')
+  ).toContainText(sourceURL)
+  await expect(
+    section.locator('[data-slot="library-status"][data-library-id="travel-motion"]')
+  ).toContainText('Up to date')
 
   await chooseAppSelect(editor.page, section.getByTestId('motion-preset-category'), 'Shared')
-  const card = section.getByTestId('motion-preset-card-shared:travel-motion:user-shared-enter')
+  const card = section.locator(
+    '[data-slot="motion-preset"][data-preset-key="shared:travel-motion:user-shared-enter"]'
+  )
   await expect(card).toContainText('团队只读预设')
   await expect(card).toContainText('Read only')
-  await expect(card.getByTestId(/^motion-preset-rename-/)).toHaveCount(0)
-  await expect(card.getByTestId(/^motion-preset-update-current-/)).toHaveCount(0)
-  await card.getByTestId('motion-preset-apply-shared:travel-motion:user-shared-enter').click()
+  await expect(
+    card.locator('[data-slot="motion-preset-action"][data-command="rename-preset"]')
+  ).toHaveCount(0)
+  await expect(
+    card.locator('[data-slot="motion-preset-action"][data-command="update-preset"]')
+  ).toHaveCount(0)
+  await card
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="shared:travel-motion:user-shared-enter"]'
+    )
+    .click()
   expect((await selectedMotion())[0]).toMatchObject({
     preset: {
       id: 'user-shared-enter',
@@ -782,24 +932,44 @@ test('shared presets expose source status and require explicit acceptance before
     tracks: [{ timing: { durationMs: 240 } }]
   })
 
-  await section.getByTestId('motion-shared-check-travel-motion').click()
-  await expect(section.getByTestId('motion-shared-status-travel-motion')).toContainText(
-    'Update available'
-  )
-  await card.getByTestId('motion-preset-apply-shared:travel-motion:user-shared-enter').click()
+  await section
+    .locator(
+      '[data-slot="library-action"][data-command="check-library"][data-library-id="travel-motion"]'
+    )
+    .click()
+  await expect(
+    section.locator('[data-slot="library-status"][data-library-id="travel-motion"]')
+  ).toContainText('Update available')
+  await card
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="shared:travel-motion:user-shared-enter"]'
+    )
+    .click()
   expect((await selectedMotion())[0]?.tracks[0]?.timing.durationMs).toBe(240)
 
-  await section.getByTestId('motion-shared-accept-travel-motion').click()
-  await expect(section.getByTestId('motion-shared-status-travel-motion')).toContainText(
-    'Up to date'
-  )
-  await card.getByTestId('motion-preset-apply-shared:travel-motion:user-shared-enter').click()
+  await section
+    .locator(
+      '[data-slot="library-action"][data-command="accept-library"][data-library-id="travel-motion"]'
+    )
+    .click()
+  await expect(
+    section.locator('[data-slot="library-status"][data-library-id="travel-motion"]')
+  ).toContainText('Up to date')
+  await card
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="shared:travel-motion:user-shared-enter"]'
+    )
+    .click()
   expect((await selectedMotion())[0]).toMatchObject({
     preset: { parameters: { sourceVersion: 'v2' } },
     tracks: [{ timing: { durationMs: 480 } }]
   })
 
-  await section.getByTestId('motion-shared-remove-travel-motion').click()
+  await section
+    .locator(
+      '[data-slot="library-action"][data-command="remove-library"][data-library-id="travel-motion"]'
+    )
+    .click()
   await expect(card).toHaveCount(0)
   expect((await selectedMotion())[0]?.tracks[0]?.timing.durationMs).toBe(480)
 })
@@ -818,10 +988,16 @@ test('multi-selection preset stagger follows spatial order and remains one undo 
   await stepInput.press('Enter')
   await chooseAppSelect(editor.page, section.getByTestId('motion-stagger-direction'), 'Reverse')
   await chooseAppSelect(editor.page, section.getByTestId('motion-stagger-rhythm'), 'Linear')
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
 
   expect(
     await editor.page.evaluate((nodeIds) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return nodeIds.map((id) => ({
         delay: store?.graph.getNode(id)?.motion?.tracks[0]?.timing.delayMs,
@@ -833,9 +1009,12 @@ test('multi-selection preset stagger follows spatial order and remains one undo 
     { delay: 40, provenanceDelay: 40 },
     { delay: 0, provenanceDelay: 0 }
   ])
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undoLabel)).toBe(
-    'Apply motion preset'
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.undoLabel
+    })
+  ).toBe('Apply motion preset')
 
   await editor.canvas.undo()
   expect(await selectedMotion()).toEqual(ids.map(() => undefined))
@@ -851,7 +1030,11 @@ test('single-selection timeline scrubs, authors keyframes, and manages multiple 
 
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
 
   const timeline = section.getByTestId('motion-timeline')
   await timeline.scrollIntoViewIfNeeded()
@@ -861,6 +1044,8 @@ test('single-selection timeline scrubs, authors keyframes, and manages multiple 
   await timeline.getByTestId('motion-preview-track').click()
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const preview = window.openPencil?.getStore?.().state.motionPreview
       return {
         playing: preview?.playing,
@@ -870,13 +1055,18 @@ test('single-selection timeline scrubs, authors keyframes, and manages multiple 
   ).toEqual({ playing: true, trackIds: ['slide-up'] })
   await timeline.getByTestId('motion-stop-track-preview').click()
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPreview)
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.motionPreview
+    })
   ).toBeNull()
 
   const playhead = timeline.getByTestId('motion-playhead')
   await playhead.fill('200')
   expect(
     await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const preview = window.openPencil?.getStore?.().state.motionPreview
       return preview
         ? {
@@ -890,7 +1080,10 @@ test('single-selection timeline scrubs, authors keyframes, and manages multiple 
   await expect(section.getByTestId('motion-stop-preview')).toBeVisible()
   await section.getByTestId('motion-stop-preview').click()
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPreview)
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.motionPreview
+    })
   ).toBeNull()
 
   await timeline.getByTestId('motion-add-keyframe').click()
@@ -912,7 +1105,10 @@ test('single-selection timeline scrubs, authors keyframes, and manages multiple 
   await editor.canvas.undo()
   expect((await selectedMotion())[0]?.tracks).toHaveLength(2)
   expect(
-    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPreview)
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().state.motionPreview
+    })
   ).toBeNull()
   await editor.canvas.redo()
   expect((await selectedMotion())[0]?.tracks).toHaveLength(1)
@@ -967,6 +1163,8 @@ test('timeline explicitly upgrades and edits MotionSpec v3 track composition', a
 test('timeline authors structured MotionSpec v3 channels from the normal inspector', async () => {
   const timeline = await openMotionTimeline()
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = [...store.state.selectedIds][0]
@@ -996,7 +1194,9 @@ test('timeline authors structured MotionSpec v3 channels from the normal inspect
   await editor.canvas.redo()
   expect((await selectedMotionSpec()).version).toBe(3)
 
-  const paintToggle = structured.getByTestId('motion-structured-toggle-paints')
+  const paintToggle = structured.locator(
+    '[data-slot="motion-channel-toggle"][data-channel="paints"]'
+  )
   await paintToggle.check()
   expect(
     (await selectedMotionTrack()).keyframes.every(
@@ -1004,9 +1204,13 @@ test('timeline authors structured MotionSpec v3 channels from the normal inspect
     )
   ).toBe(true)
 
-  const textReveal = structured.getByTestId('motion-structured-textReveal')
+  const textReveal = structured.locator(
+    '[data-slot="motion-structured-channel"][data-channel="textReveal"]'
+  )
   await expect(textReveal).toHaveAttribute('data-capability-reason', /.+/)
-  await expect(textReveal.getByTestId('motion-structured-toggle-textReveal')).toBeDisabled()
+  await expect(
+    textReveal.locator('[data-slot="motion-channel-toggle"][data-channel="textReveal"]')
+  ).toBeDisabled()
 
   const opacity = structured.locator('[data-property="motion-structured-paints-0-opacity"]')
   await opacity.scrollIntoViewIfNeeded()
@@ -1027,6 +1231,8 @@ test('timeline authors structured MotionSpec v3 channels from the normal inspect
 
 test('timeline keeps an imported unsupported corner-radius channel removable', async () => {
   const outlineVectorId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const outlineBlob = new Uint8Array(1 + 4 * 9 + 1)
@@ -1099,25 +1305,33 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
   const timeline = section.getByTestId('motion-timeline')
-  const channel = timeline.getByTestId('motion-v2-channel-cornerRadius')
-  const toggle = timeline.getByTestId('motion-v2-toggle-cornerRadius')
+  const channel = timeline.locator('[data-slot="motion-channel"][data-channel="cornerRadius"]')
+  const toggle = timeline.locator(
+    '[data-slot="motion-channel-toggle"][data-channel="cornerRadius"]'
+  )
   await expect(channel).toHaveAttribute('data-capability-disabled', 'true')
   await expect(toggle).toHaveAttribute('aria-description', /box-shaped/i)
   await expect(toggle).toBeEnabled()
   await expect(toggle).toBeChecked()
 
-  const fillColor = timeline.getByTestId('motion-v2-fillColor')
+  const fillColor = timeline.locator(
+    '[data-slot="motion-color-channel"][data-property="motion-v2-fillColor"]'
+  )
   await expect(fillColor).toHaveAttribute('data-capability-disabled', 'true')
   const fillColorToggle = timeline.getByRole('checkbox', { name: 'Fill color' })
   await expect(fillColorToggle).toHaveAttribute('aria-description', /visible solid fill/i)
   await expect(fillColorToggle).toBeDisabled()
-  await expect(timeline.getByTestId('motion-v2-strokeColor')).not.toHaveAttribute(
-    'data-capability-disabled'
-  )
+  await expect(
+    timeline.locator('[data-slot="motion-color-channel"][data-property="motion-v2-strokeColor"]')
+  ).not.toHaveAttribute('data-capability-disabled')
   await expect(timeline.getByRole('checkbox', { name: 'Stroke color' })).toBeEnabled()
   for (const unsupportedChannel of ['strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as const) {
-    const unsupported = timeline.getByTestId(`motion-v2-channel-${unsupportedChannel}`)
-    const unsupportedToggle = timeline.getByTestId(`motion-v2-toggle-${unsupportedChannel}`)
+    const unsupported = timeline.locator(
+      `[data-slot="motion-channel"][data-channel="${unsupportedChannel}"]`
+    )
+    const unsupportedToggle = timeline.locator(
+      `[data-slot="motion-channel-toggle"][data-channel="${unsupportedChannel}"]`
+    )
     await expect(unsupported).toHaveAttribute('data-capability-disabled', 'true')
     await expect(unsupportedToggle).toHaveAttribute(
       'aria-description',
@@ -1141,6 +1355,8 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   await expect(toggle).toBeDisabled()
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const emptyVector = store.graph.createNode('VECTOR', store.state.currentPageId, {
@@ -1198,7 +1414,9 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
     ['fillColor', 'Fill color'],
     ['strokeColor', 'Stroke color']
   ] as const) {
-    const colorControl = timeline.getByTestId(`motion-v2-${colorChannel}`)
+    const colorControl = timeline.locator(
+      `[data-slot="motion-color-channel"][data-property="motion-v2-${colorChannel}"]`
+    )
     const colorToggle = colorControl.getByRole('checkbox', { name: label })
     await expect(colorControl).toHaveAttribute('data-capability-disabled', 'true')
     await expect(colorToggle).toHaveAttribute('aria-description', /drawable vector geometry/i)
@@ -1212,6 +1430,8 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   }
 
   await editor.page.evaluate((sourceId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const source = store?.graph.getNode(sourceId)
     const geometry = source?.strokeGeometry[0]
@@ -1252,7 +1472,9 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   }, outlineVectorId)
   await editor.canvas.waitForRender()
 
-  const fillOutlineStroke = timeline.getByTestId('motion-v2-strokeColor')
+  const fillOutlineStroke = timeline.locator(
+    '[data-slot="motion-color-channel"][data-property="motion-v2-strokeColor"]'
+  )
   const fillOutlineStrokeToggle = fillOutlineStroke.getByRole('checkbox', {
     name: 'Stroke color'
   })
@@ -1270,6 +1492,8 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   await expect(fillOutlineStrokeToggle).toBeDisabled()
 
   const booleanId = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const boolean = store.graph.createNode('BOOLEAN_OPERATION', store.state.currentPageId, {
@@ -1303,7 +1527,11 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   await expect(section.getByTestId('motion-node-capability-warning')).toContainText(
     /resolved final geometry/i
   )
-  await expect(section.getByTestId('motion-preset-apply-builtin:fade-in')).toBeDisabled()
+  await expect(
+    section.locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:fade-in"]'
+    )
+  ).toBeDisabled()
   await expect(section.getByTestId('motion-preset-save-current')).toBeDisabled()
   await expect(section.getByTestId('motion-trigger')).toBeDisabled()
   await expect(section.getByTestId('motion-preview')).toBeDisabled()
@@ -1314,6 +1542,8 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   expect((await selectedMotion())[0]).toBeUndefined()
 
   await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.graph.updateNode(id, {
@@ -1324,8 +1554,16 @@ test('timeline keeps an imported unsupported corner-radius channel removable', a
   await editor.canvas.waitForRender()
 
   await expect(section.getByTestId('motion-node-capability-warning')).toHaveCount(0)
-  await expect(section.getByTestId('motion-preset-apply-builtin:fade-in')).toBeEnabled()
-  await section.getByTestId('motion-preset-apply-builtin:fade-in').click()
+  await expect(
+    section.locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:fade-in"]'
+    )
+  ).toBeEnabled()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:fade-in"]'
+    )
+    .click()
   expect((await selectedMotion())[0]?.preset?.id).toBe('fade-in')
   await expect(section.getByTestId('motion-timeline')).toBeVisible()
 })
@@ -1334,22 +1572,38 @@ test('switching nodes with the same track id resets timeline state and static pr
   const ids = await createRectangles(2)
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
-  await editor.page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids[0])
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
+  await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, ids[0])
 
   const timeline = section.getByTestId('motion-timeline')
   const playhead = timeline.getByTestId('motion-playhead')
   await playhead.fill('200')
   await expect(playhead).toHaveValue('200')
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    true
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(true)
 
-  await editor.page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids[1])
+  await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, ids[1])
   await expect(playhead).toHaveValue('0')
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    false
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(false)
 })
 
 test('multi-selection preset apply and clear are atomic and undoable', async () => {
@@ -1358,14 +1612,21 @@ test('multi-selection preset apply and clear are atomic and undoable', async () 
 
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
   await editor.canvas.waitForRender()
 
   expect((await selectedMotion()).map((motion) => motion?.preset?.id)).toEqual([
     'slide-up',
     'slide-up'
   ])
-  const undoLabel = await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undoLabel)
+  const undoLabel = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undoLabel
+  })
   expect(undoLabel).toBe('Apply motion preset')
 
   await editor.canvas.undo()
@@ -1390,6 +1651,8 @@ test('mixed selection is explicit and applying a preset resolves it', async () =
   const ids = await createRectangles(2)
   await editor.page.evaluate(
     ([firstId, secondId]) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.graph.updateNode(firstId, {
@@ -1441,7 +1704,11 @@ test('mixed selection is explicit and applying a preset resolves it', async () =
   await expect(section.getByTestId('motion-preview')).toBeDisabled()
   await expect(section.getByTestId('motion-timeline')).toHaveCount(0)
 
-  await section.getByTestId('motion-preset-apply-builtin:float').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:float"]'
+    )
+    .click()
   await editor.canvas.waitForRender()
   expect((await selectedMotion()).map((motion) => motion?.preset?.id)).toEqual(['float', 'float'])
   await expect(section.getByTestId('motion-status')).toHaveCount(0)
@@ -1471,7 +1738,11 @@ test('captures and atomically reapplies a multi-node Motion Recipe from the pane
 
   const section = propertySection(editor.page, 'Motion')
   await section.scrollIntoViewIfNeeded()
-  await section.getByTestId('motion-preset-apply-builtin:slide-up').click()
+  await section
+    .locator(
+      '[data-slot="motion-preset-action"][data-command="apply-preset"][data-preset-key="builtin:slide-up"]'
+    )
+    .click()
   const expectedTracks = (await selectedMotion()).map((motion) => motion?.tracks)
 
   const recipes = section.getByTestId('motion-recipes')
@@ -1487,9 +1758,12 @@ test('captures and atomically reapplies a multi-node Motion Recipe from the pane
   await recipes.getByTestId('motion-recipe-apply').click()
   await editor.canvas.waitForRender()
   expect((await selectedMotion()).map((motion) => motion?.tracks)).toEqual(expectedTracks)
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undoLabel)).toBe(
-    'Apply recipe'
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.undoLabel
+    })
+  ).toBe('Apply recipe')
 
   await editor.canvas.undo()
   expect(await selectedMotion()).toEqual(ids.map(() => undefined))
@@ -1510,26 +1784,39 @@ test('verifies and applies a signed team Motion library from the panel', async (
   await expect(team.getByTestId('motion-team-stage')).toBeEnabled()
   await team.getByTestId('motion-team-stage').click()
 
-  const library = team.getByTestId(`motion-team-library-${libraryId}`)
+  const library = team.locator(`[data-slot="motion-team-library"][data-library-id="${libraryId}"]`)
   await expect(library).toBeVisible()
   await expect(library).toContainText('Verified')
-  await library.getByTestId('motion-team-apply-user-e2e-team-rise').click()
+  await library
+    .locator(
+      '[data-slot="motion-team-apply"][data-command="apply-library-entry"][data-entry-id="user-e2e-team-rise"]'
+    )
+    .click()
   expect((await selectedMotionSpec()).tracks[0]).toMatchObject({
     id: 'team-rise',
     timing: { durationMs: 420 }
   })
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undoLabel)).toBe(
-    'Apply motion preset'
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().undo.undoLabel
+    })
+  ).toBe('Apply motion preset')
 
   await editor.canvas.undo()
   expect((await selectedMotion())[0]).toBeUndefined()
-  await library.getByTestId(`motion-team-remove-${libraryId}`).click()
+  await library
+    .locator(
+      `[data-slot="library-action"][data-command="remove-library"][data-library-id="${libraryId}"]`
+    )
+    .click()
   await expect(library).toHaveCount(0)
 })
 
 test('authors, previews, and atomically undoes a page Motion scene from the panel', async () => {
   const fixture = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const node = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -1567,6 +1854,8 @@ test('authors, previews, and atomically undoes a page Motion scene from the pane
   await timeline.getByTestId('motion-scene-add-cue').click()
 
   const authored = await editor.page.evaluate(({ pageId }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     return store?.graph.getNode(pageId)?.motionScene
   }, fixture)
@@ -1579,6 +1868,8 @@ test('authors, previews, and atomically undoes a page Motion scene from the pane
   await timeline.getByTestId('motion-scene-playhead').fill('300')
   expect(
     await editor.page.evaluate(({ pageId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return {
         cueCount: store?.graph.getNode(pageId)?.motionScene?.sequences[0]?.cues.length ?? -1,
@@ -1605,48 +1896,51 @@ test('authors, previews, and atomically undoes a page Motion scene from the pane
   await autoKeyframeValue.getByRole('spinbutton').press('Enter')
   await timeline.getByTestId('motion-scene-stop').click()
   expect(
-    await editor.page.evaluate(
-      ({ nodeId }) =>
-        window.openPencil?.getStore?.().graph.getNode(nodeId)?.motion?.tracks[0]?.keyframes,
-      fixture
-    )
+    await editor.page.evaluate(({ nodeId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(nodeId)?.motion?.tracks[0]?.keyframes
+    }, fixture)
   ).toContainEqual(expect.objectContaining({ offset: 0.5, y: 42 }))
   await editor.canvas.undo()
   expect(
-    await editor.page.evaluate(
-      ({ nodeId }) =>
-        window.openPencil?.getStore?.().graph.getNode(nodeId)?.motion?.tracks[0]?.keyframes,
-      fixture
-    )
+    await editor.page.evaluate(({ nodeId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(nodeId)?.motion?.tracks[0]?.keyframes
+    }, fixture)
   ).toHaveLength(2)
 
   await timeline.getByTestId('motion-scene-play').click()
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    true
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(true)
   await timeline.getByTestId('motion-scene-stop').click()
   await editor.canvas.undo()
   expect(
-    await editor.page.evaluate(
-      ({ pageId }) => window.openPencil?.getStore?.().graph.getNode(pageId)?.motionScene,
-      fixture
-    )
+    await editor.page.evaluate(({ pageId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(pageId)?.motionScene
+    }, fixture)
   ).toBeUndefined()
 
   await editor.canvas.redo()
   await timeline.getByTestId('motion-scene-playhead').fill('300')
   await timeline.getByTestId('motion-scene-add-marker').click()
   expect(
-    await editor.page.evaluate(
-      ({ pageId }) =>
-        window.openPencil?.getStore?.().graph.getNode(pageId)?.motionScene?.sequences[0]?.markers,
-      fixture
-    )
+    await editor.page.evaluate(({ pageId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(pageId)?.motionScene?.sequences[0]
+        ?.markers
+    }, fixture)
   ).toEqual([expect.objectContaining({ timeMs: 300 })])
 })
 
 test('zooms, snaps, and transforms multi-selected scene cues from the mounted timeline', async () => {
   const fixture = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -1730,6 +2024,8 @@ test('zooms, snaps, and transforms multi-selected scene cues from the mounted ti
 
   const readCueStarts = () =>
     editor.page.evaluate((pageId) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       return (
         store?.graph
@@ -1748,7 +2044,7 @@ test('zooms, snaps, and transforms multi-selected scene cues from the mounted ti
   await expect.poll(() => content.evaluate((element) => element.style.width)).toBe('200%')
   await expect(timeline.getByRole('checkbox', { name: 'Snap', exact: true })).toBeChecked()
 
-  const firstCue = timeline.getByTestId('motion-scene-cue-cue-mounted-a')
+  const firstCue = timeline.locator('[data-slot="motion-scene-cue"][data-cue-id="cue-mounted-a"]')
   await firstCue.scrollIntoViewIfNeeded()
   const contentBox = await content.boundingBox()
   const cueBox = await firstCue.boundingBox()
@@ -1764,14 +2060,12 @@ test('zooms, snaps, and transforms multi-selected scene cues from the mounted ti
   await expect(firstCue).toHaveAttribute('aria-pressed', 'true')
 
   await timeline.getByTestId('motion-scene-select-all').click()
-  await expect(timeline.getByTestId('motion-scene-cue-cue-mounted-a')).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
-  await expect(timeline.getByTestId('motion-scene-cue-cue-mounted-b')).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
+  await expect(
+    timeline.locator('[data-slot="motion-scene-cue"][data-cue-id="cue-mounted-a"]')
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    timeline.locator('[data-slot="motion-scene-cue"][data-cue-id="cue-mounted-b"]')
+  ).toHaveAttribute('aria-pressed', 'true')
 
   await timeline.getByTestId('motion-scene-translate').click()
   await expect.poll(readCueStarts).toEqual([300, 500])
@@ -1803,10 +2097,10 @@ test('authors and removes a bounded generated effect from the Motion panel', asy
   await generated.getByTestId('motion-generated-effect-reduced-motion').selectOption('disable')
 
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect,
-      nodeId
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect
+    }, nodeId)
   ).toMatchObject({
     version: 1,
     params: { preset: 'particles' },
@@ -1816,22 +2110,24 @@ test('authors and removes a bounded generated effect from the Motion panel', asy
 
   await generated.getByTestId('motion-generated-effect-remove').click()
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect,
-      nodeId
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect
+    }, nodeId)
   ).toBeUndefined()
   await editor.canvas.undo()
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect?.params.preset,
-      nodeId
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.generatedEffect?.params.preset
+    }, nodeId)
   ).toBe('particles')
 })
 
 test('authors, previews, and restores a continuous Motion driver from the panel', async () => {
   const fixture = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const frame = store.graph.createNode('FRAME', store.state.currentPageId, {
@@ -1874,19 +2170,19 @@ test('authors, previews, and restores a continuous Motion driver from the panel'
   await drivers.getByTestId('motion-driver-add').click()
   await expect
     .poll(() =>
-      editor.page.evaluate(
-        ({ frameId }) => window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers,
-        fixture
-      )
+      editor.page.evaluate(({ frameId }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+        return window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers
+      }, fixture)
     )
     .toMatchObject({ version: 1, drivers: [{ id: 'driver-1' }] })
   await chooseAppSelect(editor.page, drivers.getByTestId('motion-driver-source-kind'), 'Pointer')
 
   expect(
-    await editor.page.evaluate(
-      ({ frameId }) => window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers,
-      fixture
-    )
+    await editor.page.evaluate(({ frameId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers
+    }, fixture)
   ).toMatchObject({
     version: 1,
     drivers: [
@@ -1899,32 +2195,40 @@ test('authors, previews, and restores a continuous Motion driver from the panel'
   })
 
   await drivers.getByTestId('motion-driver-preview').fill('0.65')
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    true
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(true)
   await drivers.getByTestId('motion-driver-preview-stop').click()
-  expect(await editor.page.evaluate(() => window.openPencil?.getStore?.().hasMotionPreview())).toBe(
-    false
-  )
+  expect(
+    await editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().hasMotionPreview()
+    })
+  ).toBe(false)
 
   await drivers.getByTestId('motion-driver-delete').click()
   expect(
-    await editor.page.evaluate(
-      ({ frameId }) => window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers,
-      fixture
-    )
+    await editor.page.evaluate(({ frameId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers
+    }, fixture)
   ).toBeUndefined()
   await editor.canvas.undo()
   expect(
-    await editor.page.evaluate(
-      ({ frameId }) => window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers,
-      fixture
-    )
+    await editor.page.evaluate(({ frameId }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(frameId)?.motionDrivers
+    }, fixture)
   ).toMatchObject({ drivers: [{ source: { kind: 'pointer' } }] })
 })
 
 test('authors Prototype navigation and an explicit Smart Match key from the Motion panel', async () => {
   const fixture = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const source = store.graph.createNode('RECTANGLE', store.state.currentPageId, {
@@ -1955,11 +2259,25 @@ test('authors Prototype navigation and an explicit Smart Match key from the Moti
   await transitionKey.press('Enter')
   await prototype.getByTestId('motion-prototype-add').click()
 
-  await prototype.getByTestId('motion-prototype-action-connection-1').selectOption('navigate')
-  await prototype.getByTestId('motion-prototype-target-connection-1').selectOption(fixture.targetId)
-  await prototype.getByTestId('motion-prototype-transition-connection-1').selectOption('smartMatch')
+  await prototype
+    .locator(
+      '[data-slot="prototype-connection-field"][data-connection-id="connection-1"][data-property="action"]'
+    )
+    .selectOption('navigate')
+  await prototype
+    .locator(
+      '[data-slot="prototype-connection-field"][data-connection-id="connection-1"][data-property="target"]'
+    )
+    .selectOption(fixture.targetId)
+  await prototype
+    .locator(
+      '[data-slot="prototype-connection-field"][data-connection-id="connection-1"][data-property="transition"]'
+    )
+    .selectOption('smartMatch')
 
   const authored = await editor.page.evaluate((sourceId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     const node = store?.graph.getNode(sourceId)
     return { prototype: node?.prototype, transitionKey: node?.transitionKey }
@@ -1981,7 +2299,7 @@ test('event and workflow editors persist playMotion and stopMotion targets and t
 
   const events = editor.page.getByTestId('lowcode-events-section')
   await events.scrollIntoViewIfNeeded()
-  await events.getByTestId('lowcode-action-add').click()
+  await events.getByRole('button', { name: '+ Add action', exact: true }).click()
   const eventAction = events.getByTestId('lowcode-action-row')
   await eventAction.getByTestId('lowcode-action-kind').selectOption('playMotion')
   await expect(eventAction.getByTestId('lowcode-action-motion-target')).toHaveValue(firstTargetId)
@@ -1998,6 +2316,8 @@ test('event and workflow editors persist playMotion and stopMotion targets and t
   })
 
   await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     store.select([])
@@ -2008,7 +2328,7 @@ test('event and workflow editors persist playMotion and stopMotion targets and t
   const workflows = editor.page.getByTestId('lowcode-workflows-section')
   await workflows.scrollIntoViewIfNeeded()
   const workflow = workflows.getByTestId('lowcode-workflow-row')
-  await workflow.getByTestId('lowcode-workflow-action-add').click()
+  await workflow.getByRole('button', { name: '+ Add action', exact: true }).click()
   const workflowAction = workflow.getByTestId('lowcode-action-row')
   await workflowAction.getByTestId('lowcode-action-kind').selectOption('stopMotion')
   await workflowAction.getByTestId('lowcode-action-motion-target').selectOption(secondTargetId)

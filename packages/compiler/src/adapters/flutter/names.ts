@@ -1,4 +1,5 @@
 import { stableNameSuffix } from '#compiler/ir/stable-name'
+import { compact } from 'es-toolkit'
 
 const DART_KEYWORDS = new Set([
   'abstract',
@@ -177,13 +178,14 @@ function snakeCase(value: string, fallback: string): string {
 }
 
 function asciiWords(value: string): string[] {
-  return value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9_]+/)
-    .flatMap((part) => part.split('_'))
-    .filter(Boolean)
+  return compact(
+    value
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .split(/[^A-Za-z0-9_]+/)
+      .flatMap((part) => part.split('_'))
+  )
 }
 
 function capitalize(value: string): string {

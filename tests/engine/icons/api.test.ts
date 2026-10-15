@@ -2,10 +2,12 @@ import { describe, expect, mock, test } from 'bun:test'
 
 import { createIconifyAPIClient } from '#core/icons/api'
 
-function createMockFetch(responder: (request: Request) => Response) {
-  return mock(async (input: RequestInfo | URL, init?: RequestInit) =>
+function createMockFetch(responder: (request: Request) => Response | Promise<Response>) {
+  const fetcher = mock(async (input: RequestInfo | URL, init?: RequestInit) =>
     responder(new Request(input, init))
-  ) as typeof fetch
+  )
+  // The client takes `typeof globalThis.fetch`, which carries Bun's `preconnect` extension.
+  return Object.assign(fetcher, { preconnect: fetch.preconnect })
 }
 
 describe('Iconify API client', () => {
@@ -64,8 +66,7 @@ describe('Iconify API client', () => {
 
   test('forwards AbortSignal to the underlying Iconify request', async () => {
     let requestSignal: AbortSignal | undefined
-    const fetcher = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = new Request(input, init)
+    const fetcher = createMockFetch((request) => {
       requestSignal = request.signal
       return new Promise<Response>((_resolve, reject) => {
         request.signal.addEventListener(
@@ -74,7 +75,7 @@ describe('Iconify API client', () => {
           { once: true }
         )
       })
-    }) as typeof fetch
+    })
     const client = createIconifyAPIClient(fetcher, 'https://icons.example')
     const controller = new AbortController()
 

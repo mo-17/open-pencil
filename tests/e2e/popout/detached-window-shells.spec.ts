@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { encode } from 'js-base64'
 
 import type { AIPopoutControls } from '@/app/ai/popout/controls'
+import type { AIPopoutProjection } from '@/app/ai/popout/protocol'
 import type { CompilerPreviewPopoutControls } from '@/app/lowcode/preview-pane/popout/controls'
 
 import { expectInViewport } from '#tests/e2e/fixtures'
@@ -46,28 +47,28 @@ const PREVIEW_CONTROLS: CompilerPreviewPopoutControls = {
 }
 
 async function installAIWindowMock(page: Page): Promise<void> {
-  await page.addInitScript((controls: AIPopoutControls) => {
-    const projection = {
-      protocolVersion: 1,
-      contextId: 'context-1',
-      documentName: 'Narrow window document',
-      providerLabel: 'OpenAI',
-      configured: true,
-      status: 'ready',
-      error: null,
-      draft: '',
-      canSubmit: true,
-      canStop: false,
-      canContinue: false,
-      canRetry: false,
-      canClear: true,
-      messages: []
-    }
-    const payload = {
-      envelope: encode(JSON.stringify(projection)),
-      controls,
-      revision: 1
-    }
+  const projection: AIPopoutProjection = {
+    protocolVersion: 1,
+    contextId: 'context-1',
+    documentName: 'Narrow window document',
+    providerLabel: 'OpenAI',
+    configured: true,
+    status: 'ready',
+    error: null,
+    draft: '',
+    canSubmit: true,
+    canStop: false,
+    canContinue: false,
+    canRetry: false,
+    canClear: true,
+    messages: []
+  }
+  const payload = {
+    envelope: encode(JSON.stringify(projection)),
+    controls: AI_CONTROLS,
+    revision: 1
+  }
+  await page.addInitScript((payload) => {
     const target = window as PopoutTestWindow
     const state = { calls: [] as InvokeCall[], payload }
     target.__OP_POPOUT_SHELL_TEST__ = state
@@ -82,7 +83,7 @@ async function installAIWindowMock(page: Page): Promise<void> {
         return null
       }
     }
-  }, AI_CONTROLS)
+  }, payload)
 }
 
 async function installPreviewWindowMock(

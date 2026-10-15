@@ -12,6 +12,17 @@ export function createTabsPreviewActions(
   finishTextEdit: (preserveDrafts: boolean) => void
 ) {
   let previewGraph = ctx.graph
+  let finishingText = false
+
+  function finishPreviewTextEdit(preserveDrafts: boolean): void {
+    if (finishingText) return
+    finishingText = true
+    try {
+      finishTextEdit(preserveDrafts)
+    } finally {
+      finishingText = false
+    }
+  }
 
   function within(id: string, hostId: string, graph = ctx.graph): boolean {
     let node = graph.getNode(id)
@@ -58,7 +69,7 @@ export function createTabsPreviewActions(
       within(ctx.state.editingTextId, hostId) &&
       !presented(ctx.state.editingTextId)
     )
-      finishTextEdit(previewGraph === ctx.graph)
+      finishPreviewTextEdit(previewGraph === ctx.graph)
     if ([...ctx.state.selectedIds].some((id) => within(id, hostId) && !presented(id))) {
       ctx.setSelectedIds(new Set(presented(hostId) ? [hostId] : []))
     }
@@ -77,7 +88,7 @@ export function createTabsPreviewActions(
       editingId &&
       (within(editingId, preview.nodeId, previewGraph) || !previewGraph.getNode(editingId))
     ) {
-      finishTextEdit(
+      finishPreviewTextEdit(
         finishEditing &&
           previewGraph === ctx.graph &&
           within(preview.nodeId, ctx.state.currentPageId, previewGraph) &&
@@ -104,7 +115,7 @@ export function createTabsPreviewActions(
   function previewTabsTab(nodeId: string, tabId: string): boolean {
     if (!validTarget(nodeId, tabId)) return false
     if (getTabsTabPreview(nodeId) === tabId) return true
-    finishTextEdit(true)
+    finishPreviewTextEdit(true)
     previewGraph = ctx.graph
     const previous = ctx.state.tabsPreview
     ctx.state.tabsPreview = { nodeId, tabId }

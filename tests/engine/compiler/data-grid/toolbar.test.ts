@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 
 import { buildOpenPencilDataGridComponent } from '#compiler/adapters/react/modules/data-grid'
 import { buildOpenPencilVueDataGrid } from '#compiler/adapters/vue/modules/data-grid'
+import * as v from 'valibot'
 import { compileScript, parse } from 'vue/compiler-sfc'
 
 import { DATA_GRID_MODULE_DEFAULT_CONFIG } from '#core/plugins/data-grid'
@@ -45,7 +46,10 @@ writeFileSync('rendered.json', JSON.stringify(await Promise.all(configs.map(rend
       cwd: directory,
       timeout: 10000
     })
-    return JSON.parse(readFileSync(join(directory, 'rendered.json'), 'utf8')) as string[]
+    return v.parse(
+      v.pipe(v.string(), v.parseJson(), v.array(v.string())),
+      readFileSync(join(directory, 'rendered.json'), 'utf8')
+    )
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

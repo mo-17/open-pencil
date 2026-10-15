@@ -26,7 +26,7 @@ function firstRawFontRecord(value: unknown): RawFontRecord {
   ) {
     throw new TypeError('Expected a stored font record')
   }
-  return first
+  return { ...first, key: first.key }
 }
 
 function databaseName(): string {

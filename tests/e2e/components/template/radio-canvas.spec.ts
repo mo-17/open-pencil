@@ -8,6 +8,7 @@ import type { FontManager } from '@open-pencil/core/text'
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
 import { withComponentTemplateFiles } from '#tests/helpers/compiler/components/templates/browser'
+import { parseCompilerFigOutput } from '#tests/helpers/compiler/output'
 import { mockFontsource } from '#tests/helpers/fonts/fontsource'
 import { trackFontModuleResources } from '#tests/helpers/fonts/runtime'
 
@@ -47,6 +48,8 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const canvas = new CanvasHelper(page)
     await canvas.waitForInit()
     const ids = await page.evaluate(async (data) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('Editor unavailable')
       const moduleURL = performance
@@ -78,9 +81,14 @@ for (const renderer of ['retained', 'tiled'] as const) {
       store.requestRender()
       return { root: root.id, radio: radio.id }
     }, Array.from(bytes))
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await page.screenshot({ path: info.outputPath(`${renderer}-editor-radio.png`) })
     const result = await page.evaluate(async (ids) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       const root = store?.graph.getNode(ids.root)
       const radio = store?.graph.getNode(ids.radio)
@@ -101,23 +109,26 @@ for (const renderer of ['retained', 'tiled'] as const) {
         return { png: Array.from(png), pixels: ctx.getImageData(0, 0, output.width, output.height) }
       }
       const initial = await render()
-      const pageNode = store.graph.getNode(store.state.currentPageId)
-      const binding = radio.bindings?.value
-      if (binding?.kind === 'docState') {
-        const document = store.graph.getNode(store.graph.rootId)
-        if (!document) throw new Error('Document state unavailable')
-        store.graph.updateNode(document.id, {
-          lowcodeDocumentState: (document.lowcodeDocumentState ?? []).map((state) =>
-            state.name === binding.docStateName ? { ...state, defaultValue: '团队' } : state
-          )
-        })
-      } else if (pageNode && binding?.kind === 'ref') {
-        store.graph.updateNode(pageNode.id, {
-          state: (pageNode.state ?? []).map((state) =>
-            state.id === binding.stateId ? { ...state, defaultValue: '团队' } : state
-          )
-        })
-      } else throw new Error('Template must use a writable state binding')
+      const updateBoundRadioValue = () => {
+        const pageNode = store.graph.getNode(store.state.currentPageId)
+        const binding = radio.bindings?.value
+        if (binding?.kind === 'docState') {
+          const document = store.graph.getNode(store.graph.rootId)
+          if (!document) throw new Error('Document state unavailable')
+          store.graph.updateNode(document.id, {
+            lowcodeDocumentState: (document.lowcodeDocumentState ?? []).map((state) =>
+              state.name === binding.docStateName ? { ...state, defaultValue: '团队' } : state
+            )
+          })
+        } else if (pageNode && binding?.kind === 'ref') {
+          store.graph.updateNode(pageNode.id, {
+            state: (pageNode.state ?? []).map((state) =>
+              state.id === binding.stateId ? { ...state, defaultValue: '团队' } : state
+            )
+          })
+        } else throw new Error('Template must use a writable state binding')
+      }
+      updateBoundRadioValue()
       const changed = await render()
       const changedPixels = { count: 0, minX: initial.pixels.width, maxX: -1 }
       for (let i = 0; i < initial.pixels.data.length; i += 4) {
@@ -185,7 +196,10 @@ for (const renderer of ['retained', 'tiled'] as const) {
       writeFileSync(output, Buffer.from(result[state]))
       await info.attach(state, { path: output, contentType: 'image/png' })
     }
-    await page.evaluate(() => window.openPencil?.test?.navigation?.waitForSettlement())
+    await page.evaluate(() => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.test?.navigation?.waitForSettlement()
+    })
     await page.screenshot({ path: info.outputPath(`${renderer}-editor-radio-team.png`) })
     const { initial: _initial, changed: _changed, ...measurements } = result
     writeFileSync(
@@ -208,7 +222,7 @@ for (const target of ['react', 'vue'] as const) {
     const supplied = process.env.OPENPENCIL_TEMPLATE_FIG_PATH
     const path = supplied ? resolve(supplied) : info.outputPath('all-templates.fig')
     diskFixture(path, !supplied)
-    const compiled = JSON.parse(
+    const compiled = parseCompilerFigOutput(
       execFileSync(
         'bun',
         ['tests/helpers/compiler/components/templates/compile-fig.ts', target, path],
@@ -218,7 +232,7 @@ for (const target of ['react', 'vue'] as const) {
           maxBuffer: 16 * 1024 * 1024
         }
       )
-    ) as { files: [string, string][] }
+    )
     await withComponentTemplateFiles(page, target, new Map(compiled.files), async () => {
       const personal = page.getByRole('radio', { name: '个人', exact: true })
       const team = page.getByRole('radio', { name: '团队', exact: true })

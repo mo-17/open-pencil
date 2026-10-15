@@ -8,6 +8,7 @@ import {
   TARO_VERSION
 } from '#compiler/adapters/taro'
 import type { ComponentDef, IRElement, IREventHandler, IRTree } from '#compiler/ir/types'
+import * as v from 'valibot'
 
 import { withDefaults } from '@open-pencil/compiler'
 
@@ -64,10 +65,6 @@ function allText(files: ReadonlyMap<string, string | Uint8Array>): string {
 
 function expectValidTsx(source: string): void {
   expect(() => new Bun.Transpiler({ loader: 'tsx' }).transformSync(source)).not.toThrow()
-}
-
-interface TaroProjectConfig {
-  appid?: string
 }
 
 describe('Taro React mini-program adapter', () => {
@@ -133,13 +130,21 @@ describe('Taro React mini-program adapter', () => {
 
     const page = textFile(output.files, 'src/pages/home/index.tsx')
     const style = textFile(output.files, 'src/pages/home/index.scss')
-    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
-      dependencies: Record<string, string>
-      devDependencies: Record<string, string>
-    }
-    const projectConfig = JSON.parse(
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          dependencies: v.record(v.string(), v.string()),
+          devDependencies: v.record(v.string(), v.string())
+        })
+      ),
+      textFile(output.files, 'package.json')
+    )
+    const projectConfig = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ appid: v.optional(v.string()) })),
       textFile(output.files, 'project.config.json')
-    ) as TaroProjectConfig
+    )
 
     expect(output.files.has('src/app.config.ts')).toBe(true)
     expect(output.files.has('config/index.ts')).toBe(true)

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 import { unzipSync, unzlibSync } from 'fflate'
+import * as v from 'valibot'
 
 import { compile, type CompilerFontManifest } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -20,6 +20,8 @@ import {
   safeSourceProjectProductName
 } from '@/app/plugins/host/source-project'
 import { buildTauriReactProjectFiles } from '@/app/plugins/host/tauri-react-exporter'
+
+import { repoPath } from '#tests/helpers/paths'
 
 const decoder = new TextDecoder()
 const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -108,10 +110,6 @@ interface GeneratedPackageJSON {
   customMetadata: { preserved: boolean }
 }
 
-interface DesktopCapabilityConfig {
-  permissions: unknown[]
-}
-
 function text(files: Record<string, Uint8Array>, path: string): string {
   const value = files[path]
   if (!value) throw new Error(`Missing archive file: ${path}`)
@@ -120,12 +118,10 @@ function text(files: Record<string, Uint8Array>, path: string): string {
 
 describe('plugin project archive', () => {
   test('keeps source-export replacement host-owned instead of granting renderer rename', () => {
-    const capability = JSON.parse(
-      readFileSync(
-        resolve(import.meta.dir, '../../../../desktop/capabilities/default.json'),
-        'utf8'
-      )
-    ) as DesktopCapabilityConfig
+    const capability = v.parse(
+      v.pipe(v.string(), v.parseJson(), v.looseObject({ permissions: v.array(v.unknown()) })),
+      readFileSync(repoPath('desktop/capabilities/default.json'), 'utf8')
+    )
 
     expect(capability.permissions).not.toContainEqual({
       identifier: 'fs:allow-rename',
@@ -280,12 +276,19 @@ describe('Tauri React project builder', () => {
     expect(String(files.get('src-tauri/Cargo.toml'))).toContain('name = "demo_desktop_app"')
     expect(String(files.get('src-tauri/src/main.rs'))).toContain('demo_desktop_app_lib::run();')
     expect(String(files.get('src-tauri/src/lib.rs'))).toContain('tauri::Builder::default()')
-    const tauriConfig = JSON.parse(String(files.get('src-tauri/tauri.conf.json'))) as {
-      identifier: string
-      productName: string
-      build: Record<string, unknown>
-      bundle: { icon: string[] }
-    }
+    const tauriConfig = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({
+          identifier: v.string(),
+          productName: v.string(),
+          build: v.record(v.string(), v.unknown()),
+          bundle: v.looseObject({ icon: v.array(v.string()) })
+        })
+      ),
+      String(files.get('src-tauri/tauri.conf.json'))
+    )
     expect(tauriConfig).toMatchObject({
       productName: 'Demo Desktop App',
       identifier: 'dev.openpencil.demo-desktop-app',
@@ -312,7 +315,7 @@ describe('Tauri React project builder', () => {
     ).toEqual(icon)
 
     const archived = unzipSync(await archiveProjectFiles(files))
-    expect(archived[iconPath]).toEqual(icon)
+    expect<unknown>(archived[iconPath]).toEqual(icon)
     expect(decodeGeneratedRgbaPNG(archived[iconPath])).toEqual({ width: 512, height: 512 })
   })
 
@@ -584,9 +587,14 @@ describe('Expo React Native project export', () => {
     const result = await exportCurrentDocumentAsExpoReactNativeSource(editor, dependencies)
     if (!written) throw new Error('Expected the Expo project archive to be written')
     const files = unzipSync(written)
-    const packageJSON = JSON.parse(text(files, 'package.json')) as {
-      dependencies: Record<string, string>
-    }
+    const packageJSON = v.parse(
+      v.pipe(
+        v.string(),
+        v.parseJson(),
+        v.looseObject({ dependencies: v.record(v.string(), v.string()) })
+      ),
+      text(files, 'package.json')
+    )
     const pageSource = text(files, 'src/pages/index.tsx')
 
     expect(result.saved).toBe(true)

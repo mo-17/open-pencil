@@ -29,7 +29,8 @@ const {
     v-if="owner"
     :key="version"
     :class="[section.wrapper, 'space-y-3']"
-    :data-test-id="'module-value-' + mode"
+    data-slot="module-value"
+    :data-mode="mode"
   >
     <fieldset
       v-for="row in rows"
@@ -69,7 +70,7 @@ const {
           @click="fieldName(row.key, '', row.version)"
           >{{ panels.lowcodeResponsiveClear }}</AppButton
         >
-        <p v-if="row.fieldNameInvalid" class="text-[10px] text-danger" role="alert">
+        <p v-if="row.fieldNameInvalid" class="text-[10px] text-error" role="alert">
           {{ panels.lowcodeWorkflowParamInvalidIdentifier }}
         </p>
       </template>

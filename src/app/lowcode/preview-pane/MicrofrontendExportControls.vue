@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef } from 'vue'
 
+import { useCodeMessages } from '@open-pencil/vue'
+
 import { useEditorStore } from '@/app/editor/active-store'
 import {
   AppDialogBody,
@@ -33,6 +35,7 @@ const {
   showTrigger?: boolean
 }>()
 
+const codeMessages = useCodeMessages()
 const store = useEditorStore()
 const dialogOpen = ref(false)
 const appId = ref('')
@@ -98,7 +101,7 @@ defineExpose({ openExport })
 </script>
 
 <template>
-  <Tip v-if="showTrigger" label="Build a compose-ready microfrontend">
+  <Tip v-if="showTrigger" :label="codeMessages.microfrontendBuild">
     <button
       type="button"
       data-test-id="lowcode-microfrontend-export-toggle"
@@ -153,7 +156,7 @@ defineExpose({ openExport })
             :disabled="busy"
             class="h-8 rounded border border-border bg-input px-2 font-mono text-sm text-surface outline-none focus:border-panel-focus disabled:opacity-50"
           />
-          <span id="lowcode-microfrontend-app-id-help" :class="appIdError ? 'text-danger' : ''">
+          <span id="lowcode-microfrontend-app-id-help" :class="appIdError ? 'text-error' : ''">
             {{ appIdError || 'Lowercase letters, numbers, dots, underscores, and hyphens.' }}
           </span>
         </label>
@@ -170,7 +173,7 @@ defineExpose({ openExport })
             :disabled="busy"
             class="h-8 rounded border border-border bg-input px-2 font-mono text-sm text-surface outline-none focus:border-panel-focus disabled:opacity-50"
           />
-          <span id="lowcode-microfrontend-version-help" :class="versionError ? 'text-danger' : ''">
+          <span id="lowcode-microfrontend-version-help" :class="versionError ? 'text-error' : ''">
             {{ versionError || 'Stable semantic version, for example 1.0.0.' }}
           </span>
         </label>
@@ -181,10 +184,10 @@ defineExpose({ openExport })
           document uses a runtime feature that is not isolated for microfrontends yet.
         </div>
 
-        <p v-if="!exportAvailable" class="text-xs text-danger" role="alert">
+        <p v-if="!exportAvailable" class="text-xs text-error" role="alert">
           {{ unavailableReason }}
         </p>
-        <p v-else-if="i18nEnabled" class="text-xs text-danger" role="alert">
+        <p v-else-if="i18nEnabled" class="text-xs text-error" role="alert">
           Microfrontend packaging v1 does not isolate the i18n runtime yet. Turn off i18n in Preview
           settings before exporting.
         </p>
@@ -230,28 +233,28 @@ defineExpose({ openExport })
         <div
           v-else-if="status.kind === 'done'"
           data-test-id="lowcode-microfrontend-export-success"
-          class="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs"
+          class="rounded border border-success/30 bg-success/10 p-3 text-xs"
           role="status"
           aria-live="polite"
         >
-          <div class="font-medium text-emerald-500">Microfrontend ready</div>
+          <div class="font-medium text-success">Microfrontend ready</div>
           <div class="mt-1 break-all text-muted">{{ status.result.outDir }}</div>
           <div class="mt-1 text-muted">
             {{ status.result.files.length }} files · manifest sha256-{{
               status.result.manifestDigest.slice(0, 12)
             }}… · {{ status.result.manifestByteLength }} bytes
           </div>
-          <div v-if="status.result.warningCount > 0" class="mt-1 text-amber-500">
+          <div v-if="status.result.warningCount > 0" class="mt-1 text-warning">
             {{ status.result.warningCount }} compiler warning(s) require review.
           </div>
-          <div v-if="status.cleanupWarning" class="mt-1 text-amber-500" role="alert">
+          <div v-if="status.cleanupWarning" class="mt-1 text-warning" role="alert">
             {{ status.cleanupWarning }}
           </div>
         </div>
         <p
           v-else-if="status.kind === 'error'"
           data-test-id="lowcode-microfrontend-export-error"
-          class="rounded border border-danger/30 bg-danger/10 p-3 text-xs text-danger"
+          class="rounded border border-error/30 bg-error/10 p-3 text-xs text-error"
           role="alert"
         >
           {{ status.message }}

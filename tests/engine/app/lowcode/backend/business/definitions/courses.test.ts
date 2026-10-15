@@ -17,7 +17,7 @@ test('all learning commands have exact bindings, enrollment selection and comple
   const definition = onlineCoursesDefinition()
   expect(() => preflightBusinessPages(app, definition)).not.toThrow()
   const actions = definition.pages.flatMap((page) => page.actions)
-  expect(actions.map((action) => action.commandId).sort()).toEqual(
+  expect<unknown>(actions.map((action) => action.commandId).sort()).toEqual(
     app.commands?.commands.map((command) => command.id).sort()
   )
   const submit = actions.find((action) => action.id === 'submit-course-lesson')
@@ -36,7 +36,7 @@ for (const locale of ['en', 'zh-CN'])
   test(`renders editable ${locale} course pages with learning and grading routes`, () => {
     const editor = createEditor()
     const app = createCoursesApplication('course-pages', MODULE_AUTHENTICATION)
-    const plan = prepareBusinessModulePages(editor, app, 'online-courses', locale)
+    const plan = prepareBusinessModulePages(editor, app, 'online-courses', { locale })
     const result = renderBusinessModulePages(editor, plan)
     expect(result.pageIds.length).toBeGreaterThanOrEqual(8)
     expect(

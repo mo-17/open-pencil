@@ -4,9 +4,11 @@ import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 import { resolvePaginationModule } from '@open-pencil/core/plugins'
 import { validateExpression } from '@open-pencil/lowcode'
+import { readModuleInstance } from '@open-pencil/scene-graph'
 
 import { getComponentTemplates } from '@/app/lowcode/component-templates'
 
+import { expectDefined } from '#tests/helpers/assert'
 import {
   compileComponentTemplates,
   componentTemplateFixture
@@ -21,13 +23,13 @@ test('pagination recipes keep independent page state and list references through
     expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(12)
     const nodes = [...fixture.graph.getAllNodes()]
     const pagers = nodes.filter(
-      (node) => node.interactiveProps?.module?.moduleType === 'pagination'
+      (node) => readModuleInstance(node.interactiveProps?.module)?.moduleType === 'pagination'
     )
     expect(pagers).toHaveLength(2)
     const currentPages = pagers.map((node) => node.bindings?.currentPage)
     expect(currentPages[0]).not.toEqual(currentPages[1])
     for (const pager of pagers) {
-      expect(resolvePaginationModule(pager.interactiveProps.module)?.ok).toBe(true)
+      expect(resolvePaginationModule(expectDefined(pager.interactiveProps).module)?.ok).toBe(true)
       const binding = pager.bindings?.currentPage
       if (binding?.kind !== 'ref') throw new Error('Pagination requires a page-state binding')
       expect(
@@ -35,7 +37,7 @@ test('pagination recipes keep independent page state and list references through
       ).toMatchObject({ type: 'number', defaultValue: 1 })
     }
     const list = nodes.find((node) => node.type === 'LIST')
-    expect(list?.interactiveProps.dataSourceRef).toMatchObject({ kind: 'stateRef' })
+    expect(expectDefined(list?.interactiveProps).dataSourceRef).toMatchObject({ kind: 'stateRef' })
     const row = list && fixture.graph.getNode(list.childIds[0])
     expect(row?.renderCondition).toContain('recordIndex')
     expect(validateExpression(row?.renderCondition ?? '').ok).toBe(true)

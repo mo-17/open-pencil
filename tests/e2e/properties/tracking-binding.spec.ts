@@ -8,6 +8,8 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/?test')
     await new CanvasHelper(page).waitForInit()
     const id = await page.evaluate(async (mode) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const path = '/src/app/shell/theme.ts'
       const module = await import(path)
       module.useAppTheme().setTheme(mode)
@@ -35,7 +37,10 @@ for (const theme of ['light', 'dark']) {
     await input.press('Enter')
     await expect
       .poll(() =>
-        page.evaluate((id) => window.openPencil?.getStore?.().graph.getNode(id)?.letterSpacing, id)
+        page.evaluate((id) => {
+          if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+          return window.openPencil?.getStore?.().graph.getNode(id)?.letterSpacing
+        }, id)
       )
       .toBe(3)
     await expect(field).not.toHaveAttribute('data-bound')

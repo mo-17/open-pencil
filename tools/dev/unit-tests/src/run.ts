@@ -40,6 +40,7 @@ export interface UnitTestRunOptions {
   includeHeavy?: boolean
   heavyOnly?: boolean
   isolate?: boolean
+  coverage?: boolean
 }
 
 export function parseUnitTestRunOptions(argv: string[]) {
@@ -71,13 +72,17 @@ export async function buildUnitTestRunPlan(
   const plan: UnitTestRun[] = []
 
   for (const currentGroup of groups) {
-    const files = options.heavyOnly
-      ? await listHeavyUnitTests(currentGroup)
-      : await listUnitTests(currentGroup, options)
+    const lightFiles = options.heavyOnly ? [] : await listUnitTests(currentGroup)
+    const heavyFiles =
+      options.includeHeavy || options.heavyOnly ? await listHeavyUnitTests(currentGroup) : []
+    const files = [...lightFiles, ...heavyFiles]
     if (options.isolate || currentGroup === 'compiler-browser') {
       plan.push(...files.map((file) => ({ group: currentGroup, files: [file] })))
-    } else if (files.length > 0) {
-      plan.push({ group: currentGroup, files })
+    } else if (options.coverage) {
+      if (files.length > 0) plan.push({ group: currentGroup, files })
+    } else {
+      if (lightFiles.length > 0) plan.push({ group: currentGroup, files: lightFiles })
+      plan.push(...heavyFiles.map((file) => ({ group: currentGroup, files: [file] })))
     }
   }
 
@@ -118,7 +123,10 @@ function spawnUnitTest(command: string[], includeHeavy: boolean): SpawnResult {
 if (import.meta.main) {
   try {
     const options = parseUnitTestRunOptions(process.argv.slice(2))
-    const plan = await buildUnitTestRunPlan(options.group, options)
+    const plan = await buildUnitTestRunPlan(options.group, {
+      ...options,
+      coverage: options.bunTestArgs.some((arg) => arg.startsWith('--coverage'))
+    })
     process.exitCode = runUnitTestPlan(plan, options)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)

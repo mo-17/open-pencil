@@ -23,7 +23,12 @@ async function archiveWithCrossPageAssignment() {
     componentPropertyDefinitions: [
       { id: '207:1', name: 'Label', type: 'TEXT', defaultValue: 'Default' },
       { id: '207:2', name: 'Badge', type: 'BOOLEAN', defaultValue: 'true' },
-      { id: '207:3', name: 'Icon', type: 'INSTANCE_SWAP', defaultValue: iconA.id }
+      {
+        id: '207:3',
+        name: 'Icon',
+        type: 'INSTANCE_SWAP',
+        defaultValue: iconA.id
+      }
     ]
   })
   source.createNode('TEXT', item.id, {
@@ -36,15 +41,19 @@ async function archiveWithCrossPageAssignment() {
     visible: true,
     componentPropertyReferences: [{ propertyId: '207:2', field: 'VISIBLE' }]
   })
-  const icon = expectDefined(source.createInstance(iconA.id, item.id))
+  const icon = expectDefined(source.createInstance(iconA.id, item.id), 'icon')
   source.updateNode(icon.id, {
     name: 'Icon',
     componentPropertyReferences: [{ propertyId: '207:3', field: 'INSTANCE_SWAP' }]
   })
   const page = source.addPage('Dashboard')
-  const instance = expectDefined(source.createInstance(item.id, page.id))
+  const instance = expectDefined(source.createInstance(item.id, page.id), 'instance')
   source.updateNode(instance.id, {
-    componentPropertyAssignments: { '207:1': 'Assigned', '207:2': 'false', '207:3': iconB.id }
+    componentPropertyAssignments: {
+      '207:1': 'Assigned',
+      '207:2': 'false',
+      '207:3': iconB.id
+    }
   })
   const bytes = await exportFigFile(source)
   return { archive: bytes.buffer as ArrayBuffer, swappedTo: iconB.name }
@@ -80,12 +89,20 @@ test('a page loaded on its own keeps the fields its instance assigns', async () 
   const placed = session.pages.find((page) => page.name === 'Dashboard')
   if (!placed) throw new Error('Missing source page')
   session.loadPage(placed.id)
-  expect(drivenFields(session.graph)).toEqual({ text: 'Assigned', visible: false, swappedTo })
+  expect(drivenFields(session.graph)).toEqual({
+    text: 'Assigned',
+    visible: false,
+    swappedTo
+  })
 })
 
 test('the whole document reads the same fields', async () => {
   await initCodec()
   const { archive, swappedTo } = await archiveWithCrossPageAssignment()
   const { graph } = materializeFigArchive(archive)
-  expect(drivenFields(graph)).toEqual({ text: 'Assigned', visible: false, swappedTo })
+  expect(drivenFields(graph)).toEqual({
+    text: 'Assigned',
+    visible: false,
+    swappedTo
+  })
 })

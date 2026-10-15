@@ -12,7 +12,7 @@ import { BOUNDED_BUSINESS_GROUPS } from '../composition/helpers'
 import { moduleInstallationFixture } from './helpers'
 
 describe('combined application persistence and export', () => {
-  test.each(BOUNDED_BUSINESS_GROUPS)(
+  test.each([...BOUNDED_BUSINESS_GROUPS])(
     'round-trips $name and exports every route to React and Vue',
     async ({ kinds }) => {
       const fixture = await moduleInstallationFixture()
@@ -22,7 +22,7 @@ describe('combined application persistence and export', () => {
       expect(request?.application.modules?.modules).toHaveLength(kinds.length + 1)
       await initCodec()
       const bytes = await exportFigFile(fixture.editor.graph)
-      const graph = await parseFigFile(bytes.buffer)
+      const graph = await parseFigFile(bytes.slice().buffer)
       expect(readBackendProviderDocumentRequest(graph)).toEqual(request)
       const pages = graph
         .getPages()

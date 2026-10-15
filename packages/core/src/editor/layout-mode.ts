@@ -1,4 +1,4 @@
-import { isEqual } from 'es-toolkit'
+import { isEqual, uniq } from 'es-toolkit'
 
 import { isAutoLayoutMode, type LayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 
@@ -21,7 +21,7 @@ export function createLayoutModeActions(
       { preserveSourceMetadata: true }
     )
     const source = structuredClone(node.source)
-    source.editedFields = [...new Set([...source.editedFields, 'layoutMode'])]
+    source.editedFields = uniq([...source.editedFields, 'layoutMode'])
     preview.update(id, {
       ...layoutModeUpdates(ctx, node, mode),
       source,
@@ -33,7 +33,36 @@ export function createLayoutModeActions(
     preview.commit(layoutModeSource)
   }
 
-  return { setLayoutMode }
+  /**
+   * Takes layers out of their parent's auto layout or puts them back, as Figma's Ignore auto
+   * layout toggle does. A layer taken out stays where it is and keeps its sizing, which applies
+   * again when it returns; its siblings close the gap in the same undo step.
+   */
+  function setLayoutPositioning(ids: string[], positioning: SceneNode['layoutPositioning']) {
+    // Read every place first: taking one layer out moves the siblings after it.
+    const targets = ids.flatMap((id) => {
+      const node = ctx.graph.getNode(id)
+      const parent = node?.parentId ? ctx.graph.getNode(node.parentId) : undefined
+      if (!node || !parent || !isAutoLayoutMode(parent.layoutMode)) return []
+      if (node.layoutPositioning === positioning) return []
+      return [{ id, x: node.x, y: node.y }]
+    })
+    if (targets.length === 0) return
+    const preview = previews.beginNodePreview(
+      positioning === 'ABSOLUTE' ? 'Ignore auto layout' : 'Use auto layout'
+    )
+    for (const { id, x, y } of targets) {
+      preview.update(
+        id,
+        positioning === 'ABSOLUTE'
+          ? { layoutPositioning: positioning, x, y }
+          : { layoutPositioning: positioning }
+      )
+    }
+    preview.commit()
+  }
+
+  return { setLayoutMode, setLayoutPositioning }
 }
 
 function layoutModeUpdates(
@@ -42,6 +71,18 @@ function layoutModeUpdates(
   mode: LayoutMode
 ): Partial<SceneNode> {
   const updates: Partial<SceneNode> = { layoutMode: mode }
+  // A freshly imported freeform frame has no remembered flow sizing: its first flow hugs
+  // its children. Authored fork preferences, including dormant axes, keep their sizing.
+  if (
+    node.source.format === 'fig' &&
+    node.source.fig.layout === null &&
+    !isAutoLayoutMode(node.layoutMode) &&
+    (mode === 'HORIZONTAL' || mode === 'VERTICAL')
+  ) {
+    updates.primaryAxisSizing = 'HUG'
+    updates.counterAxisSizing = 'HUG'
+  }
+
   // Layout preferences belong to the document, even while freeform is active.
   // Initialize only absent grid axes; switching mode never resets authored values.
   if (mode === 'GRID') {
@@ -75,7 +116,7 @@ function layoutModeSource(
     (key) => key !== 'source' && !isEqual(before[key], node[key])
   )
   const source = structuredClone(node.source)
-  source.editedFields = [...new Set([...source.editedFields, ...changed])]
+  source.editedFields = uniq([...source.editedFields, ...changed])
   if (changed.includes('layoutMode') && source.fig.layout) {
     source.fig.layout.stackMode =
       node.layoutMode === 'VERTICAL' || node.layoutMode === 'HORIZONTAL' ? node.layoutMode : 'NONE'

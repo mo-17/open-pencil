@@ -47,7 +47,9 @@ describe('built-in advanced data grid plugin', () => {
     expect(legacy?.ok).toBe(true)
     if (!legacy?.ok) throw new Error('expected legacy data grid module to resolve')
     expect(legacy.config.showCsvTools).toBe(false)
-    expect(legacy.config.data).toEqual(instance.config.data)
+    const original = resolveDataGridModule(instance)
+    if (!original?.ok) throw new Error('Expected current data grid config')
+    expect(legacy.config.data).toEqual(original.config.data)
     expect(Object.hasOwn(legacyConfig, 'showCsvTools')).toBe(false)
 
     const enabled = resolveDataGridModule(createDataGridModuleInstance({ showCsvTools: true }))

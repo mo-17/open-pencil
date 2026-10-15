@@ -165,7 +165,7 @@ function replay() {
       :href="source.url"
       target="_blank"
       rel="noopener noreferrer"
-      class="text-[10px] text-link underline"
+      class="text-[10px] text-primary underline"
     >
       {{ panels.effectPickSource }} · {{ source.authorName }}
     </a>

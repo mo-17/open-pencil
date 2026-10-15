@@ -56,6 +56,11 @@ pub const APP_COMMANDS: &[&str] = &[
     "update_ai_window",
     "update_preview_window",
     "write_motion_export_noclobber",
+    "agent_lookup",
+    "cancel_http_request",
+    "sharing_disabled_by_env",
+    "take_pending_rooms",
+    "webview_version",
 ];
 
 #[cfg(test)]
@@ -127,6 +132,7 @@ mod tests {
         let registered = handler
             .split(',')
             .map(str::trim)
+            .map(|command| command.rsplit("::").next().unwrap_or(command))
             .filter(|command| !command.is_empty())
             .collect::<BTreeSet<_>>();
         let manifested = APP_COMMANDS.iter().copied().collect::<BTreeSet<_>>();

@@ -7,6 +7,7 @@ import type { FontManager } from '@open-pencil/core/text'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { parseCompilerFigOutput } from '#tests/helpers/compiler/output'
 import { mockFontsource } from '#tests/helpers/fonts/fontsource'
 import { trackFontModuleResources } from '#tests/helpers/fonts/runtime'
 
@@ -14,19 +15,19 @@ test('editor canvas reopens text field styles from an on-disk FIG', async ({ pag
   test.setTimeout(90000)
   const suppliedPath = process.env.OPENPENCIL_TEMPLATE_FIG_PATH
   const path = suppliedPath ? resolve(suppliedPath) : info.outputPath('all-templates.fig')
-  if (!suppliedPath) {
-    mkdirSync(dirname(path), { recursive: true })
+  if (!suppliedPath) mkdirSync(dirname(path), { recursive: true })
+  const compiled = parseCompilerFigOutput(
     execFileSync(
       'bun',
       [
         'tests/helpers/compiler/components/templates/compile-fig.ts',
         'react',
         path,
-        '--create-fixture'
+        ...(suppliedPath ? [] : ['--create-fixture'])
       ],
-      { cwd: process.cwd(), maxBuffer: 16 * 1024 * 1024 }
+      { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  }
+  )
   const bytes = readFileSync(path)
   await trackFontModuleResources(page)
   await mockFontsource(page, [])
@@ -34,6 +35,8 @@ test('editor canvas reopens text field styles from an on-disk FIG', async ({ pag
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const result = await page.evaluate(async (data) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     const moduleURL = performance
@@ -74,10 +77,25 @@ test('editor canvas reopens text field styles from an on-disk FIG', async ({ pag
         image: Array.from(image)
       })
     }
-    return { rootCount: roots.length, fields }
+    return {
+      rootCount: roots.length,
+      roots: roots.map(({ name, type }) => ({ name, type })),
+      fields
+    }
   }, Array.from(bytes))
-  expect(result.rootCount).toBe(18)
+  expect(result.rootCount).toBe(compiled.source.roots.length)
+  expect(result.roots).toEqual(compiled.source.roots.map(({ name, type }) => ({ name, type })))
   for (const field of result.fields) {
+    const original = compiled.source.fields.find(
+      ({ name, type }) => name === field.name && type === field.type
+    )
+    if (!original) throw new Error(`Original template control missing: ${field.name}`)
+    expect(field).toMatchObject({
+      fontSize: original.fontSize,
+      lineHeight: original.lineHeight,
+      height: original.height,
+      padding: original.padding
+    })
     expect(field.fontSize).toBe(16)
     expect(field.lineHeight).toBe(24)
     expect(field.height).toBe(field.type === 'INPUT' ? 44 : 128)
@@ -95,6 +113,8 @@ test('editor canvas reopens text field styles from an on-disk FIG', async ({ pag
         sha256: createHash('sha256').update(bytes).digest('hex'),
         byteLength: bytes.byteLength,
         rootCount: result.rootCount,
+        original: compiled.source,
+        roots: result.roots,
         fields: result.fields.map(({ image: _image, ...field }) => field)
       },
       null,

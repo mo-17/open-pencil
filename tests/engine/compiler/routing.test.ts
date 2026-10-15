@@ -253,7 +253,14 @@ describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
       graph.createNode('BUTTON', home.id, {
         interactiveProps: { text: 'Product' },
         events: {
-          onClick: [{ kind: 'navigate', to: `/product/:id${suffix}`, params: { id: '"42"' } }]
+          onClick: [
+            {
+              id: 'navigate-detail',
+              kind: 'navigate',
+              to: `/product/:id${suffix}`,
+              params: { id: '"42"' }
+            }
+          ]
         }
       })
       const output = compile({

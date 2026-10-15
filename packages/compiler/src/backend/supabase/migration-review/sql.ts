@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import type {
   BackendApplicationSpecV1,
   BackendFieldDefault,
@@ -267,9 +269,9 @@ function renderCreateEntity(
     )
     return null
   }
-  const definitions = entity.fields
-    .map((field) => fieldDefinition(application, entity, field, blockers))
-    .filter(Boolean)
+  const definitions = compact(
+    entity.fields.map((field) => fieldDefinition(application, entity, field, blockers))
+  )
   const constraintComments: string[] = []
   if (entity.primaryKey) {
     const primaryKeyFields = namesForFields(entity, entity.primaryKey.fields)

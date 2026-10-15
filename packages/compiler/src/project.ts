@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import { validateLowcodeCustomCSS, validateLowcodeHeadMeta } from '@open-pencil/lowcode'
 
 import type { CompilerOptions, HTMLMetadata, LowcodeThemeSwitchPosition } from './types'
@@ -315,12 +317,11 @@ function buildMainRuntimeChildren(
   confirm: boolean,
   analyticsConsent: boolean
 ): string {
-  return [
+  return compact([
     toast ? '<ToastHost />' : '',
     confirm ? '<ConfirmHost />' : '',
     analyticsConsent ? '<LowcodeAnalyticsConsentBanner />' : ''
-  ]
-    .filter(Boolean)
+  ])
     .map((child) => `\n    ${child}`)
     .join('')
 }

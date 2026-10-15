@@ -21,7 +21,12 @@ function buttonFixture(type: AuthoredType, inForm: boolean, configured: boolean)
       ? {
           events: {
             onClick: [
-              { kind: 'setState' as const, targetStateId: 'status', valueExpr: '"clicked"' }
+              {
+                id: 'set-value',
+                kind: 'setState' as const,
+                targetStateId: 'status',
+                valueExpr: '"clicked"'
+              }
             ]
           }
         }

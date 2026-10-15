@@ -1,3 +1,5 @@
+import { compact } from 'es-toolkit'
+
 import * as values from '@open-pencil/plugin-contracts/adapter-helpers'
 
 import {
@@ -73,7 +75,7 @@ export function parseWalktourSteps(value: unknown): WalktourStep[] {
   )
   if (new Set(steps.map((step) => step.id)).size !== steps.length)
     throw new TypeError('walktour step IDs must be unique')
-  const targets = steps.map((step) => step.targetChildName).filter(Boolean)
+  const targets = compact(steps.map((step) => step.targetChildName))
   if (new Set(targets).size !== targets.length)
     throw new TypeError('walktour target child names must be unique')
   return steps

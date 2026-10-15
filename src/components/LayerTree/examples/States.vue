@@ -100,7 +100,19 @@ const states: Array<{
     chrome: chrome()
   },
   { label: 'Hidden', node: node('Hidden', { visible: false }), selected: false, chrome: chrome() },
+  {
+    label: 'Selected hidden',
+    node: node('Selected hidden', { visible: false }),
+    selected: true,
+    chrome: chrome({ focused: true })
+  },
   { label: 'Locked', node: node('Locked', { locked: true }), selected: false, chrome: chrome() },
+  {
+    label: 'Slot',
+    node: node('Slot', { type: 'FRAME', layoutMode: 'VERTICAL', slot: true }),
+    selected: false,
+    chrome: chrome()
+  },
   {
     label: 'Component',
     node: node('Component', { type: 'COMPONENT' }),
@@ -149,7 +161,7 @@ const states: Array<{
       Layer Tree states
     </div>
     <div :class="adjacent ? 'space-y-0' : 'space-y-1'">
-      <div v-for="state in states" :key="state.label" :aria-label="state.label">
+      <div v-for="state in states" :key="state.label">
         <LayerTreeNodeRow
           :node="state.node"
           :level="1"

@@ -38,6 +38,7 @@ test('continuation omits unfinished tool calls without altering the saved transc
     chatId: 'chat',
     trigger: 'submit-message',
     messageId: undefined,
+    abortSignal: undefined,
     messages
   })
   expect(sent[0]?.parts).toHaveLength(2)
@@ -79,6 +80,7 @@ test('continuation retains an explicit current tool approval response', async ()
     chatId: 'chat',
     trigger: 'submit-message',
     messageId: undefined,
+    abortSignal: undefined,
     messages
   })
   expect(sent[0]?.parts[0]).toMatchObject({

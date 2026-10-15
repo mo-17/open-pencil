@@ -11,6 +11,8 @@ test('installs Video and creates the reviewed media template with atomic undo an
   // Wait for the visible canvas paint, without reading or asserting the graph.
   const settle = () =>
     page.evaluate(async () => {
+      if (!window.openPencil) throw new Error('Editor test API is unavailable')
+
       const navigation = window.openPencil?.test?.navigation
       if (!navigation) throw new Error('Canvas settlement hook not initialized')
       await navigation.waitForSettlement()

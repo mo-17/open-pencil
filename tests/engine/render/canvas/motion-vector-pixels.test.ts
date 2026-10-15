@@ -2,12 +2,13 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 
 import type { CanvasKit } from 'canvaskit-wasm'
 
-import { SceneGraph, SkiaRenderer } from '@open-pencil/core'
 import type { MotionVisualState } from '@open-pencil/motion'
 
 import { initCanvasKit } from '#cli/headless'
 import { renderNode } from '#core/canvas/scene'
+import { SceneGraph, SkiaRenderer } from '#core/index'
 
+import { expectRgbaPixels } from '#tests/engine/render/canvas/helpers'
 import { expectDefined } from '#tests/helpers/assert'
 
 let ck: CanvasKit
@@ -41,7 +42,7 @@ function pixelsFor(
     surface.flush()
     const image = surface.makeImageSnapshot()
     try {
-      return expectDefined(
+      return expectRgbaPixels(
         image.readPixels(0, 0, {
           width,
           height,

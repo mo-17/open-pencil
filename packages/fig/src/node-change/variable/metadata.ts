@@ -10,11 +10,22 @@ import {
 } from '@open-pencil/scene-graph'
 
 import { extractPluginData, mergePluginData } from '../plugin-data'
-import { modeConditionsPluginData, tokenPluginData, withoutTokenPluginData } from './token'
+import {
+  modeAttributePluginData,
+  modeConditionsPluginData,
+  tokenPluginData,
+  withoutTokenPluginData
+} from './token'
 
 type VariableMetadata = Pick<
   Variable,
-  'description' | 'hiddenFromPublishing' | 'scopes' | 'codeSyntax' | 'pluginData'
+  | 'description'
+  | 'hiddenFromPublishing'
+  | 'scopes'
+  | 'codeSyntax'
+  | 'pluginData'
+  | 'key'
+  | 'version'
 >
 
 type ModeKey = (modeId: string) => string
@@ -36,13 +47,17 @@ function readCodeSyntax(nc: NodeChange): Variable['codeSyntax'] {
 export function readVariableMetadata(nc: NodeChange): VariableMetadata {
   const scopes = nc.variableScopes?.filter(isScope)
   const pluginData = withoutTokenPluginData(extractPluginData(nc))
-  return {
+  const metadata: VariableMetadata = {
     description: nc.description ?? nc.symbolDescription ?? '',
     hiddenFromPublishing: nc.isPublishable === false,
     scopes: scopes?.length ? scopes : undefined,
     codeSyntax: readCodeSyntax(nc),
     pluginData: pluginData.length > 0 ? pluginData : undefined
   }
+  // A library variable's identity, which records naming it use in place of its GUID.
+  if (typeof nc.key === 'string') metadata.key = nc.key
+  if (typeof nc.version === 'string') metadata.version = nc.version
+  return metadata
 }
 
 export function variableMetadataNodeChange(
@@ -76,9 +91,11 @@ export function collectionPluginDataNodeChange(
   modeKey: ModeKey
 ): NodeChange['pluginData'] {
   const conditions = modeConditionsPluginData(collection, modeKey)
+  const attribute = modeAttributePluginData(collection)
   return pluginDataNodeChange([
     ...withoutTokenPluginData(collection.pluginData ?? []),
-    ...(conditions ? [conditions] : [])
+    ...(conditions ? [conditions] : []),
+    ...(attribute ? [attribute] : [])
   ])
 }
 

@@ -4,6 +4,8 @@ const editor = useEditorSetupWithClear('/?test')
 
 async function createFields() {
   const ids = await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('Editor unavailable')
     store.graph.updateNode(store.state.currentPageId, {
@@ -47,12 +49,14 @@ test('fields expose independent change/focus/blur actions and preserve undo', as
   await expect(section.getByTestId('lowcode-action-expr')).toHaveValue('"focus"')
   await selectEvent('On change')
   await expect(section.getByTestId('lowcode-action-row')).toHaveCount(0)
-  await section.getByTestId('lowcode-action-add').click()
+  await section.getByRole('button', { name: '+ Add action', exact: true }).click()
   await section.getByTestId('lowcode-action-expr').fill('$value')
   await section.getByTestId('lowcode-action-expr').press('Tab')
   await expect
     .poll(() =>
       editor.page.evaluate((id) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const action = window.openPencil?.getStore?.().graph.getNode(id)?.events?.onChange?.[0]
         return action?.kind === 'setState' ? action.valueExpr : null
       }, ids.field)
@@ -66,14 +70,23 @@ test('fields expose independent change/focus/blur actions and preserve undo', as
     'On blur'
   )
   await expect(section.getByTestId('lowcode-action-expr')).toHaveValue('"Edited blur"')
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   await expect(section.getByTestId('lowcode-action-expr')).toHaveValue('"blur"')
   await selectEvent('On focus')
   await expect(section.getByTestId('lowcode-action-expr')).toHaveValue('"focus"')
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.undo())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.undo()
+  })
   await selectEvent('On change')
   await expect(section.getByTestId('lowcode-action-expr')).not.toHaveValue('$value')
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undo.redo())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undo.redo()
+  })
   await expect(section.getByTestId('lowcode-action-expr')).toHaveValue('$value')
   await editor.page.screenshot({ path: test.info().outputPath('field-events.png') })
   editor.canvas.assertNoErrors()
@@ -83,6 +96,8 @@ test('action navigation selects its event and late field drafts do not mutate an
   const ids = await createFields()
   await selectEvent('On blur')
   await editor.page.evaluate(async (id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const { requestLowcodeActionFocus } = await import(
       new URL('/src/app/lowcode/action/focus.ts', window.location.origin).href
     )
@@ -95,7 +110,10 @@ test('action navigation selects its event and late field drafts do not mutate an
     .getByTestId('lowcode-events-section')
     .getByTestId('lowcode-action-expr')
   await expression.fill('"uncommitted"')
-  await editor.page.evaluate((id) => window.openPencil?.getStore?.().select([id]), ids.second)
+  await editor.page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().select([id])
+  }, ids.second)
   await expect(editor.page.getByRole('combobox', { name: 'Event', exact: true })).toHaveText(
     'On change'
   )
@@ -103,10 +121,10 @@ test('action navigation selects its event and late field drafts do not mutate an
     editor.page.getByTestId('lowcode-events-section').getByTestId('lowcode-action-row')
   ).toHaveCount(0)
   expect(
-    await editor.page.evaluate(
-      (id) => window.openPencil?.getStore?.().graph.getNode(id)?.events,
-      ids.second
-    )
+    await editor.page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil?.getStore?.().graph.getNode(id)?.events
+    }, ids.second)
   ).toBeUndefined()
   editor.canvas.assertNoErrors()
 })

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { PluginConnectorContractRegistry } from '@open-pencil/plugin-contracts'
 
+import { validateSupabaseSchemaCatalog } from '@/app/lowcode/supabase/schema-catalog'
 import { ConnectorHostAdapterRegistry } from '@/app/plugins/connectors/registry'
 import {
   SUPABASE_SCHEMA_INSPECTOR_ADAPTER,
@@ -192,13 +193,14 @@ describe('Supabase Schema Inspector reference connector', () => {
       schema: 'public'
     })
 
+    const transformed = SUPABASE_SCHEMA_INSPECTOR_ADAPTER.transformResponse?.(openAPI, {
+      contract: SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
+      operation: SUPABASE_SCHEMA_INSPECTOR_CONTRACT.operations[0],
+      parameters: { projectRef: 'project-ref', schema: 'public' },
+      signal: new AbortController().signal
+    })
     expect(
-      SUPABASE_SCHEMA_INSPECTOR_ADAPTER.transformResponse?.(openAPI, {
-        contract: SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
-        operation: SUPABASE_SCHEMA_INSPECTOR_CONTRACT.operations[0],
-        parameters: { projectRef: 'project-ref', schema: 'public' },
-        signal: new AbortController().signal
-      })
+      validateSupabaseSchemaCatalog(transformed, { projectRef: 'project-ref', schema: 'public' })
     ).toEqual(catalog)
 
     expect(catalog).toEqual({

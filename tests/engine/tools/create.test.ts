@@ -4,8 +4,15 @@ import { describe, expect, test } from 'bun:test'
 import { toJsonSchema as toJSONSchema } from '@valibot/to-json-schema'
 import * as v from 'valibot'
 
+import { flushPendingLayout } from '@open-pencil/core/figma-api'
+
 import { expectDefined } from '#tests/helpers/assert'
 import { getTool, setupToolTest, type ToolResult } from '#tests/helpers/tools'
+
+/** The `render` tool answers with the rendered root and its child IDs. */
+interface RenderToolResult extends ToolResult {
+  children: string[]
+}
 
 describe('create_shape', () => {
   test('creates a frame', () => {
@@ -98,7 +105,7 @@ describe('render', () => {
     const tool = getTool('render')
     const result = (await tool.execute(figma, {
       jsx: '<Frame name="Card" w={200} h={100} bg="#FFF"><Text>Hello</Text></Frame>'
-    })) as ToolResult
+    })) as RenderToolResult
     expect(result.name).toBe('Card')
     expect(result.type).toBe('FRAME')
     expect(result.children.length).toBeGreaterThan(0)
@@ -159,14 +166,14 @@ describe('render', () => {
     })) as ToolResult
     const siblings = result.siblings as Array<{ id: string; index: number }>
 
-    expect(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
+    expect<unknown>(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
       before.id,
       result.id,
       siblings[0]?.id,
       after.id
     ])
     expect(result.index).toBe(1)
-    expect(siblings).toEqual([
+    expect<unknown>(siblings).toEqual([
       { id: siblings[0]?.id, name: 'Second root', type: 'RECTANGLE', index: 2 }
     ])
   })
@@ -186,7 +193,7 @@ describe('render', () => {
     const siblings = result.siblings as Array<{ id: string; index: number }>
 
     expect(graph.getNode(target.id)).toBeUndefined()
-    expect(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
+    expect<unknown>(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
       result.id,
       siblings[0]?.id,
       after.id,
@@ -202,7 +209,7 @@ describe('render', () => {
   })
 
   test('defers render layout when the host owns the post-tool pass', async () => {
-    const { figma } = setupToolTest()
+    const { figma, graph } = setupToolTest()
     const tool = getTool('render')
     const result = (await tool.execute(
       figma,
@@ -212,10 +219,13 @@ describe('render', () => {
       { deferLayout: true }
     )) as ToolResult
     const childId = expectDefined((result.children as string[])[0], 'rendered child id')
-    const child = expectDefined(figma.getNodeById(childId), 'rendered child')
+    const child = expectDefined(graph.getNode(childId), 'rendered child')
 
     expect(child.x).toBe(0)
     expect(child.y).toBe(0)
+    // Script-visible geometry reads flush the API's pending layout by design.
+    flushPendingLayout(graph)
+    expect([child.x, child.y]).toEqual([24, 24])
   })
 
   test('accepts SVG markup attributes without hiding invalid root props', async () => {
@@ -269,7 +279,11 @@ describe('create_instance', () => {
       y: 32
     }) as ToolResult
 
-    expect(parent.children.map((child) => child.id)).toEqual([before.id, result.id, after.id])
+    expect<unknown>(parent.children.map((child) => child.id)).toEqual([
+      before.id,
+      result.id,
+      after.id
+    ])
     const instance = expectDefined(
       figma.getNodeById(expectDefined(result.id, 'created instance id')),
       'created instance'

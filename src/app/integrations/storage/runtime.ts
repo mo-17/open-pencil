@@ -6,6 +6,7 @@ import { ALIYUN_DRIVE_STORAGE_PROVIDER_ID } from './aliyun-drive/config'
 import { getAliyunDriveRuntimeServices } from './aliyun-drive/runtime'
 import { BAIDU_NETDISK_STORAGE_PROVIDER_ID } from './baidu-netdisk/config'
 import { getBaiduNetdiskRuntimeServices } from './baidu-netdisk/runtime'
+import { createStorageConfigurationReader } from './configuration'
 import { GOOGLE_DRIVE_STORAGE_PROVIDER_ID } from './google-drive/config'
 import { getGoogleDriveRuntimeServices } from './google-drive/runtime'
 import { ONEDRIVE_STORAGE_PROVIDER_ID } from './onedrive/config'
@@ -15,7 +16,8 @@ import {
   activeStorageProviderID,
   listStorageProfiles,
   readActiveStorageProfileID,
-  readStoragePreferences
+  readStoragePreferences,
+  storagePreferencesComplete
 } from './preferences'
 import { storageProviderRegistry } from './providers'
 import { ensureS3StorageAuthority, S3_COMPATIBLE_STORAGE_PROVIDER_ID } from './s3/authority'
@@ -56,6 +58,16 @@ export async function storageCredentialStatuses(
   )
   return Object.fromEntries(entries)
 }
+
+/** Readiness is scoped to required S3 settings or the account provider's current grant. */
+export const isStorageConfigured = createStorageConfigurationReader({
+  provider: (id) => storageProviderRegistry.get(id),
+  profileId: readActiveStorageProfileID,
+  enabled: storageProviderPluginEnabled,
+  preferencesComplete: storagePreferencesComplete,
+  credentialStatuses: storageCredentialStatuses,
+  storedAuthority: readStoredStorageAuthority
+})
 
 export function createActiveStorageAdapter(
   providerID: StorageProviderID = activeStorageProviderID.value,

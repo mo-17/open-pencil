@@ -107,8 +107,12 @@ async function prepare() {
     <section class="rounded-xl border border-border p-4">
       <div class="flex items-center gap-2 text-sm font-medium text-surface" role="status">
         <icon-lucide-loader-circle v-if="busy" class="size-4 motion-safe:animate-spin" />
-        <icon-lucide-circle-alert v-else-if="error || plan" class="size-4 text-amber-500" />
-        <span v-else class="size-2 rounded-full" :class="running ? 'bg-emerald-500' : 'bg-muted'" />
+        <icon-lucide-circle-alert v-else-if="error || plan" class="size-4 text-warning" />
+        <span
+          v-else
+          class="size-2 rounded-full"
+          :class="running ? 'bg-success-fill' : 'bg-muted'"
+        />
         {{ status }}
       </div>
       <p class="mt-2 text-xs leading-relaxed text-muted">{{ text.managedDescription }}</p>
@@ -207,7 +211,7 @@ async function prepare() {
     />
     <section
       v-if="plan"
-      class="rounded-xl border border-amber-500/50 bg-amber-500/5 p-4"
+      class="rounded-xl border border-warning/50 bg-warning/5 p-4"
       data-test-id="managed-backend-plan"
     >
       <h3 class="text-sm font-medium text-surface">
@@ -216,7 +220,7 @@ async function prepare() {
       <ul class="mt-2 list-inside list-disc space-y-1 text-xs leading-relaxed text-muted">
         <li v-for="item in plan.summary" :key="item">{{ item }}</li>
       </ul>
-      <p v-if="plan.kind === 'blocked'" class="mt-3 text-xs leading-relaxed text-amber-500">
+      <p v-if="plan.kind === 'blocked'" class="mt-3 text-xs leading-relaxed text-warning">
         {{ text.blockedHint }}
       </p>
       <div class="mt-4 flex gap-2">

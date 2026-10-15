@@ -3,6 +3,7 @@ import {
   MOUNTED_VALIDATION_COMPLETION_GUARD
 } from '#compiler/adapters/form-validation'
 import type { IRElement, IREventHandler, IREventName, IRUpload } from '#compiler/ir/types'
+import { compact, uniq } from 'es-toolkit'
 
 import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
@@ -377,8 +378,7 @@ function registerEventFunction(
       ].join('; ')} })`
     ]
   }
-  const source = body
-    .filter(Boolean)
+  const source = compact(body)
     .map((line) => `  ${line}`)
     .join('\n')
   context.eventFunctions.push(`async function ${name}(${params}): Promise<void> {\n${source}\n}`)
@@ -615,11 +615,9 @@ function emitNavigate(
     return []
   }
   const params = new Map((handler.params ?? []).map((param) => [param.name, param]))
-  const missing = [
-    ...new Set(
-      inspected.parameters.filter((parameter) => !parameter.optional).map(({ name }) => name)
-    )
-  ].filter((name) => !params.has(name))
+  const missing = uniq(
+    inspected.parameters.filter((parameter) => !parameter.optional).map(({ name }) => name)
+  ).filter((name) => !params.has(name))
   if (missing.length > 0) {
     context.warnings.push({
       code: 'vue-navigate-param-missing',
@@ -632,7 +630,7 @@ function emitNavigate(
       ...(context.applicationGuards ? ['if (!__opCanNavigate(__opNavigationOrigin)) return'] : []),
       `await __opRouter.${handler.history === 'replace' ? 'replace' : 'push'}(${scriptJSON(route)})`
     ]
-  const values = [...new Set(inspected.parameters.map(({ name }) => name))]
+  const values = uniq(inspected.parameters.map(({ name }) => name))
     .filter((name) => params.has(name))
     .map((name) => {
       const param = params.get(name) as NonNullable<typeof handler.params>[number]

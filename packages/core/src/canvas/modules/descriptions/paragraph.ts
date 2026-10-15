@@ -1,9 +1,8 @@
-import type { Paragraph } from 'canvaskit-wasm'
-
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { moduleMultilineLabelNode } from '#core/canvas/modules/label'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import type { TextLayout } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 import { DESCRIPTIONS_LAYOUT } from '#core/plugins/descriptions'
 
@@ -14,7 +13,7 @@ export function descriptionsParagraph(
   width: number,
   fontSize: number,
   cssColor: string
-): Paragraph | undefined {
+): TextLayout | undefined {
   if (!text || width <= 0 || !renderer.fontProvider || !renderer.fontsLoaded) return undefined
   const label = moduleMultilineLabelNode(node, text, {
     width,

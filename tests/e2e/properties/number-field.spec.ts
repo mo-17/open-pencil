@@ -1,12 +1,13 @@
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
 import { expectDefined } from '#tests/helpers/assert'
-import { propertyField } from '#tests/helpers/properties'
 import { getSelectedNode } from '#tests/helpers/store'
 
 const editor = useEditorSetup()
 
 function xField() {
-  return propertyField(editor.page, 'x')
+  return editor.page
+    .getByTestId('inspector-section-content-position')
+    .locator('[data-slot="root"][data-property="x"]')
 }
 
 async function editField(field: ReturnType<typeof xField>) {
@@ -87,12 +88,13 @@ test('mixed numeric edits cancel per-node values and commit zero in one undo ste
   await editor.canvas.drawRect(300, 100, 80, 80)
   await editor.canvas.selectAll()
   const values = () =>
-    editor.page.evaluate(() =>
-      window.openPencil
+    editor.page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil
         ?.getStore?.()
         .getSelectedNodes()
         .map((node) => node.x)
-    )
+    })
   const original = await values()
   let input = await editField(xField())
   await input.fill('77')
@@ -103,7 +105,10 @@ test('mixed numeric edits cancel per-node values and commit zero in one undo ste
   await input.fill('0')
   await input.press('Enter')
   expect(await values()).toEqual([0, 0])
-  await editor.page.evaluate(() => window.openPencil?.getStore?.().undoAction())
+  await editor.page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil?.getStore?.().undoAction()
+  })
   expect(await values()).toEqual(original)
 })
 

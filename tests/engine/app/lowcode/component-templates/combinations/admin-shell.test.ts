@@ -13,7 +13,7 @@ beforeAll(initCodec)
 
 function authoredRows(graph: SceneGraph) {
   return [...graph.getAllNodes()]
-    .filter((node) => node.type !== 'DOCUMENT' && node.type !== 'CANVAS')
+    .filter((node) => node.id !== graph.rootId && node.type !== 'CANVAS')
     .map((node) => ({
       name: node.name,
       type: node.type,

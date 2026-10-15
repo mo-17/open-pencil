@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, type Rect } from '@open-pencil/core'
-import { computeOverlaps } from '@open-pencil/core/tools/analyze/overlaps'
+import type { Rect } from '@open-pencil/scene-graph/primitives'
+
+import { SceneGraph } from '#core/index'
+import { computeOverlaps } from '#core/tools/analyze/overlaps/index'
 
 import { frame, pageId, rect } from './helpers'
 

@@ -132,7 +132,7 @@ const scene = useMotionSceneTimelineView()
       </label>
       <button
         type="button"
-        class="rounded bg-input px-2 py-1 text-[9px] text-muted outline-none hover:bg-danger/10 hover:text-danger focus-visible:ring-1 focus-visible:ring-danger"
+        class="rounded bg-input px-2 py-1 text-[9px] text-muted outline-none hover:bg-error/10 hover:text-error focus-visible:ring-1 focus-visible:ring-error"
         :disabled="!scene.canRemoveCues"
         data-test-id="motion-scene-delete-cues"
         @click="scene.deleteSelectedCues"

@@ -4,12 +4,12 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { withApplicationGuardsFiles } from '#tests/helpers/compiler/application-guards/browser'
 import type { ApplicationGuardsFixtureOptions } from '#tests/helpers/compiler/application-guards/fixture'
-import type { ApplicationBrowserOutput } from '#tests/helpers/compiler/application-mode/browser'
+import { parseCompilerBrowserOutput } from '#tests/helpers/compiler/output'
 
 type NavigationOperation = 'push' | 'replace' | 'authored Back' | 'browser Back'
 
 function output(target: 'react' | 'vue', options: ApplicationGuardsFixtureOptions = {}) {
-  return JSON.parse(
+  return parseCompilerBrowserOutput(
     execFileSync(
       'bun',
       [
@@ -18,7 +18,7 @@ function output(target: 'react' | 'vue', options: ApplicationGuardsFixtureOption
       ],
       { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
     )
-  ) as ApplicationBrowserOutput
+  )
 }
 
 async function clickWithoutScrolling(page: Page, name: string) {

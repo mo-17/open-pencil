@@ -41,7 +41,7 @@ describe('application security readiness plugin', () => {
       'Application security readiness result'
     )
 
-    expect(validated).toEqual(result)
+    expect<unknown>(validated).toEqual(result)
     expect(result.kind).toBe('application-security-readiness')
     expect(result.scope).toBe('document')
     expect(result.status).toBe('pass')
@@ -91,7 +91,7 @@ describe('application security readiness plugin', () => {
     graph.createNode('BUTTON', page.id, {
       name: contentMarker,
       events: {
-        click: [
+        onClick: [
           {
             id: 'unsafe-api',
             kind: 'apiCall',

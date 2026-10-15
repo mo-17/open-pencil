@@ -8,6 +8,7 @@ import {
   type SupabaseManagementDatabaseApplyFetch
 } from '@/app/plugins/host/deployment/supabase/management/database-apply-transport'
 
+import { parseDatabaseApplyBody } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 import type { RecordedRequest } from '#tests/engine/app/plugins/deployment/supabase/management/helpers'
 
 import {
@@ -19,8 +20,7 @@ import {
   projectResponse,
   sqlDigest,
   successfulFetcher,
-  transportError,
-  type DatabaseApplyBody
+  transportError
 } from './database-apply/helpers'
 
 describe('Supabase Management trusted database Apply transport', () => {
@@ -60,7 +60,7 @@ describe('Supabase Management trusted database Apply transport', () => {
     ])
     const bodyText = requests[2]?.init.body
     if (typeof bodyText !== 'string') throw new TypeError('Expected exact JSON body')
-    const body = JSON.parse(bodyText) as DatabaseApplyBody
+    const body = parseDatabaseApplyBody(bodyText)
     expect(Object.keys(body)).toEqual(['query', 'read_only'])
     expect(body).toEqual({ query: context.artifact.inspectedReview.sql, read_only: false })
     expect(body.query).toStartWith(

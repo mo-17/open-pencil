@@ -286,7 +286,9 @@ describe('host-reviewed static REST connector factory', () => {
     const authorization = new ConnectorAuthorizationRegistry()
     const plugin = installedPlugin(QUERY, 'sha256:reviewed-query-v1')
     authorization.authorize(QUERY.contract, plugin.package.digest, 1_754_694_400)
-    let captured: Readonly<{ url: string; method: string; apiKey: string | null }> | null = null
+    const captured: {
+      value: Readonly<{ url: string; method: string; apiKey: string | null }> | null
+    } = { value: null }
     const broker = createConnectorExecutionBroker({
       adapters,
       authorization,
@@ -295,7 +297,7 @@ describe('host-reviewed static REST connector factory', () => {
       fetch: async (input, init, _limits, onDispatch) => {
         onDispatch()
         const headers = new Headers(init?.headers)
-        captured = {
+        captured.value = {
           url: String(input),
           method: String(init?.method),
           apiKey: headers.get('x-fake-api-key')
@@ -325,12 +327,12 @@ describe('host-reviewed static REST connector factory', () => {
       data: { items: [{ id: 'item-1', title: 'Pencil' }], nextCursor: 'cursor-2' },
       httpStatus: 200
     })
-    expect(captured).toEqual({
+    expect(captured.value).toEqual({
       url: 'https://query.example.com/v1/workspaces/workspace-1/items?q=pencil&limit=10',
       method: 'GET',
       apiKey: 'runtime-secret'
     })
-    expect(captured?.url).not.toContain('runtime-secret')
+    expect(captured.value?.url).not.toContain('runtime-secret')
   })
 
   test('builds and executes a confirmed POST with safe JSON, query, bearer, and idempotency', async () => {
@@ -344,13 +346,15 @@ describe('host-reviewed static REST connector factory', () => {
     authorization.authorize(MUTATION.contract, plugin.package.digest, 1_754_694_400)
     let credentialCalls = 0
     let fetchCalls = 0
-    let captured: Readonly<{
-      url: string
-      method: string
-      authorization: string | null
-      idempotency: string | null
-      body: unknown
-    }> | null = null
+    const captured: {
+      value: Readonly<{
+        url: string
+        method: string
+        authorization: string | null
+        idempotency: string | null
+        body: unknown
+      }> | null
+    } = { value: null }
     const broker = createConnectorExecutionBroker({
       adapters,
       authorization,
@@ -365,7 +369,7 @@ describe('host-reviewed static REST connector factory', () => {
         onDispatch()
         fetchCalls += 1
         const headers = new Headers(init?.headers)
-        captured = {
+        captured.value = {
           url: String(input),
           method: String(init?.method),
           authorization: headers.get('authorization'),
@@ -402,7 +406,7 @@ describe('host-reviewed static REST connector factory', () => {
     await expect(
       broker.execute({ ...request, confirmMutation: async () => true })
     ).resolves.toMatchObject({ data: { id: 'job-1', accepted: true }, httpStatus: 201 })
-    expect(captured).toEqual({
+    expect(captured.value).toEqual({
       url: 'https://mutation.example.com/v2/projects/project-1/jobs?dry_run=false',
       method: 'POST',
       authorization: 'Bearer bearer-runtime-only',
@@ -474,8 +478,11 @@ describe('host-reviewed static REST connector factory', () => {
   })
 
   test('fails closed on widened authority and accessor-bearing body/response data', async () => {
-    const widened = structuredClone(QUERY.contract)
-    widened.network.origins = ['https://evil.example.com']
+    const originalWidened = structuredClone(QUERY.contract)
+    const widened: typeof originalWidened = {
+      ...originalWidened,
+      network: { ...originalWidened.network, origins: ['https://evil.example.com'] }
+    }
     await expect(
       QUERY.adapter.prepare({
         contract: widened,

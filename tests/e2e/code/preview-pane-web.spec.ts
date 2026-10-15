@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises'
-/* oxlint-disable eslint/max-lines -- One serial browser lifecycle covers Worker, iframe, font, and stale-result boundaries. */
 
 import { expect, test, type Frame, type Page, type Request } from '@playwright/test'
+import { uniq } from 'es-toolkit'
+/* oxlint-disable eslint/max-lines -- One serial browser lifecycle covers Worker, iframe, font, and stale-result boundaries. */
 
 import { CanvasHelper } from '#tests/helpers/canvas'
+import { repoPath } from '#tests/helpers/paths'
 
 const PREVIEW_FRAME = 'iframe[aria-label="lowcode preview"]'
 const CDN_FONT_FAMILY = 'OpenPencil CDN Fixture'
@@ -54,7 +56,7 @@ async function installPinnedFontsourceRoutes(
   page: Page,
   families: readonly PinnedFontsourceFamily[] = [CDN_FONT_FIXTURE]
 ): Promise<PinnedFontFixture> {
-  const fontBytes = await readFile(new URL('../../../public/Inter-Regular.ttf', import.meta.url))
+  const fontBytes = await readFile(repoPath('packages/core/assets/Inter-Regular.ttf'))
   const requests: FontsourceRequestRecord[] = []
   const pinnedAssets = new Set(
     families.flatMap((family) => family.weights.map((weight) => pinnedFontURL(family, weight)))
@@ -148,11 +150,7 @@ async function enableFontsourceAtStartup(page: Page): Promise<void> {
 
 async function setMainThreadFontsourceEnabled(page: Page, enabled: boolean): Promise<void> {
   await page.evaluate(async (fontsourceEnabled) => {
-    const fontModuleURL = performance
-      .getEntriesByType('resource')
-      .map((entry) => entry.name)
-      .find((url) => url.includes('/packages/core/src/text/fonts.ts'))
-    if (!fontModuleURL) throw new Error('Active font manager module not found')
+    const fontModuleURL = new URL('/packages/core/src/text/index.ts', location.origin).href
     const { fontManager } = (await import(/* @vite-ignore */ fontModuleURL)) as {
       fontManager: {
         setOnlineFontProviders(providers: Record<string, boolean>): void
@@ -192,6 +190,8 @@ async function reloadBrowserPreview(page: Page): Promise<void> {
 
 async function createTextMarker(page: Page, text: string): Promise<string> {
   return page.evaluate((marker) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     return store.graph.createNode('TEXT', store.state.currentPageId, {
@@ -209,6 +209,8 @@ async function createTextMarker(page: Page, text: string): Promise<string> {
 async function updateTextMarker(page: Page, nodeId: string, text: string): Promise<void> {
   await page.evaluate(
     ({ id, marker }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const store = window.openPencil?.getStore?.()
       if (!store) throw new Error('OpenPencil store not initialized')
       store.graph.updateNode(id, { text: marker })
@@ -404,9 +406,7 @@ test.describe('browser Worker compiler preview', () => {
 
   test('renders image-heavy CSS with the four affected Fontsource faces', async ({ page }) => {
     test.setTimeout(120_000)
-    const image = await readFile(
-      new URL('../../../packages/demos/videos/toolbar.png', import.meta.url)
-    )
+    const image = await readFile(repoPath('packages/demos/videos/toolbar.png'))
     const fontFixture = await installPinnedFontsourceRoutes(page, SCREENSHOT_FONT_FIXTURES)
     await enableFontsourceAtStartup(page)
     const assetCount = 56
@@ -422,6 +422,8 @@ test.describe('browser Worker compiler preview', () => {
     await waitForBrowserReady(page)
     const fontNodeIds = await page.evaluate(
       ({ bytes, count, faces, markerText }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         const sharedBytes = new Uint8Array(bytes)
@@ -483,13 +485,11 @@ test.describe('browser Worker compiler preview', () => {
     await expect
       .poll(
         () =>
-          [
-            ...new Set(
-              fontFixture.requests
-                .map((request) => request.url)
-                .filter((url) => url.startsWith('https://cdn.jsdelivr.net/fontsource/fonts/'))
-            )
-          ].sort(),
+          uniq(
+            fontFixture.requests
+              .map((request) => request.url)
+              .filter((url) => url.startsWith('https://cdn.jsdelivr.net/fontsource/fonts/'))
+          ).sort(),
         { timeout: 60_000 }
       )
       .toEqual(expectedAssetURLs)
@@ -574,20 +574,24 @@ test.describe('browser Worker compiler preview', () => {
       const state = window as typeof window & { __OP_MAIN_THREAD_FONT_FETCHES__?: string[] }
       state.__OP_MAIN_THREAD_FONT_FETCHES__ = []
       const nativeFetch = window.fetch.bind(window)
-      window.fetch = async (input, init) => {
-        let url: string
-        if (typeof input === 'string') url = input
-        else if (input instanceof URL) url = input.href
-        else url = input.url
-        if (
-          url.startsWith('https://api.fontsource.org/') ||
-          url.startsWith('https://cdn.jsdelivr.net/fontsource/fonts/')
-        ) {
-          state.__OP_MAIN_THREAD_FONT_FETCHES__?.push(url)
-          throw new TypeError('Main-thread Fontsource fetch is disabled by the preview E2E')
+      Object.defineProperty(window, 'fetch', {
+        configurable: true,
+        writable: true,
+        value: async (input: RequestInfo | URL, init?: RequestInit) => {
+          let url: string
+          if (typeof input === 'string') url = input
+          else if (input instanceof URL) url = input.href
+          else url = input.url
+          if (
+            url.startsWith('https://api.fontsource.org/') ||
+            url.startsWith('https://cdn.jsdelivr.net/fontsource/fonts/')
+          ) {
+            state.__OP_MAIN_THREAD_FONT_FETCHES__?.push(url)
+            throw new TypeError('Main-thread Fontsource fetch is disabled by the preview E2E')
+          }
+          return nativeFetch(input, init)
         }
-        return nativeFetch(input, init)
-      }
+      })
     })
     await openWebEditor(page)
     await waitForBrowserReady(page)
@@ -596,6 +600,8 @@ test.describe('browser Worker compiler preview', () => {
     await setMainThreadFontsourceEnabled(page, false)
     const markerId = await page.evaluate(
       ({ family, text }) => {
+        if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
         const store = window.openPencil?.getStore?.()
         if (!store) throw new Error('OpenPencil store not initialized')
         return store.graph.createNode('TEXT', store.state.currentPageId, {

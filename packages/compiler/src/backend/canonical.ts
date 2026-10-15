@@ -1,4 +1,4 @@
-import { sha256 } from '@noble/hashes/sha2'
+import { sha256 } from '@noble/hashes/sha2.js'
 import { fromUint8Array } from 'js-base64'
 
 import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'

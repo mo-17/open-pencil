@@ -16,6 +16,8 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   const pane = page.getByTestId('lowcode-preview-pane')
   await expect(pane).toHaveAttribute('data-preview-status', 'ready', { timeout: 60_000 })
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -58,6 +60,8 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   if (!element || !frame) throw new Error('Generated preview frame is unavailable')
   const originalURL = await iframe.getAttribute('src')
   const geometry = await page.evaluate(({ text }) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const node = window.openPencil?.getStore?.().graph.getNode(text)
     return (
       node && {
@@ -118,7 +122,10 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   await expect(overflow).toBeVisible()
   await overflow.click()
   expect(
-    await page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([ids.overflow])
   await expect(
     diagnostics.locator(`[data-node-id="${ids.text}"][data-diagnostic-kind="text-clipping"]`)
@@ -138,6 +145,8 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   ).toBe(true)
   expect(
     await page.evaluate(({ text }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       const node = window.openPencil?.getStore?.().graph.getNode(text)
       return (
         node && {
@@ -175,6 +184,8 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   }
   // Reopening the same document can retain every node ID. Its old preview must lose authority.
   await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const original = store.graph
@@ -190,7 +201,10 @@ test('Web adaptation tools preserve drafts, enlarge text, diagnose and locate au
   await expect(page.getByTestId('lowcode-preview-diagnostics')).toBeDisabled()
   expect(await iframe.getAttribute('src')).toBe(originalURL)
   expect(
-    await page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+    await page.evaluate(() => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return [...(window.openPencil?.getStore?.().state.selectedIds ?? [])]
+    })
   ).toEqual([])
   const reload = page.getByTestId('lowcode-preview-reload')
   if (await reload.isVisible()) await reload.click()

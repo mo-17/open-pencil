@@ -1,10 +1,17 @@
-import { SCENE_OVERRIDE_FIELDS } from '#fig/instance-overrides/fields'
+import {
+  CLEARED_STYLE,
+  type OverrideField,
+  SCENE_OVERRIDE_FIELDS
+} from '#fig/instance-overrides/fields'
+import { compact } from 'es-toolkit'
 
 import { stringToGuid } from '@open-pencil/kiwi/fig/guid'
 import {
   forEachInstanceOverride,
   getInstanceOverride,
   ownsSlotContent,
+  scaleNodeChanges,
+  type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
 import type { GUID, Vector } from '@open-pencil/scene-graph/primitives'
@@ -13,27 +20,18 @@ import { instanceExportAddress } from '../instance/geometry'
 import { mergeVariableConsumptionMaps, overrideVariableBindingEntry } from '../variable/bindings'
 import { serializeComponentPropertyAssignments } from './component-values'
 import {
-  buildStyleReferences,
   createFillPaints,
   createStrokePaints,
   getOrCreateNodeGuid,
+  exportedStyleReference,
   instanceGuidResolver,
   isDescendantOf,
+  type KiwiNodeChange,
   type KiwiSymbolOverridePayload,
-  type SceneNodeToKiwiContext,
-  type StyleReference
+  type SceneNodeToKiwiContext
 } from './context'
-import { nodeWithResolvedBindings } from './resolved-bindings'
-
-function exportedTextStyleReference(context: SceneNodeToKiwiContext, id: string): StyleReference {
-  context.styleReferences ??= buildStyleReferences(context.graph)
-  const published = context.styleReferences.get(id)
-  if (published) return published
-  const mapped = context.nodeIdToGuid?.get(id)
-  if (mapped) return { guid: mapped }
-  const sourceId = context.graph.getNode(id)?.source.id
-  return { guid: stringToGuid(sourceId ?? id) }
-}
+import { fillsOwnSizingAxis } from './fill-sizing'
+import { exportedNode } from './resolved-bindings'
 
 function unscaledRootSize(instance: SceneNode, target: SceneNode): Vector {
   const scale = instance.componentScale
@@ -61,11 +59,21 @@ function exportedSwapOverride(
     : undefined
 }
 
-/** Layout modes are dimensionless; sizing modes map to Figma's implicit-size vocabulary. */
-function layoutModeClaim(raw: string, value: unknown): Record<string, unknown> | undefined {
+/**
+ * Layout modes are dimensionless; sizing modes map to Figma's implicit-size vocabulary, and an
+ * axis the layer fills stays fixed, since Figma applies the override over the fill.
+ */
+function layoutModeClaim(
+  raw: string,
+  value: unknown,
+  graph: SceneGraph,
+  target: SceneNode
+): Record<string, unknown> | undefined {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
-  if (raw === 'stackPrimarySizing' || raw === 'stackCounterSizing')
-    return { [raw]: value === 'HUG' ? 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' : 'FIXED' }
+  if (raw === 'stackPrimarySizing' || raw === 'stackCounterSizing') {
+    const hugs = value === 'HUG' && !fillsOwnSizingAxis(graph, target, raw)
+    return { [raw]: hugs ? 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' : 'FIXED' }
+  }
   return { [raw]: value }
 }
 
@@ -87,7 +95,9 @@ interface ClaimInput {
   target: SceneNode
   /** The recorded override value, when the override stored one. */
   value: unknown
-  localIdCounter: { value: number }
+  /** The target's own record, written once however many of its fields are claimed. */
+  nodeFields: () => KiwiNodeChange
+  localIdCounter?: { value: number }
 }
 
 /**
@@ -97,7 +107,12 @@ interface ClaimInput {
 function exportedSettingsClaim(
   target: SceneNode
 ): Omit<KiwiSymbolOverridePayload, 'guidPath'> | undefined {
-  const formats: Record<string, string> = { png: 'PNG', jpg: 'JPEG', svg: 'SVG', pdf: 'PDF' }
+  const formats: Record<string, string> = {
+    png: 'PNG',
+    jpg: 'JPEG',
+    svg: 'SVG',
+    pdf: 'PDF'
+  }
   if (target.exportSettings.some((setting) => !formats[setting.format])) return undefined
   return {
     exportSettings: target.exportSettings.map((setting) => ({
@@ -118,45 +133,96 @@ function paintClaim(
   return {
     strokePaints: createStrokePaints(context, target),
     ...(target.strokes.length > 0
-      ? { strokeAlign: stroke.align, strokeWeight: stroke.weight / instance.componentScale }
+      ? {
+          strokeAlign: stroke.align,
+          strokeWeight: stroke.weight / instance.componentScale
+        }
       : {})
   }
 }
 
 function registryClaim(
   field: keyof SceneNode,
-  { context, instance, target, value, localIdCounter }: ClaimInput
+  input: ClaimInput
 ): Omit<KiwiSymbolOverridePayload, 'guidPath'> | undefined {
-  const entry = SCENE_OVERRIDE_FIELDS.get(field)
-  if (!entry) return undefined
-  const { raw, field: definition } = entry
+  const entries = SCENE_OVERRIDE_FIELDS.get(field)
+  if (!entries) return undefined
+  const claims = compact(
+    entries.map(({ raw, field: definition }) => rawClaim(raw, definition, field, input))
+  )
+  return claims.length > 0 ? Object.assign({}, ...claims) : undefined
+}
+
+/** Writes the style fields of a layer as its own record does. */
+export type NodeFieldsWriter = (node: SceneNode) => KiwiNodeChange
+
+/** A layer's record in its component's coordinates, which instance claims are written in. */
+function unscaledNodeFields(
+  writeNodeFields: NodeFieldsWriter,
+  instance: SceneNode,
+  target: SceneNode
+): KiwiNodeChange {
+  const scale = instance.componentScale
+  if (!Number.isFinite(scale) || scale <= 0) throw new Error('Invalid instance uniform scale')
+  const unscaled =
+    scale === 1 ? target : { ...target, ...scaleNodeChanges(target, 1 / scale, false) }
+  return writeNodeFields(unscaled)
+}
+
+function scalarClaim(
+  raw: string,
+  definition: OverrideField,
+  field: keyof SceneNode,
+  target: SceneNode,
+  instance: SceneNode
+): Omit<KiwiSymbolOverridePayload, 'guidPath'> | undefined {
+  if (raw === 'publishID')
+    return typeof target.publishId === 'string'
+      ? { publishID: stringToGuid(target.publishId) }
+      : undefined
+  return definition.length && typeof target[field] === 'number'
+    ? layoutDistanceClaim(raw, target[field], instance)
+    : { [raw]: target[field] }
+}
+
+/** One raw field of a claim, serialized by the kind of its scene field. */
+function rawClaim(
+  raw: string,
+  definition: OverrideField,
+  field: keyof SceneNode,
+  { context, instance, target, value, nodeFields, localIdCounter }: ClaimInput
+): Omit<KiwiSymbolOverridePayload, 'guidPath'> | undefined {
   switch (definition.kind) {
+    case 'node': {
+      const record = nodeFields()
+      const claimed = raw in record ? record[raw] : definition.absent
+      return claimed === undefined ? undefined : { [raw]: claimed }
+    }
     case 'scalar':
-      if (raw === 'publishID')
-        return typeof target.publishId === 'string'
-          ? { publishID: stringToGuid(target.publishId) }
-          : undefined
-      return definition.length && typeof target[field] === 'number'
-        ? layoutDistanceClaim(raw, target[field], instance)
-        : { [raw]: target[field] }
+      return scalarClaim(raw, definition, field, target, instance)
     case 'component-assignments':
       return {
         componentPropAssignments: serializeComponentPropertyAssignments(
           context,
           target,
-          localIdCounter
+          localIdCounter ?? { value: 0 }
         )
       }
     case 'export-settings':
       return exportedSettingsClaim(target)
     case 'visible':
       return { visible: target.visible }
-    case 'text':
-      return { textData: { characters: typeof value === 'string' ? value : target.text } }
+    case 'text': {
+      // The characters with their styled ranges and lines, as the layer's own record writes them.
+      const characters = field === 'text' && typeof value === 'string' ? value : target.text
+      return { textData: { ...nodeFields().textData, characters } }
+    }
     case 'text-style':
-      return typeof target[field] === 'string' && target[field]
-        ? { [raw]: exportedTextStyleReference(context, target[field]) }
-        : undefined
+      return {
+        styleIdForText: target.textStyleId
+          ? exportedStyleReference(context, target.textStyleId)
+          : structuredClone(CLEARED_STYLE)
+      }
     case 'paint':
       return paintClaim(raw, context, target, instance)
     case 'size':
@@ -164,7 +230,7 @@ function registryClaim(
     case 'layout-distance':
       return layoutDistanceClaim(raw, target[field], instance)
     case 'layout-mode':
-      return layoutModeClaim(raw, target[field])
+      return layoutModeClaim(raw, target[field], context.graph, target)
     default:
       return undefined
   }
@@ -201,14 +267,28 @@ function bindingClaim(
 }
 
 function overrideClaim(
-  claimed: ClaimInput,
+  claimed: Omit<ClaimInput, 'nodeFields'> & {
+    records: Map<string, KiwiNodeChange>
+    writeNodeFields: NodeFieldsWriter
+  },
   field: string,
   path: GUID[],
   counter: { value: number }
 ): KiwiSymbolOverridePayload | undefined {
-  const input = {
+  const target = exportedNode(claimed.context, claimed.target)
+  const nodeFields = () => {
+    let record = claimed.records.get(target.id)
+    if (!record) {
+      record = unscaledNodeFields(claimed.writeNodeFields, claimed.instance, target)
+      claimed.records.set(target.id, record)
+    }
+    return record
+  }
+  const input: ClaimInput = {
     ...claimed,
-    target: nodeWithResolvedBindings(claimed.context.graph, claimed.target)
+    target,
+    nodeFields,
+    localIdCounter: counter
   }
   if (field === 'componentId')
     return exportedSwapOverride(input.context, input.target, path, counter)
@@ -222,17 +302,26 @@ function overrideClaim(
 export function serializeRuntimePropertyOverrides(
   context: SceneNodeToKiwiContext,
   instance: SceneNode,
-  localIdCounter: { value: number }
+  localIdCounter: { value: number },
+  writeNodeFields: NodeFieldsWriter
 ): KiwiSymbolOverridePayload[] {
   const result: KiwiSymbolOverridePayload[] = []
   const resolveGuid = instanceGuidResolver(context, localIdCounter)
-  const resolveTarget = (owner: SceneNode, nodeId: string) => {
-    const targetId = nodeId || owner.id
+  // A layer with several overridden fields is addressed once; the resolver keeps the GUIDs it makes.
+  const targets = new Map<string, { target: SceneNode; path: GUID[] } | undefined>()
+  const records = new Map<string, KiwiNodeChange>()
+  const findTarget = (targetId: string) => {
     const target = context.graph.getNode(targetId)
     if (!target || (target.id !== instance.id && !isDescendantOf(context, targetId, instance.id)))
       return undefined
     const path = instanceExportAddress(context.graph, instance, target, resolveGuid)
     return path ? { target, path } : undefined
+  }
+  const resolveTarget = (owner: SceneNode, nodeId: string) => {
+    const targetId = nodeId || owner.id
+    if (!targets.has(targetId)) targets.set(targetId, findTarget(targetId))
+    const found = targets.get(targetId)
+    return found && { target: found.target, path: [...found.path] }
   }
   const visit = (node: SceneNode, owner?: SceneNode): void => {
     if (owner) {
@@ -255,7 +344,14 @@ export function serializeRuntimePropertyOverrides(
         const resolved = resolveTarget(owner, node.id)
         if (!resolved) continue
         const claim = overrideClaim(
-          { context, instance, target: node, value: node[field], localIdCounter },
+          {
+            context,
+            instance,
+            target: node,
+            value: node[field],
+            records,
+            writeNodeFields
+          },
           field,
           resolved.path,
           localIdCounter
@@ -268,7 +364,14 @@ export function serializeRuntimePropertyOverrides(
         const resolved = resolveTarget(node, nodeId)
         if (!resolved) return
         const claim = overrideClaim(
-          { context, instance, target: resolved.target, value, localIdCounter },
+          {
+            context,
+            instance,
+            target: resolved.target,
+            value,
+            records,
+            writeNodeFields
+          },
           field,
           resolved.path,
           localIdCounter
@@ -295,18 +398,19 @@ export function mergeOverrides(
   symbolOverrides: KiwiSymbolOverridePayload[],
   newOverrides: KiwiSymbolOverridePayload[]
 ): void {
+  // The last override at each path, indexed once: instances can carry thousands of overrides.
+  const lastAt = new Map<string, number>()
+  symbolOverrides.forEach((existing, index) => {
+    const key = overridePathKey(existing)
+    if (key) lastAt.set(key, index)
+  })
   for (const override of newOverrides) {
     const pathKey = overridePathKey(override)
-    let existingIndex = -1
-    if (pathKey) {
-      for (let index = symbolOverrides.length - 1; index >= 0; index--) {
-        if (overridePathKey(symbolOverrides[index]) !== pathKey) continue
-        existingIndex = index
-        break
-      }
-    }
-    if (existingIndex < 0) symbolOverrides.push(override)
-    else
+    const existingIndex = pathKey ? (lastAt.get(pathKey) ?? -1) : -1
+    if (existingIndex < 0) {
+      if (pathKey) lastAt.set(pathKey, symbolOverrides.length)
+      symbolOverrides.push(override)
+    } else
       symbolOverrides[existingIndex] = {
         ...symbolOverrides[existingIndex],
         ...override,

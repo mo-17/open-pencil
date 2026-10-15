@@ -103,7 +103,9 @@ describe('SELECT search and virtual list compilation', () => {
       expect(fixture.warnings).toEqual([])
       if (target === 'vue') {
         const filename = 'src/pages/index.vue'
-        const { descriptor } = parseVueSfc(files.get(filename) ?? '')
+        const { descriptor } = parseVueSfc(
+          typeof files.get(filename) === 'string' ? String(files.get(filename)) : ''
+        )
         const template = compileTemplate({
           source: descriptor.template?.content ?? '',
           filename,

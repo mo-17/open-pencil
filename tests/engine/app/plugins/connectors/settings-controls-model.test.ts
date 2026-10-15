@@ -86,12 +86,12 @@ function manager(overrides: Partial<CredentialManager> = {}): CredentialManager 
 describe('plugin connector settings controls model', () => {
   test('shows only v2 connector manifests with fixed reviewed authority', () => {
     const authorization = new ConnectorAuthorizationRegistry()
-    expect(pluginConnectorControls(v1Plugin(), authorization, 'en-US')).toEqual([])
+    expect(pluginConnectorControls(v1Plugin(), authorization, 'en')).toEqual([])
 
     const [control] = pluginConnectorControls(
       v2Plugin(SUPABASE_SCHEMA_INSPECTOR_CONTRACT),
       authorization,
-      'en-US'
+      'en'
     )
     expect(control?.connectorId).toBe('supabase.schema-inspector')
     expect(control?.adapterId).toBe('open-pencil.connector.supabase-schema-inspector')
@@ -184,7 +184,7 @@ describe('plugin connector settings controls model', () => {
     const [control] = pluginConnectorControls(
       v2Plugin(RESEND_EMAIL_CONNECTOR_CONTRACT),
       new ConnectorAuthorizationRegistry(),
-      'en-US'
+      'en'
     )
     expect(control?.name).toBe(RESEND_EMAIL_CONNECTOR_CONTRACT.name)
     expect(control?.description).toBe(RESEND_EMAIL_CONNECTOR_CONTRACT.description)
@@ -201,7 +201,7 @@ describe('plugin connector settings controls model', () => {
     const [supabase] = pluginConnectorControls(
       v2Plugin(SUPABASE_SCHEMA_INSPECTOR_CONTRACT),
       authorization,
-      'en-US'
+      'en'
     )
     expect(supabase?.credentials[0]?.reference).toEqual(
       SUPABASE_SCHEMA_INSPECTOR_CREDENTIAL_REFS[SUPABASE_SCHEMA_INSPECTOR_PAT_SLOT_ID]
@@ -210,7 +210,7 @@ describe('plugin connector settings controls model', () => {
     const [airtable] = pluginConnectorControls(
       v2Plugin(AIRTABLE_RECORDS_CONNECTOR_CONTRACT),
       authorization,
-      'en-US'
+      'en'
     )
     expect(airtable?.credentials[0]?.reference).toEqual(
       credentialRef(AIRTABLE_RECORDS_PLUGIN_ID, AIRTABLE_RECORDS_CREDENTIAL_SLOT_ID)
@@ -220,15 +220,15 @@ describe('plugin connector settings controls model', () => {
   test('binds authorization to the exact adapter contract and package digest', () => {
     const authorization = new ConnectorAuthorizationRegistry()
     const plugin = v2Plugin(AIRTABLE_RECORDS_CONNECTOR_CONTRACT, 'sha256-a')
-    expect(pluginConnectorControls(plugin, authorization, 'en-US')[0]?.authorized).toBe(false)
+    expect(pluginConnectorControls(plugin, authorization, 'en')[0]?.authorized).toBe(false)
 
     authorization.authorize(AIRTABLE_RECORDS_CONNECTOR_CONTRACT, 'sha256-a', 1)
-    expect(pluginConnectorControls(plugin, authorization, 'en-US')[0]?.authorized).toBe(true)
+    expect(pluginConnectorControls(plugin, authorization, 'en')[0]?.authorized).toBe(true)
     expect(
       pluginConnectorControls(
         v2Plugin(AIRTABLE_RECORDS_CONNECTOR_CONTRACT, 'sha256-b'),
         authorization,
-        'en-US'
+        'en'
       )[0]?.authorized
     ).toBe(false)
 
@@ -236,7 +236,7 @@ describe('plugin connector settings controls model', () => {
       AIRTABLE_RECORDS_PLUGIN_ID,
       AIRTABLE_RECORDS_CONNECTOR_CONTRACT.connectorId
     )
-    expect(pluginConnectorControls(plugin, authorization, 'en-US')[0]?.authorized).toBe(false)
+    expect(pluginConnectorControls(plugin, authorization, 'en')[0]?.authorized).toBe(false)
   })
 
   test('revokes session authorization when a plugin is disabled, blocked, removed, or replaced', () => {
@@ -288,7 +288,7 @@ describe('plugin connector settings controls model', () => {
     const [control] = pluginConnectorControls(
       v2Plugin(mutationContract),
       new ConnectorAuthorizationRegistry(),
-      'en-US'
+      'en'
     )
     expect(control?.hasMutation).toBe(true)
     expect(control?.operations[0]?.kind).toBe('mutation')
@@ -342,7 +342,7 @@ describe('plugin connector settings controls model', () => {
   })
 
   test('provides real English and Simplified Chinese session and mutation warnings', () => {
-    const english = pluginConnectorControlsCopy('en-US')
+    const english = pluginConnectorControlsCopy('en')
     const chinese = pluginConnectorControlsCopy('zh-CN')
     expect(english.sessionAuthorization).toContain('this app session')
     expect(english.sessionAuthorization).toContain('connected MCP/AI clients')

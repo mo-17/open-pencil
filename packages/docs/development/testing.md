@@ -14,7 +14,7 @@ Place a test with the source that owns its contract. Choose the runtime separate
 | Figma compatibility acceptance          | `tests/figma/**/*.spec.ts`                                     |
 | Private tool contracts                  | `tools/<owner>/tests/`                                         |
 
-For example, `packages/core/src/canvas/text/prepared.ts` maps to `packages/core/tests/canvas/text/prepared.test.ts`; `src/app/demo/viewport.ts` maps to `tests/app/demo/viewport.test.ts`. A substantial module may have a matching test directory rather than one large test file. Application E2E, external-system acceptance and large contract suites are intentional exceptions to file-for-file mirroring.
+For example, `packages/core/src/canvas/text/shape.ts` maps to `packages/core/tests/canvas/text/shape.test.ts`; `src/app/demo/viewport.ts` maps to `tests/app/demo/viewport.test.ts`. A substantial module may have a matching test directory rather than one large test file. Application E2E, external-system acceptance and large contract suites are intentional exceptions to file-for-file mirroring.
 
 Core tests using SceneGraph still belong to Core. Central integration is for contracts without a single owning implementation, such as interoperability between published packages. Name that contract explicitly; do not use integration as a miscellaneous bucket.
 
@@ -91,6 +91,14 @@ Current commands:
 During implementation, run the affected unit files or one representative browser scenario. Inspect discovery changes without executing the whole suite when reorganizing files. Use the final CI gate after integration; do not rerun full suites for each edit. Report commands actually run, and distinguish focused coverage from full acceptance.
 
 Visual changes require inspection and committed coverage. Update only a justified affected snapshot, then rerun that test without update mode. Never relax tolerances or regenerate unrelated baselines to turn a failed run green. Browser GPU parity and real glyph coverage complement CPU rendering tests; they are not redundant merely because both compare pixels.
+
+### When a run disagrees with the code
+
+Two environment faults look exactly like a code regression, and both have cost real debugging time.
+
+Browser suites resolve `@open-pencil/*` through each package's built `dist`, which Vite then pre-bundles. Rebuilding a package does not invalidate that cache, so a Playwright run can execute code from before your change — including throwing on a field you just added. If a browser run contradicts the source you are reading, delete `node_modules/.vite` and run again before believing it.
+
+Heavier `.fig` suites are sensitive to machine load. A full run alongside other work has reported failures that vanish on a quiet re-run, with the same suite taking three times as long. Re-run a failing heavy test alone before concluding anything, and compare against the same test on `master` under the same load rather than against a remembered baseline. Raising its timeout is still never the fix.
 
 ## Server ownership and worktrees
 

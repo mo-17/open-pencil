@@ -1,5 +1,9 @@
 import { beforeAll, afterAll, describe, expect, test, spyOn, setDefaultTimeout } from 'bun:test'
 
+import {
+  expectSaveLoadedOnlyInternalPages,
+  snapshotNodes
+} from '#core-tests/helpers/fig/save-contract'
 import { unzipSync } from 'fflate'
 
 import {
@@ -80,6 +84,9 @@ function buildPathMap(graph: SceneGraph): Map<string, SceneNode> {
   return map
 }
 
+/** `SceneNode` has no index signature; the generic comparison reads its fields by name. */
+const nodeFields = (node: SceneNode): Map<string, unknown> => new Map(Object.entries(node))
+
 // oxlint-disable-next-line eslint(complexity)
 function deepCompare(
   a: unknown,
@@ -128,12 +135,20 @@ function deepCompare(
 
   if (a instanceof Uint8Array && b instanceof Uint8Array) {
     if (a.length !== b.length) {
-      opts.errors.push({ path, key, message: `bytes ${a.length} -> ${b.length}` })
+      opts.errors.push({
+        path,
+        key,
+        message: `bytes ${a.length} -> ${b.length}`
+      })
       return
     }
     for (let i = 0; i < a.length; i++) {
       if (a[i] !== b[i]) {
-        opts.errors.push({ path, key, message: `byte[${i}] differs (${a.length}B)` })
+        opts.errors.push({
+          path,
+          key,
+          message: `byte[${i}] differs (${a.length}B)`
+        })
         return
       }
     }
@@ -143,7 +158,11 @@ function deepCompare(
   if (typeof a === 'number' && typeof b === 'number') {
     if (Number.isNaN(a) && Number.isNaN(b)) return
     if (Math.abs(a - b) > EPSILON) {
-      opts.errors.push({ path, key, message: `${a} -> ${b} (D${+(b - a).toPrecision(4)})` })
+      opts.errors.push({
+        path,
+        key,
+        message: `${a} -> ${b} (D${+(b - a).toPrecision(4)})`
+      })
     }
     return
   }
@@ -161,7 +180,11 @@ function deepCompare(
   if (Array.isArray(a)) {
     const ba = b as unknown[]
     if (a.length !== ba.length) {
-      opts.errors.push({ path, key, message: `len ${a.length} -> ${ba.length}` })
+      opts.errors.push({
+        path,
+        key,
+        message: `len ${a.length} -> ${ba.length}`
+      })
       return
     }
     for (let i = 0; i < a.length; i++) {
@@ -246,10 +269,12 @@ function compareSceneProps(
   for (const [p, aNode] of aNodes) {
     const bNode = bNodes.get(p)
     if (!bNode) continue
-    for (const k of new Set([...Object.keys(aNode as object), ...Object.keys(bNode as object)])) {
+    const aFields = nodeFields(aNode)
+    const bFields = nodeFields(bNode)
+    for (const k of new Set([...aFields.keys(), ...bFields.keys()])) {
       if (SKIP_KEYS.has(k)) continue
       if (k === 'source') continue
-      deepCompare(Reflect.get(aNode, k), Reflect.get(bNode, k), k, p, opts)
+      deepCompare(aFields.get(k), bFields.get(k), k, p, opts)
     }
   }
   if (errors.length > 0) throw new Error(`${label} scene props:\n${summarize(errors)}`)
@@ -285,8 +310,12 @@ function compareRawNodeFields(
   for (const [p, aNode] of aNodes) {
     const bNode = bNodes.get(p)
     if (!bNode) continue
-    const aFields = aNode.source.fig.rawNodeFields
-    const bFields = bNode.source.fig.rawNodeFields
+    const aRaw = nodeFields(aNode).get('source') as JSONObject | undefined
+    const bRaw = nodeFields(bNode).get('source') as JSONObject | undefined
+    const aFig = aRaw?.fig as JSONObject | undefined
+    const bFig = bRaw?.fig as JSONObject | undefined
+    const aFields = aFig?.rawNodeFields as JSONObject | undefined
+    const bFields = bFig?.rawNodeFields as JSONObject | undefined
     if (!aFields && !bFields) continue
     deepCompareRaw(aFields, bFields, '', p, opts)
   }
@@ -349,7 +378,11 @@ function deepCompareRaw(
 
   if (a instanceof Uint8Array && b instanceof Uint8Array) {
     if (a.length !== b.length) {
-      opts.errors.push({ path, key, message: `bytes ${a.length} -> ${b.length}` })
+      opts.errors.push({
+        path,
+        key,
+        message: `bytes ${a.length} -> ${b.length}`
+      })
       return
     }
     for (let i = 0; i < a.length; i++) {
@@ -459,7 +492,9 @@ function verifyFixture(spec: FixtureSpec): void {
           // including when a test-name filter starts directly at a G1/G2 assertion.
           await ensurePreservedExport()
           g1Export = await exportReencodedFig(g0Graph)
-          g1Graph = await parseFigFile(g1Export.buffer as ArrayBuffer, { populate: 'all' })
+          g1Graph = await parseFigFile(g1Export.buffer as ArrayBuffer, {
+            populate: 'all'
+          })
           g1 = buildPathMap(g1Graph)
         })()
       }
@@ -472,7 +507,9 @@ function verifyFixture(spec: FixtureSpec): void {
         g2Ready = (async () => {
           await ensureG1()
           g2Export = await exportReencodedFig(g1Graph)
-          g2Graph = await parseFigFile(g2Export.buffer as ArrayBuffer, { populate: 'all' })
+          g2Graph = await parseFigFile(g2Export.buffer as ArrayBuffer, {
+            populate: 'all'
+          })
           g2 = buildPathMap(g2Graph)
         })()
       }
@@ -566,16 +603,18 @@ function verifyFixture(spec: FixtureSpec): void {
       expect(await exportFigFile(g2Graph)).toEqual(g2Export)
     })
 
-    test('edited export re-encodes the document without mutating unloaded source pages', async () => {
+    test('edited export re-encodes the document without loading unloaded visible pages', async () => {
       await g0Ready
-      const edited = await parseFigFile(g0Bytes.slice(0), { populate: 'first-page' })
+      const edited = await parseFigFile(g0Bytes.slice(0), {
+        populate: 'first-page'
+      })
       const page = edited.getPages()[0]
       const name = `${page.name} (edited)`
       edited.updateNode(page.id, { name })
-      const before = structuredClone([...edited.nodes])
+      const before = snapshotNodes(edited)
       const bytes = await exportFigFile(edited)
       expect(bytes).not.toEqual(new Uint8Array(g0Bytes))
-      expect([...edited.nodes]).toEqual(before)
+      expectSaveLoadedOnlyInternalPages(edited, before)
       const reopened = await parseFigFile(bytes.slice().buffer as ArrayBuffer)
       expect(reopened.getPages()[0].name).toBe(name)
       expect(reopened.figSchemaDeflated).toEqual(edited.figSchemaDeflated)

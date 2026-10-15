@@ -1,9 +1,16 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 const PLUGIN_ID = 'open-pencil.carousel'
+
+/** Begin a normal inspector interaction before committing its native select value. */
+async function selectCarouselOption(control: Locator, value: string) {
+  await control.blur()
+  await control.focus()
+  await control.selectOption(value)
+}
 
 async function insertCarousel(page: Page, renderer: 'retained' | 'tiled') {
   await page.goto(`/?test&renderer=${renderer}`)
@@ -194,11 +201,17 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const pagination = page.getByRole('combobox', { name: 'Pagination style', exact: true })
     await expect(layout).toHaveValue('split')
     await expect(position).toHaveCount(0)
-    await layout.selectOption('overlay')
-    await position.selectOption('top')
-    await page.getByRole('combobox', { name: 'Text alignment', exact: true }).selectOption('center')
-    await page.getByRole('combobox', { name: 'Image fit', exact: true }).selectOption('contain')
-    await pagination.selectOption('numbers')
+    await selectCarouselOption(layout, 'overlay')
+    await selectCarouselOption(position, 'top')
+    await selectCarouselOption(
+      page.getByRole('combobox', { name: 'Text alignment', exact: true }),
+      'center'
+    )
+    await selectCarouselOption(
+      page.getByRole('combobox', { name: 'Image fit', exact: true }),
+      'contain'
+    )
+    await selectCarouselOption(pagination, 'numbers')
     await pagination.blur()
     await page.getByTestId('toolbar').getByRole('button').first().focus()
     await canvas.undo()
@@ -211,16 +224,16 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await expect(pagination).toHaveCount(0)
     await showPagination.check()
     await expect(pagination).toHaveValue('numbers')
-    await layout.selectOption('split')
+    await selectCarouselOption(layout, 'split')
     await expect(position).toHaveCount(0)
     await expectCarouselPaint(canvas)
-    await layout.selectOption('overlay')
+    await selectCarouselOption(layout, 'overlay')
     await expect(position).toHaveValue('top')
     await expectCarouselPaint(canvas, [9, 13, 21])
     await layout.scrollIntoViewIfNeeded()
     await expect(canvas.canvas).toHaveScreenshot(`${renderer}-carousel-overlay-numbers.png`)
     await page.screenshot({ path: info.outputPath(`${renderer}-carousel-style-editor.png`) })
-    await pagination.selectOption('fraction')
+    await selectCarouselOption(pagination, 'fraction')
     await expect(pagination).toHaveValue('fraction')
     await pagination.blur()
     await page.getByTestId('toolbar').getByRole('button').first().focus()
@@ -240,7 +253,7 @@ for (const renderer of ['retained', 'tiled'] as const) {
     const swipe = page.getByRole('checkbox', { name: 'Drag or swipe to switch', exact: true })
     await expect(position).toHaveValue('bottom-corners')
     await expect(swipe).toBeChecked()
-    await position.selectOption('sides')
+    await selectCarouselOption(position, 'sides')
     await position.blur()
     await page.mouse.move(1550, 500)
     await expectCarouselArrowPaint(canvas, 'sides')
@@ -250,7 +263,7 @@ for (const renderer of ['retained', 'tiled'] as const) {
     await arrows.check()
     await expect(position).toHaveValue('sides')
     for (const value of ['top-corners', 'bottom-corners', 'bottom-left', 'bottom-right']) {
-      await position.selectOption(value)
+      await selectCarouselOption(position, value)
       await expect(position).toHaveValue(value)
     }
     await position.blur()

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import { parsePenFile, serializePenFile } from '@open-pencil/pen'
 import { SceneGraph, type MotionSpec } from '@open-pencil/scene-graph'
 
@@ -73,9 +75,14 @@ function source(metadata?: unknown): string {
 }
 
 function serializedCard(serialized: string): Record<string, unknown> {
-  const parsed = JSON.parse(serialized) as {
-    children: Record<string, unknown>[]
-  }
+  const parsed = v.parse(
+    v.pipe(
+      v.string(),
+      v.parseJson(),
+      v.object({ children: v.array(v.record(v.string(), v.unknown())) })
+    ),
+    serialized
+  )
   const card = parsed.children[0]
   if (!card) throw new Error('Expected a serialized card node')
   return card
@@ -244,7 +251,7 @@ describe('.pen Motion metadata round trip', () => {
       const input = await Bun.file(repoPath('tests', 'fixtures', fixture)).text()
       const graph = parsePenFile(input)
 
-      expect(graph.getAllNodes().every((node) => node.motion === undefined)).toBe(true)
+      expect([...graph.getAllNodes()].every((node) => node.motion === undefined)).toBe(true)
       expect(serializePenFile(graph)).toBe(input)
     }
   })

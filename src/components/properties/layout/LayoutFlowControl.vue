@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { VNode } from 'vue'
 
 import type { LayoutMode } from '@open-pencil/scene-graph'
-import { useI18n, useLayoutControlsContext } from '@open-pencil/vue'
+import { MIXED, useI18n, useSelectionLayout } from '@open-pencil/vue'
 
-import IconButton from '@/components/ui/button/IconButton.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 
-const ctx = useLayoutControlsContext()
+defineSlots<{ default?(): VNode[] }>()
+
+const layout = useSelectionLayout()
 const { panels } = useI18n()
-const flowMode = computed(() => (ctx.node.layoutMode === 'FREE' ? 'NONE' : ctx.node.layoutMode))
 
 const layoutModes = computed<Array<{ value: LayoutMode; label: string }>>(() => [
   { value: 'NONE', label: panels.value.freeform },
@@ -18,41 +19,22 @@ const layoutModes = computed<Array<{ value: LayoutMode; label: string }>>(() => 
   { value: 'GRID', label: panels.value.layoutGrid }
 ])
 
-function toggleWrap() {
-  const node = ctx.node
-  const enabling = node.layoutWrap !== 'WRAP'
-  ctx.editor.updateNodeWithUndo(
-    node.id,
-    {
-      layoutWrap: enabling ? 'WRAP' : 'NO_WRAP',
-      primaryAxisAlign:
-        enabling && node.primaryAxisAlign === 'SPACE_BETWEEN' ? 'MIN' : node.primaryAxisAlign
-    },
-    'Toggle layout wrap'
-  )
-}
-
-function setLayoutMode(mode: string) {
-  ctx.editor.setLayoutMode(ctx.node.id, mode as LayoutMode)
-}
+// Layers with different flows leave every option off.
+const mode = computed(() => {
+  const value = layout.layoutMode.value
+  if (value === MIXED || value === undefined) return ''
+  return value === 'FREE' ? 'NONE' : value
+})
 </script>
 
 <template>
   <div>
     <div class="mb-1 flex items-center justify-between gap-2">
       <span class="text-[11px] text-muted">{{ panels.flow }}</span>
-      <IconButton
-        v-if="ctx.isFlex"
-        :label="panels.layoutWrap"
-        size="xs"
-        :active="ctx.node.layoutWrap === 'WRAP'"
-        @click="toggleWrap"
-      >
-        <icon-lucide-wrap-text class="size-3.5" />
-      </IconButton>
+      <slot />
     </div>
     <SegmentedControl
-      :model-value="flowMode"
+      :model-value="mode"
       :options="layoutModes"
       :label="panels.flow"
       orientation="vertical"
@@ -60,7 +42,7 @@ function setLayoutMode(mode: string) {
         root: 'flex w-full min-w-0 flex-col items-stretch',
         item: 'h-auto min-w-0 justify-start py-1.5'
       }"
-      @change="setLayoutMode"
+      @change="layout.setLayoutMode($event as LayoutMode)"
     >
       <template #option="{ option }">
         <icon-lucide-move v-if="option.value === 'NONE'" class="size-3.5 shrink-0" />

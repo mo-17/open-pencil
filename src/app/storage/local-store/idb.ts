@@ -112,7 +112,7 @@ async function readMetaRow(store: IDBObjectStore, key: string): Promise<LocalCan
 }
 
 /** IndexedDB-backed local canvas store (meta + fig/thumb blobs). */
-export function createIdbLocalCanvasStore(databaseName = DB_NAME): LocalCanvasStore {
+export function createIdbLocalCanvasStore(databaseName: string = DB_NAME): LocalCanvasStore {
   let dbPromise: Promise<IDBDatabase> | null = null
 
   function db() {

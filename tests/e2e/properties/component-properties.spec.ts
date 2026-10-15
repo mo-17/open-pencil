@@ -16,6 +16,8 @@ async function selectOption(label: string, option: string) {
 
 async function instanceState(id = instanceId) {
   return page.evaluate((nodeId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const instance = store.graph.getNode(nodeId)
@@ -39,6 +41,8 @@ test.beforeAll(async ({ browser }) => {
   canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   instanceId = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const pageId = store.state.currentPageId
@@ -144,6 +148,8 @@ test('renders and applies all component property control types', async () => {
 
 test('batches compatible mixed selection and undo', async () => {
   const secondId = await page.evaluate((firstId) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const first = store.graph.getNode(firstId)
@@ -184,6 +190,8 @@ test('batches compatible mixed selection and undo', async () => {
     .toEqual(originalLabels)
 
   await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
     const rectangle = store.graph.createNode('RECTANGLE', store.state.currentPageId)

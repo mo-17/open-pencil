@@ -70,8 +70,17 @@ export function selectMultipleGraph() {
     },
     bindings: { value: { kind: 'ref', stateId: 'choices' } },
     events: {
-      onChange: [{ kind: 'setState', targetStateId: 'changes', valueExpr: '$prev + 1' }],
-      onBlur: [{ kind: 'setState', targetStateId: 'blurs', valueExpr: '$prev + 1' }]
+      onChange: [
+        {
+          id: 'fixture-action-1',
+          kind: 'setState',
+          targetStateId: 'changes',
+          valueExpr: '$prev + 1'
+        }
+      ],
+      onBlur: [
+        { id: 'fixture-action-2', kind: 'setState', targetStateId: 'blurs', valueExpr: '$prev + 1' }
+      ]
     }
   })
   graph.createNode('SELECT', form.id, {
@@ -106,14 +115,27 @@ export function selectMultipleGraph() {
     width: 340,
     height: 44,
     interactiveProps: { text: 'External selection' },
-    events: { onClick: [{ kind: 'setState', targetStateId: 'choices', valueExpr: 'replacement' }] }
+    events: {
+      onClick: [
+        {
+          id: 'fixture-action-3',
+          kind: 'setState',
+          targetStateId: 'choices',
+          valueExpr: 'replacement'
+        }
+      ]
+    }
   })
   graph.createNode('BUTTON', form.id, {
     name: 'Outside',
     width: 340,
     height: 44,
     interactiveProps: { text: 'Outside' },
-    events: { onClick: [{ kind: 'setState', targetStateId: 'changes', valueExpr: '$prev' }] }
+    events: {
+      onClick: [
+        { id: 'fixture-action-4', kind: 'setState', targetStateId: 'changes', valueExpr: '$prev' }
+      ]
+    }
   })
   graph.createNode('TEXT', form.id, {
     name: 'Changes',
@@ -155,7 +177,11 @@ export function selectMultipleGraph() {
       width: 340,
       height: 40,
       interactiveProps: { text },
-      events: { onClick: [{ kind: 'setState', targetStateId: 'dynamicOptions', valueExpr }] }
+      events: {
+        onClick: [
+          { id: 'fixture-action-5', kind: 'setState', targetStateId: 'dynamicOptions', valueExpr }
+        ]
+      }
     })
   return { graph, pageId, form, select }
 }

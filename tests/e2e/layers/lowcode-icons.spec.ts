@@ -16,6 +16,8 @@ test('lowcode layers use distinct control icons while containers keep their layo
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const ids = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil.getStore()
     const graph = store.graph
     const parent = graph.createNode('FRAME', store.state.currentPageId, {
@@ -56,6 +58,8 @@ test('module icon follows assignment, replacement, removal and undo without chan
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   const id = await page.evaluate(() => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
     const store = window.openPencil.getStore()
     return store.graph.createNode('FRAME', store.state.currentPageId, {
       name: 'Module frame',
@@ -67,6 +71,8 @@ test('module icon follows assignment, replacement, removal and undo without chan
   const plain = await iconShape(icon)
   await page.evaluate(
     ({ id, module }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       window.openPencil
         .getStore()
         .updateNodeWithUndo(id, { interactiveProps: { module } }, 'Assign Tabs')
@@ -77,6 +83,8 @@ test('module icon follows assignment, replacement, removal and undo without chan
   const tabs = await iconShape(icon)
   await page.evaluate(
     ({ id, module }) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+
       window.openPencil
         .getStore()
         .updateNodeWithUndo(id, { interactiveProps: { module } }, 'Assign Accordion')
@@ -85,18 +93,20 @@ test('module icon follows assignment, replacement, removal and undo without chan
   )
   await expect.poll(() => iconShape(icon)).not.toBe(tabs)
   const accordion = await iconShape(icon)
-  await page.evaluate(
-    (id) =>
-      window.openPencil
-        .getStore()
-        .updateNodeWithUndo(id, { interactiveProps: {} }, 'Remove module'),
-    id
-  )
+  await page.evaluate((id) => {
+    if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+    return window.openPencil
+      .getStore()
+      .updateNodeWithUndo(id, { interactiveProps: {} }, 'Remove module')
+  }, id)
   await expect.poll(() => iconShape(icon)).toBe(plain)
   await canvas.undo()
   await expect.poll(() => iconShape(icon)).toBe(accordion)
   expect(
-    await page.evaluate((id) => window.openPencil.getStore().graph.getNode(id)?.type, id)
+    await page.evaluate((id) => {
+      if (!window.openPencil?.getStore) throw new Error('Editor test API is unavailable')
+      return window.openPencil.getStore().graph.getNode(id)?.type
+    }, id)
   ).toBe('FRAME')
   canvas.assertNoErrors()
 })

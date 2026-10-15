@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import * as v from 'valibot'
 
-import { defineTool, isToolExposed } from '#core/tools/schema'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { setupToolTest } from '#tests/helpers/tools'
+import { FigmaAPI } from '#core/figma-api'
+import { defineTool, isToolExposed } from '#core/tools/schema'
 
 describe('legacy tool declaration boundary', () => {
   const definition = defineTool({
@@ -34,7 +35,7 @@ describe('legacy tool declaration boundary', () => {
   })
 
   test('normalizes nested numbers and defaults while retaining request context', () => {
-    const { figma } = setupToolTest()
+    const figma = new FigmaAPI(new SceneGraph())
     const signal = new AbortController().signal
     expect(definition.execute(figma, { patch: { amount: '2' } }, { signal })).toEqual({
       args: { patch: { amount: 2, active: false } },
@@ -53,7 +54,7 @@ describe('legacy tool declaration boundary', () => {
     { patch: { amount: 2 }, labels: ['c'] }
   ])('rejects malformed legacy input %# before execution', (args) => {
     expect(v.safeParse(definition.input, args).success).toBe(false)
-    expect(() => definition.execute(setupToolTest().figma, args)).toThrow()
+    expect(() => definition.execute(new FigmaAPI(new SceneGraph()), args)).toThrow()
   })
 
   test('does not grant legacy extensions browser-native authority', () => {

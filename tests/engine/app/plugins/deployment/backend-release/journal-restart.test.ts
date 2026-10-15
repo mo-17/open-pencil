@@ -12,7 +12,8 @@ import {
   type BackendHostReleaseApplyResult,
   type BackendHostReleaseControllerDependencies,
   type BackendHostReleaseReconcileInput,
-  type BackendHostReleaseReconcileResult
+  type BackendHostReleaseReconcileResult,
+  type BackendHostReleaseRunInput
 } from '@/app/plugins/host/deployment/backend/release-controller'
 import {
   createIdbBackendHostReleaseDispatchJournal,
@@ -133,7 +134,10 @@ async function dependencies(
   }
 }
 
-function runInput(receiptId: string, onTransition?: (dispatch: string) => void) {
+function runInput(
+  receiptId: string,
+  onTransition?: (dispatch: string) => void
+): BackendHostReleaseRunInput {
   return {
     releaseId: 'restart-release',
     planId: 'restart-plan',
@@ -554,9 +558,12 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
           verifyCalls += 1
         },
         async dispatch() {
-          return JSON.parse(
-            '{"ok":1,"remoteOperationIds":["malformed-positive-operation"]}'
-          ) as BackendHostReleaseApplyResult
+          const malformed: BackendHostReleaseApplyResult = {
+            ok: true,
+            remoteOperationIds: ['malformed-positive-operation']
+          }
+          Reflect.set(malformed, 'ok', 1)
+          return malformed
         }
       })
     ).run(runInput('malformed-positive-receipt'))
@@ -608,7 +615,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
       },
       async reconcile(input) {
         reconcileCalls += 1
-        expect(input.claim.singleFlightKey).toBe(first.singleFlightKey)
+        expect(input.claim.singleFlightKey).toBe(first.singleFlightKey ?? '')
         return {
           outcome: 'failed',
           code: 'previous-artifact-proven-not-applied',

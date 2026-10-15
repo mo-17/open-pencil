@@ -1,27 +1,16 @@
 {
   "name": "@open-pencil/dom-css",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/open-pencil/open-pencil.git",
-    "directory": "packages/dom-css"
-  },
-  "files": [
-    "dist",
-    "src",
-    "README.md"
-  ],
   "type": "module",
-  "sideEffects": false,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "imports": {
     "#dom-css/*": {
       "types": "./src/*",
       "bun": "./src/*",
       "default": "./dist/*"
-    }
+    },
+    "#dom-css-tests/*": "./tests/*.ts",
+    "#dom-css/runtime": "./src/runtime/index.ts"
   },
   "exports": {
     ".": {
@@ -36,11 +25,17 @@
       "import": "./dist/browser.js",
       "default": "./dist/browser.js"
     },
-    "./static-export": {
-      "types": "./dist/static-export.d.ts",
-      "bun": "./src/static-export.ts",
-      "import": "./dist/static-export.js",
-      "default": "./dist/static-export.js"
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "bun": "./src/export/index.ts",
+      "import": "./dist/export.js",
+      "default": "./dist/export.js"
+    },
+    "./scene-graph": {
+      "types": "./dist/scene-graph.d.ts",
+      "bun": "./src/import/scene-graph.ts",
+      "import": "./dist/scene-graph.js",
+      "default": "./dist/scene-graph.js"
     },
     "./jsx-runtime": {
       "types": "./dist/jsx-runtime.d.ts",
@@ -54,17 +49,21 @@
       "import": "./dist/jsx-dev-runtime.js",
       "default": "./dist/jsx-dev-runtime.js"
     },
-    "./export": {
-      "types": "./dist/export.d.ts",
-      "bun": "./src/export/index.ts",
-      "import": "./dist/export.js",
-      "default": "./dist/export.js"
+    "./static-export": {
+      "types": "./dist/static-export.d.ts",
+      "bun": "./src/static-export.ts",
+      "import": "./dist/static-export.js",
+      "default": "./dist/static-export.js"
     }
   },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "bunx tsdown --config tsdown.config.ts",
     "check": "bun run typecheck && bun run test && bun run build && bun run smoke:dist",
@@ -73,23 +72,47 @@
     "test": "bun test tests",
     "typecheck": "bunx tsc --noEmit -p tsconfig.test.json"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-pencil/open-pencil.git",
+    "directory": "packages/dom-css"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "peerDependencies": {
+    "@open-pencil/scene-graph": "workspace:*"
+  },
+  "devDependencies": {
+    "@iconify/react": "^6.0.2",
+    "@iconify/vue": "^5.0.1",
+    "@types/bun": "^1.3.14",
+    "@types/css-tree": "^3.2.0",
+    "@types/cssesc": "^3.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "radix-ui": "^1.7.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "reka-ui": "^2.10.5",
+    "shaders": "4.0.4",
+    "storybook": "^10.6.1",
+    "tsdown": "^0.22.14",
+    "typescript": "~5.8.3",
+    "vue": "^3.5.43"
+  },
   "dependencies": {
     "@acemir/cssom": "^0.9.31",
     "@open-pencil/emit": "workspace:*",
+    "css-tree": "^3.2.1",
+    "cssesc": "^3.0.0",
     "dedent": "^1.7.2",
     "es-toolkit": "^1.52.0",
     "js-base64": "^3.9.3",
     "parse5": "^8.0.1",
     "postcss-value-parser": "^4.2.0",
     "tailwindcss": "4.3.3",
-    "twirlwind": "^0.4.0"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "tsdown": "^0.22.14",
-    "typescript": "~5.8.3"
-  },
-  "peerDependencies": {
-    "@open-pencil/scene-graph": "workspace:*"
+    "twirlwind": "^0.4.1"
   }
 }

@@ -325,7 +325,7 @@ watch(
         :tabindex="item.id === activeStorageProviderID ? 0 : -1"
         :data-provider-id="item.id"
         :data-state="item.id === activeStorageProviderID ? 'active' : 'inactive'"
-        :data-test-id="`settings-storage-provider-${item.id}`"
+        data-slot="storage-provider-option"
         @click="selectProvider(item.id)"
         @keydown="moveProviderSelection($event, item.id)"
       >
@@ -378,7 +378,7 @@ watch(
         </select>
         <button
           type="button"
-          class="rounded bg-hover px-2 text-[10px] text-surface hover:bg-active disabled:opacity-50"
+          class="rounded bg-hover px-2 text-[10px] text-surface hover:bg-panel-selected-muted disabled:opacity-50"
           :disabled="profileActionBusy || profiles.length >= MAX_STORAGE_PROFILES_PER_PROVIDER"
           @click="beginAddProfile"
         >
@@ -394,7 +394,7 @@ watch(
         </button>
         <button
           type="button"
-          class="rounded px-2 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
+          class="rounded px-2 text-[10px] text-error hover:bg-error/10 disabled:opacity-50"
           :disabled="profileActionBusy || activePluginState !== 'enabled'"
           @click="profileEditorMode = 'delete'"
         >
@@ -456,7 +456,7 @@ watch(
         <div class="mt-2 flex gap-2">
           <button
             type="button"
-            class="rounded bg-danger px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
+            class="rounded bg-error-fill px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
             :disabled="profileActionBusy"
             @click="confirmDeleteProfile"
           >
@@ -472,7 +472,7 @@ watch(
           </button>
         </div>
       </div>
-      <p v-if="profileError" class="mt-2 text-[9px] text-danger" role="alert">
+      <p v-if="profileError" class="mt-2 text-[9px] text-error" role="alert">
         {{ profileError }}
       </p>
     </div>

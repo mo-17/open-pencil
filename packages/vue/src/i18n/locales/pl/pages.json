@@ -55,5 +55,6 @@
   "pages": "Strony",
   "goToPage": "Przejdź do strony…",
   "recentPage": "Ostatnio otwarta",
-  "currentPage": "Bieżąca strona"
+  "currentPage": "Bieżąca strona",
+  "pageNameLabel": "Nazwa strony"
 }

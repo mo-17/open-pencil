@@ -1,5 +1,5 @@
-import type { NodeChange, StyleReference } from '@open-pencil/kiwi/fig/codec'
-import { guidToString } from '@open-pencil/kiwi/fig/guid'
+import type { GUID, NodeChange, StyleReference } from '@open-pencil/kiwi/fig/codec'
+import { guidToString, isUnsetGuid } from '@open-pencil/kiwi/fig/guid'
 
 const TEXT_STYLE_FIELDS = [
   'fontSize',
@@ -96,4 +96,18 @@ export function applyStyleRefsToFields(
   applyPaintStyleRefs(changeMap, fields, assetRefs, preserveDirectPaints)
   applyEffectAndGridStyleRefs(changeMap, fields, assetRefs)
   applyTextStyleRef(changeMap, fields, assetRefs)
+}
+
+/** A style reference's ID, or `null` for none and for the unset GUID, which clears one. */
+export function styleRefId(
+  value: unknown,
+  resolve?: (reference: StyleReference) => string | null
+): string | null {
+  if (value && typeof value === 'object' && 'assetRef' in value && resolve)
+    return resolve(value as StyleReference)
+  if (!value || typeof value !== 'object' || !('guid' in value)) return null
+  const guid = value.guid
+  if (!guid || typeof guid !== 'object') return null
+  if (isUnsetGuid(guid as GUID)) return null
+  return guidToString(guid as GUID)
 }

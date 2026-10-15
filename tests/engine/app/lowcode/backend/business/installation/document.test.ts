@@ -9,7 +9,7 @@ import { BOUNDED_BUSINESS_GROUPS } from '../composition/helpers'
 import { moduleInstallationFixture } from './helpers'
 
 describe('business module document installation', () => {
-  test.each(BOUNDED_BUSINESS_GROUPS)(
+  test.each([...BOUNDED_BUSINESS_GROUPS])(
     'adds $name with one shared login and account page, preserving authored nodes',
     async ({ kinds }) => {
       const fixture = await moduleInstallationFixture()
