@@ -1,6 +1,7 @@
 import { VR_TOUR_SAMPLE_ASSETS } from '@open-pencil/core/plugins'
 
 import { downloadVRTourSampleAsset, type VRTourSampleFetch } from './download'
+import { createAssetOperationQueue } from './queue'
 import {
   VRTourSampleAssetError,
   type VRTourSampleAssetBytes,
@@ -21,16 +22,7 @@ export function createVRTourSampleAssetManager(
   const fetcher = options.fetcher ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
   let generation = 0
   let active: AbortController | null = null
-  let tail: Promise<void> = Promise.resolve()
-
-  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = tail.then(operation)
-    tail = result.then(
-      () => undefined,
-      () => undefined
-    )
-    return result
-  }
+  const enqueue = createAssetOperationQueue()
 
   async function readVerified(
     asset: (typeof VR_TOUR_SAMPLE_ASSETS)[number]

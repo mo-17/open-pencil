@@ -111,3 +111,14 @@ export function recordAction(options: {
     ...(options.when ? { when: options.when } : {})
   }
 }
+
+export function reservationStatusFilter() {
+  return {
+    field: 'status',
+    choices: [
+      { value: 'confirmed', label: t('Confirmed', '已确认') },
+      { value: 'cancelled', label: t('Cancelled', '已取消') },
+      { value: 'completed', label: t('Completed', '已完成') }
+    ]
+  }
+}

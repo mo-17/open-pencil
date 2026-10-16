@@ -1,8 +1,9 @@
 import { S3Client } from '@aws-sdk/client-s3'
 import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 
-import { inferS3Region } from '@/app/integrations/storage/s3/region'
 import type { S3CompatibleConfig } from '@/app/integrations/storage/s3/types'
+
+import { normalizeEndpoint, resolveS3Region } from './endpoint'
 
 export {
   DeleteObjectCommand,
@@ -12,19 +13,6 @@ export {
   S3ServiceException,
   paginateListObjectsV2
 } from '@aws-sdk/client-s3'
-
-function resolveS3Region(config: S3CompatibleConfig): string {
-  const explicit = config.region?.trim()
-  if (explicit) return explicit
-  return inferS3Region(config.endpoint)
-}
-
-function normalizeEndpoint(endpoint: string): string {
-  const trimmed = endpoint.trim().replace(/\/+$/, '')
-  if (!trimmed) throw new Error('S3 endpoint is required')
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
-  return `https://${trimmed}`
-}
 
 export function createS3Client(config: S3CompatibleConfig, customFetch: typeof fetch): S3Client {
   return new S3Client({

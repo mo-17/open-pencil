@@ -1,5 +1,7 @@
+import { SUPABASE_NO_CREATED_AUTHORITY } from '@/app/plugins/host/deployment/supabase/authority-policy'
 /* oxlint-disable eslint(max-lines) -- This security boundary keeps the public contract, opaque contexts, lifecycle, and validation together for reviewability. */
-import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import type { SUPABASE_BACKFILL_RECEIPT_ZERO_CAS_PARAMETER_ORDER } from './receipt/zero/cas/review'
 import {
@@ -262,23 +264,15 @@ const trustedResults = new WeakMap<
   }>
 >()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+const { ownData } = dataAdmission
+
+const { digest, digestText: digestRawText } = createSupabaseDigests(() =>
+  fail('supabase-backfill-testing-fixed-read-digest-failed')
+)
+
 function fail(code: SupabaseBackfillTestingFixedReadSessionErrorCode): never {
   throw new SupabaseBackfillTestingFixedReadSessionError(code)
-}
-
-function ownData(
-  value: object,
-  key: PropertyKey,
-  code: SupabaseBackfillTestingFixedReadSessionErrorCode
-): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail(code)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
 }
 
 function exactRecord(
@@ -305,25 +299,6 @@ function exactRecord(
   }
   for (const key of keys) ownData(value, key, code)
   return value as UnknownRecord
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-testing-fixed-read-digest-failed')
-  }
-}
-
-async function digestRawText(value: string): Promise<string> {
-  try {
-    const encoded = new TextEncoder().encode(value)
-    const copy = new Uint8Array(encoded.byteLength)
-    copy.set(encoded)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-testing-fixed-read-digest-failed')
-  }
 }
 
 function snapshotParameters(
@@ -731,13 +706,7 @@ export async function createSupabaseBackfillReceiptZeroReconciliationFixedReadSe
     readOnlyBoundaryAuthenticated: false as const,
     liveCatalogSemanticsAuthenticated: false as const,
     serverStatementTimeoutAuthenticated: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     releaseReady: false as const
   })
   const session = Object.freeze({
@@ -886,13 +855,7 @@ export async function runSupabaseBackfillFixedReadSessionForTestingV1(
     serverStatementTimeoutAuthenticated: false as const,
     responseSnapshotAuthenticated: false as const,
     automaticRetryAllowed: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     releaseReady: false as const
   })
   const result = Object.freeze({

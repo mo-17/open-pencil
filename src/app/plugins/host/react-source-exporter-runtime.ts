@@ -1,14 +1,9 @@
-import { withDefaults } from '@open-pencil/compiler'
-
-import {
-  prepareAppBackendProviderCompilerOptions,
-  readAppBackendProviderDocumentRequest,
-  type AppBackendProviderHostStore
-} from './backend-provider'
+import { type AppBackendProviderHostStore } from './backend-provider'
 import {
   applySourceProjectRedistributionFontPolicy,
   buildSourceProjectExportFiles,
   createDefaultSourceProjectExporterDependencies,
+  prepareSourceProjectCompilerInput,
   resolveSourceExporterInvocation,
   runSourceProjectExport,
   sourceProjectNames,
@@ -59,13 +54,6 @@ const TARGETS = Object.freeze({
   })
 })
 
-async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHostStore> {
-  // Dynamic import avoids app bootstrap -> Host registry -> React exporter -> app bootstrap cycles.
-  const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
-  await appPluginStoreReady
-  return appPluginStore
-}
-
 export function createReactSourceProjectExporter(
   target: ReactSourceExporterTarget,
   buildProject: ReactSourceProjectBuilder
@@ -95,28 +83,13 @@ export function createReactSourceProjectExporter(
           definition.name,
           definition.fontWarningCode
         ),
-      async createCompilerInput({ pageIds, fontManifest }) {
-        const baseOptions = withDefaults({
-          packageName: names.package,
-          productName: names.product,
-          target: 'react',
-          router: pageIds.length > 1 ? 'react-router-v6' : 'none',
-          devMode: false
-        })
-        const options = readAppBackendProviderDocumentRequest(editor.graph)
-          ? prepareAppBackendProviderCompilerOptions(
-              await (dependencies.resolveBackendProviderStore?.() ??
-                resolveLiveBackendProviderStore()),
-              editor.graph,
-              baseOptions
-            )
-          : baseOptions
-        return {
-          graph: editor.graph,
-          pageIds,
-          fontManifest,
-          options
-        }
+      createCompilerInput(context) {
+        return prepareSourceProjectCompilerInput(
+          context,
+          names,
+          'react',
+          dependencies.resolveBackendProviderStore
+        )
       },
       buildProject(compiledFiles, warnings) {
         const project = buildProject(compiledFiles, names.package, names.product)

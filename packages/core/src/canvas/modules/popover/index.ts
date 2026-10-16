@@ -4,6 +4,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import {
   configureModulePreviewPaint,
+  drawModulePreviewRoundedRect,
   renderResolvedModulePreview,
   withModulePreviewClip
 } from '#core/canvas/modules/preview'
@@ -25,11 +26,7 @@ export function renderPopoverModulePreview(
       configureModulePreviewPaint(renderer, config.triggerBackground)
       const opacity = config.disabled ? 0.5 : 1
       renderer.fillPaint.setAlphaf(opacity)
-      const radius = Math.min(config.borderRadius, width / 2, height / 2)
-      canvas.drawRRect(
-        renderer.ck.RRectXY(renderer.ck.LTRBRect(0, 0, width, height), radius, radius),
-        renderer.fillPaint
-      )
+      drawModulePreviewRoundedRect(renderer, canvas, { width, height }, config.borderRadius)
       renderer.fillPaint.setAlphaf(1)
       const label = popoverTriggerTextNode(node)
       if (!label || label.width <= 0 || !renderer.fontProvider || !renderer.fontsLoaded) return

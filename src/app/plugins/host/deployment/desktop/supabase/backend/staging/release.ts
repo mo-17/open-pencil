@@ -11,6 +11,7 @@ import type {
   AppBackendProviderDocumentGraph,
   PreparedAppBackendProviderBuild
 } from '@/app/plugins/host/backend-provider'
+import { requireSameBackendProviderAuthority } from '@/app/plugins/host/deployment/desktop/supabase/backend/binding'
 import type {
   SupabaseBackendReleaseLocalAuthorityRequest,
   SupabaseBackendReleaseRunInput
@@ -407,15 +408,11 @@ export function createDesktopSupabaseBackendStagingReleaseService(
           ) {
             fail('review-stale')
           }
-          let currentAuthority: BackendReleaseProviderAuthorityV1 | null
-          try {
-            currentAuthority = await dependencies.resolveBackendProviderAuthority(currentBuild)
-          } catch {
-            return fail('backend-provider-unavailable')
-          }
-          if (!currentAuthority || !sameAuthority(currentAuthority, backendProvider)) {
-            fail('backend-provider-unavailable')
-          }
+          await requireSameBackendProviderAuthority(
+            backendProvider,
+            () => dependencies.resolveBackendProviderAuthority(currentBuild),
+            () => fail('backend-provider-unavailable')
+          )
           let currentBinding: SupabaseStagingTargetBindingV1 | null
           try {
             currentBinding = await dependencies.resolveStagingTargetBinding()

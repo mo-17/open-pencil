@@ -1,15 +1,16 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs'
+import { join, relative, resolve, sep } from 'node:path'
 
 export interface GuideMapOptions {
   repoRoot: string
-  /** Directory names that are never scanned for guides; hidden directories are always skipped. */
+  /** Source-archive scan exclusions when no Git metadata exists; hidden directories are skipped. */
   ignoredDirectories?: readonly string[]
 }
 
 export interface GuideMapResult {
   errors: string[]
-  /** Nested guides found on disk, repo-relative with `/` separators, sorted. */
+  /** Nested guides in the working source inventory, repo-relative with `/` separators, sorted. */
   guides: string[]
   /** Guide paths referenced from the root `AGENTS.md`, sorted. */
   listed: string[]
@@ -28,6 +29,32 @@ function walkGuides(directory: string, repoRoot: string, ignored: ReadonlySet<st
     const rel = relative(repoRoot, path).split(sep).join('/')
     return rel === ROOT_GUIDE ? [] : [rel]
   })
+}
+
+function gitGuides(repoRoot: string): string[] {
+  const root = resolve(repoRoot)
+  const paths = execFileSync(
+    'git',
+    [
+      'ls-files',
+      '-z',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--deduplicate',
+      '--',
+      '**/AGENTS.md'
+    ],
+    { cwd: root, encoding: 'utf8' }
+  )
+  return paths
+    .split('\0')
+    .filter(
+      (path) =>
+        path.endsWith(`/${ROOT_GUIDE}`) &&
+        existsSync(join(root, path)) &&
+        lstatSync(join(root, path)).isFile()
+    )
 }
 
 /** Guide paths written as inline code in Markdown, for example `packages/core/AGENTS.md`. */
@@ -49,7 +76,11 @@ export function checkGuideMap(options: GuideMapOptions): GuideMapResult {
     return { errors: [`Missing root ${ROOT_GUIDE}`], guides: [], listed: [] }
   }
 
-  const guides = walkGuides(options.repoRoot, options.repoRoot, ignored).sort()
+  const guides = (
+    existsSync(join(options.repoRoot, '.git'))
+      ? gitGuides(options.repoRoot)
+      : walkGuides(options.repoRoot, options.repoRoot, ignored)
+  ).sort()
   const listed = listedGuides(readFileSync(rootPath, 'utf8'))
   const listedSet = new Set(listed)
   const guideSet = new Set(guides)

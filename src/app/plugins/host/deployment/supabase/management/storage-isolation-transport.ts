@@ -1,8 +1,13 @@
-/* oxlint-disable eslint(max-lines), open-pencil(no-mixed-case-acronym-identifiers), typescript-eslint(no-unnecessary-condition) -- This file keeps runtime trust-boundary checks and the operation-scoped Management, Auth, and Storage transport together for auditability. */
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import type { SupabaseStagingTestUserInput } from '@/app/lowcode/supabase/credentials'
 import type { SupabaseManagementAccountAuthorityV1 } from '@/app/lowcode/supabase/management-client'
+/* oxlint-disable eslint(max-lines), open-pencil(no-mixed-case-acronym-identifiers), typescript-eslint(no-unnecessary-condition) -- This file keeps runtime trust-boundary checks and the operation-scoped Management, Auth, and Storage transport together for auditability. */
+import {
+  isPlainSupabaseDataRecord,
+  readSupabaseDataProperty
+} from '@/app/plugins/host/deployment/supabase/data-admission'
+import { canonicalSupabaseTimestamp } from '@/app/plugins/host/deployment/supabase/scalar-admission'
 
 import {
   SUPABASE_STORAGE_ISOLATION_LIMITS,
@@ -15,6 +20,14 @@ import {
   type SupabaseStorageObjectProbeResult,
   type SupabaseStorageProbeActor
 } from '../storage-isolation-verifier'
+import { createManagementOperationWaiter } from './abortable-operation'
+import { readManagementResponseBytes } from './response-body'
+import {
+  createManagementResponseRequester,
+  supabaseManagementTimeout,
+  isSupabaseManagementToken as controlFree,
+  createManagementRequestDeadline
+} from './transport-runtime'
 import type { SupabaseManagementRequestLifetime } from './transport-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
@@ -98,15 +111,6 @@ function fail(code: ConstructorParameters<typeof SupabaseStorageIsolationError>[
   throw new SupabaseStorageIsolationError(code)
 }
 
-function controlFree(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 16 &&
-    new TextEncoder().encode(value).byteLength <= maximum &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function stableId(value: unknown): string {
   if (typeof value !== 'string' || !STABLE_ID.test(value)) return fail('invalid-authority')
   return value
@@ -117,11 +121,7 @@ export function supabaseTenantStoragePartitionKey(bucketName: string, ruleId: st
 }
 
 function boundedTimeout(value: unknown, maximum: number): number {
-  if (value === undefined) return maximum
-  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > maximum) {
-    return fail('invalid-authority')
-  }
-  return value as number
+  return supabaseManagementTimeout(value, maximum, () => fail('invalid-authority'))
 }
 
 function pathSegment(value: unknown): string {
@@ -130,32 +130,16 @@ function pathSegment(value: unknown): string {
 }
 
 function plainRecord(value: unknown): UnknownRecord {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
-    return fail('invalid-response')
-  }
-  return value as UnknownRecord
+  if (!isPlainSupabaseDataRecord(value)) return fail('invalid-response')
+  return value
 }
 
 function ownValue(record: UnknownRecord, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key)
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('invalid-response')
-  }
-  return descriptor.value
+  return readSupabaseDataProperty(record, key, () => fail('invalid-response'))
 }
 
 function canonicalTimestamp(value: unknown): string {
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
-    return fail('invalid-response')
-  }
-  const canonical = new Date(value).toISOString()
-  if (canonical !== value) return fail('invalid-response')
-  return value
+  return canonicalSupabaseTimestamp(value, () => fail('invalid-response'))
 }
 
 function sameAuthority(
@@ -200,85 +184,32 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 function requestDeadline(caller: AbortSignal | undefined, timeoutMs: number): RequestDeadline {
-  const controller = new AbortController()
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) {
-    controller.abort(caller.reason)
-  } else {
-    caller?.addEventListener('abort', onCallerAbort, { once: true })
-    timeout = setTimeout(() => {
-      controller.abort(new DOMException('Supabase Storage request timed out', 'TimeoutError'))
-    }, timeoutMs)
-  }
-  return {
-    signal: controller.signal,
-    dispose: () => {
-      if (timeout !== undefined) clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  }
+  const { signal, dispose } = createManagementRequestDeadline(
+    caller,
+    timeoutMs,
+    'Supabase Storage request timed out'
+  )
+  return { signal, dispose }
 }
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('Supabase Storage request aborted', 'AbortError')
-}
-
-function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(abortReason(signal))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
-}
+const waitForAbortable = createManagementOperationWaiter('Supabase Storage request aborted')
 
 async function boundedBytes(
   response: Response,
   maximum: number,
   signal: AbortSignal
 ): Promise<Uint8Array> {
-  const declared = response.headers.get('content-length')
-  if (declared !== null) {
-    const parsed = Number(declared)
-    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maximum) {
-      return fail('invalid-response')
-    }
-  }
-  if (!response.body) return new Uint8Array()
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let length = 0
-  try {
-    let result = await waitForAbortable(reader.read(), signal)
-    while (!result.done) {
-      length += result.value.byteLength
-      if (length > maximum) {
-        void reader.cancel().catch(() => undefined)
-        return fail('invalid-response')
-      }
-      chunks.push(result.value)
-      result = await waitForAbortable(reader.read(), signal)
-    }
-  } catch (error) {
-    void reader.cancel().catch(() => undefined)
-    throw error
-  } finally {
-    reader.releaseLock()
-  }
-  const output = new Uint8Array(length)
-  let offset = 0
-  for (const chunk of chunks) {
-    output.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return output
+  return readManagementResponseBytes(
+    response,
+    maximum,
+    (reader) => waitForAbortable(reader.read(), signal),
+    () => fail('invalid-response')
+  )
 }
+
+const fetchResponse = createManagementResponseRequester(waitForAbortable, throwIfAborted, () =>
+  fail('transport-failed')
+)
 
 async function boundedResponse(
   fetcher: SupabaseManagementStorageFetch,
@@ -290,15 +221,15 @@ async function boundedResponse(
 ): Promise<BoundedResponse> {
   const deadline = requestDeadline(signal, timeoutMs)
   try {
-    throwIfAborted(deadline.signal)
-    const response = await waitForAbortable(
-      fetcher(url, { ...init, redirect: 'error', signal: deadline.signal }, maximum, timeoutMs),
-      deadline.signal
+    const response = await fetchResponse(
+      fetcher,
+      url,
+      init,
+      maximum,
+      timeoutMs,
+      deadline.signal,
+      undefined
     )
-    throwIfAborted(deadline.signal)
-    if (response.redirected || (response.url !== '' && response.url !== url)) {
-      return fail('transport-failed')
-    }
     return {
       status: response.status,
       bytes: await boundedBytes(response, maximum, deadline.signal),

@@ -1,4 +1,10 @@
 import { waitForManagementOperation } from '../abortable-operation'
+import {
+  collectManagementResponseChunks,
+  joinManagementResponseChunks,
+  parseManagementResponseJSON
+} from '../response-body'
+import { createManagementRequestDeadline } from '../transport-runtime'
 import type { SupabaseManagementRequestDeadline } from '../transport-runtime'
 
 interface BackfillReadResponsePolicy {
@@ -6,29 +12,35 @@ interface BackfillReadResponsePolicy {
   readonly fail: (code: 'invalid-response' | 'response-too-large') => never
 }
 
+interface BackfillReadRequestPolicy {
+  readonly abortMessage: string
+  readonly timeoutMessage: string
+  readonly ownsError: (cause: unknown) => boolean
+  readonly fail: (
+    code:
+      | 'aborted'
+      | 'timeout'
+      | 'network-failed'
+      | 'http-error'
+      | 'invalid-response'
+      | 'response-too-large'
+  ) => never
+}
+
+type BackfillReadFetch = (
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  maximum: number,
+  timeoutMs: number
+) => Promise<Response>
+
 /** Response lifetime only: fixed requests, authority and error classification stay in each owner. */
 export function createBackfillReadDeadline(
   caller: AbortSignal | undefined,
   timeoutMs: number,
   timeoutMessage: string
 ): SupabaseManagementRequestDeadline {
-  const controller = new AbortController()
-  let timedOut = false
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) controller.abort(caller.reason)
-  else caller?.addEventListener('abort', onCallerAbort, { once: true })
-  const timeout = setTimeout(() => {
-    timedOut = true
-    controller.abort(new DOMException(timeoutMessage, 'TimeoutError'))
-  }, timeoutMs)
-  return {
-    signal: controller.signal,
-    timedOut: () => timedOut,
-    dispose: () => {
-      clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  }
+  return createManagementRequestDeadline(caller, timeoutMs, timeoutMessage, true)
 }
 
 export function waitForBackfillRead<T>(
@@ -75,34 +87,67 @@ export async function readBackfillJSON(
   }
   if (!response.body) return fail('invalid-response')
   const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let byteLength = 0
+  let collected: Awaited<ReturnType<typeof collectManagementResponseChunks>>
   try {
-    let chunk = await waitForBackfillRead(reader.read(), signal, abortMessage)
-    while (!chunk.done) {
-      byteLength += chunk.value.byteLength
-      if (byteLength > maximum) {
+    collected = await collectManagementResponseChunks(
+      reader,
+      maximum,
+      (bodyReader) => waitForBackfillRead(bodyReader.read(), signal, abortMessage),
+      (reader) => {
         void reader.cancel().catch(() => undefined)
         return fail('response-too-large')
       }
-      chunks.push(chunk.value)
-      chunk = await waitForBackfillRead(reader.read(), signal, abortMessage)
-    }
+    )
   } catch (cause) {
     void reader.cancel().catch(() => undefined)
     throw cause
   } finally {
     reader.releaseLock()
   }
-  const bytes = new Uint8Array(byteLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
-    return fail('invalid-response')
+  const bytes = joinManagementResponseChunks(collected.chunks, collected.byteLength)
+  return parseManagementResponseJSON(bytes, () => fail('invalid-response'))
+}
+
+/** Shared HTTP lifetime; fixed queries, project authority and error identities remain caller-owned. */
+export function createBackfillJSONRequester({
+  abortMessage,
+  timeoutMessage,
+  ownsError,
+  fail
+}: BackfillReadRequestPolicy) {
+  return async function requestJSON(
+    fetcher: BackfillReadFetch,
+    url: string,
+    init: RequestInit,
+    expectedStatus: number,
+    maximum: number,
+    timeoutMs: number,
+    callerSignal: AbortSignal | undefined
+  ): Promise<unknown> {
+    if (callerSignal?.aborted) return fail('aborted')
+    const deadline = createBackfillReadDeadline(callerSignal, timeoutMs, timeoutMessage)
+    try {
+      const response = await waitForBackfillRead(
+        fetcher(url, { ...init, redirect: 'error', signal: deadline.signal }, maximum, timeoutMs),
+        deadline.signal,
+        abortMessage
+      )
+      if (
+        response.redirected ||
+        (response.url !== '' && response.url !== url) ||
+        response.status !== expectedStatus
+      ) {
+        discardUnreadBackfillResponse(response)
+        return fail('http-error')
+      }
+      return await readBackfillJSON(response, maximum, deadline.signal, { abortMessage, fail })
+    } catch (cause) {
+      if (ownsError(cause)) throw cause
+      if (deadline.timedOut()) return fail('timeout')
+      if (callerSignal?.aborted) return fail('aborted')
+      return fail('network-failed')
+    } finally {
+      deadline.dispose()
+    }
   }
 }

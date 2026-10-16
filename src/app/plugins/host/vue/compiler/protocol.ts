@@ -378,12 +378,7 @@ export function restoreVueCompilerGraph(snapshot: VueCompilerGraphSnapshot): Sce
   graph.rootId = snapshot.rootId
   graph.documentColorSpace = snapshot.documentColorSpace
   graph.instanceIndex = new Map()
-  for (const node of graph.nodes.values()) {
-    if (node.type !== 'INSTANCE' || !node.componentId) continue
-    const instances = graph.instanceIndex.get(node.componentId) ?? new Set<string>()
-    instances.add(node.id)
-    graph.instanceIndex.set(node.componentId, instances)
-  }
+  graph.rebuildInstanceIndex()
   graph.clearAbsPosCache()
   return graph
 }

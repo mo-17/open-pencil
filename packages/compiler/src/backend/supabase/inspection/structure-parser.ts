@@ -5,14 +5,13 @@ import {
   INSPECTION_DEFAULT_PRIVILEGE_OBJECT_KINDS,
   INSPECTION_FK_ACTIONS,
   INSPECTION_INVENTORY_SOURCES,
-  INSPECTION_OBJECT_MANAGEMENT,
   INSPECTION_PRIVILEGES,
   type SupabaseInspectionConstraintV1,
   type SupabaseInspectionDefaultPrivilegeV1,
   type SupabaseInspectionIndexV1,
   type SupabaseInspectionObjectManagement
 } from './contract'
-import { parseManagedIdentity, parseRole } from './object-parser'
+import { parseManagedObjectHeader, parseRole } from './object-parser'
 import {
   array,
   boolean,
@@ -20,6 +19,7 @@ import {
   identifier,
   invalid,
   oneOf,
+  optionalInspectedField,
   parseCatalogAddress,
   parseTableObjectIdentity,
   record,
@@ -66,18 +66,9 @@ function constraintBase(
     ],
     ['kind', 'schema', 'tableName', 'name', 'management', ...allowed]
   )
-  const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
-  const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
-  const address =
-    source.address === undefined
-      ? undefined
-      : parseCatalogAddress(source.address, `${path}.address`)
-  const definitionDigest =
-    source.definitionDigest === undefined
-      ? undefined
-      : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
-  const validated =
-    source.validated === undefined ? undefined : boolean(source.validated, `${path}.validated`)
+  const { management, openPencilId, address } = parseManagedObjectHeader(source, path)
+  const definitionDigest = optionalInspectedField(source, 'definitionDigest', path, validateDigest)
+  const validated = optionalInspectedField(source, 'validated', path, boolean)
   return {
     source,
     management,
@@ -120,16 +111,14 @@ export function parseConstraint(value: unknown, index: number): SupabaseInspecti
       'validated'
     ])
     const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
-    const address =
-      source.address === undefined
-        ? undefined
-        : parseCatalogAddress(source.address, `${path}.address`)
-    const definitionDigest =
-      source.definitionDigest === undefined
-        ? undefined
-        : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
-    const validated =
-      source.validated === undefined ? undefined : boolean(source.validated, `${path}.validated`)
+    const address = optionalInspectedField(source, 'address', path, parseCatalogAddress)
+    const definitionDigest = optionalInspectedField(
+      source,
+      'definitionDigest',
+      path,
+      validateDigest
+    )
+    const validated = optionalInspectedField(source, 'validated', path, boolean)
     return {
       kind,
       ...parseTableObjectIdentity(source, path),
@@ -177,16 +166,8 @@ export function parseIndex(value: unknown, index: number): SupabaseInspectionInd
     ],
     ['schema', 'tableName', 'name', 'management', 'fields']
   )
-  const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
-  const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
-  const address =
-    source.address === undefined
-      ? undefined
-      : parseCatalogAddress(source.address, `${path}.address`)
-  const definitionDigest =
-    source.definitionDigest === undefined
-      ? undefined
-      : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
+  const { management, openPencilId, address } = parseManagedObjectHeader(source, path)
+  const definitionDigest = optionalInspectedField(source, 'definitionDigest', path, validateDigest)
   const valid = source.valid === undefined ? undefined : boolean(source.valid, `${path}.valid`)
   const ready = source.ready === undefined ? undefined : boolean(source.ready, `${path}.ready`)
   const fields = array(source.fields, `${path}.fields`, BACKEND_LIMITS.maxFieldsPerEntity).map(

@@ -4,7 +4,7 @@
   "vectorizeProvider": "Service de vectorisation",
   "pexelsAPIKey": "Clé API Pexels",
   "unsplashAccessKey": "Clé d’accès Unsplash",
-  "stockPhotoToolOptional": "Facultatif — active l’outil de photos de stock",
+  "stockPhotoToolOptional": "Facultatif — pour l’outil stock_photo",
   "pexelsAlternativeOptional": "Facultatif — source alternative de photos",
   "getPexelsAPIKey": "Obtenir une clé API Pexels gratuite →",
   "getUnsplashAccessKey": "Obtenir une clé d’accès Unsplash gratuite →"

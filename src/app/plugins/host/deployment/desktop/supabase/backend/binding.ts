@@ -17,6 +17,23 @@ export function sameAuthority(
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+export async function requireSameBackendProviderAuthority(
+  expected: BackendReleaseProviderAuthorityV1,
+  resolve: () =>
+    | BackendReleaseProviderAuthorityV1
+    | null
+    | Promise<BackendReleaseProviderAuthorityV1 | null>,
+  unavailable: () => never
+): Promise<void> {
+  let current: BackendReleaseProviderAuthorityV1 | null
+  try {
+    current = await resolve()
+  } catch {
+    return unavailable()
+  }
+  if (!current || !sameAuthority(current, expected)) return unavailable()
+}
+
 export function sameBuild(
   left: PreparedAppBackendProviderBuild,
   right: PreparedAppBackendProviderBuild

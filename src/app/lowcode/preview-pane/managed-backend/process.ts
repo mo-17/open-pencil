@@ -8,6 +8,7 @@ import {
 } from '@open-pencil/compiler/managed-preview'
 
 import { createPreviewNativeCommand, type CreatePreviewNativeCommand } from '../host/native-command'
+import { cancelPreviewRequests, waitForPreviewProcessExit } from '../host/process-lifecycle'
 
 export interface ManagedPreviewChild {
   write(data: string): Promise<void>
@@ -69,11 +70,7 @@ export async function startManagedPreviewProcess(
   void started.catch(() => undefined)
 
   function cancelPending(message = 'Managed preview operation was cancelled.'): void {
-    for (const item of pending.values()) {
-      clearTimeout(item.timer)
-      item.reject(new Error(message))
-    }
-    pending.clear()
+    cancelPreviewRequests(pending, message)
   }
 
   function fail(message: string): void {
@@ -199,14 +196,7 @@ export async function startManagedPreviewProcess(
       await owned
         .write(JSON.stringify({ version: 1, id: crypto.randomUUID(), command: 'close' }) + '\n')
         .catch(() => undefined)
-      let timeout: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([
-        exited,
-        new Promise<void>((resolve) => {
-          timeout = setTimeout(resolve, 10000)
-        })
-      ])
-      if (timeout) clearTimeout(timeout)
+      await waitForPreviewProcessExit(exited, 10000)
       await owned.kill().catch(() => undefined)
       fail('Managed preview closed.')
     })()

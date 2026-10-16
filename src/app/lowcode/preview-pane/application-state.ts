@@ -22,7 +22,7 @@ function stateType(value: unknown): value is StateValueType {
   return ['string', 'number', 'boolean', 'object', 'array'].includes(value as string)
 }
 
-function valueMatches(type: StateValueType, value: unknown): boolean {
+export function applicationStateValueMatches(type: StateValueType, value: unknown): boolean {
   if (type === 'array') return Array.isArray(value)
   if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value)
   return typeof value === type
@@ -155,7 +155,7 @@ export function createApplicationPreviewStateCache() {
         name,
         value
       })
-      if (checked?.type !== 'docState' || !valueMatches(type, checked.value)) {
+      if (checked?.type !== 'docState' || !applicationStateValueMatches(type, checked.value)) {
         discard(name)
         return false
       }

@@ -1,3 +1,8 @@
+import {
+  orderedCapabilityRequirements,
+  recordCapabilityDecision
+} from '#compiler/backend/capability-data'
+
 import { BACKEND_CAPABILITIES } from '@open-pencil/lowcode/backend'
 import type {
   BackendCapability,
@@ -283,9 +288,7 @@ export function negotiateBackendCapabilities(
   const seen = new Set<BackendCapability>()
   const providerCapabilities = new Set(input.bundle.descriptor.capabilities)
   const serverCapabilities = new Set(input.bundle.server?.capabilities)
-  const requirements = [...input.requirements].sort((left, right) =>
-    left.capability.localeCompare(right.capability, 'en')
-  )
+  const requirements = orderedCapabilityRequirements(input.requirements)
 
   for (const requirement of requirements) {
     const { capability, required } = requirement
@@ -310,17 +313,14 @@ export function negotiateBackendCapabilities(
       mode,
       serverCapabilities
     )
-    diagnostics.push(...resolution.diagnostics)
-
-    decisions.push(
-      Object.freeze({
-        capability,
-        required,
-        providerSupported,
-        targetStatus,
-        resolution: resolution.resolution,
-        included: resolution.included
-      })
+    recordCapabilityDecision(
+      decisions,
+      diagnostics,
+      capability,
+      required,
+      providerSupported,
+      targetStatus,
+      resolution
     )
   }
 

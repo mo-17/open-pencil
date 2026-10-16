@@ -39,15 +39,7 @@ export const BACKEND_AUTOMATION_OUTBOX_STATES = Object.freeze([
 
 export type BackendAutomationOutboxState = (typeof BACKEND_AUTOMATION_OUTBOX_STATES)[number]
 
-/**
- * An immutable revision in a transactional outbox handoff ledger.
- *
- * All evidence is digest-only. This contract cannot authenticate the business transaction,
- * publish a message, persist a row, acknowledge delivery, or grant release authority.
- */
-export interface BackendAutomationOutboxRecordV1 {
-  readonly format: typeof BACKEND_AUTOMATION_OUTBOX_RECORD_FORMAT
-  readonly version: typeof BACKEND_AUTOMATION_WORKER_VERSION
+interface OutboxBinding {
   readonly outboxId: string
   readonly businessTransactionId: string
   readonly businessTransactionDigest: string
@@ -59,6 +51,17 @@ export interface BackendAutomationOutboxRecordV1 {
   readonly queueId: string
   readonly messageEnvelopeDigest: string
   readonly idempotencyKeyDigest: string
+}
+
+/**
+ * An immutable revision in a transactional outbox handoff ledger.
+ *
+ * All evidence is digest-only. This contract cannot authenticate the business transaction,
+ * publish a message, persist a row, acknowledge delivery, or grant release authority.
+ */
+export interface BackendAutomationOutboxRecordV1 extends OutboxBinding {
+  readonly format: typeof BACKEND_AUTOMATION_OUTBOX_RECORD_FORMAT
+  readonly version: typeof BACKEND_AUTOMATION_WORKER_VERSION
   readonly publishAttemptIds: readonly string[]
   readonly currentPublishAttemptId: string
   readonly publishAttemptOrdinal: number
@@ -79,20 +82,9 @@ export interface BackendAutomationOutboxRecordV1 {
 }
 
 /** A deterministic, unprivileged CAS proposal for one exact outbox row revision. */
-export interface BackendAutomationOutboxCASProposalV1 {
+export interface BackendAutomationOutboxCASProposalV1 extends OutboxBinding {
   readonly format: typeof BACKEND_AUTOMATION_OUTBOX_CAS_PROPOSAL_FORMAT
   readonly version: typeof BACKEND_AUTOMATION_WORKER_VERSION
-  readonly outboxId: string
-  readonly businessTransactionId: string
-  readonly businessTransactionDigest: string
-  readonly entityId: string
-  readonly rowIdDigest: string
-  readonly rowVersion: number
-  readonly eventId: string
-  readonly eventDigest: string
-  readonly queueId: string
-  readonly messageEnvelopeDigest: string
-  readonly idempotencyKeyDigest: string
   readonly currentPublishAttemptId: string
   readonly publishAttemptOrdinal: number
   readonly expectedRevision: number | null
@@ -340,25 +332,7 @@ function parseRecord(value: unknown): BackendAutomationOutboxRecordV1 {
   const parsed: BackendAutomationOutboxRecordV1 = Object.freeze({
     format: BACKEND_AUTOMATION_OUTBOX_RECORD_FORMAT,
     version: BACKEND_AUTOMATION_WORKER_VERSION,
-    outboxId: identifier(source.outboxId, '$.outboxId'),
-    businessTransactionId: identifier(source.businessTransactionId, '$.businessTransactionId'),
-    businessTransactionDigest: digest(
-      source.businessTransactionDigest,
-      '$.businessTransactionDigest'
-    ),
-    entityId: identifier(source.entityId, '$.entityId'),
-    rowIdDigest: digest(source.rowIdDigest, '$.rowIdDigest'),
-    rowVersion: integer(
-      source.rowVersion,
-      '$.rowVersion',
-      0,
-      BACKEND_AUTOMATION_OUTBOX_MAX_ROW_VERSION
-    ),
-    eventId: identifier(source.eventId, '$.eventId'),
-    eventDigest: digest(source.eventDigest, '$.eventDigest'),
-    queueId: identifier(source.queueId, '$.queueId'),
-    messageEnvelopeDigest: digest(source.messageEnvelopeDigest, '$.messageEnvelopeDigest'),
-    idempotencyKeyDigest: digest(source.idempotencyKeyDigest, '$.idempotencyKeyDigest'),
+    ...parseOutboxBinding(source),
     publishAttemptIds: attempts,
     currentPublishAttemptId,
     publishAttemptOrdinal,
@@ -390,6 +364,30 @@ function parseRecord(value: unknown): BackendAutomationOutboxRecordV1 {
   assertSecretFreeNormalizedData(parsed)
   boundedCanonicalBytes(parsed)
   return parsed
+}
+
+function parseOutboxBinding(source: ReturnType<typeof exactRecord>): OutboxBinding {
+  return {
+    outboxId: identifier(source.outboxId, '$.outboxId'),
+    businessTransactionId: identifier(source.businessTransactionId, '$.businessTransactionId'),
+    businessTransactionDigest: digest(
+      source.businessTransactionDigest,
+      '$.businessTransactionDigest'
+    ),
+    entityId: identifier(source.entityId, '$.entityId'),
+    rowIdDigest: digest(source.rowIdDigest, '$.rowIdDigest'),
+    rowVersion: integer(
+      source.rowVersion,
+      '$.rowVersion',
+      0,
+      BACKEND_AUTOMATION_OUTBOX_MAX_ROW_VERSION
+    ),
+    eventId: identifier(source.eventId, '$.eventId'),
+    eventDigest: digest(source.eventDigest, '$.eventDigest'),
+    queueId: identifier(source.queueId, '$.queueId'),
+    messageEnvelopeDigest: digest(source.messageEnvelopeDigest, '$.messageEnvelopeDigest'),
+    idempotencyKeyDigest: digest(source.idempotencyKeyDigest, '$.idempotencyKeyDigest')
+  }
 }
 
 export function parseBackendAutomationOutboxRecord(
@@ -448,25 +446,7 @@ function parseCASProposal(value: unknown): BackendAutomationOutboxCASProposalV1 
   const parsed: BackendAutomationOutboxCASProposalV1 = Object.freeze({
     format: BACKEND_AUTOMATION_OUTBOX_CAS_PROPOSAL_FORMAT,
     version: BACKEND_AUTOMATION_WORKER_VERSION,
-    outboxId: identifier(source.outboxId, '$.outboxId'),
-    businessTransactionId: identifier(source.businessTransactionId, '$.businessTransactionId'),
-    businessTransactionDigest: digest(
-      source.businessTransactionDigest,
-      '$.businessTransactionDigest'
-    ),
-    entityId: identifier(source.entityId, '$.entityId'),
-    rowIdDigest: digest(source.rowIdDigest, '$.rowIdDigest'),
-    rowVersion: integer(
-      source.rowVersion,
-      '$.rowVersion',
-      0,
-      BACKEND_AUTOMATION_OUTBOX_MAX_ROW_VERSION
-    ),
-    eventId: identifier(source.eventId, '$.eventId'),
-    eventDigest: digest(source.eventDigest, '$.eventDigest'),
-    queueId: identifier(source.queueId, '$.queueId'),
-    messageEnvelopeDigest: digest(source.messageEnvelopeDigest, '$.messageEnvelopeDigest'),
-    idempotencyKeyDigest: digest(source.idempotencyKeyDigest, '$.idempotencyKeyDigest'),
+    ...parseOutboxBinding(source),
     currentPublishAttemptId: identifier(
       source.currentPublishAttemptId,
       '$.currentPublishAttemptId'

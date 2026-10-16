@@ -13,6 +13,7 @@ import {
   truncateCharacters,
   writeStorageDocumentOrPreserveRace
 } from '../shared/adapter'
+import { createStorageDocumentWriter } from '../shared/write'
 import type {
   StorageAdapter,
   StorageDocumentAuthority,
@@ -152,38 +153,38 @@ export function createOneDriveStorageAdapter(
   return {
     ...common,
 
-    async putDocument(id, bytes, metadata, transferOptions = {}) {
-      const prepared = await prepareWrite(id, bytes, metadata, transferOptions)
-      if (prepared.conflictResult) return prepared.conflictResult
-      const current = prepared.current
-      const uploadOptions: OneDriveUploadOptions = createStorageDocumentUploadOptions(
-        id,
-        normalizeOneDriveFigName(metadata.name),
-        bytes,
-        transferOptions
-      )
+    putDocument: createStorageDocumentWriter(
+      prepareWrite,
+      async (current, id, bytes, metadata, transferOptions) => {
+        const uploadOptions: OneDriveUploadOptions = createStorageDocumentUploadOptions(
+          id,
+          normalizeOneDriveFigName(metadata.name),
+          bytes,
+          transferOptions
+        )
 
-      if (!current) {
+        if (!current) {
+          return writeStorageDocumentOrPreserveRace(
+            'created',
+            () => client.createDocument(uploadOptions),
+            isOneDriveWriteRace,
+            () => preserveWriteRace(id, bytes, metadata, transferOptions)
+          )
+        }
+
         return writeStorageDocumentOrPreserveRace(
-          'created',
-          () => client.createDocument(uploadOptions),
+          'updated',
+          () =>
+            client.updateDocument({
+              ...uploadOptions,
+              itemId: current.file.id,
+              expectedEtag: current.file.eTag ?? undefined
+            }),
           isOneDriveWriteRace,
           () => preserveWriteRace(id, bytes, metadata, transferOptions)
         )
       }
-
-      return writeStorageDocumentOrPreserveRace(
-        'updated',
-        () =>
-          client.updateDocument({
-            ...uploadOptions,
-            itemId: current.file.id,
-            expectedEtag: current.file.eTag ?? undefined
-          }),
-        isOneDriveWriteRace,
-        () => preserveWriteRace(id, bytes, metadata, transferOptions)
-      )
-    },
+    ),
 
     deleteDocument(id, deleteOptions) {
       return client.deleteDocumentFile(id, deleteOptions?.signal, deleteOptions?.expectedAuthority)

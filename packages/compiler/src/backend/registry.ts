@@ -1,3 +1,11 @@
+import {
+  readExactBackendData,
+  sameProviderValues,
+  validateTrustedAdapterValues,
+  providerRegistryErrorDetails,
+  listProviderDescriptors
+} from '#compiler/backend/provider-data'
+
 import type { BackendCapability, BackendDiagnostic } from '@open-pencil/lowcode/backend'
 
 import {
@@ -32,34 +40,7 @@ function isCanonicalBackendProviderPackageDigest(value: unknown): value is strin
 
 function readBackendProviderSelection(value: unknown): BackendProviderSelectionData | undefined {
   try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return undefined
-
-    const keys = Reflect.ownKeys(value)
-    if (
-      keys.length !== BACKEND_PROVIDER_SELECTION_KEYS.length ||
-      keys.some(
-        (key) =>
-          typeof key !== 'string' ||
-          !BACKEND_PROVIDER_SELECTION_KEYS.includes(
-            key as (typeof BACKEND_PROVIDER_SELECTION_KEYS)[number]
-          )
-      )
-    ) {
-      return undefined
-    }
-
-    const data = Object.create(null) as Record<
-      (typeof BACKEND_PROVIDER_SELECTION_KEYS)[number],
-      unknown
-    >
-    for (const key of BACKEND_PROVIDER_SELECTION_KEYS) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
-      if (!descriptor?.enumerable || !('value' in descriptor)) return undefined
-      data[key] = descriptor.value
-    }
-    return data
+    return readExactBackendData(value, BACKEND_PROVIDER_SELECTION_KEYS)
   } catch {
     return undefined
   }
@@ -76,44 +57,6 @@ export type BackendProviderRegistryResolveResult =
 
 function error(code: string, path: string, message: string): BackendDiagnostic {
   return { code, severity: 'error', path, message }
-}
-
-function sameValues(
-  left: readonly (string | number)[],
-  right: readonly (string | number)[]
-): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
-}
-
-function validateAdapterValues<T extends string>(
-  values: readonly T[],
-  known: readonly T[],
-  path: string,
-  diagnostics: BackendDiagnostic[]
-): void {
-  const seen = new Set<T>()
-  const knownSet = new Set(known)
-  for (let index = 0; index < values.length; index += 1) {
-    const value = values[index]
-    if (!knownSet.has(value)) {
-      diagnostics.push(
-        error(
-          'backend-provider-registry-value-unknown',
-          `${path}[${index}]`,
-          'Trusted Backend Provider adapter contains an unknown contract value.'
-        )
-      )
-    } else if (seen.has(value)) {
-      diagnostics.push(
-        error(
-          'backend-provider-registry-value-duplicate',
-          `${path}[${index}]`,
-          'Trusted Backend Provider adapter contract values must be unique.'
-        )
-      )
-    }
-    seen.add(value)
-  }
 }
 
 function freezeAdapter(adapter: BackendProviderAdapter): BackendProviderAdapter {
@@ -143,17 +86,19 @@ function normalizeTrustedBundle(bundle: BackendProviderBundle): {
   for (const slot of BACKEND_PROVIDER_ADAPTER_SLOTS) {
     const adapter = bundle[slot]
     if (!adapter) continue
-    validateAdapterValues(
+    validateTrustedAdapterValues(
       adapter.capabilities,
       descriptorResult.value.capabilities,
       `$.${slot}.capabilities`,
-      diagnostics
+      diagnostics,
+      1
     )
-    validateAdapterValues(
+    validateTrustedAdapterValues(
       adapter.outputs,
       BACKEND_PROVIDER_OUTPUT_KINDS,
       `$.${slot}.outputs`,
-      diagnostics
+      diagnostics,
+      1
     )
     for (const capability of adapter.capabilities) capabilities.add(capability)
     for (const output of adapter.outputs) outputs.add(output)
@@ -182,7 +127,7 @@ function normalizeTrustedBundle(bundle: BackendProviderBundle): {
 
   const adapterCapabilities = [...capabilities].sort()
   const adapterOutputs = [...outputs].sort()
-  if (!sameValues(adapterCapabilities, descriptorResult.value.capabilities)) {
+  if (!sameProviderValues(adapterCapabilities, descriptorResult.value.capabilities)) {
     diagnostics.push(
       error(
         'backend-provider-registry-capabilities-mismatch',
@@ -191,7 +136,7 @@ function normalizeTrustedBundle(bundle: BackendProviderBundle): {
       )
     )
   }
-  if (!sameValues(adapterOutputs, descriptorResult.value.outputs)) {
+  if (!sameProviderValues(adapterOutputs, descriptorResult.value.outputs)) {
     diagnostics.push(
       error(
         'backend-provider-registry-outputs-mismatch',
@@ -214,11 +159,11 @@ function normalizeTrustedBundle(bundle: BackendProviderBundle): {
 
 export class BackendProviderRegistryConfigurationError extends TypeError {
   readonly diagnostics: readonly BackendDiagnostic[]
-
   constructor(diagnostics: readonly BackendDiagnostic[]) {
-    super(diagnostics.map((entry) => `${entry.code}: ${entry.message}`).join('\n'))
+    const details = providerRegistryErrorDetails(diagnostics)
+    super(details.message)
     this.name = 'BackendProviderRegistryConfigurationError'
-    this.diagnostics = Object.freeze([...diagnostics])
+    this.diagnostics = details.diagnostics
   }
 }
 
@@ -253,11 +198,7 @@ export class BackendProviderRegistry {
   }
 
   list(): readonly BackendProviderDescriptor[] {
-    return Object.freeze(
-      [...this.#byAdapterId.values()]
-        .map((bundle) => bundle.descriptor)
-        .sort((left, right) => left.adapterId.localeCompare(right.adapterId, 'en'))
-    )
+    return listProviderDescriptors(this.#byAdapterId.values())
   }
 
   resolve(selection: BackendProviderSelection): BackendProviderRegistryResolveResult {

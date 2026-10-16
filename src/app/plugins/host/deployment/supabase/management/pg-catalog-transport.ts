@@ -1,4 +1,9 @@
 import {
+  isPlainSupabaseDataRecord,
+  readSupabaseDataProperty
+} from '@/app/plugins/host/deployment/supabase/data-admission'
+
+import {
   SUPABASE_PG_CATALOG_FIXED_QUERIES,
   SUPABASE_PG_CATALOG_QUERY_IDS,
   SUPABASE_PG_CATALOG_QUERY_VERSION,
@@ -10,6 +15,8 @@ import {
 } from '../pg-catalog-inspector'
 import SUPABASE_PG_CATALOG_AGGREGATE_SQL_SOURCE from '../pg-catalog-v6.sql?raw'
 import { waitForManagementOperation } from './abortable-operation'
+import { readManagementJSONBody } from './response-body'
+import { fetchManagementResponse } from './transport-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
 const PROJECT_REF = /^[a-z]{20}$/u
@@ -85,23 +92,12 @@ function boundedText(value: unknown, maximum: number): string {
 }
 
 function plainRecord(value: unknown): UnknownRecord {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
-    return fail('invalid-response')
-  }
-  return value as UnknownRecord
+  if (!isPlainSupabaseDataRecord(value)) return fail('invalid-response')
+  return value
 }
 
 function dataField(record: UnknownRecord, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key)
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('invalid-response')
-  }
-  return descriptor.value
+  return readSupabaseDataProperty(record, key, () => fail('invalid-response'))
 }
 
 function exactKeys(record: UnknownRecord, keys: readonly string[]): void {
@@ -177,49 +173,18 @@ async function boundedJSON(
   maximum: number,
   signal: AbortSignal | undefined
 ): Promise<unknown> {
-  const contentLength = response.headers.get('content-length')
-  if (contentLength !== null) {
-    const parsed = Number(contentLength)
-    if (!Number.isSafeInteger(parsed) || parsed < 0) fail('invalid-response')
-    if (parsed > maximum) {
-      void response.body?.cancel().catch(() => undefined)
-      fail('response-too-large')
-    }
-  }
-  if (!response.body) fail('invalid-response')
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let byteLength = 0
-  try {
-    let chunk = await waitForBodyRead(reader.read(), signal)
-    while (!chunk.done) {
-      byteLength += chunk.value.byteLength
-      if (byteLength > maximum) {
-        fail('response-too-large')
-      }
-      chunks.push(chunk.value)
-      chunk = await waitForBodyRead(reader.read(), signal)
-    }
-    throwIfAborted(signal)
-  } catch (cause) {
-    void reader.cancel().catch(() => undefined)
-    if (cause instanceof SupabaseManagementPgCatalogTransportError) throw cause
-    throwIfAborted(signal)
-    return fail('network-failed')
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(byteLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
-    return fail('invalid-response')
-  }
+  return readManagementJSONBody(
+    response,
+    maximum,
+    (reader) => waitForBodyRead(reader.read(), signal),
+    fail,
+    (cause) => {
+      if (cause instanceof SupabaseManagementPgCatalogTransportError) throw cause
+      throwIfAborted(signal)
+      return fail('network-failed')
+    },
+    () => throwIfAborted(signal)
+  )
 }
 
 async function requestJSON(
@@ -230,19 +195,16 @@ async function requestJSON(
   maximum: number,
   signal: AbortSignal | undefined
 ): Promise<unknown> {
-  throwIfAborted(signal)
-  let response: Response
-  try {
-    response = await fetcher(
-      url,
-      { ...init, redirect: 'error', signal },
-      maximum,
-      REQUEST_TIMEOUT_MS
-    )
-  } catch {
-    throwIfAborted(signal)
-    return fail('network-failed')
-  }
+  const response = await fetchManagementResponse(
+    fetcher,
+    url,
+    init,
+    maximum,
+    REQUEST_TIMEOUT_MS,
+    signal,
+    () => throwIfAborted(signal),
+    () => fail('network-failed')
+  )
   throwIfAborted(signal)
   if (response.redirected || (response.url !== '' && response.url !== url)) {
     fail('http-error')

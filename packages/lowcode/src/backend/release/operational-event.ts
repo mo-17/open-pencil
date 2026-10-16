@@ -6,9 +6,11 @@ import {
   compareReleaseTimestamps,
   exactArray,
   exactRecord,
+  parseReleaseAuthorityFields,
   nullableDigest,
   nullableTimestamp,
   releaseDigest,
+  releaseEnvironment as environment,
   releaseIdentifier,
   releaseText,
   releaseTimestamp,
@@ -163,7 +165,6 @@ interface AttemptState {
 
 const PHASES = new Set<string>(BACKEND_OPERATIONAL_EVENT_PHASES)
 const OUTCOMES = new Set<string>(BACKEND_OPERATIONAL_EVENT_OUTCOMES)
-const ENVIRONMENTS = new Set<string>(['preview', 'staging', 'production'])
 const TERMINAL_ERROR_OUTCOMES = new Set<BackendOperationalEventOutcome>([
   'blocked',
   'cancelled',
@@ -269,13 +270,6 @@ function nonNegativeDuration(value: unknown, path: string): number | null {
     throw new TypeError(`${path} must be null or a bounded non-negative integer`)
   }
   return value
-}
-
-function environment(value: unknown, path: string): BackendReleaseEnvironment {
-  if (typeof value !== 'string' || !ENVIRONMENTS.has(value)) {
-    throw new TypeError(`${path} is not supported`)
-  }
-  return value as BackendReleaseEnvironment
 }
 
 function phase(value: unknown, path: string): BackendOperationalEventPhase {
@@ -386,15 +380,7 @@ function parseEventFields(
       stringValue(source.occurredAt, `${path}.occurredAt`),
       `${path}.occurredAt`
     ),
-    providerId: releaseIdentifier(
-      stringValue(source.providerId, `${path}.providerId`),
-      `${path}.providerId`
-    ),
-    environment: environment(source.environment, `${path}.environment`),
-    authorityDigest: releaseDigest(
-      stringValue(source.authorityDigest, `${path}.authorityDigest`),
-      `${path}.authorityDigest`
-    ),
+    ...parseReleaseAuthorityFields(source, path),
     releaseId,
     planId,
     planDigest,

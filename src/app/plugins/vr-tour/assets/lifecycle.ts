@@ -1,3 +1,4 @@
+import { createAssetOperationQueue } from './queue'
 import { VRTourSampleAssetError, type VRTourSampleAssetManager } from './types'
 
 /** Order plugin-state commits with cache removal, including an install already committing. */
@@ -5,15 +6,7 @@ export function createVRTourSamplePluginLifecycle(
   resources: Pick<VRTourSampleAssetManager, 'ensure' | 'remove'>
 ) {
   let generation = 0
-  let tail: Promise<void> = Promise.resolve()
-  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = tail.then(operation)
-    tail = result.then(
-      () => undefined,
-      () => undefined
-    )
-    return result
-  }
+  const enqueue = createAssetOperationQueue()
   return {
     install<T>(commit: () => Promise<T>): Promise<T> {
       const requestedGeneration = generation

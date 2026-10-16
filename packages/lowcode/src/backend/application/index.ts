@@ -1,7 +1,7 @@
 import { canonicalManifestBytes, digestCanonicalManifest } from '@open-pencil/scene-graph'
 
+import { parseCapabilityRequirements, validateRequiredCapabilities } from '../capabilities'
 import { deriveBackendApplicationCapabilities } from '../capability-derivation'
-import { BACKEND_LIMITS } from '../limits'
 import { assertBackendSecretFreeData } from '../secret-boundary'
 import type {
   BackendApplicationSpecV1,
@@ -11,16 +11,11 @@ import type {
 } from '../types'
 import { parseBackendApplicationSpecV1, BACKEND_CAPABILITIES } from '../validate'
 import {
-  array,
   assertBoundedBackendData,
-  boolean,
-  boundedText,
   diagnostic,
   id,
-  oneOf,
   record,
   sorted,
-  uniqueBy,
   type BackendValidationContext
 } from '../validation-helpers'
 import { parseBackendAutomationIRV1 } from './automations'
@@ -80,35 +75,6 @@ function invalidBackendV2Message(codes: readonly string[]): string {
 function isSafeInput(value: unknown, context: BackendValidationContext): boolean {
   if (!assertBoundedBackendData(value, context)) return false
   return assertBackendSecretFreeData(value, context)
-}
-
-function capabilityRequirement(
-  value: unknown,
-  path: string,
-  context: BackendValidationContext
-): BackendCapabilityRequirementV2 | undefined {
-  const source = record(
-    value,
-    path,
-    context,
-    ['capability', 'required', 'reason'],
-    ['capability', 'required']
-  )
-  if (!source) return undefined
-  const capability = oneOf(
-    source.capability,
-    `${path}.capability`,
-    context,
-    BACKEND_CAPABILITIES_V2
-  )
-  const required = boolean(source.required, `${path}.required`, context)
-  const reason =
-    source.reason === undefined
-      ? undefined
-      : boundedText(source.reason, `${path}.reason`, context, BACKEND_LIMITS.maxReasonLength)
-  return capability && required !== undefined
-    ? { capability, required, ...(reason ? { reason } : {}) }
-    : undefined
 }
 
 function legacyCommonInput(source: Readonly<Record<string, unknown>>): unknown {
@@ -257,20 +223,10 @@ export function parseBackendApplicationSpecV2(
       path: '$.auth.rowAccess',
       message: 'Conditional and related-member authority cannot be lowered to Backend V2.'
     })
-  const rawCapabilities = array(
+  const { rawCapabilities, capabilities } = parseCapabilityRequirements(
     source.capabilities,
-    '$.capabilities',
     context,
-    BACKEND_LIMITS.maxCapabilities
-  )
-  const capabilities = (rawCapabilities ?? [])
-    .map((entry, index) => capabilityRequirement(entry, `$.capabilities[${index}]`, context))
-    .filter((entry): entry is BackendCapabilityRequirementV2 => entry !== undefined)
-  uniqueBy(
-    capabilities.map((entry) => entry.capability),
-    '$.capabilities',
-    context,
-    'capability requirement'
+    BACKEND_CAPABILITIES_V2
   )
   const realtime = parseBackendRealtimeIRV1(
     source.realtime,
@@ -491,26 +447,10 @@ export function deriveBackendApplicationCapabilitiesV2(
 export function validateBackendCapabilityDeclarationsV2(
   application: BackendApplicationSpecV2
 ): BackendDiagnostic[] {
-  const declarations = new Map(
-    application.capabilities.map((requirement) => [requirement.capability, requirement])
+  return validateRequiredCapabilities(
+    deriveBackendApplicationCapabilitiesV2(application),
+    application.capabilities
   )
-  return deriveBackendApplicationCapabilitiesV2(application).flatMap((capability) => {
-    const declaration = declarations.get(capability)
-    if (declaration?.required) return []
-    const optional = declaration !== undefined
-    return [
-      {
-        code: optional
-          ? 'backend-capability-use-not-required'
-          : 'backend-capability-use-undeclared',
-        severity: 'error' as const,
-        path: `$.capabilities.${capability}`,
-        message: optional
-          ? 'A capability used by Backend IR must be declared with required true.'
-          : 'Backend IR uses a capability that is not declared as required.'
-      }
-    ]
-  })
 }
 
 /** @deprecated Prefer the capability-first name used by the V1 API. */

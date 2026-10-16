@@ -18,7 +18,8 @@ import {
   releaseDigest,
   releaseIdentifier,
   releaseTimestamp,
-  stringValue
+  stringValue,
+  releaseInteger as integer
 } from './release/validation'
 import { containsBackendSecretLikeMaterial } from './secret-boundary'
 
@@ -143,18 +144,6 @@ export interface BackendOperationalEventSinkCASProposalV1 {
 function fixedFalse(value: unknown, path: string): false {
   if (value !== false) throw new TypeError(`${path} must be false`)
   return false
-}
-
-function integer(value: unknown, path: string, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
-  }
-  return value as number
 }
 
 function nullableRevision(value: unknown, path: string): number | null {

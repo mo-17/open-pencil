@@ -1,5 +1,6 @@
 import {
   compile,
+  withDefaults,
   resolveCompilerWebFonts,
   type CompilerFontManifest,
   type CompilerInput,
@@ -15,6 +16,11 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
+import {
+  prepareAppBackendProviderCompilerOptions,
+  readAppBackendProviderDocumentRequest,
+  type AppBackendProviderHostStore
+} from './backend-provider'
 import { updateActiveAppPluginExportStage } from './export-session'
 import { throwIfPluginExportAborted } from './exporter-abort'
 import type { AppPluginExporterExecutionResult } from './exporter-types'
@@ -93,6 +99,37 @@ interface SourceProjectCompilerInputContext<TEditor extends SourceExporterEditor
   editor: TEditor
   pageIds: string[]
   fontManifest: CompilerFontManifest
+}
+
+async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHostStore> {
+  const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
+  await appPluginStoreReady
+  return appPluginStore
+}
+
+export async function prepareSourceProjectCompilerInput<TEditor extends SourceExporterEditor>(
+  { editor, pageIds, fontManifest }: SourceProjectCompilerInputContext<TEditor>,
+  names: { package: string; product: string },
+  target: 'vue' | 'react',
+  resolveBackendProviderStore?: () =>
+    | AppBackendProviderHostStore
+    | Promise<AppBackendProviderHostStore>
+): Promise<CompilerInput> {
+  const baseOptions = withDefaults({
+    packageName: names.package,
+    productName: names.product,
+    target,
+    router: pageIds.length > 1 ? (target === 'vue' ? 'vue-router-v4' : 'react-router-v6') : 'none',
+    devMode: false
+  })
+  const options = readAppBackendProviderDocumentRequest(editor.graph)
+    ? prepareAppBackendProviderCompilerOptions(
+        await (resolveBackendProviderStore?.() ?? resolveLiveBackendProviderStore()),
+        editor.graph,
+        baseOptions
+      )
+    : baseOptions
+  return { graph: editor.graph, pageIds, fontManifest, options }
 }
 
 export interface RunSourceProjectExportOptions<TEditor extends SourceExporterEditor> {

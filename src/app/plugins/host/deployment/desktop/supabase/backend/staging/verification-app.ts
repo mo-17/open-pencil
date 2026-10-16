@@ -5,33 +5,19 @@ import {
   type BackendCapabilityDecision,
   type SupabaseInspectedMigrationSnapshotV1
 } from '@open-pencil/compiler/backend'
-import {
-  digestDataModel,
-  type BackendCredentialRef,
-  type BackendStoragePathRuleIR
-} from '@open-pencil/lowcode/backend'
+import { digestDataModel, type BackendStoragePathRuleIR } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import {
-  resolveSupabaseManagementDatabaseWritePat,
-  resolveSupabaseManagementGrantGeneration,
-  resolveSupabaseManagementPat,
-  supabaseManagementPatStatus
-} from '@/app/lowcode/supabase/credentials'
-import {
-  createSupabaseStagingTargetStore,
-  type SupabaseStagingTargetStore
-} from '@/app/lowcode/supabase/staging-target'
-import { appPluginStore } from '@/app/plugins/app'
-import {
-  prepareAppBackendProviderDocumentBuild,
-  resolveAppBackendProviderReleaseAuthority,
-  type AppBackendProviderHostStore
-} from '@/app/plugins/host/backend-provider'
+import { type SupabaseStagingTargetStore } from '@/app/lowcode/supabase/staging-target'
+import { type AppBackendProviderHostStore } from '@/app/plugins/host/backend-provider'
 import {
   createIdbBackendHostReleaseDispatchJournal,
   type BackendHostReleaseDispatchJournal
 } from '@/app/plugins/host/deployment/backend/release-journal'
+import {
+  createDesktopSupabaseBuildAccess,
+  createDesktopSupabaseStagingAccess
+} from '@/app/plugins/host/deployment/desktop/supabase/build-access'
 import { createSupabaseEdgeFunctionArtifactFromEmission } from '@/app/plugins/host/deployment/supabase/edge-function-artifact'
 import {
   createSupabaseEdgeFunctionRelease,
@@ -55,6 +41,7 @@ import {
   isProductionNativeSupabaseManagementPgCatalogTransportV1
 } from '@/app/plugins/host/deployment/supabase/native-pg-catalog-transport'
 import { inspectSupabasePgCatalog } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
+import { requiredSupabaseSecretReferences } from '@/app/plugins/host/deployment/supabase/required-secrets'
 import { verifySupabaseStagingRelease } from '@/app/plugins/host/deployment/supabase/staging-verifier'
 import {
   SUPABASE_STORAGE_ISOLATION_LIMITS,
@@ -62,7 +49,6 @@ import {
   type SupabaseStorageIsolationReceipt,
   type SupabaseStorageIsolationTransport
 } from '@/app/plugins/host/deployment/supabase/storage-isolation-verifier'
-import { appCredentialServices } from '@/app/settings/credentials/app'
 import type { CredentialServices } from '@/app/settings/credentials/services'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
@@ -129,22 +115,6 @@ function capabilityIncluded(
   capability: string
 ): boolean {
   return capabilities.some((entry) => entry.capability === capability && entry.included)
-}
-
-function requiredReferences(input: DesktopSupabaseStrictStagingVerificationInput): Readonly<{
-  environmentNames: readonly string[]
-  credentialRefs: readonly BackendCredentialRef[]
-}> {
-  const environmentNames = input.build.request.application.secrets.flatMap((secret) =>
-    secret.kind === 'environment' && secret.required ? [secret.name] : []
-  )
-  const credentialRefs = input.build.request.application.secrets.flatMap((secret) =>
-    secret.kind === 'credential' && secret.required ? [secret.credentialRef] : []
-  )
-  return Object.freeze({
-    environmentNames: Object.freeze([...new Set(environmentNames)].sort()),
-    credentialRefs: Object.freeze([...new Set(credentialRefs)].sort())
-  })
 }
 
 function ruleSupportsCompleteProbe(rule: BackendStoragePathRuleIR): boolean {
@@ -553,7 +523,7 @@ async function verifyCapabilities(
     }
   }
 
-  const references = requiredReferences(input)
+  const references = requiredSupabaseSecretReferences(input.build.request.application)
   const remoteOperationIds = Object.freeze([
     ...(edgeReceipt?.remote.operationIds ?? []),
     ...storageReceipts.flatMap((receipt) => receipt.remoteOperationIds)
@@ -618,13 +588,7 @@ async function verifyCapabilities(
 function createAppDesktopSupabaseBackendStagingVerificationServiceWithOptions(
   options: AppDesktopSupabaseBackendStagingVerificationForTestingOptionsV1
 ) {
-  const pluginStore = options.pluginStore ?? appPluginStore
-  const waitForPluginStoreReady =
-    options.pluginStoreReady ??
-    (options.pluginStore
-      ? () => undefined
-      : () => (appPluginStore.snapshot().ready ? undefined : appPluginStore.load()))
-  const credentials = options.credentialServices ?? appCredentialServices
+  const buildAccess = createDesktopSupabaseBuildAccess(options)
   const runtime: StrictRuntime = Object.freeze({
     readFetcher: options.readFetcher,
     edgeFetcher: options.edgeFetcher ?? tauriFetch,
@@ -633,29 +597,13 @@ function createAppDesktopSupabaseBackendStagingVerificationServiceWithOptions(
     nextId: options.nextId ?? randomId,
     inspectCatalog: options.inspectCatalog ?? inspectSupabasePgCatalog
   })
-  const readCredentialDependency = options.readFetcher
-    ? { resolveReadCredential: () => resolveSupabaseManagementPat(credentials) }
-    : { resolveReadCredentialStatus: () => supabaseManagementPatStatus(credentials) }
   const dependencies: DesktopSupabaseBackendStagingVerificationDependencies = {
     isDesktop: options.isDesktop ?? isTauri,
     nextId: runtime.nextId,
     now: runtime.now,
     dispatchJournal: options.dispatchJournal ?? createIdbBackendHostReleaseDispatchJournal(),
-    async prepareBuild(graph, target) {
-      await Promise.resolve(waitForPluginStoreReady())
-      return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target,
-        mode: 'production'
-      })
-    },
-    resolveBackendProviderAuthority(build) {
-      return resolveAppBackendProviderReleaseAuthority(pluginStore, build.descriptor)
-    },
-    ...readCredentialDependency,
-    resolveWriteCredential: () => resolveSupabaseManagementDatabaseWritePat(credentials),
-    resolveGrantGeneration: () => resolveSupabaseManagementGrantGeneration(credentials),
-    resolveStagingTargetBinding: () =>
-      (options.stagingTargetStore ?? createSupabaseStagingTargetStore()).read(),
+    ...buildAccess,
+    ...createDesktopSupabaseStagingAccess(options),
     prepareStrictVerification: (input) => verifyCapabilities(input, runtime),
     ...options.dependencyOverrides
   }

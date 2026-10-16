@@ -9,6 +9,8 @@ import {
   type BackendStoragePathRuleIR
 } from '@open-pencil/lowcode/backend'
 
+import { canonicalSupabaseTimestamp } from '@/app/plugins/host/deployment/supabase/scalar-admission'
+
 const DIGEST = /^[A-Za-z0-9_-]{43}$/u
 const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
@@ -246,12 +248,7 @@ function digest(value: unknown): string {
 }
 
 function canonicalTimestamp(value: unknown): string {
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
-    return fail('invalid-response')
-  }
-  const canonical = new Date(value).toISOString()
-  if (canonical !== value) return fail('invalid-response')
-  return value
+  return canonicalSupabaseTimestamp(value, () => fail('invalid-response'))
 }
 
 function ruleSupportsCompleteProbe(rule: BackendStoragePathRuleIR): boolean {

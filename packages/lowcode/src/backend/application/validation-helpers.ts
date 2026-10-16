@@ -1,6 +1,8 @@
 import { parseExpression } from '@open-pencil/lowcode'
 
 import { discriminatedRecord } from '../discriminated-record'
+import { COMMON_PRINCIPAL_SHAPES, parseCommonPrincipal } from '../row-access/principal'
+import { parseHttpHeader } from '../step-records'
 import type {
   AuthPolicyIR,
   AuthPrincipalIntent,
@@ -16,17 +18,13 @@ import {
   id,
   identifier,
   parseArrayItems,
-  record,
   type BackendUnknownRecord,
   type BackendValidationContext
 } from '../validation-helpers'
 import type { BackendTransactionValueSourceIR } from './types'
 
 const PRINCIPAL_SHAPES = {
-  anonymous: { allowed: ['kind'], required: ['kind'] },
-  authenticated: { allowed: ['kind'], required: ['kind'] },
-  role: { allowed: ['kind', 'roleId'], required: ['kind', 'roleId'] },
-  owner: { allowed: ['kind', 'ownershipId'], required: ['kind', 'ownershipId'] },
+  ...COMMON_PRINCIPAL_SHAPES,
   'tenant-member': { allowed: ['kind', 'tenantId'], required: ['kind', 'tenantId'] }
 } as const
 
@@ -109,15 +107,7 @@ export function parseAuthPrincipalIntentV2(
   const parsed = discriminatedRecord(value, path, context, PRINCIPAL_SHAPES)
   if (!parsed) return undefined
   const { kind, source } = parsed
-  if (kind === 'anonymous' || kind === 'authenticated') return { kind }
-  if (kind === 'role') {
-    const roleId = id(source.roleId, `${path}.roleId`, context)
-    return roleId ? { kind, roleId } : undefined
-  }
-  if (kind === 'owner') {
-    const ownershipId = id(source.ownershipId, `${path}.ownershipId`, context)
-    return ownershipId ? { kind, ownershipId } : undefined
-  }
+  if (kind !== 'tenant-member') return parseCommonPrincipal(kind, source, path, context)
   const tenantId = id(source.tenantId, `${path}.tenantId`, context)
   return tenantId ? { kind, tenantId } : undefined
 }
@@ -187,21 +177,7 @@ function httpHeader(
   path: string,
   context: BackendValidationContext
 ): BackendHttpHeaderIR | undefined {
-  const source = record(value, path, context, ['name', 'value'])
-  if (!source) return undefined
-  const name = boundedText(source.name, `${path}.name`, context, 128)
-  if (name && !/^[A-Za-z][A-Za-z0-9-]{0,127}$/u.test(name)) {
-    context.diagnostics.push({
-      code: 'backend-http-header-invalid',
-      severity: 'error',
-      path: `${path}.name`,
-      message: 'HTTP header name is invalid.'
-    })
-  }
-  const parsedValue = parseBackendValueSourceV2(source.value, `${path}.value`, context)
-  return name && /^[A-Za-z][A-Za-z0-9-]{0,127}$/u.test(name) && parsedValue
-    ? { name, value: parsedValue }
-    : undefined
+  return parseHttpHeader(value, path, context, parseBackendValueSourceV2)
 }
 
 export function parseHttpHeadersV2(

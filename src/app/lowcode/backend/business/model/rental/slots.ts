@@ -11,7 +11,7 @@ import {
   businessUUIDParameter,
   businessUpdate
 } from '../commands'
-import { businessFutureSlotWindow } from '../scheduling'
+import { businessFutureSlotWindow, businessSlotParameterValues } from '../scheduling'
 import { RENTAL_SLOT_FIELDS, type RentalEntities } from './fields'
 import { publishedRentalProperty, readRentalProperty, readRentalSlot, rentalAccess } from './steps'
 
@@ -53,10 +53,7 @@ export function rentalSlotCommands(entities: RentalEntities): BackendCommandDefi
           [
             { field: 'owner_id', value: businessResult('property', 'owner_id') },
             { field: 'property_id', value: businessResult('property', 'id') },
-            { field: 'title', value: businessParameter('title') },
-            { field: 'starts_at', value: businessParameter('startsAt') },
-            { field: 'ends_at', value: businessParameter('endsAt') },
-            { field: 'capacity', value: businessParameter('capacity') }
+            ...businessSlotParameterValues()
           ],
           RENTAL_SLOT_FIELDS
         )

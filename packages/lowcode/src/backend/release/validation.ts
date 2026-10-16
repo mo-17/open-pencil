@@ -3,6 +3,7 @@ import { parseSha256Base64URL } from '@open-pencil/scene-graph'
 import { containsBackendSecretLikeMaterial } from '../secret-boundary'
 import type { BackendCredentialRef } from '../types'
 import { isBackendCredentialRef } from '../validate'
+import type { BackendReleaseEnvironment } from './types'
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/u
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,127}$/u
@@ -340,5 +341,52 @@ export function parseReleaseMigrationFields<Value extends ReleaseMigrationOperat
       ),
       operations
     }
+  }
+}
+
+export function releaseInteger(
+  value: unknown,
+  path: string,
+  minimum: number,
+  maximum: number
+): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    Object.is(value, -0) ||
+    (value as number) < minimum ||
+    (value as number) > maximum
+  ) {
+    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
+  }
+  return value as number
+}
+
+export function releaseEnvironment(value: unknown, path: string): BackendReleaseEnvironment {
+  if (value !== 'preview' && value !== 'staging' && value !== 'production') {
+    throw new TypeError(`${path} is not supported`)
+  }
+  return value
+}
+
+interface ReleaseAuthorityFields {
+  readonly providerId: string
+  readonly environment: BackendReleaseEnvironment
+  readonly authorityDigest: string
+}
+
+export function parseReleaseAuthorityFields(
+  source: Record<string, unknown>,
+  path: string
+): ReleaseAuthorityFields {
+  return {
+    providerId: releaseIdentifier(
+      stringValue(source.providerId, `${path}.providerId`),
+      `${path}.providerId`
+    ),
+    environment: releaseEnvironment(source.environment, `${path}.environment`),
+    authorityDigest: releaseDigest(
+      stringValue(source.authorityDigest, `${path}.authorityDigest`),
+      `${path}.authorityDigest`
+    )
   }
 }

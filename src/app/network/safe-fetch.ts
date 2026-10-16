@@ -109,18 +109,15 @@ export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(abortError(signal))
     signal.addEventListener('abort', abort, { once: true })
-    void promise.then(
-      (value) => {
-        signal.removeEventListener('abort', abort)
-        resolve(value)
-        return undefined
-      },
-      (error: unknown) => {
-        signal.removeEventListener('abort', abort)
+    void (async () => {
+      try {
+        resolve(await promise)
+      } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)))
-        return undefined
+      } finally {
+        signal.removeEventListener('abort', abort)
       }
-    )
+    })()
   })
 }
 

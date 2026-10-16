@@ -1,5 +1,3 @@
-/* oxlint-disable eslint(max-lines), eslint(complexity) -- Receipt-zero provenance, canonical Receipt material, and fail-closed cross-binding stay in one audit boundary. */
-
 import {
   canonicalBackendBackfillExecutionReceiptV2Bytes,
   canonicalBackendBackfillExecutionScopeV2Bytes,
@@ -9,7 +7,7 @@ import {
   verifyBackendBackfillExecutionReceiptChainV2,
   type BackendBackfillExecutionReceiptV2
 } from '@open-pencil/lowcode/backend'
-import { digestCanonicalManifest } from '@open-pencil/scene-graph'
+/* oxlint-disable eslint(max-lines), eslint(complexity) -- Receipt-zero provenance, canonical Receipt material, and fail-closed cross-binding stay in one audit boundary. */
 
 import {
   trustedSupabaseBackfillDatabaseCASLedgerInstallAppliedContextV1,
@@ -27,6 +25,8 @@ import {
   type SupabaseBackfillExecutionScopeV2EnvelopeForTestingV1,
   type TrustedSupabaseBackfillExecutionScopeV2ForTestingContextV1
 } from '@/app/plugins/host/deployment/supabase/backfill/source-ledger-binding'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 export const SUPABASE_BACKFILL_RECEIPT_ZERO_REVIEW_FORMAT =
   'openpencil.supabase-backfill-receipt-zero-review.v1' as const
@@ -254,44 +254,26 @@ interface UnknownRecord {
 
 const trustedReviews = new WeakMap<object, TrustedSupabaseBackfillReceiptZeroReviewContextV1>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
+const { digest } = createSupabaseDigests(() => fail('supabase-backfill-receipt-zero-digest-failed'))
+
 function fail(code: SupabaseBackfillReceiptZeroReviewErrorCode): never {
   throw new SupabaseBackfillReceiptZeroReviewError(code)
 }
 
 function ownData(value: object, key: PropertyKey): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-input-invalid')
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('supabase-backfill-receipt-zero-input-invalid')
-  }
-  return descriptor.value
+  return dataAdmission.ownData(value, key, 'supabase-backfill-receipt-zero-input-invalid')
 }
 
 function exactInput(value: unknown): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('supabase-backfill-receipt-zero-input-invalid')
-  }
-  let prototype: object | null
-  let keys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    keys = Reflect.ownKeys(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-input-invalid')
-  }
-  if (
-    (prototype !== Object.prototype && prototype !== null) ||
-    keys.length !== INPUT_KEYS.length ||
-    keys.some((key) => typeof key !== 'string' || !INPUT_KEYS.includes(key as never))
-  ) {
-    return fail('supabase-backfill-receipt-zero-input-invalid')
-  }
-  for (const key of INPUT_KEYS) ownData(value, key)
-  return value as UnknownRecord
+  const record = dataAdmission.recordShape(
+    value,
+    INPUT_KEYS,
+    'supabase-backfill-receipt-zero-input-invalid'
+  )
+  for (const key of INPUT_KEYS) ownData(record, key)
+  return record
 }
 
 function canonicalTimestamp(value: unknown): string {
@@ -303,14 +285,6 @@ function canonicalTimestamp(value: unknown): string {
     return fail('supabase-backfill-receipt-zero-timestamp-invalid')
   }
   return value
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-digest-failed')
-  }
 }
 
 function uniqueBlockers(values: readonly string[]): readonly string[] {

@@ -1,10 +1,10 @@
-/* oxlint-disable eslint(max-lines), eslint(complexity -- Keep the complete testing-only durable install orchestration boundary auditable in one module. */
-
 import {
   isTestingSupabaseManagementDatabaseWriteCredentialLeaseIssuerV1,
   issueSupabaseManagementDatabaseWriteCredentialLeaseV1,
   type SupabaseManagementDatabaseWriteCredentialLeaseIssuerV1
 } from '@/app/lowcode/supabase/management-database-write-credential-lease'
+/* oxlint-disable eslint(max-lines), eslint(complexity -- Keep the complete testing-only durable install orchestration boundary auditable in one module. */
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
 import {
   consumeSupabaseManagementBackfillDatabaseCASLedgerInstallKnownNotDispatchedProofV1,
   isTestingSupabaseManagementBackfillDatabaseCASLedgerInstallTransportBoundToV1,
@@ -164,26 +164,21 @@ const RESUME_SETTLEMENT_KEYS = ['reconciliation'] as const
 const testingControllers = new WeakSet<object>()
 const reconciliations = new WeakMap<object, ReconciliationAuthorityV1>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
 function fail(code: SupabaseBackfillDatabaseCASLedgerInstallControllerErrorCode): never {
   throw new SupabaseBackfillDatabaseCASLedgerInstallControllerError(code)
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('supabase-backfill-database-cas-ledger-install-controller-input-invalid')
-  }
+  const record = dataAdmission.recordShape(
+    value,
+    keys,
+    'supabase-backfill-database-cas-ledger-install-controller-input-invalid'
+  )
   try {
-    const prototype = Object.getPrototypeOf(value)
-    const ownKeys = Reflect.ownKeys(value)
-    if (
-      (prototype !== Object.prototype && prototype !== null) ||
-      ownKeys.length !== keys.length ||
-      ownKeys.some((key) => typeof key !== 'string' || !keys.includes(key))
-    ) {
-      return fail('supabase-backfill-database-cas-ledger-install-controller-input-invalid')
-    }
     for (const key of keys) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      const descriptor = Object.getOwnPropertyDescriptor(record, key)
       if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
         return fail('supabase-backfill-database-cas-ledger-install-controller-input-invalid')
       }
@@ -192,7 +187,7 @@ function exactRecord(value: unknown, keys: readonly string[]): UnknownRecord {
     if (cause instanceof SupabaseBackfillDatabaseCASLedgerInstallControllerError) throw cause
     return fail('supabase-backfill-database-cas-ledger-install-controller-input-invalid')
   }
-  return value as UnknownRecord
+  return record
 }
 
 function ownData(source: UnknownRecord, key: string): unknown {

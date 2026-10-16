@@ -1,10 +1,56 @@
 import { writeFile } from 'node:fs/promises'
 
-import type { Browser } from '@playwright/test'
+import {
+  compareTextHistoryPixels,
+  type SolidTextAaRegion
+} from '#core-tests/helpers/canvas/text-history'
+import type { Browser, Page } from '@playwright/test'
 import { toUint8Array } from 'js-base64'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'
+
+async function compareHistoryPNGs(page: Page, expectedPNG: string, actualPNG: string) {
+  // This page only decodes PNGs in 2D; both scene captures keep their own cold GL contexts.
+  const regions: readonly SolidTextAaRegion[] = [
+    {
+      x: 192,
+      y: 176,
+      width: 1120,
+      height: 192,
+      foreground: [0, 0, 0],
+      background: [245, 247, 252]
+    }
+  ]
+  const pixels = await page.evaluateHandle(
+    async ({ expectedPNG, actualPNG, regions }) => {
+      const read = async (png: string) => {
+        const image = new Image()
+        image.src = png
+        await image.decode()
+        const copy = document.createElement('canvas')
+        copy.width = image.naturalWidth
+        copy.height = image.naturalHeight
+        const context = copy.getContext('2d', { colorSpace: 'srgb' })
+        if (!context) throw new Error('RGBA comparison unavailable')
+        context.drawImage(image, 0, 0)
+        return {
+          width: copy.width,
+          height: copy.height,
+          pixels: context.getImageData(0, 0, copy.width, copy.height).data
+        }
+      }
+      const [expected, actual] = await Promise.all([read(expectedPNG), read(actualPNG)])
+      return { expected, actual, regions, inkMask: { channel: 0 as const, below: 40 } }
+    },
+    { expectedPNG, actualPNG, regions }
+  )
+  try {
+    return await page.evaluate(compareTextHistoryPixels, pixels)
+  } finally {
+    await pixels.dispose()
+  }
+}
 
 async function captureText(
   browser: Browser,
@@ -157,15 +203,31 @@ async function captureText(
         const data = context.getImageData(192, 176, 1120, 192).data
         let ink = 0
         for (let i = 0; i < data.length; i += 4) if (data[i] < 40 && data[i + 3] === 255) ink++
-        return { png: copy.toDataURL(), glyphs, ink, hadBacking }
+        return {
+          png: copy.toDataURL(),
+          glyphs,
+          ink,
+          hadBacking,
+          viewport: {
+            panX: renderer.panX,
+            panY: renderer.panY,
+            zoom: renderer.zoom,
+            dpr: renderer.dpr
+          }
+        }
       })
       canvas.assertNoErrors()
       expect(result.glyphs).toHaveLength(4)
       expect(result.glyphs.every((glyph) => glyph > 0)).toBe(true)
       expect(result.ink).toBeGreaterThan(100)
       expect(result.hadBacking).toBe(backing)
+      expect(result.viewport).toEqual({ panX: 0, panY: 0, zoom: 1, dpr: 2 })
       await cdp.detach()
-      return Buffer.from(toUint8Array(result.png.split(',')[1]))
+      return {
+        png: Buffer.from(toUint8Array(result.png.split(',')[1])),
+        dataURL: result.png,
+        glyphs: result.glyphs
+      }
     } finally {
       await lease.evaluate((release) => release?.())
       await lease.dispose()
@@ -179,16 +241,46 @@ for (const gamut of ['srgb', 'p3'] as const) {
   test(`solid text is independent of backing history in emulated ${gamut}`, async ({
     browser,
     baseURL,
-    browserName
+    browserName,
+    page
   }, testInfo) => {
     test.skip(browserName !== 'chromium', 'Color-gamut emulation requires Chromium CDP')
-    const direct = await captureText(browser, baseURL, gamut, false)
-    const retained = await captureText(browser, baseURL, gamut, true)
-    const matches = retained.equals(direct)
-    if (!matches) {
-      await writeFile(testInfo.outputPath('direct-first.png'), direct)
-      await writeFile(testInfo.outputPath('backing-first.png'), retained)
-    }
-    expect(matches).toBe(true)
+    // Independent histories have no ordering dependency; drain both cleanups on failure.
+    const [directCapture, retainedCapture] = await Promise.allSettled([
+      captureText(browser, baseURL, gamut, false),
+      captureText(browser, baseURL, gamut, true)
+    ])
+    if (directCapture.status === 'rejected') throw directCapture.reason
+    if (retainedCapture.status === 'rejected') throw retainedCapture.reason
+    const direct = directCapture.value
+    const retained = retainedCapture.value
+    const comparison = await compareHistoryPNGs(page, direct.dataURL, retained.dataURL)
+    const report = JSON.stringify(
+      { exactPNGMatch: retained.png.equals(direct.png), ...comparison },
+      null,
+      2
+    )
+    // Preserve the original exact mismatch, even when it satisfies the AA-edge contract.
+    await Promise.all([
+      writeFile(testInfo.outputPath('direct-first.png'), direct.png),
+      writeFile(testInfo.outputPath('backing-first.png'), retained.png),
+      writeFile(testInfo.outputPath('history-pixel-comparison.json'), report)
+    ])
+    await testInfo.attach('history-pixel-comparison', {
+      body: report,
+      contentType: 'application/json'
+    })
+    expect(retained.glyphs).toEqual(direct.glyphs)
+    expect(comparison).toMatchObject({
+      matches: true,
+      sameDimensions: true,
+      rejectedPixels: 0,
+      alphaDifferences: 0,
+      inkMaskDifferences: 0,
+      outsideTextDifferences: 0,
+      solidEndpointDifferences: 0,
+      flatPixelDifferences: 0
+    })
+    expect(comparison.maxRgbDelta).toBeLessThanOrEqual(1)
   })
 }

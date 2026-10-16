@@ -1,3 +1,4 @@
+import { isCanonicalBackendDate } from '@open-pencil/lowcode/backend'
 import type {
   BackendApplicationSpecV2,
   BackendLiteral,
@@ -6,7 +7,6 @@ import type {
 } from '@open-pencil/lowcode/backend'
 
 const UUID_LITERAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
-const DATE_LITERAL = /^\d{4}-\d{2}-\d{2}$/u
 const RFC3339_DATETIME =
   /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))$/u
 
@@ -21,12 +21,6 @@ export function isBackendLiteral(value: unknown): value is BackendLiteral {
     typeof value === 'boolean' ||
     (typeof value === 'number' && Number.isFinite(value))
   )
-}
-
-function isCanonicalDate(value: string): boolean {
-  if (!DATE_LITERAL.test(value)) return false
-  const parsed = new Date(`${value}T00:00:00.000Z`)
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 /** PostgreSQL text forbids NUL and JSONB rejects unpaired UTF-16 surrogate escapes. */
@@ -63,12 +57,12 @@ export function literalMatchesSupabaseBackfillTargetV2(
     case 'boolean':
       return typeof value === 'boolean'
     case 'date':
-      return typeof value === 'string' && isCanonicalDate(value)
+      return typeof value === 'string' && isCanonicalBackendDate(value)
     case 'datetime':
       return (
         typeof value === 'string' &&
         RFC3339_DATETIME.test(value) &&
-        isCanonicalDate(RFC3339_DATETIME.exec(value)?.[1] ?? '') &&
+        isCanonicalBackendDate(RFC3339_DATETIME.exec(value)?.[1] ?? '') &&
         Number.isFinite(Date.parse(value))
       )
     case 'uuid':

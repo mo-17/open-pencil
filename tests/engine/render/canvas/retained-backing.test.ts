@@ -740,3 +740,51 @@ test('retained scene backing falls back live when a metadata rebuild cannot star
   expect(renderSceneBacking(r, canvas, graph, 1)).toBe(false)
   expect(canvas.drawImageRectOptions).not.toHaveBeenCalled()
 })
+
+test('first backing presentation keeps its origin on the device grid before viewport replay', () => {
+  const image = asDouble<CKImage>({ delete: mock() })
+  const backingCanvas = asCanvas({ clear: mock() })
+  const surface = asDouble<Surface>({
+    getCanvas: mock(() => backingCanvas),
+    flush: mock(),
+    makeImageSnapshot: mock(() => image),
+    delete: mock()
+  })
+  const r = createRenderer(() => surface)
+  r.performanceMode = 'resource-saving'
+  r.viewportWidth = 101
+  r.viewportHeight = 99
+  r.dpr = 1.25
+  r.panX = 0.125
+  r.panY = 0.375
+  const canvas = createCanvas()
+  const draw = spyOn(canvas, 'drawImageRectOptions')
+  try {
+    expect(renderSceneBacking(r, canvas, createGraph(), 1)).toBe('backing')
+    expect(r.sceneBackingBuild).toBeNull()
+    expect(r.sceneBackingNeedsCrispRender).toBe(true)
+    expect(canvas.translate).not.toHaveBeenCalled()
+    expect(draw).toHaveBeenCalledTimes(1)
+    const backing = r.sceneBacking
+    const call = draw.mock.calls[0]
+    if (!backing || !call) throw new Error('Expected the first completed backing presentation')
+    const destination = call[2]
+    if (!Array.isArray(destination) && !(destination instanceof Float32Array)) {
+      throw new Error('Expected an array-backed destination rectangle')
+    }
+    const [left, top] = destination
+    if (left === undefined || top === undefined) throw new Error('Expected a destination origin')
+    expect(backing.dpr).toBe(r.dpr)
+    expect(Number.isInteger(left * r.dpr)).toBe(true)
+    expect(Number.isInteger(top * r.dpr)).toBe(true)
+    expect(Number.isInteger(backing.marginDeviceX)).toBe(true)
+    expect(Number.isInteger(backing.marginDeviceY)).toBe(true)
+    expect(call[3]).toBe(r.ck.FilterMode.Nearest)
+  } finally {
+    r.sceneBackingBuild?.surface.delete()
+    r.sceneBackingBuild = null
+    r.sceneBacking = null
+    image.delete()
+    draw.mockRestore()
+  }
+})

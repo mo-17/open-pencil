@@ -1,5 +1,3 @@
-import { fromUint8Array } from 'js-base64'
-
 /* oxlint-disable eslint(max-lines), open-pencil(no-mixed-case-acronym-identifiers) -- Keep the complete fixed-origin locked-read boundary in one auditable module. */
 import {
   consumeTrustedSupabaseBackfillLockedHighWaterCaptureRequestV1,
@@ -8,7 +6,11 @@ import {
   type SupabaseBackfillLockedHighWaterWriteAuthorityV1,
   type TrustedSupabaseBackfillLockedHighWaterCaptureRequestV1
 } from '@/app/plugins/host/deployment/supabase/backfill/locked-high-water-capture'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
+import { createManagementOperationWaiter } from '../abortable-operation'
+import { isSupabaseManagementToken, createManagementRequestDeadline } from '../transport-runtime'
 import type { SupabaseManagementRequestDeadline } from '../transport-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
@@ -97,54 +99,13 @@ type RequestDeadline = SupabaseManagementRequestDeadline
 
 const trustedCaptureTransports = new WeakSet<object>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+const { ownKeys, ownData, enumerableRecord: plainRecord } = dataAdmission
+
+const { digestText: digestSQL } = createSupabaseDigests(() => fail('invalid-request'))
+
 function fail(code: SupabaseManagementBackfillLockedHighWaterCaptureTransportErrorCode): never {
   throw new SupabaseManagementBackfillLockedHighWaterCaptureTransportError(code)
-}
-
-function ownKeys(
-  value: object,
-  code: SupabaseManagementBackfillLockedHighWaterCaptureTransportErrorCode
-): readonly PropertyKey[] {
-  try {
-    return Reflect.ownKeys(value)
-  } catch {
-    return fail(code)
-  }
-}
-
-function ownData(
-  value: object,
-  key: PropertyKey,
-  code: SupabaseManagementBackfillLockedHighWaterCaptureTransportErrorCode
-): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail(code)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
-}
-
-function plainRecord(
-  value: unknown,
-  code: SupabaseManagementBackfillLockedHighWaterCaptureTransportErrorCode
-): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail(code)
-  let prototype: object | null
-  try {
-    prototype = Object.getPrototypeOf(value)
-  } catch {
-    return fail(code)
-  }
-  if (prototype !== Object.prototype && prototype !== null) return fail(code)
-  const record = value as UnknownRecord
-  for (const key of ownKeys(record, code)) {
-    if (typeof key !== 'string') return fail(code)
-    ownData(record, key, code)
-  }
-  return record
 }
 
 function exactRecord(
@@ -181,12 +142,9 @@ function utf8ByteLength(value: string): number {
 }
 
 function validPAT(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 16 &&
-    utf8ByteLength(value) <=
-      SUPABASE_MANAGEMENT_BACKFILL_LOCKED_HIGH_WATER_CAPTURE_LIMITS.maxPATBytes &&
-    !/\p{Cc}/u.test(value)
+  return isSupabaseManagementToken(
+    value,
+    SUPABASE_MANAGEMENT_BACKFILL_LOCKED_HIGH_WATER_CAPTURE_LIMITS.maxPATBytes
   )
 }
 
@@ -293,21 +251,6 @@ function wellFormedUTF8(value: string): boolean {
   }
 }
 
-function encodeBase64URL(bytes: Uint8Array): string {
-  return fromUint8Array(bytes, true)
-}
-
-async function digestSQL(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('invalid-request')
-  }
-}
-
 async function trustedRequestSnapshot(
   value: TrustedSupabaseBackfillLockedHighWaterCaptureRequestV1,
   authority: SupabaseBackfillLockedHighWaterWriteAuthorityV1
@@ -353,44 +296,19 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 function requestDeadline(caller: AbortSignal | undefined, timeoutMs: number): RequestDeadline {
-  const controller = new AbortController()
-  let timedOut = false
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) controller.abort(caller.reason)
-  else caller?.addEventListener('abort', onCallerAbort, { once: true })
-  const timeout = setTimeout(() => {
-    timedOut = true
-    controller.abort(
-      new DOMException('Supabase Management locked high-water request timed out', 'TimeoutError')
+  return Object.freeze(
+    createManagementRequestDeadline(
+      caller,
+      timeoutMs,
+      'Supabase Management locked high-water request timed out',
+      true
     )
-  }, timeoutMs)
-  return Object.freeze({
-    signal: controller.signal,
-    timedOut: () => timedOut,
-    dispose: () => {
-      clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  })
+  )
 }
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('Supabase Management locked high-water request aborted', 'AbortError')
-}
-
-function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(abortReason(signal))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
-}
+const waitForAbortable = createManagementOperationWaiter(
+  'Supabase Management locked high-water request aborted'
+)
 
 function abortFailure(deadline: RequestDeadline, caller: AbortSignal | undefined): never {
   if (deadline.timedOut()) return fail('timeout')
@@ -534,25 +452,7 @@ async function readProjectAuthority(
 }
 
 function exactSingleCaptureRow(value: unknown): UnknownRecord {
-  if (!Array.isArray(value) || value.length !== 1) return fail('invalid-response')
-  const keys = ownKeys(value, 'invalid-response')
-  let lengthDescriptor: PropertyDescriptor | undefined
-  try {
-    lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-  } catch {
-    return fail('invalid-response')
-  }
-  if (
-    keys.length !== 2 ||
-    !keys.includes('0') ||
-    !keys.includes('length') ||
-    lengthDescriptor?.enumerable !== false ||
-    !Object.hasOwn(lengthDescriptor, 'value') ||
-    lengthDescriptor.value !== 1
-  ) {
-    return fail('invalid-response')
-  }
-  return plainRecord(ownData(value, '0', 'invalid-response'), 'invalid-response')
+  return plainRecord(dataAdmission.singleItem(value, 'invalid-response'), 'invalid-response')
 }
 
 /** Create one credential- and grant-bound transport for exactly one locked capture request. */

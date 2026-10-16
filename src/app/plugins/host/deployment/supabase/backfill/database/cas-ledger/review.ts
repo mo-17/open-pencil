@@ -1,13 +1,13 @@
 import { uniq } from 'es-toolkit/array'
-import { fromUint8Array } from 'js-base64'
-/* oxlint-disable eslint(max-lines) -- One review artifact keeps its contract, fixed DDL, and provenance checks co-located. */
-
-import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import {
+  supabaseBackfillReceiptReviewBindings,
   trustedSupabaseBackfillReceiptV2ReviewContextV1,
   type SupabaseBackfillReceiptV2ReviewEnvelopeV1
 } from '@/app/plugins/host/deployment/supabase/backfill/receipt/v2/review'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+/* oxlint-disable eslint(max-lines) -- One review artifact keeps its contract, fixed DDL, and provenance checks co-located. */
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA_SQL_SOURCE from './schema-v1.sql?raw'
 
@@ -23,6 +23,16 @@ export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_TABLES = Object.freeze({
 })
 export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_MAX_RECEIPT_BYTES = 65_536
 export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_MAX_SCOPE_BYTES = 65_536
+
+const LEDGER_IDENTITY_CONSTRAINTS = Object.freeze({
+  captureDigestUnique: true,
+  scopeDigestUnique: true,
+  receiptIdUniquePerExecution: true,
+  eventIdUniquePerExecution: true,
+  idempotencyKeyUniquePerExecution: true,
+  requestDigestUniquePerExecution: true,
+  receiptDigestUniquePerExecution: true
+} as const)
 
 const INPUT_KEYS = ['receiptReview'] as const
 const DIGEST = /^[A-Za-z0-9_-]{43}$/u
@@ -201,43 +211,27 @@ interface ReceiptReviewRuntimeView {
   }>
 }
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
+const { digest, digestText: digestSql } = createSupabaseDigests(() =>
+  fail('supabase-backfill-database-cas-ledger-digest-failed')
+)
+
 function fail(code: SupabaseBackfillDatabaseCASLedgerReviewErrorCode): never {
   throw new SupabaseBackfillDatabaseCASLedgerReviewError(code)
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('supabase-backfill-database-cas-ledger-input-invalid')
-  }
-  let prototype: object | null
-  let ownKeys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    ownKeys = Reflect.ownKeys(value)
-  } catch {
-    return fail('supabase-backfill-database-cas-ledger-input-invalid')
-  }
-  if (
-    (prototype !== Object.prototype && prototype !== null) ||
-    ownKeys.length !== keys.length ||
-    ownKeys.some((key) => typeof key !== 'string' || !keys.includes(key))
-  ) {
-    return fail('supabase-backfill-database-cas-ledger-input-invalid')
-  }
-  return value as UnknownRecord
+  const record = dataAdmission.recordShape(
+    value,
+    keys,
+    'supabase-backfill-database-cas-ledger-input-invalid'
+  )
+  return record
 }
 
 function ownData(value: object, key: string): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail('supabase-backfill-database-cas-ledger-input-invalid')
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('supabase-backfill-database-cas-ledger-input-invalid')
-  }
-  return descriptor.value
+  return dataAdmission.ownData(value, key, 'supabase-backfill-database-cas-ledger-input-invalid')
 }
 
 function inputSnapshot(value: unknown): CreateSupabaseBackfillDatabaseCASLedgerReviewOptionsV1 {
@@ -249,29 +243,6 @@ function inputSnapshot(value: unknown): CreateSupabaseBackfillDatabaseCASLedgerR
   return Object.freeze({
     receiptReview: receiptReview as SupabaseBackfillReceiptV2ReviewEnvelopeV1
   })
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-database-cas-ledger-digest-failed')
-  }
-}
-
-function encodeBase64URL(bytes: Uint8Array): string {
-  return fromUint8Array(bytes, true)
-}
-
-async function digestSql(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-database-cas-ledger-digest-failed')
-  }
 }
 
 function databaseCASLedgerSql(): string {
@@ -471,13 +442,7 @@ function ledgerShape() {
     format: 'openpencil.supabase-backfill-database-cas-ledger-shape.v1' as const,
     schemaName: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA,
     tables: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_TABLES,
-    captureDigestUnique: true as const,
-    scopeDigestUnique: true as const,
-    receiptIdUniquePerExecution: true as const,
-    eventIdUniquePerExecution: true as const,
-    idempotencyKeyUniquePerExecution: true as const,
-    requestDigestUniquePerExecution: true as const,
-    receiptDigestUniquePerExecution: true as const,
+    ...LEDGER_IDENTITY_CONSTRAINTS,
     captureCheckpointAtInitialRevisionOnly: true as const,
     currentHeadTupleColumns: Object.freeze(['revision', 'eventId', 'receiptDigest'] as const),
     databaseCompareAndSwapRequiredByReceiptPolicy: true as const,
@@ -649,25 +614,14 @@ export async function createSupabaseBackfillDatabaseCASLedgerReviewV1(
     executionAuthorityCreated: false as const,
     receiptAuthorityCreated: false as const,
     bindings: Object.freeze({
-      receiptReviewDigest: receiptReview.reviewDigest,
-      scopeDraftDigest: receiptReview.review.bindings.scopeDraftDigest,
-      captureDigest: receiptReview.review.bindings.captureDigest,
-      providerAuthorityDigest: receiptReview.review.bindings.providerAuthorityDigest,
-      applicationDigest: receiptReview.review.bindings.applicationDigest,
-      migrationDigest: receiptReview.review.bindings.migrationDigest,
+      ...supabaseBackfillReceiptReviewBindings(receiptReview),
       ledgerShapeDigest,
       sqlDigest
     }),
     ledger: Object.freeze({
       schemaName: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA,
       tables: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_TABLES,
-      captureDigestUnique: true as const,
-      scopeDigestUnique: true as const,
-      receiptIdUniquePerExecution: true as const,
-      eventIdUniquePerExecution: true as const,
-      idempotencyKeyUniquePerExecution: true as const,
-      requestDigestUniquePerExecution: true as const,
-      receiptDigestUniquePerExecution: true as const,
+      ...LEDGER_IDENTITY_CONSTRAINTS,
       maximumReceiptsPerExecution: 10_000 as const,
       maximumBatchReceiptsPerExecution: 9_999 as const,
       maximumCanonicalScopeBytes: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_MAX_SCOPE_BYTES,

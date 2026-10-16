@@ -1,6 +1,5 @@
 import {
   resolveCompilerLocalFonts,
-  withDefaults,
   type CompilerFontFaceAsset,
   type CompilerFontManifest,
   type CompileWarning
@@ -12,15 +11,12 @@ import {
   type NodeFontFace
 } from '@open-pencil/core/text'
 
-import {
-  prepareAppBackendProviderCompilerOptions,
-  readAppBackendProviderDocumentRequest,
-  type AppBackendProviderHostStore
-} from '../backend-provider'
+import { type AppBackendProviderHostStore } from '../backend-provider'
 import { throwIfPluginExportAborted } from '../exporter-abort'
 import {
   buildSourceProjectExportFiles,
   createDefaultSourceProjectExporterDependencies,
+  prepareSourceProjectCompilerInput,
   resolveSourceExporterInvocation,
   runSourceProjectExport,
   sourceProjectNames,
@@ -40,13 +36,6 @@ export interface VueSourceExporterDependencies extends SourceProjectExporterDepe
     | Promise<AppBackendProviderHostStore>
 }
 export type VueSourceExportResult = SourceProjectExportResult
-
-async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHostStore> {
-  // Dynamic import avoids app bootstrap -> Host registry -> Vue exporter -> app bootstrap cycles.
-  const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
-  await appPluginStoreReady
-  return appPluginStore
-}
 
 const DEFAULT_DEPENDENCIES = Object.freeze({
   ...createDefaultSourceProjectExporterDependencies<VueSourceExportEditor>('Vue project'),
@@ -180,28 +169,13 @@ export async function exportCurrentDocumentAsVueSource(
     signal,
     compilerTargetName: 'Vue',
     applyFontPolicy: applyVueRedistributionFontPolicy,
-    async createCompilerInput({ pageIds, fontManifest }) {
-      const baseOptions = withDefaults({
-        packageName: names.package,
-        productName: names.product,
-        target: 'vue',
-        router: pageIds.length > 1 ? 'vue-router-v4' : 'none',
-        devMode: false
-      })
-      const options = readAppBackendProviderDocumentRequest(editor.graph)
-        ? prepareAppBackendProviderCompilerOptions(
-            await (dependencies.resolveBackendProviderStore?.() ??
-              resolveLiveBackendProviderStore()),
-            editor.graph,
-            baseOptions
-          )
-        : baseOptions
-      return {
-        graph: editor.graph,
-        pageIds,
-        fontManifest,
-        options
-      }
+    createCompilerInput(context) {
+      return prepareSourceProjectCompilerInput(
+        context,
+        names,
+        'vue',
+        dependencies.resolveBackendProviderStore
+      )
     },
     buildProject(compiledFiles, warnings) {
       return buildSourceProjectExportFiles(compiledFiles, warnings, 'Vue')

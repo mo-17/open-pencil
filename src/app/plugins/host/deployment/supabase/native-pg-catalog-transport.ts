@@ -1,6 +1,10 @@
 import { encodeBase64URL } from '@open-pencil/scene-graph'
 
 import {
+  createSupabaseDataAdmission,
+  readSupabaseDataProperty
+} from '@/app/plugins/host/deployment/supabase/data-admission'
+import {
   supabaseManagementNativeBridge,
   SupabaseManagementNativeError,
   type SupabaseManagementNativeBridge,
@@ -51,36 +55,16 @@ const PRODUCTION_FACTORY_KEYS = ['expectedOrganizationId', 'signal'] as const
 const TESTING_FACTORY_KEYS = ['expectedOrganizationId', 'bridge', 'signal'] as const
 const productionTransports = new WeakSet<object>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
 function fail(code: 'invalid-authority' | 'invalid-request' | 'invalid-response'): never {
   throw new SupabaseManagementPgCatalogTransportError(code)
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('invalid-response')
-  }
-  let prototype: object | null
-  let ownKeys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    ownKeys = Reflect.ownKeys(value)
-  } catch {
-    return fail('invalid-response')
-  }
-  if (
-    (prototype !== Object.prototype && prototype !== null) ||
-    ownKeys.length !== keys.length ||
-    ownKeys.some((key) => typeof key !== 'string' || !keys.includes(key))
-  ) {
-    return fail('invalid-response')
-  }
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-      return fail('invalid-response')
-    }
-  }
-  return value as UnknownRecord
+  const record = dataAdmission.recordShape(value, keys, 'invalid-response')
+  for (const key of keys) readSupabaseDataProperty(record, key, () => fail('invalid-response'))
+  return record
 }
 
 function data(source: UnknownRecord, key: string): unknown {

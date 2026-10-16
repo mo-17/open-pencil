@@ -21,12 +21,9 @@ import {
   type EffectPickConfigV1
 } from '#core/plugins/effect-pick'
 
+import { withEffectPickPreviewParagraph } from './drawing'
 import { drawEffectPickFamily } from './family'
-import {
-  EFFECT_PICK_PREVIEW_LINE_HEIGHT,
-  effectPickPreviewLabel,
-  effectPickPreviewText
-} from './text'
+import { EFFECT_PICK_PREVIEW_LINE_HEIGHT, effectPickPreviewLabel } from './text'
 
 const BUTTON_PADDING_Y = 12
 const BUTTON_BORDER_WIDTH = 1
@@ -155,20 +152,12 @@ function drawEffectCopy(
     renderer.fillPaint
   )
   if (!renderer.fontProvider || !renderer.fontsLoaded) return
-  const label = effectPickPreviewLabel(
-    node,
-    effectPickPreviewText(config.effectId, config.text),
-    width,
-    Math.min(3, Math.max(1, Math.floor(height / EFFECT_PICK_PREVIEW_LINE_HEIGHT)))
-  )
-  const readiness = renderer.nodeFontReadiness(label)
-  if (readiness !== 'ready' && readiness !== 'substituted') return
-  const color = parseColor(config.color)
-  withTextParagraph(
+  withEffectPickPreviewParagraph(
     renderer,
-    label,
-    renderer.color4f(color.r, color.g, color.b, color.a),
-    { halfLeading: true },
+    node,
+    config,
+    width,
+    Math.min(3, Math.max(1, Math.floor(height / EFFECT_PICK_PREVIEW_LINE_HEIGHT))),
     (paragraph) => {
       withModulePreviewRectClip(
         renderer,

@@ -1,4 +1,7 @@
-import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
+import {
+  prettyCanonicalBackendJSON,
+  digestCanonicalBackendValue
+} from '#compiler/backend/canonical'
 import type {
   BackendArtifactSourceV2,
   BackendProviderAdapterContextV2
@@ -13,10 +16,6 @@ import {
   SUPABASE_ATOMIC_TRANSACTION_ARTIFACT_PATHS_V2
 } from './index'
 import { emitSupabaseAtomicTransactionSQLV2 } from './sql'
-
-function stableJSON(value: unknown, path: string): string {
-  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
-}
 
 function assertExpectedPlan(context: BackendProviderAdapterContextV2, plan: JSONValue): void {
   const expected = createSupabaseAtomicTransactionPlanV2(context)
@@ -144,13 +143,19 @@ export function emitSupabaseAtomicTransactionArtifactsV2(
       path: SUPABASE_ATOMIC_TRANSACTION_ARTIFACT_PATHS_V2.prerequisites,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(prerequisites, '$.supabaseAtomicTransaction.prerequisites')
+      content: prettyCanonicalBackendJSON(
+        prerequisites,
+        '$.supabaseAtomicTransaction.prerequisites'
+      )
     }),
     Object.freeze({
       path: SUPABASE_ATOMIC_TRANSACTION_ARTIFACT_PATHS_V2.reviewManifest,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(reviewManifest, '$.supabaseAtomicTransaction.reviewManifest')
+      content: prettyCanonicalBackendJSON(
+        reviewManifest,
+        '$.supabaseAtomicTransaction.reviewManifest'
+      )
     }),
     Object.freeze({
       path: SUPABASE_ATOMIC_TRANSACTION_ARTIFACT_PATHS_V2.sql,

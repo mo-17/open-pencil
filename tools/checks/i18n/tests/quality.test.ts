@@ -90,7 +90,7 @@ describe('translation quality checks', () => {
     expect(isIdenticalEnglishProse('Save', ' Save ')).toBe(true)
     expect(isIdenticalEnglishProse('No matching properties', 'No matching properties')).toBe(true)
     expect(isIdenticalEnglishProse('Motion settings', 'Motion settings')).toBe(true)
-    expect(isIdenticalEnglishProse('Supabase', 'Supabase')).toBe(true)
+    expect(isIdenticalEnglishProse('Supabase', 'Supabase')).toBe(false)
     expect(isIdenticalEnglishProse('https://example.com/a', 'https://example.com/a')).toBe(false)
     expect(isIdenticalEnglishProse('https://example.com/a', ' https://example.com/a ')).toBe(true)
     expect(isIdenticalEnglishProse('{nodes}, {edges}', '{nodes}, {edges}')).toBe(false)
@@ -107,13 +107,13 @@ describe('translation quality checks', () => {
         '配置 JWT_ISSUER 和 DATABASE_URL。',
         'Configure JWT_ISSUER and DATABASE_URL.'
       )
-    ).toBe(true)
+    ).toBe(false)
     expect(
       hasMixedLatinAndCjk(
         '导出 __opGrantAnalyticsConsent()。',
         'Exports __opGrantAnalyticsConsent().'
       )
-    ).toBe(true)
+    ).toBe(false)
     expect(hasMixedLatinAndCjk('配置 JWT_ISSUER。')).toBe(true)
     expect(hasMixedLatinAndCjk('配置 JWT_ISSUER_OTHER。', 'Configure JWT_ISSUER.')).toBe(true)
     expect(
@@ -124,8 +124,8 @@ describe('translation quality checks', () => {
     expect(hasMixedLatinAndCjk('保留 {"label":"Save changes"}。', '{"label":"Save changes"}')).toBe(
       true
     )
-    expect(hasMixedLatinAndCjk('Supabase 默认设置。', 'Supabase default.')).toBe(true)
-    expect(hasMixedLatinAndCjk('APIキーを更新', 'Update API key')).toBe(true)
+    expect(hasMixedLatinAndCjk('Supabase 默认设置。', 'Supabase default.')).toBe(false)
+    expect(hasMixedLatinAndCjk('APIキーを更新', 'Update API key')).toBe(false)
     expect(
       hasMixedLatinAndCjk('保留 {"标题":"$currentUser.email"}。', '{"title":"$currentUser.email"}')
     ).toBe(true)
@@ -138,7 +138,7 @@ describe('translation quality checks', () => {
         'Supabase $currentUser.signedIn 保持 false。',
         'Supabase $currentUser.signedIn stays false.'
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('keeps altered or incomplete dollar references subject to review', () => {

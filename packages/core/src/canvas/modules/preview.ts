@@ -167,6 +167,19 @@ export function configureModulePreviewPaint(renderer: SkiaRenderer, cssColor: st
   renderer.fillPaint.setBlendMode(renderer.ck.BlendMode.SrcOver)
 }
 
+export function drawModulePreviewRoundedRect(
+  renderer: SkiaRenderer,
+  canvas: Canvas,
+  size: Pick<SceneNode, 'width' | 'height'>,
+  borderRadius: number
+): void {
+  const radius = Math.min(borderRadius, size.width / 2, size.height / 2)
+  canvas.drawRRect(
+    renderer.ck.RRectXY(renderer.ck.LTRBRect(0, 0, size.width, size.height), radius, radius),
+    renderer.fillPaint
+  )
+}
+
 export function drawModulePreviewLabel(
   renderer: SkiaRenderer,
   canvas: Canvas,

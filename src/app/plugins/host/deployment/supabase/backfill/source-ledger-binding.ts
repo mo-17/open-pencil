@@ -1,4 +1,3 @@
-/* oxlint-disable eslint(max-lines), eslint(complexity) -- Source-ledger evidence, testing trust root, and final scope materialization stay in one audit boundary. */
 import {
   canonicalSupabaseInspectedSourceMigrationLedgerJSON,
   verifySupabaseInspectedSourceMigrationLedgerIntegrity,
@@ -20,7 +19,12 @@ import {
   type BackendSourceLedgerBindingSubjectV1,
   type SourceMigrationLedgerV1
 } from '@open-pencil/lowcode/backend'
-import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
+import { encodeBase64URL } from '@open-pencil/scene-graph'
+
+import { supabaseBackfillReceiptReviewBindings } from '@/app/plugins/host/deployment/supabase/backfill/receipt/v2/review'
+/* oxlint-disable eslint(max-lines), eslint(complexity) -- Source-ledger evidence, testing trust root, and final scope materialization stay in one audit boundary. */
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import {
   trustedSupabaseBackfillLockedHighWaterCaptureV1,
@@ -291,21 +295,18 @@ const trustedScopes = new WeakMap<
   TrustedSupabaseBackfillExecutionScopeV2ForTestingContextV1
 >()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
+const { digest } = createSupabaseDigests(() =>
+  fail('supabase-backfill-source-ledger-digest-failed')
+)
+
 function fail(code: SupabaseBackfillSourceLedgerBindingErrorCode): never {
   throw new SupabaseBackfillSourceLedgerBindingError(code)
 }
 
 function ownData(value: object, key: PropertyKey): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail('supabase-backfill-source-ledger-input-invalid')
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('supabase-backfill-source-ledger-input-invalid')
-  }
-  return descriptor.value
+  return dataAdmission.ownData(value, key, 'supabase-backfill-source-ledger-input-invalid')
 }
 
 function exactInput(value: unknown, keys: readonly string[]): UnknownRecord {
@@ -329,14 +330,6 @@ function exactInput(value: unknown, keys: readonly string[]): UnknownRecord {
   }
   for (const key of keys) ownData(value, key)
   return value as UnknownRecord
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-source-ledger-digest-failed')
-  }
 }
 
 async function textDigest(value: string): Promise<string> {
@@ -636,12 +629,7 @@ export async function createSupabaseBackfillSourceLedgerReviewV1(
     executionAuthorityCreated: false as const,
     receiptAuthorityCreated: false as const,
     bindings: Object.freeze({
-      receiptReviewDigest: receiptReview.reviewDigest,
-      scopeDraftDigest: receiptReview.review.bindings.scopeDraftDigest,
-      captureDigest: receiptReview.review.bindings.captureDigest,
-      providerAuthorityDigest: receiptReview.review.bindings.providerAuthorityDigest,
-      applicationDigest: receiptReview.review.bindings.applicationDigest,
-      migrationDigest: receiptReview.review.bindings.migrationDigest,
+      ...supabaseBackfillReceiptReviewBindings(receiptReview),
       migrationPlanDigest: receiptReview.review.scopeDraft.migrationPlanDigest,
       bindingReceiptDigest: verified.receiptDigest,
       subjectDigest: verified.subjectDigest,

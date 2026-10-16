@@ -616,7 +616,7 @@
   "lowcodePaginationBindingHint": "La page actuelle écrit un état numérique de page ou de document. Le total et la taille sont en lecture seule. Les pages hors limites sont ajustées à l’affichage sans modifier l’état.",
   "parentAutoLayoutHint": "Le conteneur parent utilise la disposition automatique. Sélectionnez-le pour modifier le flux et l’alignement.",
   "selectLayoutParent": "Sélectionner le conteneur parent",
-  "motion": "Motion",
+  "motion": "Animation",
   "motionPresets": "Préréglages",
   "motionPresetFadeIn": "Apparition en fondu",
   "motionPresetSlideUp": "Glissement vers le haut",

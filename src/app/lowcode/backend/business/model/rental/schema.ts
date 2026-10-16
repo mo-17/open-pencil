@@ -8,6 +8,7 @@ import {
   businessField,
   linkBusinessOwner
 } from '../entities'
+import { businessSlotFields, businessReservationFields } from '../scheduling'
 import { RENTAL_ADMIN_ROLE, type RentalEntities } from './fields'
 import { addRentalPermissions } from './permissions'
 
@@ -38,12 +39,7 @@ export function createRentalEntities(application: BackendApplicationSpecV1): Ren
   })
   const slots = addBusinessEntity(application, 'rental_slots', [
     businessField('property_id', 'uuid'),
-    businessField('title', 'string'),
-    businessField('starts_at', 'datetime'),
-    businessField('ends_at', 'datetime'),
-    businessField('capacity', 'integer'),
-    businessField('reserved', 'integer', 0),
-    businessField('active', 'boolean', true)
+    ...businessSlotFields()
   ])
   linkBusinessOwner(slots, 'property_id', properties)
   slots.uniques?.push(
@@ -55,12 +51,7 @@ export function createRentalEntities(application: BackendApplicationSpecV1): Ren
     businessField('property_id', 'uuid'),
     businessField('slot_id', 'uuid'),
     businessField('property_title', 'string'),
-    businessField('starts_at', 'datetime'),
-    businessField('ends_at', 'datetime'),
-    businessField('quantity', 'integer'),
-    businessField('attendee_name', 'string'),
-    businessField('contact', 'string'),
-    businessField('note', 'string'),
+    ...businessReservationFields(),
     businessEnumField('status', 'rental-viewing-status', 'confirmed'),
     businessField('version', 'integer', 0)
   ])

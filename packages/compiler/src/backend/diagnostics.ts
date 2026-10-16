@@ -80,3 +80,62 @@ export function normalizeProviderDiagnostics(
   }
   return sortBackendDiagnostics(diagnostics)
 }
+
+export function collectProviderValidationDiagnostics(
+  callback: (() => readonly BackendDiagnostic[]) | undefined,
+  path: string,
+  failureCode: string,
+  version: 1 | 2
+): readonly BackendDiagnostic[] {
+  if (!callback) return []
+  const label = version === 2 ? 'Backend Provider V2' : 'Backend Provider'
+  try {
+    const result = callback()
+    if (!Array.isArray(result))
+      return [
+        backendDiagnostic(
+          `backend-provider-${version === 2 ? 'v2-' : ''}diagnostic-invalid`,
+          'error',
+          path,
+          `${label} validation must return an array of diagnostics.`
+        )
+      ]
+    return normalizeProviderDiagnostics(result, path)
+  } catch {
+    return [
+      backendDiagnostic(
+        failureCode,
+        'error',
+        path,
+        `${label} validation failed without producing a trusted result.`
+      )
+    ]
+  }
+}
+
+export function validateReplannedBackendDigest(
+  expected: string,
+  replanned: {
+    readonly diagnostics: readonly BackendDiagnostic[]
+    readonly plan: { readonly planDigest: string }
+  },
+  diagnostics: BackendDiagnostic[],
+  version: 1 | 2
+): Readonly<{ ok: false; diagnostics: readonly BackendDiagnostic[] }> | undefined {
+  diagnostics.push(...replanned.diagnostics)
+  if (replanned.plan.planDigest === expected) return undefined
+  return {
+    ok: false,
+    diagnostics: sortBackendDiagnostics([
+      ...diagnostics,
+      backendDiagnostic(
+        `backend-provider-${version === 2 ? 'v2-' : ''}plan-stale`,
+        'error',
+        '$.plan',
+        version === 2
+          ? 'Backend Provider V2 plan no longer matches the trusted registry or normalized input.'
+          : 'Backend Provider plan no longer matches the trusted registry, package, or normalized input.'
+      )
+    ])
+  }
+}

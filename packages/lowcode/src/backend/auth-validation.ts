@@ -3,6 +3,7 @@ import { compact } from 'es-toolkit'
 import { discriminatedRecord } from './discriminated-record'
 import { BACKEND_LIMITS } from './limits'
 import { parseAuthConditions } from './row-access/conditions'
+import { COMMON_PRINCIPAL_SHAPES, parseCommonPrincipal } from './row-access/principal'
 import { parseRelatedMember, validateRelatedMemberPolicy } from './row-access/related-member'
 import {
   AUTH_POLICY_IR_VERSION,
@@ -29,10 +30,7 @@ import {
 } from './validation-helpers'
 
 const PRINCIPAL_SHAPES = {
-  anonymous: { allowed: ['kind'], required: ['kind'] },
-  authenticated: { allowed: ['kind'], required: ['kind'] },
-  role: { allowed: ['kind', 'roleId'], required: ['kind', 'roleId'] },
-  owner: { allowed: ['kind', 'ownershipId'], required: ['kind', 'ownershipId'] },
+  ...COMMON_PRINCIPAL_SHAPES,
   'related-member': {
     allowed: [
       'kind',
@@ -162,17 +160,7 @@ function principal(
   if (!parsed) return undefined
   const { kind, source } = parsed
   if (kind === 'related-member') return parseRelatedMember(source, path, context)
-  if (kind === 'anonymous' || kind === 'authenticated') {
-    return { kind }
-  }
-  if (kind === 'role') {
-    const roleId = id(source.roleId, `${path}.roleId`, context)
-    return roleId ? { kind, roleId } : undefined
-  }
-  if (kind === 'owner') {
-    const ownershipId = id(source.ownershipId, `${path}.ownershipId`, context)
-    return ownershipId ? { kind, ownershipId } : undefined
-  }
+  if (kind !== 'tenant-member') return parseCommonPrincipal(kind, source, path, context)
   const tenantId = id(source.tenantId, `${path}.tenantId`, context)
   const roleId =
     source.roleId === undefined ? undefined : id(source.roleId, `${path}.roleId`, context)

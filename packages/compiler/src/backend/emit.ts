@@ -6,6 +6,7 @@ import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {
   RuntimeReadonlyBackendFiles,
+  appendBackendArtifact,
   requiredBackendArtifactSecrets,
   reserveBackendArtifactPath,
   validateBackendArtifactMetadata
@@ -27,6 +28,7 @@ import {
   backendDiagnostic,
   hasBackendErrors,
   sortBackendDiagnostics,
+  validateReplannedBackendDigest,
   unsupportedBackendCompilationModeDiagnostic
 } from './diagnostics'
 import { isReviewedNestJSPresetLockArtifact } from './nestjs/preset-lock'
@@ -168,28 +170,7 @@ function acceptArtifact(
     )
     return
   }
-  const nextTotalBytes = collection.totalBytes + bytes.byteLength
-  if (nextTotalBytes > BACKEND_ARTIFACT_LIMITS.maxTotalBytes) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-total-byte-limit',
-        'error',
-        '$.artifacts',
-        'Backend Provider artifacts exceed the total byte limit.'
-      )
-    )
-    return
-  }
-  collection.totalBytes = nextTotalBytes
-  collection.artifacts.push(
-    Object.freeze({
-      path: artifact.path,
-      kind: artifact.kind,
-      mediaType: artifact.mediaType,
-      content,
-      bytes
-    })
-  )
+  appendBackendArtifact(collection, artifact, content, bytes, BACKEND_ARTIFACT_LIMITS.maxTotalBytes)
 }
 
 function collectAdapterArtifacts(
@@ -289,21 +270,8 @@ export function emitBackendProviderPlan(
     mode
   })
   if (!replanned.ok) return replanned
-  diagnostics.push(...replanned.diagnostics)
-  if (replanned.plan.planDigest !== plan.planDigest) {
-    return {
-      ok: false,
-      diagnostics: sortBackendDiagnostics([
-        ...diagnostics,
-        backendDiagnostic(
-          'backend-provider-plan-stale',
-          'error',
-          '$.plan',
-          'Backend Provider plan no longer matches the trusted registry, package, or normalized input.'
-        )
-      ])
-    }
-  }
+  const stalePlan = validateReplannedBackendDigest(plan.planDigest, replanned, diagnostics, 1)
+  if (stalePlan) return stalePlan
 
   const resolved = registry.resolve(input.selection)
   if (!resolved.ok) return resolved

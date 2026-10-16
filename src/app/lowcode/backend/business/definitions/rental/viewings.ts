@@ -3,7 +3,7 @@ import {
   type BusinessPageDefinition
 } from '@/app/lowcode/backend/business/types'
 
-import { formAction, selectedParameter } from '../shared'
+import { formAction, selectedParameter, reservationStatusFilter } from '../shared'
 import { rentalHistoryColumns, rentalNote, rentalSlotInput, rentalViewingColumns } from './fields'
 
 export function rentalViewingsPage(): BusinessPageDefinition {
@@ -23,14 +23,7 @@ export function rentalViewingsPage(): BusinessPageDefinition {
       resourceId: 'rental-viewings',
       columns: rentalViewingColumns,
       search: true,
-      filter: {
-        field: 'status',
-        choices: [
-          { value: 'confirmed', label: t('Confirmed', '已确认') },
-          { value: 'cancelled', label: t('Cancelled', '已取消') },
-          { value: 'completed', label: t('Completed', '已完成') }
-        ]
-      }
+      filter: reservationStatusFilter()
     },
     details: [
       ...rentalViewingColumns,

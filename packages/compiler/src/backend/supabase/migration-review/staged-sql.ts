@@ -81,6 +81,16 @@ function liveTable(
   return table
 }
 
+function operationTableBinding(
+  context: RenderContext,
+  operation: StagedMigrationOperationV1 & { readonly entityId: string }
+) {
+  const path = operationPath(operation)
+  const entity = targetEntity(context, operation.entityId, path)
+  const table = liveTable(context, operation.entityId, path)
+  return entity && table ? { path, entity, table } : undefined
+}
+
 function statementTableName(context: RenderContext, entityId: string, liveName: string): string {
   return context.renamedTables.get(entityId) ?? liveName
 }
@@ -218,10 +228,9 @@ function renderAddNullableField(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'add-nullable-field' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   const target = targetField(entity, operation.field.id)
   if (!target || !sameFieldShape(operation.field, target)) {
     addBlocker(
@@ -267,10 +276,9 @@ function renderAddForeignKey(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'add-foreign-key' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   const foreignKey = (entity.foreignKeys ?? []).find(
     (entry) => entry.id === operation.foreignKey.id
   )
@@ -343,10 +351,9 @@ function renderAddUnique(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'add-unique' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   const unique = (entity.uniques ?? []).find((entry) => entry.id === operation.unique.id)
   if (!unique || JSON.stringify(unique) !== JSON.stringify(operation.unique)) {
     addBlocker(
@@ -411,10 +418,9 @@ function renderSetGeneratedDefault(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'set-generated-default' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   const field = targetField(entity, operation.fieldId)
   const expectedDefault = field?.default
   if (
@@ -578,10 +584,9 @@ function renderBackfillField(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'backfill-field' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   const field = targetField(entity, operation.fieldId)
   const column = liveColumn(context, table.name, operation.fieldId)
   if (
@@ -750,10 +755,9 @@ function renderRenameEntity(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'rename-entity' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  if (!entity || !table) return []
+  const binding = operationTableBinding(context, operation)
+  if (!binding) return []
+  const { path, entity, table } = binding
   if (
     table.name !== operation.fromName ||
     entity.name !== operation.toName ||
@@ -776,11 +780,7 @@ function renderRenameField(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'rename-field' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  const field = entity ? targetField(entity, operation.fieldId) : undefined
-  const column = table ? liveColumn(context, table.name, operation.fieldId) : undefined
+  const { path, entity, table, field, column } = operationFieldBinding(context, operation)
   if (
     !entity ||
     !table ||
@@ -812,11 +812,7 @@ function renderSetNotNull(
   context: RenderContext,
   operation: Extract<StagedMigrationOperationV1, { kind: 'set-not-null' }>
 ): readonly string[] {
-  const path = operationPath(operation)
-  const entity = targetEntity(context, operation.entityId, path)
-  const table = liveTable(context, operation.entityId, path)
-  const field = entity ? targetField(entity, operation.fieldId) : undefined
-  const column = table ? liveColumn(context, table.name, operation.fieldId) : undefined
+  const { path, entity, table, field, column } = operationFieldBinding(context, operation)
   if (!entity || !table || !field || !column || field.nullable || !column.nullable) {
     addBlocker(
       context.blockers,
@@ -965,4 +961,16 @@ export function renderStagedMigrations(
       left.localeCompare(right, 'en')
     )
   }
+}
+
+function operationFieldBinding(
+  context: RenderContext,
+  operation: StagedMigrationOperationV1 & { readonly entityId: string; readonly fieldId: string }
+) {
+  const path = operationPath(operation)
+  const entity = targetEntity(context, operation.entityId, path)
+  const table = liveTable(context, operation.entityId, path)
+  const field = entity ? targetField(entity, operation.fieldId) : undefined
+  const column = table ? liveColumn(context, table.name, operation.fieldId) : undefined
+  return { path, entity, table, field, column }
 }

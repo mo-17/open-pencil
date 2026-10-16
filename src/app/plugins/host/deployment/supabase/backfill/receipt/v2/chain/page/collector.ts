@@ -1,5 +1,3 @@
-/* oxlint-disable eslint(max-lines), eslint(complexity) -- One bounded provenance and verification boundary is easier to audit as a unit. */
-
 import {
   BACKEND_BACKFILL_EXECUTION_V2_MAX_RECEIPTS,
   createBackendBackfillExecutionReceiptChainVerifierV2,
@@ -7,7 +5,11 @@ import {
   type BackendBackfillExecutionOutcomeV2,
   type BackendBackfillExecutionReceiptV2
 } from '@open-pencil/lowcode/backend'
+/* oxlint-disable eslint(max-lines), eslint(complexity) -- One bounded provenance and verification boundary is easier to audit as a unit. */
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
+
+import { SUPABASE_NO_CREATED_AUTHORITY } from '@/app/plugins/host/deployment/supabase/authority-policy'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
 
 import {
   trustedSupabaseBackfillReceiptV2ChainContinuationPageObservationContextV1,
@@ -130,6 +132,8 @@ interface CollectedPageV1 {
   readonly canonicalReceipts: readonly BackendBackfillExecutionReceiptV2[]
 }
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
 function fail(
   code: SupabaseBackfillReceiptV2ChainPageCollectionErrorCode,
   verifierCode: BackendBackfillExecutionErrorCodeV2 | null = null
@@ -138,16 +142,11 @@ function fail(
 }
 
 function ownData(value: object, key: PropertyKey): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail('supabase-backfill-receipt-v2-chain-page-collection-input-invalid')
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('supabase-backfill-receipt-v2-chain-page-collection-input-invalid')
-  }
-  return descriptor.value
+  return dataAdmission.ownData(
+    value,
+    key,
+    'supabase-backfill-receipt-v2-chain-page-collection-input-invalid'
+  )
 }
 
 function exactInput(value: unknown): UnknownRecord {
@@ -528,13 +527,7 @@ export async function collectAndVerifySupabaseBackfillReceiptV2ChainForTestingV1
     crossPageHeadFreshnessAuthenticated: false as const,
     automaticRetryAllowed: false as const,
     captureConsumed: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     releaseReady: false as const
   }) satisfies SupabaseBackfillReceiptV2ChainPageCollectionV1
 }

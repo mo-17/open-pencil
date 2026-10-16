@@ -10,6 +10,7 @@ import {
   inputParameter,
   profileInput,
   selectedParameter,
+  reservationStatusFilter,
   textInput
 } from './shared'
 
@@ -197,14 +198,7 @@ export function bookingRegistrationDefinition(): BusinessTemplateDefinition {
           resourceId: 'bookings',
           columns: bookedColumns,
           search: true,
-          filter: {
-            field: 'status',
-            choices: [
-              { value: 'confirmed', label: t('Confirmed', '已确认') },
-              { value: 'cancelled', label: t('Cancelled', '已取消') },
-              { value: 'completed', label: t('Completed', '已完成') }
-            ]
-          }
+          filter: reservationStatusFilter()
         },
         details: [
           ...bookedColumns,

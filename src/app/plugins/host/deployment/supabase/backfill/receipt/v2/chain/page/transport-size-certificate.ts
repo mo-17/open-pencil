@@ -1,6 +1,8 @@
 /* oxlint-disable eslint(max-lines) -- One data-only size certificate, its strict wire decoder, and deterministic verifiers form one audit boundary. */
-
-import { BACKEND_BACKFILL_EXECUTION_V2_MAX_RECEIPTS } from '@open-pencil/lowcode/backend'
+import {
+  BACKEND_BACKFILL_EXECUTION_V2_MAX_RECEIPTS,
+  isWellFormedBackendText
+} from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
 
 import { SUPABASE_BACKFILL_RECEIPT_ZERO_CAS_PARAMETER_ORDER } from '@/app/plugins/host/deployment/supabase/backfill/receipt/zero/cas/review'
@@ -244,20 +246,6 @@ function fail(code: SupabaseBackfillReceiptV2ChainTransportSizeErrorCode): never
   throw new SupabaseBackfillReceiptV2ChainTransportSizeError(code)
 }
 
-function hasUnpairedUTF16Surrogate(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index)
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return true
-      index += 1
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      return true
-    }
-  }
-  return false
-}
-
 function ownData(value: object, key: PropertyKey): unknown {
   let descriptor: PropertyDescriptor | undefined
   try {
@@ -304,7 +292,7 @@ function parameterSnapshot(value: unknown): readonly ParameterValue[] {
       values.push(null)
       continue
     }
-    if (typeof entry !== 'string' || hasUnpairedUTF16Surrogate(entry)) {
+    if (typeof entry !== 'string' || !isWellFormedBackendText(entry)) {
       return fail('supabase-backfill-receipt-v2-chain-request-invalid')
     }
     if (
@@ -402,15 +390,9 @@ function fixedTransportSizeArithmeticIsValid(): boolean {
 export function verifySupabaseBackfillReceiptV2ChainTransportSizeCertificateV1(
   value: unknown
 ): value is typeof SUPABASE_BACKFILL_RECEIPT_V2_CHAIN_TRANSPORT_SIZE_CERTIFICATE_V1 {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  let prototype: object | null
-  let keys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    keys = Reflect.ownKeys(value)
-  } catch {
-    return false
-  }
+  const shape = certificateShape(value)
+  if (!shape) return false
+  const { source, prototype, keys } = shape
   if (
     (prototype !== Object.prototype && prototype !== null) ||
     keys.length !== TRANSPORT_SIZE_CERTIFICATE_KEYS.length ||
@@ -423,7 +405,7 @@ export function verifySupabaseBackfillReceiptV2ChainTransportSizeCertificateV1(
   for (const key of TRANSPORT_SIZE_CERTIFICATE_KEYS) {
     let descriptor: PropertyDescriptor | undefined
     try {
-      descriptor = Object.getOwnPropertyDescriptor(value, key)
+      descriptor = Object.getOwnPropertyDescriptor(source, key)
     } catch {
       return false
     }
@@ -506,15 +488,9 @@ export async function verifySupabaseBackfillReceiptV2ChainRequestSizeCertificate
   parameterValues: unknown,
   value: unknown
 ): Promise<boolean> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  let prototype: object | null
-  let keys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    keys = Reflect.ownKeys(value)
-  } catch {
-    return false
-  }
+  const shape = certificateShape(value)
+  if (!shape) return false
+  const { source, prototype, keys } = shape
   if (prototype !== Object.prototype && prototype !== null) {
     return false
   }
@@ -533,7 +509,7 @@ export async function verifySupabaseBackfillReceiptV2ChainRequestSizeCertificate
   for (const key of REQUEST_CERTIFICATE_KEYS) {
     let descriptor: PropertyDescriptor | undefined
     try {
-      descriptor = Object.getOwnPropertyDescriptor(value, key)
+      descriptor = Object.getOwnPropertyDescriptor(source, key)
     } catch {
       return false
     }
@@ -642,4 +618,13 @@ export function certifySupabaseBackfillReceiptV2ChainDecodedAggregateSizeV1(
     maximumDecodedReceiptBytes,
     decodedAggregateBoundCertified: true as const
   })
+}
+
+function certificateShape(value: unknown) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  try {
+    return { source: value, prototype: Object.getPrototypeOf(value), keys: Reflect.ownKeys(value) }
+  } catch {
+    return undefined
+  }
 }

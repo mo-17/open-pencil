@@ -2,6 +2,7 @@ import { onScopeDispose, readonly, ref, shallowReadonly, shallowRef } from 'vue'
 
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 
+import { createSupabaseCredentialWriter } from './credential-write'
 import {
   clearSupabaseManagementDatabaseWritePat,
   setSupabaseManagementDatabaseWritePat,
@@ -69,28 +70,15 @@ export function useSupabaseStagingReleaseAuthority(
     }
   }
 
-  async function saveCredential(value: string): Promise<boolean> {
-    let personalAccessToken = value
-    value = ''
-    if (!personalAccessToken.trim() || credentialBusy.value) {
-      personalAccessToken = ''
-      credentialError.value = true
-      return false
-    }
-    credentialBusy.value = true
-    credentialError.value = false
-    try {
-      await dependencies.setCredential(personalAccessToken)
-      await refreshCredentialStatus()
-      return true
-    } catch {
-      credentialError.value = true
-      return false
-    } finally {
-      personalAccessToken = ''
-      credentialBusy.value = false
-    }
-  }
+  const saveCredential = createSupabaseCredentialWriter(
+    {
+      busy: credentialBusy,
+      error: credentialError,
+      setCredential: (value) => dependencies.setCredential(value),
+      refreshCredentialStatus
+    },
+    true
+  )
 
   async function clearCredential(): Promise<boolean> {
     if (credentialBusy.value) return false

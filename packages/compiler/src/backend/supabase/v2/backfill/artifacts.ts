@@ -1,4 +1,7 @@
-import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
+import {
+  prettyCanonicalBackendJSON,
+  digestCanonicalBackendValue
+} from '#compiler/backend/canonical'
 import type {
   BackendArtifactSourceV2,
   BackendProviderAdapterContextV2
@@ -13,10 +16,6 @@ import {
   SUPABASE_BACKFILL_RELEASE_BLOCKERS_V2
 } from './index'
 import { emitSupabaseBackfillReviewSQLV2 } from './sql'
-
-function stableJSON(value: unknown, path: string): string {
-  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
-}
 
 function assertExpectedPlan(context: BackendProviderAdapterContextV2, plan: JSONValue): void {
   const expected = createSupabaseBackfillPlanV2(context)
@@ -204,13 +203,13 @@ export function emitSupabaseBackfillArtifactsV2(
       path: SUPABASE_BACKFILL_ARTIFACT_PATHS_V2.migrationPlan,
       kind: 'migration-plan' as const,
       mediaType: 'application/json',
-      content: stableJSON(migrationPlan, '$.supabaseBackfill.migrationPlan')
+      content: prettyCanonicalBackendJSON(migrationPlan, '$.supabaseBackfill.migrationPlan')
     }),
     Object.freeze({
       path: SUPABASE_BACKFILL_ARTIFACT_PATHS_V2.reviewManifest,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(reviewManifest, '$.supabaseBackfill.reviewManifest')
+      content: prettyCanonicalBackendJSON(reviewManifest, '$.supabaseBackfill.reviewManifest')
     }),
     Object.freeze({
       path: SUPABASE_BACKFILL_ARTIFACT_PATHS_V2.sql,

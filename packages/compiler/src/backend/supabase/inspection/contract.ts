@@ -146,9 +146,7 @@ export type SupabaseInspectionObjectV1 =
   | SupabaseInspectionViewObjectV1
   | SupabaseInspectionFunctionObjectV1
 
-export interface SupabaseInspectionPolicyV1 {
-  readonly schema: 'public'
-  readonly tableName: string
+interface SupabaseInspectionPolicyFields {
   readonly name: string
   readonly command: (typeof INSPECTION_POLICY_COMMANDS)[number]
   readonly mode: (typeof INSPECTION_POLICY_MODES)[number]
@@ -156,6 +154,11 @@ export interface SupabaseInspectionPolicyV1 {
   readonly source: SupabaseInspectionInventorySource
   readonly usingExpressionDigest: string | null
   readonly withCheckExpressionDigest: string | null
+}
+
+export interface SupabaseInspectionPolicyV1 extends SupabaseInspectionPolicyFields {
+  readonly schema: 'public'
+  readonly tableName: string
 }
 
 export interface SupabaseInspectionStorageBucketV1 {
@@ -166,15 +169,8 @@ export interface SupabaseInspectionStorageBucketV1 {
   readonly allowedMimeTypes: readonly string[] | null
 }
 
-export interface SupabaseInspectionStoragePolicyV1 {
+export interface SupabaseInspectionStoragePolicyV1 extends SupabaseInspectionPolicyFields {
   readonly address: SupabaseInspectionCatalogAddressV1
-  readonly name: string
-  readonly command: (typeof INSPECTION_POLICY_COMMANDS)[number]
-  readonly mode: (typeof INSPECTION_POLICY_MODES)[number]
-  readonly roles: readonly string[]
-  readonly source: SupabaseInspectionInventorySource
-  readonly usingExpressionDigest: string | null
-  readonly withCheckExpressionDigest: string | null
 }
 
 export interface SupabaseInspectionRoleV1 {

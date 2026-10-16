@@ -101,8 +101,8 @@ export type UnitTestGroup = keyof typeof UNIT_TEST_GROUPS | 'all'
 export const LARGE_FIXTURES = ['material3.fig', 'nuxtui.fig'] as const
 
 /**
- * Tests that parse large fixtures. Quick runs skip them, and full runs give each its own
- * process, since one alone can take several gigabytes.
+ * Tests that parse large fixtures or expand large instance graphs. Quick runs skip them,
+ * and full runs give each its own process, since one alone can take several gigabytes.
  */
 export const HEAVY_UNIT_TEST_PATTERNS = [
   'tests/engine/cli/compile-i18n.test.ts',
@@ -124,6 +124,7 @@ export const HEAVY_UNIT_TEST_PATTERNS = [
   'tests/engine/io/fig/export/worker.test.ts',
   'tests/engine/io/fig/import/group-reclassify.test.ts',
   'tests/engine/io/fig/import/ordinary-reader-policy.test.ts',
+  'tests/engine/io/fig/plugin-data.test.ts',
   'tests/engine/io/fig/roundtrip/variables.test.ts',
   'tests/engine/layout/auto-layout/text/measurement.test.ts',
   'tests/engine/render/canvas/cache.test.ts',

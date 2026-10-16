@@ -1,4 +1,6 @@
-import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
+import { SUPABASE_NO_CREATED_AUTHORITY } from '@/app/plugins/host/deployment/supabase/authority-policy'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import {
   SUPABASE_BACKFILL_RECEIPT_ZERO_CAS_PARAMETER_ORDER,
@@ -73,59 +75,18 @@ interface UnknownRecord {
   [key: PropertyKey]: unknown
 }
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+const { ownData } = dataAdmission
+
+const { digest, digestText: digestRawText } = createSupabaseDigests(() =>
+  fail('supabase-backfill-receipt-zero-cas-response-digest-failed')
+)
+
 function fail(code: SupabaseBackfillReceiptZeroCASResponseErrorCode): never {
   throw new SupabaseBackfillReceiptZeroCASResponseError(code)
 }
 
-function ownKeys(
-  value: object,
-  code: SupabaseBackfillReceiptZeroCASResponseErrorCode
-): readonly PropertyKey[] {
-  try {
-    return Reflect.ownKeys(value)
-  } catch {
-    return fail(code)
-  }
-}
-
-function ownData(
-  value: object,
-  key: PropertyKey,
-  code: SupabaseBackfillReceiptZeroCASResponseErrorCode
-): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail(code)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
-}
-
-function exactPlainRecord(
-  value: unknown,
-  expectedKeys: readonly string[],
-  code: SupabaseBackfillReceiptZeroCASResponseErrorCode
-): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail(code)
-  let prototype: object | null
-  try {
-    prototype = Object.getPrototypeOf(value)
-  } catch {
-    return fail(code)
-  }
-  if (prototype !== Object.prototype && prototype !== null) return fail(code)
-  const keys = ownKeys(value, code)
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))
-  ) {
-    return fail(code)
-  }
-  for (const key of expectedKeys) ownData(value, key, code)
-  return value as UnknownRecord
-}
+const { exactRecord: exactPlainRecord } = dataAdmission
 
 function exactInput(value: unknown): UnknownRecord {
   return exactPlainRecord(
@@ -140,28 +101,8 @@ function exactSingleStatusResponse(value: unknown): Readonly<{
   canonicalResponse: readonly Readonly<{ status: SupabaseBackfillReceiptZeroCASResultStateV1 }>[]
 }> {
   const code = 'supabase-backfill-receipt-zero-cas-response-invalid' as const
-  if (!Array.isArray(value)) return fail(code)
-  let prototype: object | null
-  let lengthDescriptor: PropertyDescriptor | undefined
-  try {
-    prototype = Object.getPrototypeOf(value)
-    lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-  } catch {
-    return fail(code)
-  }
-  const keys = ownKeys(value, code)
-  if (
-    prototype !== Array.prototype ||
-    keys.length !== 2 ||
-    !keys.includes('0') ||
-    !keys.includes('length') ||
-    lengthDescriptor?.enumerable !== false ||
-    !Object.hasOwn(lengthDescriptor, 'value') ||
-    lengthDescriptor.value !== 1
-  ) {
-    return fail(code)
-  }
-  const row = exactPlainRecord(ownData(value, '0', code), RESPONSE_ROW_KEYS, code)
+  const item = dataAdmission.canonicalSingleItem(value, code, false)
+  const row = exactPlainRecord(item, RESPONSE_ROW_KEYS, code)
   const status = ownData(row, 'status', code)
   if (typeof status !== 'string' || !RESPONSE_STATES.has(status)) return fail(code)
   const parsedStatus = status as SupabaseBackfillReceiptZeroCASResultStateV1
@@ -169,25 +110,6 @@ function exactSingleStatusResponse(value: unknown): Readonly<{
     status: parsedStatus,
     canonicalResponse: Object.freeze([Object.freeze({ status: parsedStatus })])
   })
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-response-digest-failed')
-  }
-}
-
-async function digestRawText(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-response-digest-failed')
-  }
 }
 
 async function requireCurrentReview(
@@ -275,13 +197,7 @@ export async function parseSupabaseBackfillReceiptZeroCASResponseForTestingV1(
     automaticRetryAllowed: false as const,
     captureConsumed: false as const,
     hiddenParameterValuesExposed: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     releaseReady: false as const
   })
 }

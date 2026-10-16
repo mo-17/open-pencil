@@ -144,3 +144,12 @@ export function validateDigest(value: unknown, path: string): string {
 }
 
 export type { UnknownRecord }
+
+export function optionalInspectedField<T>(
+  source: UnknownRecord,
+  key: string,
+  path: string,
+  parse: (value: unknown, path: string) => T
+): T | undefined {
+  return source[key] === undefined ? undefined : parse(source[key], `${path}.${key}`)
+}

@@ -15,6 +15,7 @@ import {
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import type { PreparedAppBackendProviderBuild } from '@/app/plugins/host/backend-provider'
+import { requiredSupabaseSecretReferences } from '@/app/plugins/host/deployment/supabase/required-secrets'
 
 import {
   BackendHostReleaseApplyError,
@@ -289,22 +290,6 @@ function assertBuildAuthority(
   }
 }
 
-function requiredReferences(build: SupabaseBackendReleaseBuild): Readonly<{
-  environmentNames: readonly string[]
-  credentialRefs: readonly BackendCredentialRef[]
-}> {
-  const environmentNames = build.request.application.secrets.flatMap((secret) =>
-    secret.kind === 'environment' && secret.required ? [secret.name] : []
-  )
-  const credentialRefs = build.request.application.secrets.flatMap((secret) =>
-    secret.kind === 'credential' && secret.required ? [secret.credentialRef] : []
-  )
-  return Object.freeze({
-    environmentNames: Object.freeze([...new Set(environmentNames)].sort()),
-    credentialRefs: Object.freeze([...new Set(credentialRefs)].sort())
-  })
-}
-
 function sameMigrationPlan(
   left: SupabaseInspectedMigrationReviewV1['manifest']['migrationPlan'],
   right: SupabaseInspectedMigrationReviewV1['manifest']['migrationPlan']
@@ -396,7 +381,7 @@ export function createSupabaseBackendRelease(
   } = options
   const backendProvider = normalizeBackendReleaseProviderAuthority(requestedBackendProvider)
   assertBuildAuthority(build, backendProvider)
-  const references = requiredReferences(build)
+  const references = requiredSupabaseSecretReferences(build.request.application)
   const expectedTargetModelDigest = digestDataModel(build.request.application.dataModel)
   const reviewsBySchemaDigest = new Map<string, SupabaseInspectedMigrationReviewV1>()
   const artifactsByDigest = new Map<string, SupabaseBackendReleaseReviewArtifactV1>()

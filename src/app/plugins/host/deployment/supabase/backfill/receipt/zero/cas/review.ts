@@ -1,5 +1,4 @@
 import { fromUint8Array } from 'js-base64'
-/* oxlint-disable eslint(max-lines), eslint(complexity) -- The fixed transaction, parameter contract, state machine, and provenance checks form one audit boundary. */
 
 import {
   canonicalBackendBackfillExecutionReceiptV2Bytes,
@@ -7,7 +6,10 @@ import {
   digestBackendBackfillExecutionReceiptV2,
   digestBackendBackfillExecutionScopeV2
 } from '@open-pencil/lowcode/backend'
-import { digestCanonicalManifest } from '@open-pencil/scene-graph'
+
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+/* oxlint-disable eslint(max-lines), eslint(complexity) -- The fixed transaction, parameter contract, state machine, and provenance checks form one audit boundary. */
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import {
   trustedSupabaseBackfillReceiptZeroReviewContextV1,
@@ -261,67 +263,28 @@ interface ReceiptZeroRuntimeView {
 
 const trustedReviews = new WeakMap<object, TrustedSupabaseBackfillReceiptZeroCASReviewContextV1>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
+const { digest, digestText: digestSql } = createSupabaseDigests(() =>
+  fail('supabase-backfill-receipt-zero-cas-digest-failed')
+)
+
 function fail(code: SupabaseBackfillReceiptZeroCASReviewErrorCode): never {
   throw new SupabaseBackfillReceiptZeroCASReviewError(code)
 }
 
 function ownData(value: object, key: PropertyKey): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-input-invalid')
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return fail('supabase-backfill-receipt-zero-cas-input-invalid')
-  }
-  return descriptor.value
+  return dataAdmission.ownData(value, key, 'supabase-backfill-receipt-zero-cas-input-invalid')
 }
 
 function exactInput(value: unknown): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('supabase-backfill-receipt-zero-cas-input-invalid')
-  }
-  let prototype: object | null
-  let keys: readonly PropertyKey[]
-  try {
-    prototype = Object.getPrototypeOf(value)
-    keys = Reflect.ownKeys(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-input-invalid')
-  }
-  if (
-    (prototype !== Object.prototype && prototype !== null) ||
-    keys.length !== INPUT_KEYS.length ||
-    keys.some((key) => typeof key !== 'string' || !INPUT_KEYS.includes(key as never))
-  ) {
-    return fail('supabase-backfill-receipt-zero-cas-input-invalid')
-  }
-  for (const key of INPUT_KEYS) ownData(value, key)
-  return value as UnknownRecord
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-digest-failed')
-  }
-}
-
-function encodeBase64URL(bytes: Uint8Array): string {
-  return fromUint8Array(bytes, true)
-}
-
-async function digestSql(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-receipt-zero-cas-digest-failed')
-  }
+  const record = dataAdmission.recordShape(
+    value,
+    INPUT_KEYS,
+    'supabase-backfill-receipt-zero-cas-input-invalid'
+  )
+  for (const key of INPUT_KEYS) ownData(record, key)
+  return record
 }
 
 function uniqueBlockers(values: readonly string[]): readonly string[] {

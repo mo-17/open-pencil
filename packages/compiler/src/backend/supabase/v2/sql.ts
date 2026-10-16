@@ -1,3 +1,5 @@
+import { quoteIdentifier, quoteLiteral } from '#compiler/backend/supabase/v2/sql-primitives'
+
 import type { BackendApplicationSpecV2, BackendRealtimeEvent } from '@open-pencil/lowcode/backend'
 
 import {
@@ -12,14 +14,6 @@ const EVENT_ORDER = Object.freeze([
   'update',
   'delete'
 ] as const satisfies readonly BackendRealtimeEvent[])
-
-function quoteIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`
-}
-
-function quoteLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
-}
 
 function primaryKeyJSON(
   subscription: ResolvedSupabasePrivateRealtimeSubscriptionV2,

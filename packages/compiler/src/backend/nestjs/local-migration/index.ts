@@ -1,4 +1,5 @@
 import { digestCanonicalBackendValue, freezeBackendValue } from '#compiler/backend/canonical'
+import { readExactBackendData } from '#compiler/backend/provider-data'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { fromUint8Array } from 'js-base64'
 
@@ -36,17 +37,7 @@ export type {
 const MAX_MIGRATION_SQL_BYTES = 256 * 1024
 
 function readInput(value: unknown): NestJSLocalPreviewMigrationInput | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return undefined
-  const keys = Reflect.ownKeys(value)
-  if (keys.length !== 2 || keys.some((key) => key !== 'fromApplication' && key !== 'toApplication'))
-    return undefined
-  const from = Object.getOwnPropertyDescriptor(value, 'fromApplication')
-  const to = Object.getOwnPropertyDescriptor(value, 'toApplication')
-  if (!from?.enumerable || !('value' in from) || !to?.enumerable || !('value' in to))
-    return undefined
-  return { fromApplication: from.value, toApplication: to.value }
+  return readExactBackendData(value, ['fromApplication', 'toApplication'])
 }
 
 function normalizeApplication(

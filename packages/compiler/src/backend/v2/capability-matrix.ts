@@ -1,3 +1,7 @@
+import {
+  orderedCapabilityRequirements,
+  recordCapabilityDecision
+} from '#compiler/backend/capability-data'
 import type { CompilerTarget } from '#compiler/types'
 
 import {
@@ -42,20 +46,7 @@ function capabilityRowV2(
   )
 }
 
-const WEB_CAPABILITIES_V2 = capabilityRowV2({
-  'data.read': 'supported',
-  'data.write': 'supported',
-  'auth.identity': 'supported',
-  'auth.roles': 'supported',
-  'policy.row-level': 'supported',
-  'server.functions': 'requires-server-bridge',
-  'server.http': 'requires-server-bridge',
-  'storage.objects': 'supported',
-  'migrations.schema': 'supported',
-  'migrations.data': 'supported',
-  'migrations.backfill': 'supported',
-  'realtime.subscribe': 'supported',
-  'events.data-change': 'supported',
+const SERVER_BRIDGE_CAPABILITIES_V2 = {
   'transactions.atomic': 'requires-server-bridge',
   'jobs.schedule': 'requires-server-bridge',
   'queues.publish': 'requires-server-bridge',
@@ -70,6 +61,23 @@ const WEB_CAPABILITIES_V2 = capabilityRowV2({
   'observability.traces': 'requires-server-bridge',
   'audit.events': 'requires-server-bridge',
   'drift.detect': 'requires-server-bridge'
+} as const satisfies Partial<Record<BackendCapabilityV2, BackendTargetCapabilityStatusV2>>
+
+const WEB_CAPABILITIES_V2 = capabilityRowV2({
+  'data.read': 'supported',
+  'data.write': 'supported',
+  'auth.identity': 'supported',
+  'auth.roles': 'supported',
+  'policy.row-level': 'supported',
+  'server.functions': 'requires-server-bridge',
+  'server.http': 'requires-server-bridge',
+  'storage.objects': 'supported',
+  'migrations.schema': 'supported',
+  'migrations.data': 'supported',
+  'migrations.backfill': 'supported',
+  'realtime.subscribe': 'supported',
+  'events.data-change': 'supported',
+  ...SERVER_BRIDGE_CAPABILITIES_V2
 })
 
 const NATIVE_SOURCE_CAPABILITIES_V2 = capabilityRowV2({
@@ -86,20 +94,7 @@ const NATIVE_SOURCE_CAPABILITIES_V2 = capabilityRowV2({
   'migrations.backfill': 'source-only',
   'realtime.subscribe': 'source-only',
   'events.data-change': 'source-only',
-  'transactions.atomic': 'requires-server-bridge',
-  'jobs.schedule': 'requires-server-bridge',
-  'queues.publish': 'requires-server-bridge',
-  'queues.consume': 'requires-server-bridge',
-  'webhooks.receive': 'requires-server-bridge',
-  'webhooks.deliver': 'requires-server-bridge',
-  'workflows.idempotency': 'requires-server-bridge',
-  'workflows.retry': 'requires-server-bridge',
-  'workflows.durable-execution': 'requires-server-bridge',
-  'observability.logs': 'requires-server-bridge',
-  'observability.metrics': 'requires-server-bridge',
-  'observability.traces': 'requires-server-bridge',
-  'audit.events': 'requires-server-bridge',
-  'drift.detect': 'requires-server-bridge'
+  ...SERVER_BRIDGE_CAPABILITIES_V2
 })
 
 const MINI_PROGRAM_SOURCE_CAPABILITIES_V2 = capabilityRowV2({
@@ -318,9 +313,7 @@ export function negotiateBackendCapabilitiesV2(
     const adapter = slot ? input.bundle[slot] : undefined
     if (adapter?.capabilities.includes(capability)) routedCapabilities.add(capability)
   }
-  const requirements = [...input.requirements].sort((left, right) =>
-    left.capability.localeCompare(right.capability, 'en')
-  )
+  const requirements = orderedCapabilityRequirements(input.requirements)
 
   for (const requirement of requirements) {
     const { capability, required } = requirement
@@ -346,16 +339,14 @@ export function negotiateBackendCapabilitiesV2(
       mode,
       routedCapabilities
     )
-    diagnostics.push(...resolution.diagnostics)
-    decisions.push(
-      Object.freeze({
-        capability,
-        required,
-        providerSupported,
-        targetStatus,
-        resolution: resolution.resolution,
-        included: resolution.included
-      })
+    recordCapabilityDecision(
+      decisions,
+      diagnostics,
+      capability,
+      required,
+      providerSupported,
+      targetStatus,
+      resolution
     )
   }
 

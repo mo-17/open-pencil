@@ -6,7 +6,7 @@ import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import { configureControlPaint } from '#core/canvas/control-content'
 import { withModulePreviewRectClip } from '#core/canvas/modules/preview'
 import type { SkiaRenderer } from '#core/canvas/renderer'
-import { withTextParagraph } from '#core/canvas/text'
+import { withTextParagraph, type TextLayout } from '#core/canvas/text'
 import { parseColor } from '#core/color'
 import type { EffectPickConfigV1 } from '#core/plugins/effect-pick'
 
@@ -136,11 +136,32 @@ export function drawFamilyLabel(
 ): void {
   if (box.width <= 0 || box.height < EFFECT_PICK_PREVIEW_LINE_HEIGHT) return
   if (!renderer.fontProvider || !renderer.fontsLoaded) return
+  withEffectPickPreviewParagraph(
+    renderer,
+    node,
+    config,
+    box.width,
+    Math.min(2, Math.floor(box.height / EFFECT_PICK_PREVIEW_LINE_HEIGHT)),
+    (paragraph) =>
+      withModulePreviewRectClip(renderer, canvas, box, () =>
+        paragraph.draw(canvas, box.x, box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2))
+      )
+  )
+}
+
+export function withEffectPickPreviewParagraph(
+  renderer: SkiaRenderer,
+  node: SceneNode,
+  config: EffectPickConfigV1,
+  width: number,
+  maxLines: number,
+  draw: (paragraph: TextLayout) => void
+): void {
   const label = effectPickPreviewLabel(
     node,
     effectPickPreviewText(config.effectId, config.text),
-    box.width,
-    Math.min(2, Math.floor(box.height / EFFECT_PICK_PREVIEW_LINE_HEIGHT))
+    width,
+    maxLines
   )
   const readiness = renderer.nodeFontReadiness(label)
   if (readiness !== 'ready' && readiness !== 'substituted') return
@@ -150,9 +171,6 @@ export function drawFamilyLabel(
     label,
     renderer.color4f(color.r, color.g, color.b, color.a),
     { halfLeading: true },
-    (paragraph) =>
-      withModulePreviewRectClip(renderer, canvas, box, () =>
-        paragraph.draw(canvas, box.x, box.y + Math.max(0, (box.height - paragraph.getHeight()) / 2))
-      )
+    draw
   )
 }

@@ -6,6 +6,7 @@ import {
   type SignedManifestIntegrity
 } from '@open-pencil/scene-graph'
 
+import { isWellFormedBackendText } from '../scalar-text'
 import {
   digestBackendSourceLedgerAppliedPrefixV1,
   digestBackendSourceLedgerBindingSubjectV1,
@@ -62,23 +63,9 @@ function signedReceiptPayload(
   })
 }
 
-function containsUnpairedSurrogate(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index)
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return true
-      index += 1
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      return true
-    }
-  }
-  return false
-}
-
 function assertPortableUnicodeStrings(value: unknown, path: string): void {
   if (typeof value === 'string') {
-    if (containsUnpairedSurrogate(value)) {
+    if (!isWellFormedBackendText(value)) {
       throw new TypeError(`${path} must contain Unicode scalar values only`)
     }
     return

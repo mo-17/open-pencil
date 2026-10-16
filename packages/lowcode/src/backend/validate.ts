@@ -1,4 +1,5 @@
 import { parseAuthPolicyIR, parseBackendWorkflowIR } from './auth-workflow-validation'
+import { parseCapabilityRequirements } from './capabilities'
 import { parseBackendCommandIRV1 } from './commands'
 import { validateCommerceWriteBoundaries } from './commerce/access-validation'
 import { validateCommerceAuth } from './commerce/auth-validation'
@@ -21,7 +22,6 @@ import {
   BACKEND_APPLICATION_SPEC_VERSION,
   type BackendApplicationSpecV1,
   type BackendCapability,
-  type BackendCapabilityRequirement,
   type BackendCredentialRef,
   type BackendSecretRef,
   type BackendValidationResult,
@@ -32,7 +32,6 @@ import {
   array,
   assertBoundedBackendData,
   boolean,
-  boundedText,
   environmentName,
   id,
   oneOf,
@@ -92,30 +91,6 @@ function credentialReference(
     message: 'Credential references must use a host-issued opaque credential.<uuid> handle.'
   })
   return undefined
-}
-
-function capabilityRequirement(
-  value: unknown,
-  path: string,
-  context: BackendValidationContext
-): BackendCapabilityRequirement | undefined {
-  const source = record(
-    value,
-    path,
-    context,
-    ['capability', 'required', 'reason'],
-    ['capability', 'required']
-  )
-  if (!source) return undefined
-  const capability = oneOf(source.capability, `${path}.capability`, context, BACKEND_CAPABILITIES)
-  const required = boolean(source.required, `${path}.required`, context)
-  const reason =
-    source.reason === undefined
-      ? undefined
-      : boundedText(source.reason, `${path}.reason`, context, BACKEND_LIMITS.maxReasonLength)
-  return capability && required !== undefined
-    ? { capability, required, ...(reason ? { reason } : {}) }
-    : undefined
 }
 
 function secretRef(
@@ -254,20 +229,10 @@ export function parseBackendApplicationSpecV1(
     auth && source.storage !== undefined
       ? parseBackendStorageIR(source.storage, '$.storage', auth, context)
       : undefined
-  const rawCapabilities = array(
+  const { rawCapabilities, capabilities } = parseCapabilityRequirements(
     source.capabilities,
-    '$.capabilities',
     context,
-    BACKEND_LIMITS.maxCapabilities
-  )
-  const capabilities = (rawCapabilities ?? [])
-    .map((entry, index) => capabilityRequirement(entry, `$.capabilities[${index}]`, context))
-    .filter((entry): entry is BackendCapabilityRequirement => entry !== undefined)
-  uniqueBy(
-    capabilities.map((entry) => entry.capability),
-    '$.capabilities',
-    context,
-    'capability requirement'
+    BACKEND_CAPABILITIES
   )
   const rawSecrets = array(source.secrets, '$.secrets', context, BACKEND_LIMITS.maxSecretRefs)
   const secrets = (rawSecrets ?? [])

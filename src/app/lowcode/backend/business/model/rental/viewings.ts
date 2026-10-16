@@ -14,6 +14,7 @@ import {
   businessUUIDParameter,
   businessUpdate
 } from '../commands'
+import { businessReservationParameterValues } from '../scheduling'
 import { RENTAL_VIEWING_FIELDS, type RentalEntities } from './fields'
 import {
   publishedRentalProperty,
@@ -76,12 +77,7 @@ function reserve(entities: RentalEntities): BackendCommandDefinitionIR {
           { field: 'property_id', value: businessResult('property', 'id') },
           { field: 'slot_id', value: businessResult('slot', 'id') },
           { field: 'property_title', value: businessResult('property', 'title') },
-          { field: 'starts_at', value: businessResult('slot', 'starts_at') },
-          { field: 'ends_at', value: businessResult('slot', 'ends_at') },
-          { field: 'quantity', value: businessParameter('quantity') },
-          { field: 'attendee_name', value: businessParameter('attendeeName') },
-          { field: 'contact', value: businessParameter('contact') },
-          { field: 'note', value: businessParameter('note') }
+          ...businessReservationParameterValues()
         ],
         ['owner_id', ...RENTAL_VIEWING_FIELDS]
       ),

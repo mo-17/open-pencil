@@ -1,18 +1,30 @@
-import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { checkGuideMap, listedGuides } from '../src/guides'
 
+const fixtures: string[] = []
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })))
+})
+
 async function repo(rootGuide: string, guides: string[] = []) {
   const repoRoot = await mkdtemp(join(tmpdir(), 'open-pencil-guides-'))
+  fixtures.push(repoRoot)
   await writeFile(join(repoRoot, 'AGENTS.md'), rootGuide, 'utf8')
   for (const guide of guides) {
     await mkdir(join(repoRoot, guide, '..'), { recursive: true })
     await writeFile(join(repoRoot, guide), '# Guide\n', 'utf8')
   }
   return repoRoot
+}
+
+function git(repoRoot: string, ...args: string[]): void {
+  execFileSync('git', args, { cwd: repoRoot, stdio: 'pipe' })
 }
 
 describe('listedGuides', () => {
@@ -59,7 +71,66 @@ describe('checkGuideMap', () => {
 
   test('fails without a root guide', async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), 'open-pencil-guides-empty-'))
+    fixtures.push(repoRoot)
 
     expect(checkGuideMap({ repoRoot }).errors).toEqual(['Missing root AGENTS.md'])
+  })
+
+  test('checks tracked and untracked source guides while excluding ignored backups', async () => {
+    const guides = [
+      'src/tracked/AGENTS.md',
+      'src/new/AGENTS.md',
+      'output/kept/AGENTS.md',
+      'scratch/kept/AGENTS.md'
+    ]
+    const repoRoot = await repo(guides.map((guide) => `Guide: \`${guide}\`.`).join('\n'), [
+      ...guides,
+      'output/history/AGENTS.md',
+      'scratch/history/AGENTS.md'
+    ])
+    await writeFile(join(repoRoot, '.gitignore'), '/output/\n/scratch/\n')
+    git(repoRoot, 'init', '--quiet')
+    git(repoRoot, 'add', 'AGENTS.md', 'src/tracked/AGENTS.md')
+    git(repoRoot, 'add', '--force', 'output/kept/AGENTS.md', 'scratch/kept/AGENTS.md')
+
+    const result = checkGuideMap({ repoRoot })
+
+    expect(result.errors).toEqual([])
+    expect(result.guides).toEqual([...guides].sort())
+    expect(result.listed).toEqual([...guides].sort())
+  })
+
+  test('still rejects an unlisted untracked guide and a deleted tracked guide', async () => {
+    const repoRoot = await repo('Guide: `src/AGENTS.md`.', ['src/AGENTS.md', 'tools/AGENTS.md'])
+    git(repoRoot, 'init', '--quiet')
+    git(repoRoot, 'add', 'AGENTS.md', 'src/AGENTS.md')
+    await rm(join(repoRoot, 'src/AGENTS.md'))
+
+    expect(checkGuideMap({ repoRoot }).errors).toEqual([
+      'tools/AGENTS.md is not listed in the root AGENTS.md map',
+      'Root AGENTS.md references missing guide src/AGENTS.md'
+    ])
+  })
+
+  test('does not fall back to a disk walk when Git metadata is invalid', async () => {
+    const repoRoot = await repo('Guide: `src/AGENTS.md`.', ['src/AGENTS.md'])
+    await writeFile(join(repoRoot, '.git'), 'gitdir: ./missing-worktree-metadata\n')
+
+    expect(() => checkGuideMap({ repoRoot })).toThrow()
+  })
+
+  test('normalizes guide paths from the repository root when launched in a subdirectory', async () => {
+    const repoRoot = await repo('Guide: `src/AGENTS.md`.', ['src/AGENTS.md'])
+    git(repoRoot, 'init', '--quiet')
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--eval',
+        `import { checkGuideMap } from ${JSON.stringify(import.meta.resolve('../src/guides'))}; console.log(checkGuideMap({ repoRoot: ${JSON.stringify(repoRoot)} }).guides.join(','));`
+      ],
+      { cwd: join(repoRoot, 'src'), encoding: 'utf8' }
+    )
+
+    expect(output.trim()).toBe('src/AGENTS.md')
   })
 })

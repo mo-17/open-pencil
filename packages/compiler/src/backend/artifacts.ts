@@ -273,3 +273,46 @@ export function validateBackendArtifactMetadata(
   }
   return true
 }
+
+interface AcceptedBackendArtifact<Kind extends string, Content extends string | Uint8Array> {
+  readonly path: string
+  readonly kind: Kind
+  readonly mediaType: string
+  readonly content: Content
+  readonly bytes: Uint8Array
+}
+
+export function appendBackendArtifact<Kind extends string, Content extends string | Uint8Array>(
+  collection: {
+    readonly artifacts: AcceptedBackendArtifact<Kind, Content>[]
+    readonly diagnostics: BackendDiagnostic[]
+    totalBytes: number
+  },
+  metadata: { readonly path: string; readonly kind: Kind; readonly mediaType: string },
+  content: Content,
+  bytes: Uint8Array,
+  maximumTotalBytes: number
+): void {
+  const nextTotalBytes = collection.totalBytes + bytes.byteLength
+  if (nextTotalBytes > maximumTotalBytes) {
+    collection.diagnostics.push(
+      backendDiagnostic(
+        'backend-artifact-total-byte-limit',
+        'error',
+        '$.artifacts',
+        'Backend Provider artifacts exceed the total byte limit.'
+      )
+    )
+    return
+  }
+  collection.totalBytes = nextTotalBytes
+  collection.artifacts.push(
+    Object.freeze({
+      path: metadata.path,
+      kind: metadata.kind,
+      mediaType: metadata.mediaType,
+      content,
+      bytes
+    })
+  )
+}

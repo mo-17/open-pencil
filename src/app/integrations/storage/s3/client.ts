@@ -1,3 +1,5 @@
+import { normalizeEndpoint, resolveS3Region } from './endpoint'
+export { normalizeEndpoint, resolveS3Region } from './endpoint'
 import { AwsClient } from 'aws4fetch'
 
 import { storageFetch } from '@/app/integrations/storage/s3/fetch'
@@ -7,7 +9,6 @@ import {
   parseS3ContentRange,
   type S3RangeRequest
 } from '@/app/integrations/storage/s3/range-download'
-import { inferS3Region } from '@/app/integrations/storage/s3/region'
 import {
   S3_RESPONSE_LIMITS,
   assertS3ListObjectsXML,
@@ -21,12 +22,6 @@ import {
 } from '@/app/integrations/storage/s3/xml'
 import type { LibraryObjectWriteOptions } from '@/app/integrations/storage/types'
 
-export function resolveS3Region(config: S3CompatibleConfig): string {
-  const explicit = config.region?.trim()
-  if (explicit) return explicit
-  return inferS3Region(config.endpoint)
-}
-
 export class S3HttpError extends Error {
   readonly status: number
   readonly code: string | null
@@ -37,13 +32,6 @@ export class S3HttpError extends Error {
     this.status = status
     this.code = code
   }
-}
-
-export function normalizeEndpoint(endpoint: string): string {
-  const trimmed = endpoint.trim().replace(/\/+$/, '')
-  if (!trimmed) throw new Error('S3 endpoint is required')
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
-  return `https://${trimmed}`
 }
 
 /** Path-style object URL: {endpoint}/{bucket}/{key} — works with B2, MinIO, R2, AWS. */

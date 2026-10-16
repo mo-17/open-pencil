@@ -14,6 +14,7 @@ import {
   truncateUtf8,
   writeStorageDocumentOrPreserveRace
 } from '../shared/adapter'
+import { createStorageDocumentWriter } from '../shared/write'
 import type {
   StorageAdapter,
   StorageDocumentAuthority,
@@ -163,48 +164,48 @@ export function createAliyunDriveStorageAdapter(
   return {
     ...common,
 
-    async putDocument(id, bytes, metadata, transferOptions = {}) {
-      const prepared = await prepareWrite(id, bytes, metadata, transferOptions)
-      if (prepared.conflictResult) return prepared.conflictResult
-      const current = prepared.current
-      const uploadOptions: AliyunDriveUploadOptions = createStorageDocumentUploadOptions(
-        id,
-        normalizeAliyunDriveFigName(metadata.name),
-        bytes,
-        transferOptions
-      )
-
-      if (!current) {
-        return writeStorageDocumentOrPreserveRace(
-          'created',
-          () => client.createDocument(uploadOptions),
-          isAliyunDriveWriteRace,
-          () => preserveWriteRace(id, bytes, metadata, transferOptions)
+    putDocument: createStorageDocumentWriter(
+      prepareWrite,
+      async (current, id, bytes, metadata, transferOptions) => {
+        const uploadOptions: AliyunDriveUploadOptions = createStorageDocumentUploadOptions(
+          id,
+          normalizeAliyunDriveFigName(metadata.name),
+          bytes,
+          transferOptions
         )
-      }
 
-      const conflictDocumentId = distinctConflictId(id)
-      try {
-        const replaced = await client.replaceDocument({
-          ...uploadOptions,
-          current,
-          expectedRemoteRevision: revisionFor(current),
-          conflictDocumentId,
-          conflictName: conflictName(metadata.name, now())
-        })
-        if (replaced.outcome === 'updated') {
-          return { outcome: 'updated', remoteRevision: replaced.remoteRevision }
+        if (!current) {
+          return writeStorageDocumentOrPreserveRace(
+            'created',
+            () => client.createDocument(uploadOptions),
+            isAliyunDriveWriteRace,
+            () => preserveWriteRace(id, bytes, metadata, transferOptions)
+          )
         }
-        return createStorageConflictCopyResult(
-          replaced.remoteRevision,
-          replaced.conflictDocumentId,
-          replaced.conflictCopyRevision
-        )
-      } catch (error) {
-        if (!isAliyunDriveWriteRace(error)) throw error
-        return preserveWriteRace(id, bytes, metadata, transferOptions, conflictDocumentId)
+
+        const conflictDocumentId = distinctConflictId(id)
+        try {
+          const replaced = await client.replaceDocument({
+            ...uploadOptions,
+            current,
+            expectedRemoteRevision: revisionFor(current),
+            conflictDocumentId,
+            conflictName: conflictName(metadata.name, now())
+          })
+          if (replaced.outcome === 'updated') {
+            return { outcome: 'updated', remoteRevision: replaced.remoteRevision }
+          }
+          return createStorageConflictCopyResult(
+            replaced.remoteRevision,
+            replaced.conflictDocumentId,
+            replaced.conflictCopyRevision
+          )
+        } catch (error) {
+          if (!isAliyunDriveWriteRace(error)) throw error
+          return preserveWriteRace(id, bytes, metadata, transferOptions, conflictDocumentId)
+        }
       }
-    },
+    ),
 
     deleteDocument(id, deleteOptions) {
       return client.deleteDocumentFile(id, deleteOptions?.signal, deleteOptions?.expectedAuthority)

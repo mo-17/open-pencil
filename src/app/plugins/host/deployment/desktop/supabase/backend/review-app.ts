@@ -5,13 +5,9 @@ import {
   resolveSupabaseManagementPat,
   supabaseManagementPatStatus
 } from '@/app/lowcode/supabase/credentials'
-import { appPluginStore } from '@/app/plugins/app'
-import {
-  prepareAppBackendProviderDocumentBuild,
-  resolveAppBackendProviderReleaseAuthority,
-  type AppBackendProviderHostStore
-} from '@/app/plugins/host/backend-provider'
+import { type AppBackendProviderHostStore } from '@/app/plugins/host/backend-provider'
 import { createIdbBackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
+import { createDesktopSupabaseBuildAccess } from '@/app/plugins/host/deployment/desktop/supabase/build-access'
 import {
   createSupabaseBackendRelease,
   type SupabaseBackendReleaseReviewArtifactV1
@@ -181,12 +177,7 @@ async function prepareStrictReview(
 function createAppDesktopSupabaseBackendReviewServiceWithOptions(
   options: AppDesktopSupabaseBackendReviewForTestingOptionsV1
 ): DesktopSupabaseBackendReviewService {
-  const pluginStore = options.pluginStore ?? appPluginStore
-  const waitForPluginStoreReady =
-    options.pluginStoreReady ??
-    (options.pluginStore
-      ? () => undefined
-      : () => (appPluginStore.snapshot().ready ? undefined : appPluginStore.load()))
+  const buildAccess = createDesktopSupabaseBuildAccess(options)
   const credentials = options.credentialServices ?? appCredentialServices
   const runtime = Object.freeze({
     isDesktop: options.isDesktop ?? isTauri,
@@ -199,16 +190,7 @@ function createAppDesktopSupabaseBackendReviewServiceWithOptions(
     ? { resolveCredential: () => resolveSupabaseManagementPat(credentials) }
     : { resolveCredentialStatus: () => supabaseManagementPatStatus(credentials) }
   const dependencies: DesktopSupabaseBackendReviewDependencies = {
-    async prepareBuild(graph, target) {
-      await Promise.resolve(waitForPluginStoreReady())
-      return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target,
-        mode: 'production'
-      })
-    },
-    resolveBackendProviderAuthority(build) {
-      return resolveAppBackendProviderReleaseAuthority(pluginStore, build.descriptor)
-    },
+    ...buildAccess,
     ...readCredentialDependency,
     resolveGrantGeneration: () => resolveSupabaseManagementGrantGeneration(credentials),
     prepareStrictReview: (input) => prepareStrictReview(input, runtime),

@@ -1,11 +1,12 @@
-/* oxlint-disable eslint(max-lines), eslint(complexity) -- Strict response decoding, Host state recomputation, and provenance checks form one audit boundary. */
-
-import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
-
+import { SUPABASE_NO_CREATED_AUTHORITY } from '@/app/plugins/host/deployment/supabase/authority-policy'
 import {
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_COLUMNS_V1,
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_CONSTRAINTS_V1
 } from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/verifier'
+/* oxlint-disable eslint(max-lines), eslint(complexity) -- Strict response decoding, Host state recomputation, and provenance checks form one audit boundary. */
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
+import { createSupabaseScalarAdmission } from '@/app/plugins/host/deployment/supabase/scalar-admission'
 
 import {
   SUPABASE_BACKFILL_RECEIPT_ZERO_RECONCILIATION_FIXED_QUERY,
@@ -162,34 +163,19 @@ interface ParsedResponseV1 {
   readonly canonicalResponse: readonly Readonly<Record<string, unknown>>[]
 }
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+const { ownData } = dataAdmission
+
+const { digest, digestText: digestRawText } = createSupabaseDigests(() =>
+  fail('supabase-backfill-receipt-zero-reconciliation-response-digest-failed')
+)
+
+const { boolean: booleanValue, integer } = createSupabaseScalarAdmission(() =>
+  fail('supabase-backfill-receipt-zero-reconciliation-response-invalid')
+)
+
 function fail(code: SupabaseBackfillReceiptZeroReconciliationResponseErrorCode): never {
   throw new SupabaseBackfillReceiptZeroReconciliationResponseError(code)
-}
-
-function ownKeys(
-  value: object,
-  code: SupabaseBackfillReceiptZeroReconciliationResponseErrorCode
-): readonly PropertyKey[] {
-  try {
-    return Reflect.ownKeys(value)
-  } catch {
-    return fail(code)
-  }
-}
-
-function ownData(
-  value: object,
-  key: PropertyKey,
-  code: SupabaseBackfillReceiptZeroReconciliationResponseErrorCode
-): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail(code)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
 }
 
 function exactPlainRecord(
@@ -206,13 +192,7 @@ function exactPlainRecord(
     return fail(code)
   }
   if (prototype !== Object.prototype && prototype !== null) return fail(code)
-  const keys = ownKeys(value, code)
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))
-  ) {
-    return fail(code)
-  }
+  dataAdmission.exactKeys(value, expectedKeys, code)
   const snapshot: UnknownRecord = {}
   for (const key of expectedKeys) snapshot[key] = ownData(value, key, code)
   return Object.freeze(snapshot)
@@ -224,25 +204,6 @@ function exactInput(value: unknown): UnknownRecord {
     INPUT_KEYS,
     'supabase-backfill-receipt-zero-reconciliation-response-input-invalid'
   )
-}
-
-function booleanValue(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    return fail('supabase-backfill-receipt-zero-reconciliation-response-invalid')
-  }
-  return value
-}
-
-function integer(value: unknown, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    return fail('supabase-backfill-receipt-zero-reconciliation-response-invalid')
-  }
-  return value as number
 }
 
 function nullableInt32(value: unknown): number | null {
@@ -281,25 +242,6 @@ function canonicalTimestamp(value: unknown): string {
     return fail('supabase-backfill-receipt-zero-reconciliation-response-invalid')
   }
   return value
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-receipt-zero-reconciliation-response-digest-failed')
-  }
-}
-
-async function digestRawText(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-receipt-zero-reconciliation-response-digest-failed')
-  }
 }
 
 function requireConsistentFacts(facts: SupabaseBackfillReceiptZeroReconciliationFactsV1): void {
@@ -592,29 +534,9 @@ async function requireCurrentReview(
 
 function exactSingleResponse(value: unknown): ParsedResponseV1 {
   const code = 'supabase-backfill-receipt-zero-reconciliation-response-invalid' as const
-  let prototype: object | null
-  let lengthDescriptor: PropertyDescriptor | undefined
-  try {
-    if (!Array.isArray(value)) return fail(code)
-    prototype = Object.getPrototypeOf(value)
-    lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-  } catch {
-    return fail(code)
-  }
-  const keys = ownKeys(value, code)
-  if (
-    prototype !== Array.prototype ||
-    keys.length !== 2 ||
-    !keys.includes('0') ||
-    !keys.includes('length') ||
-    lengthDescriptor?.enumerable !== false ||
-    !Object.hasOwn(lengthDescriptor, 'value') ||
-    lengthDescriptor.value !== 1
-  ) {
-    return fail(code)
-  }
+  const item = dataAdmission.canonicalSingleItem(value, code, true)
   const row = exactPlainRecord(
-    ownData(value, '0', code),
+    item,
     SUPABASE_BACKFILL_RECEIPT_ZERO_RECONCILIATION_RESPONSE_FIELDS,
     code
   )
@@ -798,13 +720,7 @@ export async function parseSupabaseBackfillReceiptZeroReconciliationResponseForT
     absentProvesPriorMutationStopped: false as const,
     automaticRetryAllowed: false as const,
     captureConsumed: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     releaseReady: false as const
   })
 }

@@ -1,3 +1,4 @@
+import { validateRequiredCapabilities } from './capabilities'
 import type {
   AuthPolicyIR,
   BackendApplicationSpecV1,
@@ -107,24 +108,8 @@ export function deriveBackendApplicationCapabilities(
 export function validateBackendCapabilityDeclarations(
   application: BackendApplicationSpecV1
 ): BackendDiagnostic[] {
-  const declarations = new Map(
-    application.capabilities.map((requirement) => [requirement.capability, requirement])
+  return validateRequiredCapabilities(
+    deriveBackendApplicationCapabilities(application),
+    application.capabilities
   )
-  return deriveBackendApplicationCapabilities(application).flatMap((capability) => {
-    const declaration = declarations.get(capability)
-    if (declaration?.required) return []
-    const optional = declaration !== undefined
-    return [
-      {
-        code: optional
-          ? 'backend-capability-use-not-required'
-          : 'backend-capability-use-undeclared',
-        severity: 'error' as const,
-        path: `$.capabilities.${capability}`,
-        message: optional
-          ? 'A capability used by Backend IR must be declared with required true.'
-          : 'Backend IR uses a capability that is not declared as required.'
-      }
-    ]
-  })
 }

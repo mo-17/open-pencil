@@ -13,6 +13,7 @@ import {
   businessUUIDParameter,
   businessUpdate
 } from '../commands'
+import { businessReservationParameterValues } from '../scheduling'
 import { BOOKING_FIELDS, type BookingEntities } from './schema'
 import {
   availableSlot,
@@ -78,12 +79,7 @@ function reserve(entities: BookingEntities): BackendCommandDefinitionIR {
           { field: 'service_id', value: businessResult('service', 'id') },
           { field: 'slot_id', value: businessResult('slot', 'id') },
           { field: 'service_title', value: businessResult('service', 'title') },
-          { field: 'starts_at', value: businessResult('slot', 'starts_at') },
-          { field: 'ends_at', value: businessResult('slot', 'ends_at') },
-          { field: 'quantity', value: businessParameter('quantity') },
-          { field: 'attendee_name', value: businessParameter('attendeeName') },
-          { field: 'contact', value: businessParameter('contact') },
-          { field: 'note', value: businessParameter('note') }
+          ...businessReservationParameterValues()
         ],
         BOOKING_FIELDS
       )

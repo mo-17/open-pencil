@@ -2,6 +2,7 @@
 import { canonicalManifestBytes, digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import {
+  BACKEND_CAPABILITIES_V2,
   deriveBackendApplicationCapabilitiesV2,
   digestBackendApplicationV2,
   normalizedBackendApplicationV2
@@ -29,35 +30,9 @@ export const BACKEND_RELEASE_EVIDENCE_RECEIPT_FORMAT =
   'openpencil.backend-release-evidence-receipt' as const
 export const BACKEND_RELEASE_EVIDENCE_MAX_TTL_MS = 24 * 60 * 60 * 1_000
 
-export const BACKEND_RELEASE_EVIDENCE_CAPABILITIES = Object.freeze([
-  'audit.events',
-  'auth.identity',
-  'auth.roles',
-  'data.read',
-  'data.write',
-  'drift.detect',
-  'events.data-change',
-  'jobs.schedule',
-  'migrations.backfill',
-  'migrations.data',
-  'migrations.schema',
-  'observability.logs',
-  'observability.metrics',
-  'observability.traces',
-  'policy.row-level',
-  'queues.consume',
-  'queues.publish',
-  'realtime.subscribe',
-  'server.functions',
-  'server.http',
-  'storage.objects',
-  'transactions.atomic',
-  'webhooks.deliver',
-  'webhooks.receive',
-  'workflows.durable-execution',
-  'workflows.idempotency',
-  'workflows.retry'
-] as const satisfies readonly BackendCapabilityV2[])
+export const BACKEND_RELEASE_EVIDENCE_CAPABILITIES = Object.freeze(
+  [...BACKEND_CAPABILITIES_V2].sort()
+)
 
 export type BackendReleaseEvidenceCapability =
   (typeof BACKEND_RELEASE_EVIDENCE_CAPABILITIES)[number]
@@ -636,7 +611,7 @@ function requirementsForNormalizedApplication(
     if (!CAPABILITIES.has(actualCapability)) {
       throw new TypeError(`Actual Backend capability is not supported by the evidence contract`)
     }
-    const capability = actualCapability as BackendReleaseEvidenceCapability
+    const capability = actualCapability
     const requirementId = BACKEND_RELEASE_CAPABILITY_EVIDENCE_IDS[capability]
     requirements.push({
       requirementId,

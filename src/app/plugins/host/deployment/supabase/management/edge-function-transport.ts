@@ -1,9 +1,13 @@
-/* oxlint-disable eslint(max-lines), typescript-eslint(no-unnecessary-condition), typescript-eslint(no-unnecessary-boolean-literal-compare) -- Host transport inputs are runtime trust-boundary data despite their literal TypeScript fields; its release flow stays together for auditability. */
 import { zipSync, type Zippable } from 'fflate'
 
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import type { SupabaseManagementAccountAuthorityV1 } from '@/app/lowcode/supabase/management-client'
+/* oxlint-disable eslint(max-lines), typescript-eslint(no-unnecessary-condition), typescript-eslint(no-unnecessary-boolean-literal-compare) -- Host transport inputs are runtime trust-boundary data despite their literal TypeScript fields; its release flow stays together for auditability. */
+import {
+  isPlainSupabaseDataRecord,
+  readSupabaseDataProperty
+} from '@/app/plugins/host/deployment/supabase/data-admission'
 
 import {
   SupabaseEdgeFunctionReleaseError,
@@ -16,6 +20,18 @@ import {
   type SupabaseEdgeFunctionSecretInspectionEvidence,
   type SupabaseEdgeFunctionSecretInspectionInput
 } from '../edge-function-release'
+import { createManagementOperationWaiter } from './abortable-operation'
+import {
+  collectManagementResponseChunks,
+  joinManagementResponseChunks,
+  parseManagementResponseJSON
+} from './response-body'
+import {
+  createManagementResponseRequester,
+  supabaseManagementTimeout,
+  isSupabaseManagementToken as controlFree,
+  createManagementRequestDeadline
+} from './transport-runtime'
 import type { SupabaseManagementRequestDeadline } from './transport-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
@@ -82,15 +98,6 @@ function releaseError(
   throw new SupabaseEdgeFunctionReleaseError(code, message)
 }
 
-function controlFree(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 16 &&
-    new TextEncoder().encode(value).byteLength <= maximum &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function stableId(value: unknown, name: string): string {
   if (typeof value !== 'string' || !STABLE_ID.test(value)) {
     return releaseError('invalid-authority', `${name} is invalid`)
@@ -99,31 +106,18 @@ function stableId(value: unknown, name: string): string {
 }
 
 function boundedTimeout(value: unknown, maximum: number): number {
-  if (value === undefined) return maximum
-  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > maximum) {
-    return releaseError('invalid-authority', 'request deadline is invalid')
-  }
-  return value as number
+  return supabaseManagementTimeout(value, maximum, () =>
+    releaseError('invalid-authority', 'request deadline is invalid')
+  )
 }
 
 function plainRecord(value: unknown): UnknownRecord {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
-    return releaseError('invalid-response')
-  }
-  return value as UnknownRecord
+  if (!isPlainSupabaseDataRecord(value)) return releaseError('invalid-response')
+  return value
 }
 
 function ownValue(record: UnknownRecord, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key)
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-    return releaseError('invalid-response')
-  }
-  return descriptor.value
+  return readSupabaseDataProperty(record, key, () => releaseError('invalid-response'))
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -131,46 +125,14 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 function requestDeadline(caller: AbortSignal | undefined, timeoutMs: number): RequestDeadline {
-  const controller = new AbortController()
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  let timeoutReached = false
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) {
-    controller.abort(caller.reason)
-  } else {
-    caller?.addEventListener('abort', onCallerAbort, { once: true })
-    timeout = setTimeout(() => {
-      timeoutReached = true
-      controller.abort(new DOMException('Supabase Edge Function request timed out', 'TimeoutError'))
-    }, timeoutMs)
-  }
-  return {
-    signal: controller.signal,
-    timedOut: () => timeoutReached,
-    dispose: () => {
-      if (timeout !== undefined) clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  }
+  return createManagementRequestDeadline(
+    caller,
+    timeoutMs,
+    'Supabase Edge Function request timed out'
+  )
 }
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('Supabase Edge Function request aborted', 'AbortError')
-}
-
-function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(abortReason(signal))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
-}
+const waitForAbortable = createManagementOperationWaiter('Supabase Edge Function request aborted')
 
 function fetchFailure(cause: unknown, signal: AbortSignal | undefined): never {
   if (signal?.aborted) return releaseError('aborted')
@@ -202,37 +164,32 @@ async function boundedJSON(
   }
   if (!response.body) return releaseError('invalid-response')
   const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let length = 0
+  let collected: Awaited<ReturnType<typeof collectManagementResponseChunks>>
   try {
-    let result = await waitForAbortable(reader.read(), signal)
-    while (!result.done) {
-      length += result.value.byteLength
-      if (length > maximum) {
+    collected = await collectManagementResponseChunks(
+      reader,
+      maximum,
+      (bodyReader) => waitForAbortable(bodyReader.read(), signal),
+      (reader) => {
         void reader.cancel().catch(() => undefined)
         return releaseError('invalid-response')
       }
-      chunks.push(result.value)
-      result = await waitForAbortable(reader.read(), signal)
-    }
+    )
   } catch (error) {
     void reader.cancel().catch(() => undefined)
     throw error
   } finally {
     reader.releaseLock()
   }
-  const bytes = new Uint8Array(length)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
-    return releaseError('invalid-response')
-  }
+  const bytes = joinManagementResponseChunks(collected.chunks, collected.byteLength)
+  return parseManagementResponseJSON(bytes, () => releaseError('invalid-response'))
 }
+
+const fetchResponse = createManagementResponseRequester(
+  waitForAbortable,
+  throwIfAborted,
+  (dispatched: boolean) => releaseError(dispatched ? 'network-failed' : 'provider-rejected')
+)
 
 async function requestJSON(
   fetcher: SupabaseManagementEdgeFunctionFetch,
@@ -246,15 +203,15 @@ async function requestJSON(
 ): Promise<unknown> {
   const deadline = requestDeadline(signal, timeoutMs)
   try {
-    throwIfAborted(deadline.signal)
-    const response = await waitForAbortable(
-      fetcher(url, { ...init, redirect: 'error', signal: deadline.signal }, maximum, timeoutMs),
-      deadline.signal
+    const response = await fetchResponse(
+      fetcher,
+      url,
+      init,
+      maximum,
+      timeoutMs,
+      deadline.signal,
+      dispatched
     )
-    throwIfAborted(deadline.signal)
-    if (response.redirected || (response.url !== '' && response.url !== url)) {
-      return releaseError(dispatched ? 'network-failed' : 'provider-rejected')
-    }
     if (response.status !== expectedStatus) {
       const knownRejection =
         response.status >= 400 &&

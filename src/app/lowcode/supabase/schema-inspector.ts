@@ -9,6 +9,7 @@ import {
   writeCachedSupabaseSchemaCatalog,
   type SupabaseSchemaCacheReadResult
 } from './cache'
+import { createSupabaseCredentialWriter } from './credential-write'
 import {
   clearSupabaseManagementPat,
   resolveSupabaseManagementPat,
@@ -175,28 +176,12 @@ export function useSupabaseSchemaInspector(
     }
   }
 
-  async function saveCredential(value: string): Promise<boolean> {
-    let personalAccessToken = value
-    value = ''
-    if (!personalAccessToken.trim()) {
-      personalAccessToken = ''
-      credentialError.value = true
-      return false
-    }
-    credentialBusy.value = true
-    credentialError.value = false
-    try {
-      await dependencies.setCredential(personalAccessToken)
-      await refreshCredentialStatus()
-      return true
-    } catch {
-      credentialError.value = true
-      return false
-    } finally {
-      personalAccessToken = ''
-      credentialBusy.value = false
-    }
-  }
+  const saveCredential = createSupabaseCredentialWriter({
+    busy: credentialBusy,
+    error: credentialError,
+    setCredential: (value) => dependencies.setCredential(value),
+    refreshCredentialStatus
+  })
 
   async function clearCredential(): Promise<boolean> {
     credentialBusy.value = true

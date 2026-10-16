@@ -1,11 +1,10 @@
-import { fromUint8Array } from 'js-base64'
-
 import {
   createSupabaseBackfillInspectionSubjectV1,
   type SupabaseBackfillInspectionSubjectEnvelopeV1,
   type SupabaseBackfillInspectionSubjectV1
 } from '@open-pencil/compiler/backend'
-import { digestCanonicalManifest } from '@open-pencil/scene-graph'
+
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
 
 import {
   inspectSupabaseBackfillLiveCatalogV1,
@@ -190,6 +189,10 @@ const trustedReviewContexts = new WeakMap<
   TrustedSupabaseBackfillWriteBarrierReviewContextV1
 >()
 const consumedReviewContexts = new WeakSet<object>()
+
+const { digest, digestText: digestSql } = createSupabaseDigests(() =>
+  fail('supabase-backfill-write-barrier-digest-failed')
+)
 
 function fail(code: SupabaseBackfillWriteBarrierReviewErrorCode): never {
   throw new SupabaseBackfillWriteBarrierReviewError(code)
@@ -388,29 +391,6 @@ function catalogPrecondition(
     hazards: inspection.hazards,
     checks: inspection.checks
   })
-}
-
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-backfill-write-barrier-digest-failed')
-  }
-}
-
-function encodeBase64URL(bytes: Uint8Array): string {
-  return fromUint8Array(bytes, true)
-}
-
-async function digestSql(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-backfill-write-barrier-digest-failed')
-  }
 }
 
 function logicalScope(subject: SupabaseBackfillInspectionSubjectV1) {

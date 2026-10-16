@@ -99,6 +99,20 @@ export async function createSupabaseInspectedMigrationSnapshot(
     completeness: normalized.provenance.completeness,
     truncated: normalized.provenance.truncated
   }
+  const inventory = {
+    coverage: normalized.coverage,
+    objects: normalized.objects,
+    columns: normalized.columns,
+    constraints: normalized.constraints,
+    indexes: normalized.indexes,
+    roles: normalized.roles,
+    roleMemberships: normalized.roleMemberships,
+    policies: normalized.policies,
+    storageBuckets: normalized.storageBuckets,
+    storagePolicies: normalized.storagePolicies,
+    privileges: normalized.privileges,
+    defaultPrivileges: normalized.defaultPrivileges
+  }
   const objectPrivilegeDigest = digestCanonicalBackendValue(
     {
       format: 'openpencil.supabase-inspected-inventory.v1',
@@ -106,18 +120,7 @@ export async function createSupabaseInspectedMigrationSnapshot(
       providerId: 'supabase',
       schema: 'public',
       provenance: inventoryProvenance,
-      coverage: normalized.coverage,
-      objects: normalized.objects,
-      columns: normalized.columns,
-      constraints: normalized.constraints,
-      indexes: normalized.indexes,
-      roles: normalized.roles,
-      roleMemberships: normalized.roleMemberships,
-      policies: normalized.policies,
-      storageBuckets: normalized.storageBuckets,
-      storagePolicies: normalized.storagePolicies,
-      privileges: normalized.privileges,
-      defaultPrivileges: normalized.defaultPrivileges
+      ...inventory
     },
     '$.supabaseInspectedInventory'
   )
@@ -144,18 +147,7 @@ export async function createSupabaseInspectedMigrationSnapshot(
       physicalSchemaDigest,
       objectPrivilegeDigest,
       inspectedSchemaDigest,
-      coverage: normalized.coverage,
-      objects: normalized.objects,
-      columns: normalized.columns,
-      constraints: normalized.constraints,
-      indexes: normalized.indexes,
-      roles: normalized.roles,
-      roleMemberships: normalized.roleMemberships,
-      policies: normalized.policies,
-      storageBuckets: normalized.storageBuckets,
-      storagePolicies: normalized.storagePolicies,
-      privileges: normalized.privileges,
-      defaultPrivileges: normalized.defaultPrivileges
+      ...inventory
     },
     '$.supabaseInspectedCapture'
   )

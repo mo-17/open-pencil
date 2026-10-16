@@ -11,6 +11,7 @@ import {
   compareReleaseTimestamps,
   exactArray,
   exactRecord,
+  parseReleaseAuthorityFields,
   nullableDigest,
   releaseDigest,
   releaseIdentifier,
@@ -114,7 +115,6 @@ export type BackendBackfillExecutionVerification =
 
 type BackfillFailure = Extract<BackendBackfillExecutionVerification, { ok: false }>
 
-const ENVIRONMENTS = new Set<string>(['preview', 'staging', 'production'])
 const CURSOR_FIELD_TYPES = new Set<string>(['integer'])
 const OUTCOMES = new Set<string>(['in-progress', 'completed', 'failed'])
 
@@ -154,13 +154,6 @@ const RECEIPT_KEYS = [
 const RECEIPT_INPUT_KEYS = RECEIPT_KEYS.filter(
   (key) => !['format', 'version', 'scope', 'previousReceiptDigest'].includes(key)
 )
-
-function environment(value: unknown, path: string): BackendReleaseEnvironment {
-  if (typeof value !== 'string' || !ENVIRONMENTS.has(value)) {
-    throw new TypeError(`${path} is not supported`)
-  }
-  return value as BackendReleaseEnvironment
-}
 
 function cursorFieldType(value: unknown, path: string): BackendBackfillCursorFieldType {
   if (typeof value !== 'string' || !CURSOR_FIELD_TYPES.has(value)) {
@@ -212,15 +205,7 @@ function compareCursorValues(
 function parseAuthority(value: unknown, path: string): BackendBackfillExecutionAuthorityV1 {
   const source = exactRecord(value, path, AUTHORITY_KEYS)
   return Object.freeze({
-    providerId: releaseIdentifier(
-      stringValue(source.providerId, `${path}.providerId`),
-      `${path}.providerId`
-    ),
-    environment: environment(source.environment, `${path}.environment`),
-    authorityDigest: releaseDigest(
-      stringValue(source.authorityDigest, `${path}.authorityDigest`),
-      `${path}.authorityDigest`
-    ),
+    ...parseReleaseAuthorityFields(source, path),
     migrationId: releaseIdentifier(
       stringValue(source.migrationId, `${path}.migrationId`),
       `${path}.migrationId`
@@ -266,15 +251,7 @@ export function parseBackendBackfillExecutionScope(
   return Object.freeze({
     format: BACKEND_BACKFILL_EXECUTION_SCOPE_FORMAT,
     version: BACKEND_BACKFILL_EXECUTION_VERSION,
-    providerId: releaseIdentifier(
-      stringValue(source.providerId, `${path}.providerId`),
-      `${path}.providerId`
-    ),
-    environment: environment(source.environment, `${path}.environment`),
-    authorityDigest: releaseDigest(
-      stringValue(source.authorityDigest, `${path}.authorityDigest`),
-      `${path}.authorityDigest`
-    ),
+    ...parseReleaseAuthorityFields(source, path),
     applicationDigest: releaseDigest(
       stringValue(source.applicationDigest, `${path}.applicationDigest`),
       `${path}.applicationDigest`

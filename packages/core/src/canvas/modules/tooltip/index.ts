@@ -5,6 +5,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 import {
   renderResolvedModulePreview,
   configureModulePreviewPaint,
+  drawModulePreviewRoundedRect,
   withModulePreviewClip,
   withModulePreviewRectClip
 } from '#core/canvas/modules/preview'
@@ -24,11 +25,7 @@ export function renderTooltipModulePreview(
   return renderResolvedModulePreview(node, resolveTooltipModule, ({ config, width, height }) => {
     withModulePreviewClip(renderer, canvas, node, () => {
       configureModulePreviewPaint(renderer, config.triggerBackground)
-      const radius = Math.min(config.borderRadius, width / 2, height / 2)
-      canvas.drawRRect(
-        renderer.ck.RRectXY(renderer.ck.LTRBRect(0, 0, width, height), radius, radius),
-        renderer.fillPaint
-      )
+      drawModulePreviewRoundedRect(renderer, canvas, { width, height }, config.borderRadius)
       const label = tooltipTextNode(node)
       if (!label || !renderer.fontProvider || !renderer.fontsLoaded || width <= 24) return
       const readiness = renderer.nodeFontReadiness(label)

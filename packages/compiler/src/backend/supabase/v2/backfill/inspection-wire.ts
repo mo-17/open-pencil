@@ -8,6 +8,7 @@ import { createBackendProviderPlanV2 } from '#compiler/backend/v2/plan'
 import { createBackendProviderRegistryV2 } from '#compiler/backend/v2/registry'
 
 import {
+  isWellFormedBackendText,
   parseBackendApplicationSpecV2,
   type BackendApplicationSpecV2
 } from '@open-pencil/lowcode/backend'
@@ -81,23 +82,9 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function isWellFormedUtf16(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index)
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return false
-      index += 1
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      return false
-    }
-  }
-  return true
-}
-
 function assertWellFormedUnicode(value: unknown): void {
   if (typeof value === 'string') {
-    if (!isWellFormedUtf16(value)) {
+    if (!isWellFormedBackendText(value)) {
       throw new TypeError(
         'Supabase backfill inspection request must contain only well-formed Unicode strings.'
       )

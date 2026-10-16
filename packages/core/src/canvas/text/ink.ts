@@ -38,23 +38,27 @@ class BandInk {
 
   quadTo(x1: number, y1: number, x: number, y: number): void {
     const { x: x0, y: y0 } = this
-    for (let step = 1; step <= CURVE_STEPS; step++) {
-      const t = step / CURVE_STEPS
-      const u = 1 - t
-      this.lineTo(u * u * x0 + 2 * u * t * x1 + t * t * x, u * u * y0 + 2 * u * t * y1 + t * t * y)
-    }
+    this.traceCurve((t, u) => [
+      u * u * x0 + 2 * u * t * x1 + t * t * x,
+      u * u * y0 + 2 * u * t * y1 + t * t * y
+    ])
   }
 
   cubicTo(x1: number, y1: number, x2: number, y2: number, x: number, y: number): void {
     const { x: x0, y: y0 } = this
-    for (let step = 1; step <= CURVE_STEPS; step++) {
-      const t = step / CURVE_STEPS
-      const u = 1 - t
+    this.traceCurve((t, u) => {
       const a = u * u * u
       const b = 3 * u * u * t
       const c = 3 * u * t * t
       const d = t * t * t
-      this.lineTo(a * x0 + b * x1 + c * x2 + d * x, a * y0 + b * y1 + c * y2 + d * y)
+      return [a * x0 + b * x1 + c * x2 + d * x, a * y0 + b * y1 + c * y2 + d * y]
+    })
+  }
+
+  private traceCurve(pointAt: (t: number, u: number) => [number, number]): void {
+    for (let step = 1; step <= CURVE_STEPS; step++) {
+      const t = step / CURVE_STEPS
+      this.lineTo(...pointAt(t, 1 - t))
     }
   }
 

@@ -33,6 +33,7 @@ import {
   identifier,
   invalid,
   oneOf,
+  optionalInspectedField,
   optionalStableId,
   parseCatalogAddress,
   parseNamedObjectIdentity,
@@ -112,6 +113,13 @@ export function parseManagedIdentity(
   return openPencilId
 }
 
+export function parseManagedObjectHeader(source: Record<string, unknown>, path: string) {
+  const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
+  const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
+  const address = optionalInspectedField(source, 'address', path, parseCatalogAddress)
+  return { management, openPencilId, address }
+}
+
 // oxlint-disable-next-line complexity -- Closed object variants share identity and catalog-address validation in one parser boundary.
 export function parseObject(value: unknown, index: number): SupabaseInspectionObjectV1 {
   const path = `$.objects[${String(index)}]`
@@ -133,12 +141,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       ],
       ['kind', 'schema', 'name', 'management', 'rlsEnabled', 'rlsForced']
     )
-    const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
-    const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
-    const address =
-      source.address === undefined
-        ? undefined
-        : parseCatalogAddress(source.address, `${path}.address`)
+    const { management, openPencilId, address } = parseManagedObjectHeader(source, path)
     return {
       kind,
       ...parseNamedObjectIdentity(source, path),
@@ -156,12 +159,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       ['kind', 'schema', 'name', 'management', 'openPencilId', 'values', 'address'],
       ['kind', 'schema', 'name', 'management', 'values']
     )
-    const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
-    const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
-    const address =
-      source.address === undefined
-        ? undefined
-        : parseCatalogAddress(source.address, `${path}.address`)
+    const { management, openPencilId, address } = parseManagedObjectHeader(source, path)
     const values = array(source.values, `${path}.values`, BACKEND_LIMITS.maxEnumValues).map(
       (entry, valueIndex) => identifier(entry, `${path}.values[${String(valueIndex)}]`)
     )
@@ -185,10 +183,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       ['kind', 'schema', 'name', 'management']
     )
     const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
-    const address =
-      source.address === undefined
-        ? undefined
-        : parseCatalogAddress(source.address, `${path}.address`)
+    const address = optionalInspectedField(source, 'address', path, parseCatalogAddress)
     let ownedBy: { entityId: string; fieldId: string } | undefined
     if (source.ownedBy !== undefined) {
       const owner = exactRecord(source.ownedBy, `${path}.ownedBy`, ['entityId', 'fieldId'])
@@ -215,11 +210,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       ['kind', 'schema', 'name', 'management', 'securityInvoker', 'address'],
       ['kind', 'schema', 'name', 'management', 'securityInvoker']
     )
-    const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
-    const address =
-      source.address === undefined
-        ? undefined
-        : parseCatalogAddress(source.address, `${path}.address`)
+    const { management, address } = parseExternalObjectHeader(source, path)
     return {
       kind,
       ...parseNamedObjectIdentity(source, path),
@@ -234,11 +225,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
     ['kind', 'schema', 'name', 'management', 'securityDefiner', 'address'],
     ['kind', 'schema', 'name', 'management', 'securityDefiner']
   )
-  const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
-  const address =
-    source.address === undefined
-      ? undefined
-      : parseCatalogAddress(source.address, `${path}.address`)
+  const { management, address } = parseExternalObjectHeader(source, path)
   return {
     kind,
     ...parseNamedObjectIdentity(source, path),
@@ -299,37 +286,12 @@ export function parseRoleMembership(
 
 export function parsePolicy(value: unknown, index: number): SupabaseInspectionPolicyV1 {
   const path = `$.policies[${String(index)}]`
-  const source = exactRecord(value, path, [
-    'schema',
-    'tableName',
-    'name',
-    'command',
-    'mode',
-    'roles',
-    'source',
-    'usingExpressionDigest',
-    'withCheckExpressionDigest'
-  ])
-  const roles = array(source.roles, `${path}.roles`, 64)
-    .map((entry, roleIndex) => parseRole(entry, `${path}.roles[${String(roleIndex)}]`))
-    .sort()
-  if (new Set(roles).size !== roles.length) invalid(`${path}.roles`, 'roles must be unique')
+  const source = exactRecord(value, path, ['schema', 'tableName', ...POLICY_FIELDS])
+  const roles = parsePolicyRoles(source, path)
   return {
     schema: schema(source.schema, `${path}.schema`),
     tableName: identifier(source.tableName, `${path}.tableName`),
-    name: identifier(source.name, `${path}.name`),
-    command: oneOf(source.command, `${path}.command`, INSPECTION_POLICY_COMMANDS),
-    mode: oneOf(source.mode, `${path}.mode`, INSPECTION_POLICY_MODES),
-    roles,
-    source: oneOf(source.source, `${path}.source`, INSPECTION_INVENTORY_SOURCES),
-    usingExpressionDigest:
-      source.usingExpressionDigest === null
-        ? null
-        : validateDigest(source.usingExpressionDigest, `${path}.usingExpressionDigest`),
-    withCheckExpressionDigest:
-      source.withCheckExpressionDigest === null
-        ? null
-        : validateDigest(source.withCheckExpressionDigest, `${path}.withCheckExpressionDigest`)
+    ...parsePolicyDetails(source, path, roles)
   }
 }
 
@@ -372,35 +334,11 @@ export function parseStoragePolicy(
   index: number
 ): SupabaseInspectionStoragePolicyV1 {
   const path = `$.storagePolicies[${String(index)}]`
-  const source = exactRecord(value, path, [
-    'address',
-    'name',
-    'command',
-    'mode',
-    'roles',
-    'source',
-    'usingExpressionDigest',
-    'withCheckExpressionDigest'
-  ])
-  const roles = array(source.roles, `${path}.roles`, 64)
-    .map((entry, roleIndex) => parseRole(entry, `${path}.roles[${String(roleIndex)}]`))
-    .sort()
-  if (new Set(roles).size !== roles.length) invalid(`${path}.roles`, 'roles must be unique')
+  const source = exactRecord(value, path, ['address', ...POLICY_FIELDS])
+  const roles = parsePolicyRoles(source, path)
   return {
     address: parseCatalogAddress(source.address, `${path}.address`),
-    name: identifier(source.name, `${path}.name`),
-    command: oneOf(source.command, `${path}.command`, INSPECTION_POLICY_COMMANDS),
-    mode: oneOf(source.mode, `${path}.mode`, INSPECTION_POLICY_MODES),
-    roles,
-    source: oneOf(source.source, `${path}.source`, INSPECTION_INVENTORY_SOURCES),
-    usingExpressionDigest:
-      source.usingExpressionDigest === null
-        ? null
-        : validateDigest(source.usingExpressionDigest, `${path}.usingExpressionDigest`),
-    withCheckExpressionDigest:
-      source.withCheckExpressionDigest === null
-        ? null
-        : validateDigest(source.withCheckExpressionDigest, `${path}.withCheckExpressionDigest`)
+    ...parsePolicyDetails(source, path, roles)
   }
 }
 
@@ -547,10 +485,7 @@ export function parseColumn(value: unknown, index: number): SupabaseInspectionCo
   if (management === 'managed' && columnDefault?.kind === 'unbound') {
     invalid(`${path}.default`, 'managed columns cannot carry an unbound provider expression')
   }
-  const address =
-    source.address === undefined
-      ? undefined
-      : parseCatalogAddress(source.address, `${path}.address`)
+  const address = optionalInspectedField(source, 'address', path, parseCatalogAddress)
   const typeOid =
     source.typeOid === undefined ? undefined : catalogOid(source.typeOid, `${path}.typeOid`)
   const defaultExpressionDigest = optionalNullableDigest(
@@ -590,4 +525,50 @@ export function objectKey(
 
 export function privilegeObjectKey(privilege: SupabaseInspectionPrivilegeV1): string {
   return `${privilege.objectKind}:${privilege.schema}:${privilege.objectName}`
+}
+
+function parseExternalObjectHeader(source: Record<string, unknown>, path: string) {
+  const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
+  const address = optionalInspectedField(source, 'address', path, parseCatalogAddress)
+  return { management, address }
+}
+
+const POLICY_FIELDS = [
+  'name',
+  'command',
+  'mode',
+  'roles',
+  'source',
+  'usingExpressionDigest',
+  'withCheckExpressionDigest'
+] as const
+
+function parsePolicyRoles(source: Record<string, unknown>, path: string) {
+  const roles = array(source.roles, `${path}.roles`, 64)
+    .map((entry, roleIndex) => parseRole(entry, `${path}.roles[${String(roleIndex)}]`))
+    .sort()
+  if (new Set(roles).size !== roles.length) invalid(`${path}.roles`, 'roles must be unique')
+  return roles
+}
+
+function parsePolicyDetails(
+  source: Record<string, unknown>,
+  path: string,
+  roles: readonly string[]
+) {
+  return {
+    name: identifier(source.name, `${path}.name`),
+    command: oneOf(source.command, `${path}.command`, INSPECTION_POLICY_COMMANDS),
+    mode: oneOf(source.mode, `${path}.mode`, INSPECTION_POLICY_MODES),
+    roles,
+    source: oneOf(source.source, `${path}.source`, INSPECTION_INVENTORY_SOURCES),
+    usingExpressionDigest:
+      source.usingExpressionDigest === null
+        ? null
+        : validateDigest(source.usingExpressionDigest, `${path}.usingExpressionDigest`),
+    withCheckExpressionDigest:
+      source.withCheckExpressionDigest === null
+        ? null
+        : validateDigest(source.withCheckExpressionDigest, `${path}.withCheckExpressionDigest`)
+  }
 }

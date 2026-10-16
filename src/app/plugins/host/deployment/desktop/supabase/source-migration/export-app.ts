@@ -1,11 +1,7 @@
 import { createSupabaseSourceMigrationBundle } from '@open-pencil/compiler/backend'
 
-import { appPluginStore } from '@/app/plugins/app'
-import {
-  prepareAppBackendProviderDocumentBuild,
-  resolveAppBackendProviderReleaseAuthority,
-  type AppBackendProviderHostStore
-} from '@/app/plugins/host/backend-provider'
+import { type AppBackendProviderHostStore } from '@/app/plugins/host/backend-provider'
+import { createDesktopSupabaseBuildAccess } from '@/app/plugins/host/deployment/desktop/supabase/build-access'
 import { archiveProjectFiles } from '@/app/plugins/host/project-archive'
 import { choosePluginFileExportDestination } from '@/app/plugins/host/source-exporter-runtime'
 import { isTauri } from '@/app/tauri/env'
@@ -40,26 +36,12 @@ function randomId(): string {
 export function createAppDesktopSupabaseSourceMigrationExportService(
   options: AppDesktopSupabaseSourceMigrationExportOptions = {}
 ): DesktopSupabaseSourceMigrationExportService {
-  const pluginStore = options.pluginStore ?? appPluginStore
-  const waitForPluginStoreReady =
-    options.pluginStoreReady ??
-    (options.pluginStore
-      ? () => undefined
-      : () => (appPluginStore.snapshot().ready ? undefined : appPluginStore.load()))
+  const buildAccess = createDesktopSupabaseBuildAccess(options)
   const dependencies: DesktopSupabaseSourceMigrationExportDependencies = {
     isDesktop: options.isDesktop ?? isTauri,
     now: options.now ?? (() => new Date().toISOString()),
     nextId: options.nextId ?? randomId,
-    async prepareBuild(graph, target) {
-      await Promise.resolve(waitForPluginStoreReady())
-      return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target,
-        mode: 'production'
-      })
-    },
-    resolveBackendProviderAuthority(build) {
-      return resolveAppBackendProviderReleaseAuthority(pluginStore, build.descriptor)
-    },
+    ...buildAccess,
     createBundle: createSupabaseSourceMigrationBundle,
     archive: archiveProjectFiles,
     chooseDestination(fileName, signal) {

@@ -5,7 +5,7 @@ import {
 } from '@open-pencil/lowcode'
 import type { SceneGraph, StateValueType } from '@open-pencil/scene-graph'
 
-import { applicationStateDeclarations } from '../application-state'
+import { applicationStateDeclarations, applicationStateValueMatches } from '../application-state'
 import type { PreviewTarget } from '../host/types'
 import {
   parsePreviewPageSessionSnapshot,
@@ -96,12 +96,6 @@ export function applicationPageSessionSignature(graph: SceneGraph): string | nul
   }
 }
 
-function valueMatches(type: StateValueType, value: unknown): boolean {
-  if (type === 'array') return Array.isArray(value)
-  if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value)
-  return typeof value === type
-}
-
 /** Local preview recovery only; never persisted or sent to collaboration peers. */
 export function createApplicationPageSessionCache() {
   let graphOwner: SceneGraph | null = null
@@ -170,7 +164,7 @@ export function createApplicationPageSessionCache() {
       entry.values = Object.fromEntries(
         Object.entries(entry.values).filter(([name, state]) => {
           const type = authority.types.get(name)
-          return type !== undefined && valueMatches(type, state)
+          return type !== undefined && applicationStateValueMatches(type, state)
         })
       )
       stored.entries.push(entry)

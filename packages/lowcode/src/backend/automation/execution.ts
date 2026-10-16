@@ -1,6 +1,12 @@
 import { canonicalManifestBytes, digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import { exactRecord, releaseDigest, releaseIdentifier, stringValue } from '../release/validation'
+import {
+  exactRecord,
+  releaseDigest,
+  releaseIdentifier,
+  stringValue,
+  releaseInteger as integer
+} from '../release/validation'
 import { containsBackendSecretLikeMaterial } from '../secret-boundary'
 
 export const BACKEND_AUTOMATION_EXECUTION_VERSION = 1 as const
@@ -122,18 +128,6 @@ export interface BackendAutomationExecutionDispositionV1 {
   readonly version: typeof BACKEND_AUTOMATION_EXECUTION_VERSION
   readonly input: BackendAutomationExecutionInputV1
   readonly decision: BackendAutomationExecutionDecisionV1
-}
-
-function integer(value: unknown, path: string, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
-  }
-  return value as number
 }
 
 function nullableIdentifier(value: unknown, path: string): string | null {

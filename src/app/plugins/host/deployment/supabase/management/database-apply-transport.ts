@@ -4,9 +4,16 @@ import { digestSupabaseInspectedMigrationReviewManifest } from '@open-pencil/com
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import {
+  isPlainSupabaseDataRecord,
+  readSupabaseDataProperty
+} from '@/app/plugins/host/deployment/supabase/data-admission'
+
+import {
   consumeTrustedSupabaseBackendStagingApplyContext,
   type SupabaseBackendStagingApplyContext
 } from '../backend-release'
+import { readManagementJSONBody } from './response-body'
+import { fetchManagementResponse } from './transport-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
 const PROJECT_REF = /^[a-z]{20}$/u
@@ -123,15 +130,8 @@ function validPAT(value: unknown): value is string {
 }
 
 function plainRecord(value: unknown, code: 'invalid-request' | 'invalid-response'): UnknownRecord {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-  ) {
-    return fail(code)
-  }
-  return value as UnknownRecord
+  if (!isPlainSupabaseDataRecord(value)) return fail(code)
+  return value
 }
 
 function dataField(
@@ -139,9 +139,7 @@ function dataField(
   key: string,
   code: 'invalid-request' | 'invalid-response'
 ): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key)
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
+  return readSupabaseDataProperty(record, key, () => fail(code))
 }
 
 function exactKeys(
@@ -359,48 +357,17 @@ async function boundedJSON(
   if (!contentType || !/^application\/json(?:\s*;.*)?$/iu.test(contentType)) {
     fail('invalid-response')
   }
-  const contentLength = response.headers.get('content-length')
-  if (contentLength !== null) {
-    const parsed = Number(contentLength)
-    if (!Number.isSafeInteger(parsed) || parsed < 0) fail('invalid-response')
-    if (parsed > maximum) {
-      void response.body?.cancel().catch(() => undefined)
-      fail('response-too-large')
+  return readManagementJSONBody(
+    response,
+    maximum,
+    (reader) => readBodyChunk(reader, signal),
+    fail,
+    (cause) => {
+      throwIfAborted(signal)
+      if (cause instanceof SupabaseManagementDatabaseApplyTransportError) throw cause
+      return fail('network-failed')
     }
-  }
-  if (!response.body) fail('invalid-response')
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let byteLength = 0
-  try {
-    let chunk = await readBodyChunk(reader, signal)
-    while (!chunk.done) {
-      byteLength += chunk.value.byteLength
-      if (byteLength > maximum) fail('response-too-large')
-      chunks.push(chunk.value)
-      chunk = await readBodyChunk(reader, signal)
-    }
-  } catch (cause) {
-    // Cleanup cannot delay the result or replace its classification. In particular, a response
-    // failure after the query POST never proves non-dispatch or authorizes retry.
-    void reader.cancel().catch(() => undefined)
-    throwIfAborted(signal)
-    if (cause instanceof SupabaseManagementDatabaseApplyTransportError) throw cause
-    fail('network-failed')
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(byteLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
-    return fail('invalid-response')
-  }
+  )
 }
 
 async function requestJSON(
@@ -411,19 +378,16 @@ async function requestJSON(
   maximum: number,
   signal: AbortSignal | undefined
 ): Promise<unknown> {
-  throwIfAborted(signal)
-  let response: Response
-  try {
-    response = await fetcher(
-      url,
-      { ...init, redirect: 'error', signal },
-      maximum,
-      SUPABASE_MANAGEMENT_DATABASE_APPLY_LIMITS.requestTimeoutMs
-    )
-  } catch {
-    throwIfAborted(signal)
-    return fail('network-failed')
-  }
+  const response = await fetchManagementResponse(
+    fetcher,
+    url,
+    init,
+    maximum,
+    SUPABASE_MANAGEMENT_DATABASE_APPLY_LIMITS.requestTimeoutMs,
+    signal,
+    () => throwIfAborted(signal),
+    () => fail('network-failed')
+  )
   throwIfAborted(signal)
   if (response.redirected || (response.url !== '' && response.url !== url)) fail('http-error')
   if (response.status !== expectedStatus) fail('http-error')

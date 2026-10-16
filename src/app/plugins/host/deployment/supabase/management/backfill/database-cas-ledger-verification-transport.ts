@@ -1,8 +1,7 @@
-/* oxlint-disable eslint(max-lines) -- Transport validation and bounded response handling remain co-located. */
-
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import { SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA } from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/review'
+/* oxlint-disable eslint(max-lines) -- Transport validation and bounded response handling remain co-located. */
 import {
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_FIXED_QUERY,
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_PARAMETER_ORDER,
@@ -12,19 +11,14 @@ import {
   type SupabaseBackfillDatabaseCASLedgerVerificationHostTransportV1,
   type SupabaseBackfillDatabaseCASLedgerVerificationRequestV1
 } from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/verifier'
-import type {
-  SupabaseBackfillLiveCatalogAuthorityV1,
-  SupabaseBackfillLiveCatalogProjectAuthorityV1
-} from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
+import type { SupabaseBackfillLiveCatalogAuthorityV1 } from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
 
-import {
-  createBackfillReadDeadline,
-  discardUnreadBackfillResponse,
-  readBackfillJSON,
-  waitForBackfillRead
-} from './read-response-runtime'
+import { isSupabaseManagementToken, supabaseManagementTimeout } from '../transport-runtime'
+import { createBackfillCatalogSession } from './catalog-session'
+import { createBackfillQueryAdmission } from './query-admission'
+import { createBackfillJSONRequester } from './read-response-runtime'
 
-const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
 const PROJECT_REF = /^[a-z]{20}$/u
 const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u
 const DIGEST = /^[A-Za-z0-9_-]{43}$/u
@@ -97,51 +91,15 @@ const REQUEST_KEYS = Object.freeze([
   'parameters'
 ] as const)
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+const { ownData, ownKeys, plainRecord } = dataAdmission
+
+const queryAdmission = createBackfillQueryAdmission(fail)
+
 function fail(
   code: SupabaseManagementBackfillDatabaseCASLedgerVerificationTransportErrorCode
 ): never {
   throw new SupabaseManagementBackfillDatabaseCASLedgerVerificationTransportError(code)
-}
-
-function ownData(
-  value: object,
-  key: PropertyKey,
-  code: 'invalid-authority' | 'invalid-request' | 'invalid-response'
-): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(value, key)
-  } catch {
-    return fail(code)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
-  return descriptor.value
-}
-
-function ownKeys(
-  value: object,
-  code: 'invalid-authority' | 'invalid-request' | 'invalid-response'
-): readonly PropertyKey[] {
-  try {
-    return Reflect.ownKeys(value)
-  } catch {
-    return fail(code)
-  }
-}
-
-function plainRecord(
-  value: unknown,
-  code: 'invalid-authority' | 'invalid-request' | 'invalid-response'
-): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail(code)
-  let prototype: object | null
-  try {
-    prototype = Object.getPrototypeOf(value)
-  } catch {
-    return fail(code)
-  }
-  if (prototype !== Object.prototype && prototype !== null) return fail(code)
-  return value as UnknownRecord
 }
 
 function exactRecord(
@@ -209,26 +167,17 @@ function optionSnapshot(
 }
 
 function boundedTimeout(value: unknown): number {
-  if (value === undefined) {
-    return SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.requestTimeoutMs
-  }
-  if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 1 ||
-    (value as number) >
-      SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.requestTimeoutMs
-  ) {
-    return fail('invalid-authority')
-  }
-  return value as number
+  return supabaseManagementTimeout(
+    value,
+    SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.requestTimeoutMs,
+    () => fail('invalid-authority')
+  )
 }
 
 function validPAT(value: string): boolean {
-  return (
-    value.length >= 16 &&
-    new TextEncoder().encode(value).byteLength <=
-      SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.maxPATBytes &&
-    !/\p{Cc}/u.test(value)
+  return isSupabaseManagementToken(
+    value,
+    SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.maxPATBytes
   )
 }
 
@@ -256,31 +205,13 @@ function validateAuthority(
   })
 }
 
-function sameAuthority(
-  left: SupabaseBackfillLiveCatalogAuthorityV1,
-  right: SupabaseBackfillLiveCatalogAuthorityV1
-): boolean {
-  return (
-    left.projectRef === right.projectRef &&
-    left.accountId === right.accountId &&
-    left.grantGeneration === right.grantGeneration
-  )
-}
-
 function validateRequestMetadata(source: UnknownRecord): void {
-  if (
-    ownData(source, 'queryId', 'invalid-request') !==
-      SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_QUERY_ID ||
-    ownData(source, 'queryVersion', 'invalid-request') !==
-      SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_QUERY_VERSION ||
-    ownData(source, 'statementCount', 'invalid-request') !== 1 ||
-    ownData(source, 'catalogOnly', 'invalid-request') !== true ||
-    ownData(source, 'managedDataRead', 'invalid-request') !== false ||
-    ownData(source, 'accessMode', 'invalid-request') !== 'read-only' ||
-    ownData(source, 'snapshotScope', 'invalid-request') !== 'single-statement'
-  ) {
-    fail('invalid-request')
-  }
+  queryAdmission.metadata(
+    source,
+    SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_QUERY_ID,
+    SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_QUERY_VERSION,
+    false
+  )
 }
 
 interface ParsedVerificationParameters {
@@ -339,11 +270,7 @@ async function validatedQueryParameters(
     return fail('invalid-request')
   }
   if (queryDigest !== expectedQueryDigest) return fail('invalid-request')
-  for (const key of ['projectRef', 'accountId', 'grantGeneration'] as const) {
-    if (ownData(source, key, 'invalid-request') !== expectedAuthority[key]) {
-      return fail('invalid-request')
-    }
-  }
+  queryAdmission.authority(source, expectedAuthority)
   const parameters = exactRecord(
     ownData(source, 'parameters', 'invalid-request'),
     SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_PARAMETER_ORDER,
@@ -373,88 +300,16 @@ async function validatedQueryParameters(
 
 const READ_ABORT_MESSAGE = 'Supabase database CAS ledger verification aborted'
 
-async function requestJSON(
-  fetcher: SupabaseManagementBackfillDatabaseCASLedgerVerificationFetch,
-  url: string,
-  init: RequestInit,
-  expectedStatus: number,
-  maximum: number,
-  timeoutMs: number,
-  callerSignal: AbortSignal | undefined
-): Promise<unknown> {
-  if (callerSignal?.aborted) return fail('aborted')
-  const deadline = createBackfillReadDeadline(
-    callerSignal,
-    timeoutMs,
-    'Database CAS ledger verification timed out'
-  )
-  try {
-    const response = await waitForBackfillRead(
-      fetcher(url, { ...init, redirect: 'error', signal: deadline.signal }, maximum, timeoutMs),
-      deadline.signal,
-      READ_ABORT_MESSAGE
-    )
-    if (
-      response.redirected ||
-      (response.url !== '' && response.url !== url) ||
-      response.status !== expectedStatus
-    ) {
-      discardUnreadBackfillResponse(response)
-      return fail('http-error')
-    }
-    return await readBackfillJSON(response, maximum, deadline.signal, {
-      abortMessage: READ_ABORT_MESSAGE,
-      fail
-    })
-  } catch (cause) {
-    if (cause instanceof SupabaseManagementBackfillDatabaseCASLedgerVerificationTransportError) {
-      throw cause
-    }
-    if (deadline.timedOut()) return fail('timeout')
-    if (callerSignal?.aborted) return fail('aborted')
-    return fail('network-failed')
-  } finally {
-    deadline.dispose()
-  }
-}
-
-function parseProjectAuthority(
-  value: unknown,
-  expected: SupabaseBackfillLiveCatalogAuthorityV1
-): SupabaseBackfillLiveCatalogProjectAuthorityV1 {
-  const project = plainRecord(value, 'invalid-response')
-  const ref = ownData(project, 'ref', 'invalid-response')
-  const accountId = ownData(project, 'organization_id', 'invalid-response')
-  if (ref !== expected.projectRef || accountId !== expected.accountId) {
-    return fail('invalid-authority')
-  }
-  return Object.freeze({
-    projectRef: expected.projectRef,
-    organizationId: expected.accountId,
-    grantGeneration: expected.grantGeneration
-  })
-}
+const requestJSON = createBackfillJSONRequester({
+  abortMessage: READ_ABORT_MESSAGE,
+  timeoutMessage: 'Database CAS ledger verification timed out',
+  ownsError: (cause) =>
+    cause instanceof SupabaseManagementBackfillDatabaseCASLedgerVerificationTransportError,
+  fail
+})
 
 function parseSingleVerificationRow(value: unknown): UnknownRecord {
-  if (!Array.isArray(value) || value.length !== 1) return fail('invalid-response')
-  const keys = ownKeys(value, 'invalid-response')
-  let lengthDescriptor: PropertyDescriptor | undefined
-  try {
-    lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-  } catch {
-    return fail('invalid-response')
-  }
-  if (
-    keys.length !== 2 ||
-    !keys.includes('0') ||
-    !keys.includes('length') ||
-    lengthDescriptor?.enumerable !== false ||
-    !Object.hasOwn(lengthDescriptor, 'value') ||
-    lengthDescriptor.value !== 1
-  ) {
-    return fail('invalid-response')
-  }
-  return plainRecord(ownData(value, '0', 'invalid-response'), 'invalid-response')
+  return plainRecord(dataAdmission.singleItem(value, 'invalid-response'), 'invalid-response')
 }
 
 export function createSupabaseManagementBackfillDatabaseCASLedgerVerificationTransport(
@@ -464,78 +319,26 @@ export function createSupabaseManagementBackfillDatabaseCASLedgerVerificationTra
   if (!validPAT(options.personalAccessToken)) fail('invalid-authority')
   const boundAuthority = validateAuthority(options.authority, 'invalid-authority')
   const timeoutMs = boundedTimeout(options.requestTimeoutMs)
-  const authorization = `Bearer ${options.personalAccessToken}`
-  const fetcher = options.fetcher
-  const signal = options.signal
-  let state: 'ready' | 'authority-pending' | 'verified' | 'query-pending' | 'consumed' = 'ready'
-  let verifiedAuthority: SupabaseBackfillLiveCatalogAuthorityV1 | null = null
-
-  return Object.freeze({
-    async getProjectAuthority(request: SupabaseBackfillLiveCatalogAuthorityV1): Promise<unknown> {
-      if (state !== 'ready') return fail('invalid-request')
-      const expected = validateAuthority(request, 'invalid-request')
-      if (!sameAuthority(expected, boundAuthority)) return fail('invalid-request')
-      state = 'authority-pending'
-      try {
-        const url = `${MANAGEMENT_ORIGIN}/v1/projects/${expected.projectRef}`
-        const value = await requestJSON(
-          fetcher,
-          url,
-          {
-            method: 'GET',
-            credentials: 'omit',
-            headers: Object.freeze({ accept: 'application/json', authorization })
-          },
-          200,
+  const session =
+    createBackfillCatalogSession<SupabaseBackfillDatabaseCASLedgerVerificationRequestV1>(
+      boundAuthority,
+      options,
+      timeoutMs,
+      {
+        requestJSON,
+        validateAuthority: (value) => validateAuthority(value, 'invalid-request'),
+        validatedQueryParameters,
+        parseRow: parseSingleVerificationRow,
+        fail,
+        sql: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL,
+        maxProjectResponseBytes:
           SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.maxProjectResponseBytes,
-          timeoutMs,
-          signal
-        )
-        const projectAuthority = parseProjectAuthority(value, expected)
-        verifiedAuthority = expected
-        state = 'verified'
-        return projectAuthority
-      } catch (cause) {
-        state = 'consumed'
-        throw cause
+        maxQueryResponseBytes:
+          SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.maxVerificationResponseBytes
       }
-    },
-
-    async runReadOnlyDatabaseCASLedgerVerificationQuery(
-      request: SupabaseBackfillDatabaseCASLedgerVerificationRequestV1
-    ): Promise<unknown> {
-      if (state !== 'verified' || verifiedAuthority === null) return fail('invalid-request')
-      const expected = verifiedAuthority
-      state = 'query-pending'
-      verifiedAuthority = null
-      try {
-        const parameters = await validatedQueryParameters(request, expected)
-        const url = `${MANAGEMENT_ORIGIN}/v1/projects/${expected.projectRef}/database/query/read-only`
-        const value = await requestJSON(
-          fetcher,
-          url,
-          {
-            method: 'POST',
-            credentials: 'omit',
-            headers: Object.freeze({
-              accept: 'application/json',
-              authorization,
-              'content-type': 'application/json'
-            }),
-            body: JSON.stringify({
-              query: SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL,
-              parameters
-            })
-          },
-          201,
-          SUPABASE_MANAGEMENT_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_LIMITS.maxVerificationResponseBytes,
-          timeoutMs,
-          signal
-        )
-        return parseSingleVerificationRow(value)
-      } finally {
-        state = 'consumed'
-      }
-    }
+    )
+  return Object.freeze({
+    getProjectAuthority: session.getProjectAuthority,
+    runReadOnlyDatabaseCASLedgerVerificationQuery: session.runQuery
   })
 }

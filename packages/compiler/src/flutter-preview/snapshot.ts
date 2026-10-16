@@ -283,12 +283,7 @@ export function compileFlutterPreviewSnapshot(
     graph.activeMode = new Map(snapshot.graph.activeMode)
     graph.documentColorSpace = snapshot.graph.documentColorSpace
     graph.instanceIndex = new Map()
-    for (const node of graph.nodes.values()) {
-      if (node.type !== 'INSTANCE' || !node.componentId) continue
-      const instances = graph.instanceIndex.get(node.componentId) ?? new Set<string>()
-      instances.add(node.id)
-      graph.instanceIndex.set(node.componentId, instances)
-    }
+    graph.rebuildInstanceIndex()
     graph.clearAbsPosCache()
     const output = compile({
       graph,

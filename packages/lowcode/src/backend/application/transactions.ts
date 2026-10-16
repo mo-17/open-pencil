@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- Transaction parsing and cross-reference checks form one fail-closed boundary. */
 import { discriminatedRecord } from '../discriminated-record'
 import { parseBackendFieldDefault } from '../field-default-validation'
+import { parseDataFilter, parseDataValue, parseDataReadInput } from '../step-records'
 import type {
   AuthPolicyIR,
   BackendFieldScalarType,
@@ -9,7 +10,6 @@ import type {
   DataModelIR
 } from '../types'
 import {
-  array,
   boolean,
   boundedText,
   id,
@@ -123,21 +123,7 @@ function filter(
   path: string,
   context: BackendValidationContext
 ): BackendTransactionFilterIR | undefined {
-  const source = record(value, path, context, ['field', 'operator', 'value'])
-  if (!source) return undefined
-  const field = id(source.field, `${path}.field`, context)
-  const operator = oneOf(source.operator, `${path}.operator`, context, [
-    'eq',
-    'neq',
-    'gt',
-    'gte',
-    'lt',
-    'lte',
-    'like',
-    'in'
-  ])
-  const parsedValue = parseTransactionValueSource(source.value, `${path}.value`, context)
-  return field && operator && parsedValue ? { field, operator, value: parsedValue } : undefined
+  return parseDataFilter(value, path, context, parseTransactionValueSource)
 }
 
 function dataValue(
@@ -145,11 +131,7 @@ function dataValue(
   path: string,
   context: BackendValidationContext
 ): BackendTransactionValueIR | undefined {
-  const source = record(value, path, context, ['field', 'value'])
-  if (!source) return undefined
-  const field = id(source.field, `${path}.field`, context)
-  const parsedValue = parseTransactionValueSource(source.value, `${path}.value`, context)
-  return field && parsedValue ? { field, value: parsedValue } : undefined
+  return parseDataValue(value, path, context, parseTransactionValueSource)
 }
 
 function increment(
@@ -177,23 +159,13 @@ function dataReadStep(
   path: string,
   context: BackendValidationContext
 ): BackendTransactionStepIR | undefined {
-  const entityId = id(source.entityId, `${path}.entityId`, context)
-  const resultName = identifier(source.resultName, `${path}.resultName`, context)
-  const rawFields =
-    source.fields === undefined
-      ? undefined
-      : array(source.fields, `${path}.fields`, context, MAX_TRANSACTION_FIELDS)
-  const fields = rawFields
-    ?.map((entry, index) => id(entry, `${path}.fields[${index}]`, context))
-    .filter((entry): entry is string => entry !== undefined)
-  if (fields) uniqueBy(fields, `${path}.fields`, context, 'transaction read field')
-  const filters = parseArrayItems(
-    source.filters,
-    `${path}.filters`,
+  const { entityId, resultName, rawFields, fields, filters } = parseDataReadInput(
+    source,
+    path,
     context,
     MAX_TRANSACTION_FIELDS,
-    filter,
-    true
+    'transaction read field',
+    filter
   )
   const single =
     source.single === undefined ? undefined : boolean(source.single, `${path}.single`, context)

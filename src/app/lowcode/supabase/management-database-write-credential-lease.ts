@@ -1,6 +1,7 @@
 /* oxlint-disable eslint(max-lines) -- The issuer, one-shot lifecycle, and credential sandwich stay together so the same-process trust boundary remains reviewable. */
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { withCredentialPersistenceExclusiveGateV1 } from '@/app/settings/credentials/exclusive-gate'
 import type { CredentialServices } from '@/app/settings/credentials/services'
@@ -191,6 +192,8 @@ const trustedLeases = new WeakMap<object, TrustedLeaseContextV1>()
 const consumedLeases = new WeakSet<object>()
 const trustedConsumedLeases = new WeakMap<object, TrustedConsumedLeaseContextV1>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
 function fail(code: SupabaseManagementDatabaseWriteCredentialLeaseErrorCode): never {
   throw new SupabaseManagementDatabaseWriteCredentialLeaseError(code)
 }
@@ -200,25 +203,16 @@ function exactRecord(
   keys: readonly string[],
   code: SupabaseManagementDatabaseWriteCredentialLeaseErrorCode
 ): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail(code)
+  const record = dataAdmission.recordShape(value, keys, code)
   try {
-    const prototype = Object.getPrototypeOf(value)
-    const ownKeys = Reflect.ownKeys(value)
-    if (
-      (prototype !== Object.prototype && prototype !== null) ||
-      ownKeys.length !== keys.length ||
-      ownKeys.some((key) => typeof key !== 'string' || !keys.includes(key))
-    ) {
-      return fail(code)
-    }
     for (const key of keys) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      const descriptor = Object.getOwnPropertyDescriptor(record, key)
       if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code)
     }
   } catch {
     return fail(code)
   }
-  return value as UnknownRecord
+  return record
 }
 
 function ownData(record: UnknownRecord, key: string): unknown {
@@ -614,6 +608,19 @@ export async function issueSupabaseManagementDatabaseWriteCredentialLeaseV1(
   return lease
 }
 
+function readLeaseRequest(input: unknown, keys: readonly string[]) {
+  const source = exactRecord(
+    input,
+    keys,
+    'supabase-management-database-write-credential-lease-input-invalid'
+  )
+  const issuer = issuerContext(ownData(source, 'issuer'))
+  const leaseValue = ownData(source, 'lease')
+  const expectedBinding = bindingSnapshot(ownData(source, 'expectedBinding'))
+  requireCloneable(source, 'supabase-management-database-write-credential-lease-input-invalid')
+  return { issuer, leaseValue, expectedBinding }
+}
+
 /**
  * Inspect one exact unconsumed lease without resolving a PAT or consuming the final request right.
  * Clones, structural forgeries, wrong issuers, and binding drift return null.
@@ -622,15 +629,7 @@ export function trustedSupabaseManagementDatabaseWriteCredentialLeaseMetadataV1(
   input: InspectSupabaseManagementDatabaseWriteCredentialLeaseOptionsV1
 ): TrustedSupabaseManagementDatabaseWriteCredentialLeaseMetadataV1 | null {
   try {
-    const source = exactRecord(
-      input,
-      INSPECT_OPTION_KEYS,
-      'supabase-management-database-write-credential-lease-input-invalid'
-    )
-    const issuer = issuerContext(ownData(source, 'issuer'))
-    const leaseValue = ownData(source, 'lease')
-    const expectedBinding = bindingSnapshot(ownData(source, 'expectedBinding'))
-    requireCloneable(source, 'supabase-management-database-write-credential-lease-input-invalid')
+    const { issuer, leaseValue, expectedBinding } = readLeaseRequest(input, INSPECT_OPTION_KEYS)
     if (leaseValue === null || typeof leaseValue !== 'object' || consumedLeases.has(leaseValue)) {
       return null
     }
@@ -663,15 +662,7 @@ function opaqueConsumedLease(): SupabaseManagementDatabaseWriteConsumedCredentia
 export function consumeSupabaseManagementDatabaseWriteCredentialLeaseV1(
   input: ConsumeSupabaseManagementDatabaseWriteCredentialLeaseOptionsV1
 ): SupabaseManagementDatabaseWriteConsumedCredentialLeaseV1 {
-  const source = exactRecord(
-    input,
-    CONSUME_OPTION_KEYS,
-    'supabase-management-database-write-credential-lease-input-invalid'
-  )
-  const issuer = issuerContext(ownData(source, 'issuer'))
-  const leaseValue = ownData(source, 'lease')
-  const expectedBinding = bindingSnapshot(ownData(source, 'expectedBinding'))
-  requireCloneable(source, 'supabase-management-database-write-credential-lease-input-invalid')
+  const { issuer, leaseValue, expectedBinding } = readLeaseRequest(input, CONSUME_OPTION_KEYS)
   if (leaseValue === null || typeof leaseValue !== 'object' || consumedLeases.has(leaseValue)) {
     return fail('supabase-management-database-write-credential-lease-invalid')
   }

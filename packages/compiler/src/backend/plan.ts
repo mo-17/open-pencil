@@ -1,3 +1,6 @@
+import { negotiateProviderCapabilities } from '#compiler/backend/capability-data'
+import { providerAuthorityData } from '#compiler/backend/provider-data'
+
 import {
   containsBackendSecretLikeMaterial,
   parseBackendApplicationSpecV1,
@@ -31,7 +34,7 @@ import {
 import {
   backendDiagnostic,
   hasBackendErrors,
-  normalizeProviderDiagnostics,
+  collectProviderValidationDiagnostics,
   sortBackendDiagnostics,
   unsupportedBackendCompilationModeDiagnostic
 } from './diagnostics'
@@ -59,19 +62,7 @@ interface BackendProviderPlanPayload {
 export function backendProviderAuthority(
   selection: BackendProviderSelection
 ): BackendProviderAuthority {
-  const descriptor = selection.descriptor
-  return freezeBackendValue({
-    pluginId: descriptor.pluginId,
-    packageDigest: selection.packageDigest,
-    contributionId: descriptor.contributionId,
-    providerId: descriptor.providerId,
-    adapterId: descriptor.adapterId,
-    adapterVersion: descriptor.adapterVersion,
-    contractVersion: descriptor.contractVersion,
-    supportedModelVersions: [...descriptor.supportedModelVersions],
-    capabilities: [...descriptor.capabilities],
-    outputs: [...descriptor.outputs]
-  }) as BackendProviderAuthority
+  return providerAuthorityData(selection) as BackendProviderAuthority
 }
 
 export function sameBackendProviderAuthority(
@@ -119,37 +110,6 @@ export function activeBackendProviderAdapterSlots(
         adapter.capabilities.some((capability) => included.has(capability)))
     )
   })
-}
-
-function providerDiagnostics(
-  callback: (() => readonly BackendDiagnostic[]) | undefined,
-  path: string,
-  failureCode: string
-): readonly BackendDiagnostic[] {
-  if (!callback) return []
-  try {
-    const result = callback()
-    if (!Array.isArray(result)) {
-      return [
-        backendDiagnostic(
-          'backend-provider-diagnostic-invalid',
-          'error',
-          path,
-          'Backend Provider validation must return an array of diagnostics.'
-        )
-      ]
-    }
-    return normalizeProviderDiagnostics(result, path)
-  } catch {
-    return [
-      backendDiagnostic(
-        failureCode,
-        'error',
-        path,
-        'Backend Provider validation failed without producing a trusted result.'
-      )
-    ]
-  }
 }
 
 function containsSecretLikePlanData(value: JSONValue): boolean {
@@ -218,16 +178,16 @@ export function createBackendProviderPlan(
   const application = freezeBackendValue(
     cloneCanonicalBackendValue(applicationResult.value, '$.application')
   ) as BackendProviderPlan['application']
-  const negotiation = negotiateBackendCapabilities({
-    requirements: application.capabilities,
-    bundle: resolved.value.bundle,
-    target: target as CompilerTarget,
-    mode
-  })
-  diagnostics.push(...negotiation.diagnostics)
-  if (hasBackendErrors(diagnostics)) {
-    return { ok: false, diagnostics: sortBackendDiagnostics(diagnostics) }
-  }
+  const negotiation = negotiateProviderCapabilities(
+    negotiateBackendCapabilities,
+    application.capabilities,
+    resolved.value.bundle,
+    target as CompilerTarget,
+    mode,
+    diagnostics
+  )
+  if (!negotiation.ok) return negotiation
+
   const context = createBackendProviderAdapterContext(
     application,
     resolved.value.selection,
@@ -238,10 +198,11 @@ export function createBackendProviderPlan(
 
   const bundleValidate = resolved.value.bundle.validate
   diagnostics.push(
-    ...providerDiagnostics(
+    ...collectProviderValidationDiagnostics(
       bundleValidate ? () => bundleValidate(context) : undefined,
       '$.bundle.validate',
-      'backend-provider-bundle-validation-failed'
+      'backend-provider-bundle-validation-failed',
+      1
     )
   )
 
@@ -264,10 +225,11 @@ export function createBackendProviderPlan(
     }
     const adapterValidate = adapter.validate
     diagnostics.push(
-      ...providerDiagnostics(
+      ...collectProviderValidationDiagnostics(
         adapterValidate ? () => adapterValidate(context) : undefined,
         `$.${slot}.validate`,
-        'backend-provider-adapter-validation-failed'
+        'backend-provider-adapter-validation-failed',
+        1
       )
     )
   }

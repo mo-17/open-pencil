@@ -1,4 +1,7 @@
-import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
+import {
+  prettyCanonicalBackendJSON,
+  digestCanonicalBackendValue
+} from '#compiler/backend/canonical'
 import type {
   BackendArtifactSourceV2,
   BackendProviderAdapterContextV2
@@ -15,10 +18,6 @@ import {
 } from './index'
 import { emitSupabaseAutomationsReviewSQLV2 } from './sql'
 import { supabaseAutomationTransactionalOutboxSchemaNameV2 } from './transactional-outbox-sql'
-
-function stableJSON(value: unknown, path: string): string {
-  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
-}
 
 function assertExpectedPlan(context: BackendProviderAdapterContextV2, plan: JSONValue): void {
   if (
@@ -332,7 +331,7 @@ export function emitSupabaseAutomationArtifactsV2(
       path: SUPABASE_AUTOMATION_ARTIFACT_PATHS_V2.reviewManifest,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(reviewManifest, '$.supabaseAutomations.reviewManifest')
+      content: prettyCanonicalBackendJSON(reviewManifest, '$.supabaseAutomations.reviewManifest')
     }),
     Object.freeze({
       path: SUPABASE_AUTOMATION_ARTIFACT_PATHS_V2.sql,
@@ -344,7 +343,7 @@ export function emitSupabaseAutomationArtifactsV2(
       path: SUPABASE_AUTOMATION_ARTIFACT_PATHS_V2.workerContract,
       kind: 'server-runtime' as const,
       mediaType: 'application/json',
-      content: stableJSON(workerContract, '$.supabaseAutomations.workerContract')
+      content: prettyCanonicalBackendJSON(workerContract, '$.supabaseAutomations.workerContract')
     })
   ])
 }

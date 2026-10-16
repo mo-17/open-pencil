@@ -2,6 +2,7 @@ import type { ComponentDef, IREventHandler, IRNode, IRTree } from '#compiler/ir/
 import type { CompileWarning, CompilerOptions } from '#compiler/types'
 
 import { sanitizeVueHrefLiteral } from './emit'
+import { SUPPORTED_EVENT_KINDS } from './event-kinds'
 import { collectVueComponentLowcodeUsage, collectVueTreeLowcodeUsage } from './lowcode/usage'
 import { supportsVueModule } from './modules/registry'
 import { normalizeVueSourceLocale } from './project'
@@ -288,7 +289,7 @@ function scanHandler(
     warn('vue-analytics-unsupported', 'Vue v1 omitted an analytics tracking action.', nodeId)
     return
   }
-  if (!SUPPORTED_HANDLER_KINDS.has(handler.kind)) {
+  if (!SUPPORTED_EVENT_KINDS.has(handler.kind)) {
     warn(
       `vue-event-${handler.kind}-unsupported`,
       `Vue v1 omitted unsupported '${handler.kind}' event behavior.`,
@@ -296,28 +297,6 @@ function scanHandler(
     )
   }
 }
-
-const SUPPORTED_HANDLER_KINDS = new Set<IREventHandler['kind']>([
-  'backendAuth',
-  'backendRequest',
-  'backendCommand',
-  'backendCommandRecovery',
-  'setState',
-  'setVariable',
-  'navigate',
-  'back',
-  'apiCall',
-  'condition',
-  'delay',
-  'stop',
-  'toast',
-  'confirm',
-  'clipboard',
-  'supabaseQuery',
-  'supabaseMutation',
-  'supabaseAuth',
-  'invokeServerWorkflow'
-])
 
 function motionWarning(
   warn: (code: string, message: string, nodeId?: string) => void,

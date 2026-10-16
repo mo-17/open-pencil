@@ -3,6 +3,12 @@ import { parseExpression } from '../expression'
 import { discriminatedRecord } from './discriminated-record'
 import { BACKEND_LIMITS } from './limits'
 import {
+  parseDataFilter,
+  parseDataValue,
+  parseDataReadInput,
+  parseHttpHeader
+} from './step-records'
+import {
   BACKEND_WORKFLOW_IR_VERSION,
   type BackendDataFilterIR,
   type BackendDataValueIR,
@@ -93,21 +99,7 @@ function dataFilter(
   path: string,
   context: BackendValidationContext
 ): BackendDataFilterIR | undefined {
-  const source = record(value, path, context, ['field', 'operator', 'value'])
-  if (!source) return undefined
-  const field = id(source.field, `${path}.field`, context)
-  const operator = oneOf(source.operator, `${path}.operator`, context, [
-    'eq',
-    'neq',
-    'gt',
-    'gte',
-    'lt',
-    'lte',
-    'like',
-    'in'
-  ])
-  const parsedValue = valueSource(source.value, `${path}.value`, context)
-  return field && operator && parsedValue ? { field, operator, value: parsedValue } : undefined
+  return parseDataFilter(value, path, context, valueSource)
 }
 
 function dataValue(
@@ -115,11 +107,7 @@ function dataValue(
   path: string,
   context: BackendValidationContext
 ): BackendDataValueIR | undefined {
-  const source = record(value, path, context, ['field', 'value'])
-  if (!source) return undefined
-  const field = id(source.field, `${path}.field`, context)
-  const parsedValue = valueSource(source.value, `${path}.value`, context)
-  return field && parsedValue ? { field, value: parsedValue } : undefined
+  return parseDataValue(value, path, context, valueSource)
 }
 
 function httpHeader(
@@ -127,21 +115,7 @@ function httpHeader(
   path: string,
   context: BackendValidationContext
 ): BackendHttpHeaderIR | undefined {
-  const source = record(value, path, context, ['name', 'value'])
-  if (!source) return undefined
-  const name = boundedText(source.name, `${path}.name`, context, 128)
-  if (name && !/^[A-Za-z][A-Za-z0-9-]{0,127}$/u.test(name)) {
-    context.diagnostics.push({
-      code: 'backend-http-header-invalid',
-      severity: 'error',
-      path: `${path}.name`,
-      message: 'HTTP header name is invalid.'
-    })
-  }
-  const parsedValue = valueSource(source.value, `${path}.value`, context)
-  return name && /^[A-Za-z][A-Za-z0-9-]{0,127}$/u.test(name) && parsedValue
-    ? { name, value: parsedValue }
-    : undefined
+  return parseHttpHeader(value, path, context, valueSource)
 }
 
 function dataReadStep(
@@ -150,23 +124,13 @@ function dataReadStep(
   path: string,
   context: BackendValidationContext
 ): BackendWorkflowStepIR | undefined {
-  const entityId = id(source.entityId, `${path}.entityId`, context)
-  const resultName = identifier(source.resultName, `${path}.resultName`, context)
-  const rawFields =
-    source.fields === undefined
-      ? undefined
-      : array(source.fields, `${path}.fields`, context, BACKEND_LIMITS.maxFieldsPerEntity)
-  const fields = rawFields
-    ?.map((entry, index) => id(entry, `${path}.fields[${index}]`, context))
-    .filter((entry): entry is string => entry !== undefined)
-  if (fields) uniqueBy(fields, `${path}.fields`, context, 'data field')
-  const filters = parseArrayItems(
-    source.filters,
-    `${path}.filters`,
+  const { entityId, resultName, rawFields, fields, filters } = parseDataReadInput(
+    source,
+    path,
     context,
     BACKEND_LIMITS.maxFieldsPerEntity,
-    dataFilter,
-    true
+    'data field',
+    dataFilter
   )
   const single =
     source.single === undefined ? undefined : boolean(source.single, `${path}.single`, context)

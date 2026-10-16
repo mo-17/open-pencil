@@ -11,6 +11,7 @@ import {
   type CreatePreviewNativeCommand,
   type PreviewNativeChild
 } from '../host/native-command'
+import { cancelPreviewRequests, waitForPreviewProcessExit } from '../host/process-lifecycle'
 
 export interface FlutterNativeProcess {
   request(command: FlutterPreviewCommand): Promise<Extract<FlutterPreviewEvent, { type: 'result' }>>
@@ -59,11 +60,7 @@ export async function startFlutterNativeProcess(
   const isTerminal = (): boolean => terminal
 
   function cancelPending(message: string): void {
-    for (const item of pending.values()) {
-      clearTimeout(item.timer)
-      item.reject(new Error(message))
-    }
-    pending.clear()
+    cancelPreviewRequests(pending, message)
   }
   function fail(message: string): void {
     if (terminal) return
@@ -178,14 +175,7 @@ export async function startFlutterNativeProcess(
           }) + '\n'
         )
         .catch(() => undefined)
-      let timeout: ReturnType<typeof setTimeout> | undefined
-      await Promise.race([
-        exited,
-        new Promise<void>((resolve) => {
-          timeout = setTimeout(resolve, timing.closeTimeoutMs ?? 10000)
-        })
-      ])
-      clearTimeout(timeout)
+      await waitForPreviewProcessExit(exited, timing.closeTimeoutMs ?? 10000)
       await owned.kill().catch(() => undefined)
       fail('Flutter preview closed.')
     })()

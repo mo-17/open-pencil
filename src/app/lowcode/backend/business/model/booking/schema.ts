@@ -9,6 +9,7 @@ import {
   linkBusinessOwner
 } from '../entities'
 import { businessGrant, businessOwnerGrant, businessReadResource } from '../permissions'
+import { businessSlotFields, businessReservationFields } from '../scheduling'
 
 export const BOOKING_ROLE = 'booking-manager'
 export const SERVICE_FIELDS = ['id', 'title', 'description', 'active', 'created_at']
@@ -65,24 +66,14 @@ export function createBookingEntities(application: BackendApplicationSpecV1): Bo
   ])
   const slots = addBusinessEntity(application, 'slots', [
     businessField('service_id', 'uuid'),
-    businessField('title', 'string'),
-    businessField('starts_at', 'datetime'),
-    businessField('ends_at', 'datetime'),
-    businessField('capacity', 'integer'),
-    businessField('reserved', 'integer', 0),
-    businessField('active', 'boolean', true)
+    ...businessSlotFields()
   ])
   slots.uniques?.push({ id: 'service-start', fields: ['service_id', 'starts_at'] })
   const bookings = addBusinessEntity(application, 'bookings', [
     businessField('service_id', 'uuid'),
     businessField('slot_id', 'uuid'),
     businessField('service_title', 'string'),
-    businessField('starts_at', 'datetime'),
-    businessField('ends_at', 'datetime'),
-    businessField('quantity', 'integer'),
-    businessField('attendee_name', 'string'),
-    businessField('contact', 'string'),
-    businessField('note', 'string'),
+    ...businessReservationFields(),
     businessEnumField('status', 'booking-status', 'confirmed'),
     businessField('version', 'integer', 0)
   ])

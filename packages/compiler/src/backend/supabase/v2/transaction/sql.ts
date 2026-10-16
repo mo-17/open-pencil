@@ -1,25 +1,18 @@
 import { formatSupabaseManagedMarker } from '#compiler/backend/supabase/inspection'
 import { stableSQLName } from '#compiler/backend/supabase/migration-review/common'
+import {
+  quoteIdentifier,
+  quoteLiteral,
+  atomicPostgresType
+} from '#compiler/backend/supabase/v2/sql-primitives'
 
-import type {
-  BackendApplicationSpecV2,
-  BackendFieldScalarType,
-  DataFieldIR
-} from '@open-pencil/lowcode/backend'
+import type { BackendApplicationSpecV2, DataFieldIR } from '@open-pencil/lowcode/backend'
 
 import { resolvedSupabaseAtomicTransactionV2 } from './index'
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991
 const MAX_EXPECTED_VERSION = MAX_SAFE_INTEGER - 1
 const MAX_TEXT_BYTES = 4_000_000
-
-function quoteIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`
-}
-
-function quoteLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
-}
 
 function quoteFragmentedLiteral(value: string): string {
   const fragments: string[] = []
@@ -33,25 +26,36 @@ function qualified(schema: string, name: string): string {
   return `${quoteIdentifier(schema)}.${quoteIdentifier(name)}`
 }
 
-function postgresTypeName(type: BackendFieldScalarType): string {
-  switch (type) {
-    case 'string':
-      return 'text'
-    case 'integer':
-      return 'int8'
-    case 'number':
-      return 'float8'
-    case 'boolean':
-      return 'bool'
-    case 'date':
-      return 'date'
-    case 'datetime':
-      return 'timestamptz'
-    case 'uuid':
-      return 'uuid'
-    default:
-      throw new TypeError('Unsupported Supabase atomic RPC field type.')
-  }
+function authenticatedRoleSQL(): readonly string[] {
+  return [
+    `  SELECT ${quoteIdentifier('role_entry')}.${quoteIdentifier('oid')}`,
+    `  INTO ${quoteIdentifier('authenticated_oid')}`,
+    `  FROM ${qualified('pg_catalog', 'pg_roles')} AS ${quoteIdentifier('role_entry')}`,
+    `  WHERE ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolname')} = 'authenticated'`,
+    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolsuper')}`,
+    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolbypassrls')};`
+  ]
+}
+
+function managedTableACLSourceSQL(): readonly string[] {
+  return [
+    `    FROM ${qualified('pg_catalog', 'pg_class')} AS ${quoteIdentifier('managed_table')}`,
+    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
+    `      COALESCE(${quoteIdentifier('managed_table')}.${quoteIdentifier('relacl')}, ${qualified('pg_catalog', 'acldefault')}('r', ${quoteIdentifier('managed_table')}.${quoteIdentifier('relowner')}))`,
+    `    ) AS ${quoteIdentifier('table_acl')}`,
+    `    WHERE ${quoteIdentifier('managed_table')}.${quoteIdentifier('oid')} = ${quoteIdentifier('managed_table_oid')}`
+  ]
+}
+
+function managedFunctionACLSourceSQL(): readonly string[] {
+  return [
+    '    SELECT 1',
+    `    FROM ${qualified('pg_catalog', 'pg_proc')} AS ${quoteIdentifier('managed_function')}`,
+    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
+    `      COALESCE(${quoteIdentifier('managed_function')}.${quoteIdentifier('proacl')}, ${qualified('pg_catalog', 'acldefault')}('f', ${quoteIdentifier('managed_function')}.${quoteIdentifier('proowner')}))`,
+    `    ) AS ${quoteIdentifier('function_acl')}`,
+    `    WHERE ${quoteIdentifier('managed_function')}.${quoteIdentifier('oid')} = ${quoteIdentifier('target_oid')}`
+  ]
 }
 
 function fieldPreflightSQL(table: string, field: DataFieldIR): readonly string[] {
@@ -78,7 +82,7 @@ function fieldPreflightSQL(table: string, field: DataFieldIR): readonly string[]
     `      AND NOT ${quoteIdentifier('managed_column')}.${quoteIdentifier('attisdropped')}`,
     `      AND ${quoteIdentifier('managed_column')}.${quoteIdentifier('attnotnull')} = ${expectedNotNull}`,
     `      AND ${quoteIdentifier('type_namespace')}.${quoteIdentifier('nspname')} = 'pg_catalog'`,
-    `      AND ${quoteIdentifier('managed_type')}.${quoteIdentifier('typname')} = ${quoteLiteral(postgresTypeName(field.type))}`,
+    `      AND ${quoteIdentifier('managed_type')}.${quoteIdentifier('typname')} = ${quoteLiteral(atomicPostgresType(field.type, 'field'))}`,
     `      AND ${qualified('pg_catalog', 'col_description')}(${quoteIdentifier('managed_column')}.${quoteIdentifier('attrelid')}, ${quoteIdentifier('managed_column')}.${quoteIdentifier('attnum')}) = ${quoteLiteral(formatSupabaseManagedMarker('field', field.id))}`,
     '  ) THEN',
     `    RAISE EXCEPTION ${quoteLiteral(`OpenPencil managed field prerequisite failed: ${field.id}`)};`,
@@ -268,12 +272,7 @@ export function emitSupabaseAtomicTransactionSQLV2(application: BackendApplicati
     `  IF ${quoteIdentifier('managed_table_oid')} IS NULL THEN`,
     "    RAISE EXCEPTION 'OpenPencil managed table, marker, or forced RLS prerequisite failed';",
     '  END IF;',
-    `  SELECT ${quoteIdentifier('role_entry')}.${quoteIdentifier('oid')}`,
-    `  INTO ${quoteIdentifier('authenticated_oid')}`,
-    `  FROM ${qualified('pg_catalog', 'pg_roles')} AS ${quoteIdentifier('role_entry')}`,
-    `  WHERE ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolname')} = 'authenticated'`,
-    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolsuper')}`,
-    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolbypassrls')};`,
+    ...authenticatedRoleSQL(),
     `  IF ${quoteIdentifier('authenticated_oid')} IS NULL THEN`,
     "    RAISE EXCEPTION 'OpenPencil authenticated role must exist without superuser or BYPASSRLS authority';",
     '  END IF;',
@@ -333,22 +332,14 @@ export function emitSupabaseAtomicTransactionSQLV2(application: BackendApplicati
     '  END IF;',
     '  IF (',
     '    SELECT COUNT(*)',
-    `    FROM ${qualified('pg_catalog', 'pg_class')} AS ${quoteIdentifier('managed_table')}`,
-    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
-    `      COALESCE(${quoteIdentifier('managed_table')}.${quoteIdentifier('relacl')}, ${qualified('pg_catalog', 'acldefault')}('r', ${quoteIdentifier('managed_table')}.${quoteIdentifier('relowner')}))`,
-    `    ) AS ${quoteIdentifier('table_acl')}`,
-    `    WHERE ${quoteIdentifier('managed_table')}.${quoteIdentifier('oid')} = ${quoteIdentifier('managed_table_oid')}`,
+    ...managedTableACLSourceSQL(),
     `      AND ${quoteIdentifier('table_acl')}.${quoteIdentifier('grantee')} = ${quoteIdentifier('authenticated_oid')}`,
     `      AND ${quoteIdentifier('table_acl')}.${quoteIdentifier('grantor')} = ${quoteIdentifier('managed_table_owner_oid')}`,
     `      AND ${quoteIdentifier('table_acl')}.${quoteIdentifier('privilege_type')} IN ('SELECT', 'UPDATE')`,
     `      AND NOT ${quoteIdentifier('table_acl')}.${quoteIdentifier('is_grantable')}`,
     '  ) <> 2 OR EXISTS (',
     '    SELECT 1',
-    `    FROM ${qualified('pg_catalog', 'pg_class')} AS ${quoteIdentifier('managed_table')}`,
-    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
-    `      COALESCE(${quoteIdentifier('managed_table')}.${quoteIdentifier('relacl')}, ${qualified('pg_catalog', 'acldefault')}('r', ${quoteIdentifier('managed_table')}.${quoteIdentifier('relowner')}))`,
-    `    ) AS ${quoteIdentifier('table_acl')}`,
-    `    WHERE ${quoteIdentifier('managed_table')}.${quoteIdentifier('oid')} = ${quoteIdentifier('managed_table_oid')}`,
+    ...managedTableACLSourceSQL(),
     '      AND (',
     `        ${quoteIdentifier('table_acl')}.${quoteIdentifier('grantee')} NOT IN (${quoteIdentifier('managed_table_owner_oid')}, ${quoteIdentifier('authenticated_oid')})`,
     `        OR (${quoteIdentifier('table_acl')}.${quoteIdentifier('grantee')} = ${quoteIdentifier('authenticated_oid')} AND (`,
@@ -473,32 +464,17 @@ export function emitSupabaseAtomicTransactionSQLV2(application: BackendApplicati
     `      ${qualified('pg_catalog', 'array_position')}(${quoteIdentifier('managed_function')}.${quoteIdentifier('proconfig')}, 'search_path=') IS NOT NULL`,
     `      OR ${qualified('pg_catalog', 'array_position')}(${quoteIdentifier('managed_function')}.${quoteIdentifier('proconfig')}, 'search_path=""') IS NOT NULL`,
     '    );',
-    `  SELECT ${quoteIdentifier('role_entry')}.${quoteIdentifier('oid')}`,
-    `  INTO ${quoteIdentifier('authenticated_oid')}`,
-    `  FROM ${qualified('pg_catalog', 'pg_roles')} AS ${quoteIdentifier('role_entry')}`,
-    `  WHERE ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolname')} = 'authenticated'`,
-    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolsuper')}`,
-    `    AND NOT ${quoteIdentifier('role_entry')}.${quoteIdentifier('rolbypassrls')};`,
+    ...authenticatedRoleSQL(),
     `  IF ${quoteIdentifier('target_oid')} IS NULL OR ${quoteIdentifier('authenticated_oid')} IS NULL OR ${qualified('pg_catalog', 'pg_get_userbyid')}(${quoteIdentifier('owner_oid')}) <> CURRENT_USER THEN`,
     "    RAISE EXCEPTION 'OpenPencil atomic RPC owner or invoker authority verification failed';",
     '  END IF;',
     '  IF NOT EXISTS (',
-    '    SELECT 1',
-    `    FROM ${qualified('pg_catalog', 'pg_proc')} AS ${quoteIdentifier('managed_function')}`,
-    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
-    `      COALESCE(${quoteIdentifier('managed_function')}.${quoteIdentifier('proacl')}, ${qualified('pg_catalog', 'acldefault')}('f', ${quoteIdentifier('managed_function')}.${quoteIdentifier('proowner')}))`,
-    `    ) AS ${quoteIdentifier('function_acl')}`,
-    `    WHERE ${quoteIdentifier('managed_function')}.${quoteIdentifier('oid')} = ${quoteIdentifier('target_oid')}`,
+    ...managedFunctionACLSourceSQL(),
     `      AND ${quoteIdentifier('function_acl')}.${quoteIdentifier('grantee')} = ${quoteIdentifier('authenticated_oid')}`,
     `      AND ${quoteIdentifier('function_acl')}.${quoteIdentifier('privilege_type')} = 'EXECUTE'`,
     `      AND NOT ${quoteIdentifier('function_acl')}.${quoteIdentifier('is_grantable')}`,
     '  ) OR EXISTS (',
-    '    SELECT 1',
-    `    FROM ${qualified('pg_catalog', 'pg_proc')} AS ${quoteIdentifier('managed_function')}`,
-    `    CROSS JOIN LATERAL ${qualified('pg_catalog', 'aclexplode')}(`,
-    `      COALESCE(${quoteIdentifier('managed_function')}.${quoteIdentifier('proacl')}, ${qualified('pg_catalog', 'acldefault')}('f', ${quoteIdentifier('managed_function')}.${quoteIdentifier('proowner')}))`,
-    `    ) AS ${quoteIdentifier('function_acl')}`,
-    `    WHERE ${quoteIdentifier('managed_function')}.${quoteIdentifier('oid')} = ${quoteIdentifier('target_oid')}`,
+    ...managedFunctionACLSourceSQL(),
     `      AND ${quoteIdentifier('function_acl')}.${quoteIdentifier('privilege_type')} = 'EXECUTE'`,
     `      AND ${quoteIdentifier('function_acl')}.${quoteIdentifier('grantee')} NOT IN (${quoteIdentifier('owner_oid')}, ${quoteIdentifier('authenticated_oid')})`,
     '  ) THEN',

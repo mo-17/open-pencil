@@ -157,17 +157,21 @@ test('explicit isolation runs each quick file in a fresh process', async () => {
 
 test('full runs isolate every heavy fixture while coverage keeps shard files together', async () => {
   const { listHeavyUnitTests, listUnitTests } = await import('../src/shards')
-  const heavy = await listHeavyUnitTests('cli')
-  const all = await listUnitTests('cli', { includeHeavy: true })
-  const full = await buildUnitTestRunPlan('cli', { includeHeavy: true })
-  expect(heavy.length).toBeGreaterThan(0)
-  for (const file of heavy) {
-    const batches = full.filter((run) => run.files.includes(file))
-    expect(batches).toHaveLength(1)
-    expect(batches[0].files).toEqual([file])
+  for (const group of ['cli', 'fig'] as const) {
+    const heavy = await listHeavyUnitTests(group)
+    const quick = await listUnitTests(group)
+    const all = await listUnitTests(group, { includeHeavy: true })
+    const full = await buildUnitTestRunPlan(group, { includeHeavy: true })
+    expect(heavy.length).toBeGreaterThan(0)
+    for (const file of heavy) {
+      const batches = full.filter((run) => run.files.includes(file))
+      expect(batches).toHaveLength(1)
+      expect(batches[0].files).toEqual([file])
+      expect(quick).not.toContain(file)
+    }
+    expect(full.flatMap((run) => run.files).sort()).toEqual(all.sort())
+    const coverage = await buildUnitTestRunPlan(group, { includeHeavy: true, coverage: true })
+    expect(coverage).toHaveLength(1)
+    expect(coverage[0].files.sort()).toEqual(all.sort())
   }
-  expect(full.flatMap((run) => run.files).sort()).toEqual(all.sort())
-  const coverage = await buildUnitTestRunPlan('cli', { includeHeavy: true, coverage: true })
-  expect(coverage).toHaveLength(1)
-  expect(coverage[0].files.sort()).toEqual(all.sort())
 })

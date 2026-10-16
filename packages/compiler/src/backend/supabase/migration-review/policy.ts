@@ -316,17 +316,7 @@ function addStaleManagedGrantBlockers(
 ): void {
   const desiredKeys = new Set<string>()
   for (const entry of desired) {
-    const entity = application.dataModel.entities.find(
-      (candidate) => candidate.management === 'managed' && candidate.name === entry.tableName
-    )
-    const inspectedName = entity
-      ? snapshot.objects.find(
-          (object) =>
-            object.kind === 'table' &&
-            object.management === 'managed' &&
-            object.openPencilId === entity.id
-        )?.name
-      : undefined
+    const inspectedName = inspectedManagedTableName(application, snapshot, entry.tableName)
     for (const privilege of entry.privileges) {
       desiredKeys.add(`table:public:${entry.tableName}:${entry.grantee}:${privilege}`)
       if (inspectedName) {
@@ -390,17 +380,7 @@ function createPrivilegeGrantPlan(
     )
   }
   for (const entry of desired) {
-    const entity = application.dataModel.entities.find(
-      (candidate) => candidate.management === 'managed' && candidate.name === entry.tableName
-    )
-    const inspectedName = entity
-      ? snapshot.objects.find(
-          (object) =>
-            object.kind === 'table' &&
-            object.management === 'managed' &&
-            object.openPencilId === entity.id
-        )?.name
-      : undefined
+    const inspectedName = inspectedManagedTableName(application, snapshot, entry.tableName)
     const missing = entry.privileges.filter(
       (privilege) =>
         !existingKeys.has(`table:public:${entry.tableName}:${entry.grantee}:${privilege}`) &&
@@ -503,4 +483,22 @@ export function renderPoliciesAndPrivileges(
     ),
     plannedPolicies
   }
+}
+
+function inspectedManagedTableName(
+  application: BackendApplicationSpecV1,
+  snapshot: SupabaseInspectedMigrationSnapshotV1,
+  tableName: string
+): string | undefined {
+  const entity = application.dataModel.entities.find(
+    (candidate) => candidate.management === 'managed' && candidate.name === tableName
+  )
+  return entity
+    ? snapshot.objects.find(
+        (object) =>
+          object.kind === 'table' &&
+          object.management === 'managed' &&
+          object.openPencilId === entity.id
+      )?.name
+    : undefined
 }

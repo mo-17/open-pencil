@@ -1,18 +1,11 @@
-import { releaseDigest, releaseIdentifier, stringValue } from '../release/validation'
+import {
+  releaseDigest,
+  releaseIdentifier,
+  stringValue,
+  releaseInteger as integer
+} from '../release/validation'
 
 /** Shared scalar checks only; each automation contract owns its time and authority semantics. */
-export function integer(value: unknown, path: string, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
-  }
-  return value as number
-}
-
 export function nullableInteger(
   value: unknown,
   path: string,
@@ -34,3 +27,5 @@ export function identifier(value: unknown, path: string): string {
 export function digest(value: unknown, path: string): string {
   return releaseDigest(stringValue(value, path), path)
 }
+
+export { releaseInteger as integer } from '../release/validation'

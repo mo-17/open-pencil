@@ -1,4 +1,10 @@
 import {
+  readProviderDescriptorArray,
+  readProviderDescriptorStrings,
+  sameProviderDescriptorData
+} from '#compiler/backend/provider-data'
+
+import {
   BACKEND_APPLICATION_SPEC_VERSION,
   BACKEND_CAPABILITIES,
   containsBackendSecretLikeMaterial
@@ -58,148 +64,6 @@ function safeId(
     return undefined
   }
   return value
-}
-
-interface DescriptorArrayShape {
-  readonly value: readonly unknown[]
-  readonly length: number
-}
-
-function invalidDescriptorArray(
-  diagnostics: BackendDiagnostic[],
-  path: string,
-  message: string
-): void {
-  diagnostics.push(error('backend-provider-descriptor-array-invalid', path, message))
-}
-
-function descriptorArrayShape(
-  value: unknown,
-  path: string,
-  maxLength: number,
-  diagnostics: BackendDiagnostic[]
-): DescriptorArrayShape | undefined {
-  if (!Array.isArray(value)) {
-    invalidDescriptorArray(
-      diagnostics,
-      path,
-      `Provider descriptor arrays must contain 1 to ${maxLength} entries.`
-    )
-    return undefined
-  }
-  if (Object.getPrototypeOf(value) !== Array.prototype) {
-    invalidDescriptorArray(diagnostics, path, 'Provider descriptor arrays must be plain arrays.')
-    return undefined
-  }
-  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-  if (!lengthDescriptor || !('value' in lengthDescriptor)) {
-    invalidDescriptorArray(diagnostics, path, 'Provider descriptor array length must be data-only.')
-    return undefined
-  }
-  const length = lengthDescriptor.value
-  if (!Number.isSafeInteger(length) || length < 1 || length > maxLength) {
-    invalidDescriptorArray(
-      diagnostics,
-      path,
-      `Provider descriptor arrays must contain 1 to ${maxLength} entries.`
-    )
-    return undefined
-  }
-  return { value, length }
-}
-
-function hasOnlyDescriptorArrayIndexes(
-  value: readonly unknown[],
-  length: number,
-  path: string,
-  diagnostics: BackendDiagnostic[]
-): boolean {
-  for (const key of Reflect.ownKeys(value)) {
-    if (key === 'length') continue
-    const index = typeof key === 'string' && /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1
-    if (!Number.isSafeInteger(index) || index < 0 || index >= length) {
-      invalidDescriptorArray(
-        diagnostics,
-        path,
-        'Provider descriptor arrays must not contain symbols or custom properties.'
-      )
-      return false
-    }
-  }
-  return true
-}
-
-function descriptorArrayEntries(
-  value: readonly unknown[],
-  length: number,
-  path: string,
-  diagnostics: BackendDiagnostic[]
-): readonly unknown[] | undefined {
-  const entries: unknown[] = []
-  for (let index = 0; index < length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-    if (!descriptor?.enumerable || !('value' in descriptor)) {
-      invalidDescriptorArray(
-        diagnostics,
-        `${path}[${index}]`,
-        'Provider descriptor arrays must contain enumerable data properties only.'
-      )
-      return undefined
-    }
-    entries.push(descriptor.value)
-  }
-  return entries
-}
-
-function descriptorArrayData(
-  value: unknown,
-  path: string,
-  maxLength: number,
-  diagnostics: BackendDiagnostic[]
-): readonly unknown[] | undefined {
-  const shape = descriptorArrayShape(value, path, maxLength, diagnostics)
-  if (!shape) return undefined
-  if (!hasOnlyDescriptorArrayIndexes(shape.value, shape.length, path, diagnostics)) {
-    return undefined
-  }
-  return descriptorArrayEntries(shape.value, shape.length, path, diagnostics)
-}
-
-function uniqueKnownStrings<T extends string>(
-  value: unknown,
-  path: string,
-  known: readonly T[],
-  diagnostics: BackendDiagnostic[]
-): readonly T[] | undefined {
-  const entries = descriptorArrayData(value, path, known.length, diagnostics)
-  if (!entries) return undefined
-  const accepted = new Set<T>()
-  const knownSet = new Set<string>(known)
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index]
-    if (typeof entry !== 'string' || !knownSet.has(entry)) {
-      diagnostics.push(
-        error(
-          'backend-provider-descriptor-value-unknown',
-          `${path}[${index}]`,
-          'Provider descriptor contains an unknown contract value.'
-        )
-      )
-      continue
-    }
-    if (accepted.has(entry as T)) {
-      diagnostics.push(
-        error(
-          'backend-provider-descriptor-value-duplicate',
-          `${path}[${index}]`,
-          'Provider descriptor values must be unique.'
-        )
-      )
-      continue
-    }
-    accepted.add(entry as T)
-  }
-  return [...accepted].sort()
 }
 
 function isDescriptorData(value: unknown): value is BackendProviderDescriptorData {
@@ -276,7 +140,7 @@ function modelVersions(
   value: unknown,
   diagnostics: BackendDiagnostic[]
 ): readonly number[] | undefined {
-  const entries = descriptorArrayData(value, '$.supportedModelVersions', 1, diagnostics)
+  const entries = readProviderDescriptorArray(value, '$.supportedModelVersions', 1, diagnostics, 1)
   if (!entries) return undefined
   const versions = new Set<number>()
   for (let index = 0; index < entries.length; index += 1) {
@@ -347,17 +211,19 @@ export function parseBackendProviderDescriptor(
     )
   }
   const supportedModelVersions = modelVersions(data.supportedModelVersions, diagnostics)
-  const capabilities = uniqueKnownStrings(
+  const capabilities = readProviderDescriptorStrings(
     data.capabilities,
     '$.capabilities',
     BACKEND_CAPABILITIES,
-    diagnostics
+    diagnostics,
+    1
   )
-  const outputs = uniqueKnownStrings(
+  const outputs = readProviderDescriptorStrings(
     data.outputs,
     '$.outputs',
     BACKEND_PROVIDER_OUTPUT_KINDS,
-    diagnostics
+    diagnostics,
+    1
   )
   if (
     diagnostics.length > 0 ||
@@ -388,23 +254,7 @@ export function parseBackendProviderDescriptor(
   }
 }
 
-export function sameBackendProviderDescriptor(
+export const sameBackendProviderDescriptor: (
   left: BackendProviderDescriptor,
   right: BackendProviderDescriptor
-): boolean {
-  return (
-    left.pluginId === right.pluginId &&
-    left.contributionId === right.contributionId &&
-    left.providerId === right.providerId &&
-    left.adapterId === right.adapterId &&
-    left.adapterVersion === right.adapterVersion &&
-    sameContractVersion(left.contractVersion, right.contractVersion) &&
-    left.supportedModelVersions.join('\u0000') === right.supportedModelVersions.join('\u0000') &&
-    left.capabilities.join('\u0000') === right.capabilities.join('\u0000') &&
-    left.outputs.join('\u0000') === right.outputs.join('\u0000')
-  )
-}
-
-function sameContractVersion(left: number, right: number): boolean {
-  return left === right
-}
+) => boolean = sameProviderDescriptorData

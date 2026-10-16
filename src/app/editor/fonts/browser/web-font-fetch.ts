@@ -151,11 +151,10 @@ function rejectQuery(url: URL): void {
 }
 
 function hasControlCharacters(value: string): boolean {
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index)
-    if (code <= 0x1f || code === 0x7f) return true
-  }
-  return false
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0)
+    return code <= 0x1f || code === 0x7f
+  })
 }
 
 function validateGoogleCSSQuery(url: URL): void {

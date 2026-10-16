@@ -1,3 +1,5 @@
+import type { SceneNode } from '@open-pencil/scene-graph'
+
 import type { BusinessColumn } from '@/app/lowcode/backend/business/types'
 
 import { BUSINESS_CONTENT_WIDTH, BUSINESS_CONTENT_X } from '../layout'
@@ -51,14 +53,7 @@ export function renderBusinessDetails(
         width: 396,
         height: 40
       },
-      {
-        ...businessText(profile, { size: 14 }),
-        renderCondition: screen.selection,
-        interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } },
-        bindings: {
-          text: { kind: 'expr', expr: businessColumnExpression(screen, column, screen.selected) }
-        }
-      }
+      detailTextOptions(screen, column, 14)
     )
   )
   multiline.forEach((column, index) =>
@@ -71,14 +66,23 @@ export function renderBusinessDetails(
         width: 832,
         height: 152
       },
-      {
-        ...businessText(profile, { size: 15 }),
-        renderCondition: screen.selection,
-        interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } },
-        bindings: {
-          text: { kind: 'expr', expr: businessColumnExpression(screen, column, screen.selected) }
-        }
-      }
+      detailTextOptions(screen, column, 15)
     )
   )
+}
+
+function detailTextOptions(
+  screen: BusinessScreen,
+  column: BusinessColumn,
+  size: number
+): Partial<SceneNode> {
+  const profile = screen.ctx.presentation
+  return {
+    ...businessText(profile, { size }),
+    renderCondition: screen.selection,
+    interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } },
+    bindings: {
+      text: { kind: 'expr', expr: businessColumnExpression(screen, column, screen.selected) }
+    }
+  }
 }

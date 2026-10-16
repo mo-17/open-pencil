@@ -5,8 +5,11 @@ import {
   type SupabaseBackfillWriteBarrierInstallDispatchContextV1,
   type TrustedSupabaseBackfillWriteBarrierInstallDispatchV1
 } from '@/app/plugins/host/deployment/supabase/backfill/write-barrier/install'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
 
-import { waitForManagementOperation } from '../abortable-operation'
+import { createManagementOperationWaiter } from '../abortable-operation'
+import { readManagementResponseBytes } from '../response-body'
+import { isSupabaseManagementToken, createManagementRequestDeadline } from '../transport-runtime'
 import type {
   SupabaseManagementBoundedResponse,
   SupabaseManagementRequestLifetime
@@ -101,6 +104,8 @@ type BoundedResponse = SupabaseManagementBoundedResponse
 const STATUS_OK = 200 as const
 const trustedInstallTransports = new WeakSet<object>()
 
+const dataAdmission = createSupabaseDataAdmission(fail)
+
 function fail(
   code: SupabaseManagementBackfillWriteBarrierInstallTransportErrorCode,
   outcome: SupabaseManagementBackfillWriteBarrierInstallTransportOutcome
@@ -113,12 +118,9 @@ function utf8ByteLength(value: string): number {
 }
 
 function validPAT(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 16 &&
-    utf8ByteLength(value) <=
-      SUPABASE_MANAGEMENT_BACKFILL_WRITE_BARRIER_INSTALL_LIMITS.maxPATBytes &&
-    !/\p{Cc}/u.test(value)
+  return isSupabaseManagementToken(
+    value,
+    SUPABASE_MANAGEMENT_BACKFILL_WRITE_BARRIER_INSTALL_LIMITS.maxPATBytes
   )
 }
 
@@ -140,19 +142,7 @@ function plainRecord(
   value: unknown,
   outcome: SupabaseManagementBackfillWriteBarrierInstallTransportOutcome
 ): UnknownRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('invalid-response', outcome)
-  }
-  let prototype: object | null
-  try {
-    prototype = Object.getPrototypeOf(value)
-  } catch {
-    return fail('invalid-response', outcome)
-  }
-  if (prototype !== Object.prototype && prototype !== null) {
-    return fail('invalid-response', outcome)
-  }
-  return value as UnknownRecord
+  return dataAdmission.plainRecord(value, 'invalid-response', outcome)
 }
 
 function ownData(
@@ -161,25 +151,14 @@ function ownData(
   code: 'invalid-authority' | 'invalid-request' | 'invalid-response',
   outcome: SupabaseManagementBackfillWriteBarrierInstallTransportOutcome
 ): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(record, key)
-  } catch {
-    return fail(code, outcome)
-  }
-  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return fail(code, outcome)
-  return descriptor.value
+  return dataAdmission.ownData(record, key, code, outcome)
 }
 
 function ownKeys(
   record: UnknownRecord,
   outcome: SupabaseManagementBackfillWriteBarrierInstallTransportOutcome
 ): readonly PropertyKey[] {
-  try {
-    return Reflect.ownKeys(record)
-  } catch {
-    return fail('invalid-response', outcome)
-  }
+  return dataAdmission.ownKeys(record, 'invalid-response', outcome)
 }
 
 function exactTrustedRecord(value: unknown): UnknownRecord {
@@ -269,37 +248,17 @@ function throwIfAborted(
 }
 
 function requestDeadline(caller: AbortSignal | undefined, timeoutMs: number): RequestDeadline {
-  const controller = new AbortController()
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) {
-    controller.abort(caller.reason)
-  } else {
-    caller?.addEventListener('abort', onCallerAbort, { once: true })
-    timeout = setTimeout(() => {
-      controller.abort(
-        new DOMException('Supabase Management migration request timed out', 'TimeoutError')
-      )
-    }, timeoutMs)
-  }
-  return Object.freeze({
-    signal: controller.signal,
-    dispose: () => {
-      if (timeout !== undefined) clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  })
+  const { signal, dispose } = createManagementRequestDeadline(
+    caller,
+    timeoutMs,
+    'Supabase Management migration request timed out'
+  )
+  return Object.freeze({ signal, dispose })
 }
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('Supabase Management migration request aborted', 'AbortError')
-}
-
-function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  return waitForManagementOperation(operation, signal, () => abortReason(signal))
-}
+const waitForAbortable = createManagementOperationWaiter(
+  'Supabase Management migration request aborted'
+)
 
 async function boundedBytes(
   response: Response,
@@ -307,44 +266,16 @@ async function boundedBytes(
   signal: AbortSignal,
   outcome: SupabaseManagementBackfillWriteBarrierInstallTransportOutcome
 ): Promise<Uint8Array> {
-  const declared = response.headers.get('content-length')
-  if (declared !== null) {
-    const parsed = Number(declared)
-    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maximum) {
-      return fail('response-too-large', outcome)
+  return readManagementResponseBytes(
+    response,
+    maximum,
+    (reader) => waitForAbortable(reader.read(), signal),
+    () => fail('response-too-large', outcome),
+    (cause) => {
+      if (cause instanceof SupabaseManagementBackfillWriteBarrierInstallTransportError) throw cause
+      return fail(signal.aborted ? 'aborted' : 'network-failed', outcome)
     }
-  }
-  if (!response.body) return new Uint8Array()
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let length = 0
-  try {
-    let result = await waitForAbortable(reader.read(), signal)
-    while (!result.done) {
-      length += result.value.byteLength
-      if (length > maximum) {
-        void reader.cancel().catch(() => undefined)
-        return fail('response-too-large', outcome)
-      }
-      chunks.push(result.value)
-      result = await waitForAbortable(reader.read(), signal)
-    }
-  } catch (cause) {
-    void reader.cancel().catch(() => undefined)
-    if (cause instanceof SupabaseManagementBackfillWriteBarrierInstallTransportError) {
-      throw cause
-    }
-    return fail(signal.aborted ? 'aborted' : 'network-failed', outcome)
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(length)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return bytes
+  )
 }
 
 async function boundedResponse(

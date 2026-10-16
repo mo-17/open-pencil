@@ -347,3 +347,17 @@ export function trustedSupabaseBackfillReceiptV2ReviewContextV1(
   if (!context || !trustedSupabaseBackfillLockedHighWaterCaptureV1(context.capture)) return null
   return context
 }
+
+/** Shared immutable bindings carried by both database-ledger and source-ledger reviews. */
+export function supabaseBackfillReceiptReviewBindings(
+  receiptReview: SupabaseBackfillReceiptV2ReviewEnvelopeV1
+) {
+  return Object.freeze({
+    receiptReviewDigest: receiptReview.reviewDigest,
+    scopeDraftDigest: receiptReview.review.bindings.scopeDraftDigest,
+    captureDigest: receiptReview.review.bindings.captureDigest,
+    providerAuthorityDigest: receiptReview.review.bindings.providerAuthorityDigest,
+    applicationDigest: receiptReview.review.bindings.applicationDigest,
+    migrationDigest: receiptReview.review.bindings.migrationDigest
+  })
+}

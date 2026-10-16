@@ -1,6 +1,8 @@
+import { SUPABASE_NO_CREATED_AUTHORITY } from '@/app/plugins/host/deployment/supabase/authority-policy'
+import { createSupabaseDataAdmission } from '@/app/plugins/host/deployment/supabase/data-admission'
+import { createSupabaseDigests } from '@/app/plugins/host/deployment/supabase/digests'
+import { createSupabaseScalarAdmission } from '@/app/plugins/host/deployment/supabase/scalar-admission'
 /* oxlint-disable eslint(max-lines), eslint(complexity) -- Native metadata, strict JSON, Host truth table, and authority refusal form one boundary. */
-
-import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
 
 import {
   SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_RECONCILIATION_PARAMETER_ORDER,
@@ -126,7 +128,6 @@ export class SupabaseAutomationIdempotencyCASReconciliationResponseError extends
 }
 
 type ErrorCode = SupabaseAutomationIdempotencyCASReconciliationResponseErrorCode
-type UnknownRecord = Record<PropertyKey, unknown>
 const INPUT_KEYS = Object.freeze(['reconciliationReview', 'response'] as const)
 const NATIVE_RESPONSE_KEYS = Object.freeze(['columns', 'rows'] as const)
 const COLUMN_KEYS = Object.freeze(['name', 'pgType', 'nullable'] as const)
@@ -139,44 +140,24 @@ const trustedObservations = new WeakMap<
   TrustedSupabaseAutomationIdempotencyCASReconciliationObservationContextV1
 >()
 
+const { digest, digestText: digestRawText } = createSupabaseDigests(() =>
+  fail('supabase-automation-idempotency-cas-reconciliation-response-digest-failed')
+)
+
+const dataAdmission = createSupabaseDataAdmission(
+  fail,
+  (cause) => cause instanceof SupabaseAutomationIdempotencyCASReconciliationResponseError
+)
+
+const { boolean, integer } = createSupabaseScalarAdmission(() =>
+  fail('supabase-automation-idempotency-cas-reconciliation-response-invalid')
+)
+
 function fail(code: ErrorCode): never {
   throw new SupabaseAutomationIdempotencyCASReconciliationResponseError(code)
 }
 
-function exactRecord(
-  value: unknown,
-  expectedKeys: readonly string[],
-  code: ErrorCode
-): UnknownRecord {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return fail(code)
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return fail(code)
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    const keys = Reflect.ownKeys(descriptors)
-    if (
-      keys.length !== expectedKeys.length ||
-      keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))
-    ) {
-      return fail(code)
-    }
-    const snapshot = Object.create(null) as UnknownRecord
-    for (const key of expectedKeys) {
-      const descriptor = descriptors[key]
-      if (descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return fail(code)
-      Object.defineProperty(snapshot, key, {
-        configurable: false,
-        enumerable: true,
-        value: descriptor.value,
-        writable: false
-      })
-    }
-    return Object.freeze(snapshot)
-  } catch (cause) {
-    if (cause instanceof SupabaseAutomationIdempotencyCASReconciliationResponseError) throw cause
-    return fail(code)
-  }
-}
+const { snapshotRecord: exactRecord } = dataAdmission
 
 function exactArray(value: unknown, expectedLength: number, code: ErrorCode): readonly unknown[] {
   try {
@@ -364,25 +345,6 @@ function strictFlatJSONObject(text: string): Readonly<Record<string, unknown>> {
     code
   )
   return parsed as Readonly<Record<string, unknown>>
-}
-
-function boolean(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    return fail('supabase-automation-idempotency-cas-reconciliation-response-invalid')
-  }
-  return value
-}
-
-function integer(value: unknown, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    return fail('supabase-automation-idempotency-cas-reconciliation-response-invalid')
-  }
-  return value as number
 }
 
 function nullableRevision(value: unknown): number | null {
@@ -655,25 +617,6 @@ function recomputeStatus(
   return 'cas-conflict'
 }
 
-async function digest(value: unknown): Promise<string> {
-  try {
-    return await digestCanonicalManifest(value)
-  } catch {
-    return fail('supabase-automation-idempotency-cas-reconciliation-response-digest-failed')
-  }
-}
-
-async function digestRawText(value: string): Promise<string> {
-  try {
-    const bytes = new TextEncoder().encode(value)
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return encodeBase64URL(new Uint8Array(await crypto.subtle.digest('SHA-256', copy)))
-  } catch {
-    return fail('supabase-automation-idempotency-cas-reconciliation-response-digest-failed')
-  }
-}
-
 function requireTrustedReview(
   value: unknown
 ): TrustedSupabaseAutomationIdempotencyCASReconciliationReviewContextV1 {
@@ -843,13 +786,7 @@ export async function parseSupabaseAutomationIdempotencyCASReconciliationRespons
     automaticRetryAllowed: false as const,
     captureConsumed: false as const,
     operationAuthorityAuthenticated: false as const,
-    credentialAuthorityCreated: false as const,
-    transportAuthorityCreated: false as const,
-    databaseAuthorityCreated: false as const,
-    mutationAuthorityCreated: false as const,
-    executionAuthorityCreated: false as const,
-    receiptAuthorityCreated: false as const,
-    releaseAuthorityCreated: false as const,
+    ...SUPABASE_NO_CREATED_AUTHORITY,
     persistenceAuthorityGranted: false as const,
     dispatchAuthorityGranted: false as const,
     releaseReady: false as const

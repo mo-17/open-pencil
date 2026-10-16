@@ -247,6 +247,22 @@ function requiredEnvironmentNames(value: readonly string[]): readonly string[] |
   return new Set(sorted).size === sorted.length ? Object.freeze(sorted) : null
 }
 
+function stagingReceiptAuthorityChecks(
+  receipt: Pick<
+    SupabaseStorageIsolationReceipt,
+    'environment' | 'projectRef' | 'accountId' | 'grantGeneration' | 'provider'
+  >,
+  input: SupabaseStagingVerificationInput
+): readonly boolean[] {
+  return [
+    receipt.environment === 'staging',
+    receipt.projectRef === input.projectRef,
+    receipt.accountId === input.accountId,
+    receipt.grantGeneration === input.grantGeneration,
+    sameProviderAuthority(receipt.provider, input.backendProvider)
+  ]
+}
+
 function edgeReceiptEnvelopeMatches(
   input: SupabaseStagingVerificationInput,
   receipt: SupabaseEdgeFunctionReleaseReceipt,
@@ -262,11 +278,7 @@ function edgeReceiptEnvelopeMatches(
   return [
     runtimeEquals(receipt.format, 'openpencil.supabase-edge-function-deployment-receipt'),
     runtimeEquals(receipt.version, 1),
-    receipt.environment === 'staging',
-    receipt.projectRef === input.projectRef,
-    receipt.accountId === input.accountId,
-    receipt.grantGeneration === input.grantGeneration,
-    sameProviderAuthority(receipt.provider, input.backendProvider),
+    ...stagingReceiptAuthorityChecks(receipt, input),
     receipt.artifactDigest === expectedArtifactDigest,
     receipt.healthIdentity === expectedHealthIdentity,
     stableId(receipt.releaseId),
@@ -478,11 +490,7 @@ function storageReceiptMatches(
     return [
       runtimeEquals(receipt.format, 'openpencil.supabase-storage-isolation-receipt'),
       runtimeEquals(receipt.version, 1),
-      receipt.environment === 'staging',
-      receipt.projectRef === input.projectRef,
-      receipt.accountId === input.accountId,
-      receipt.grantGeneration === input.grantGeneration,
-      sameProviderAuthority(receipt.provider, input.backendProvider),
+      ...stagingReceiptAuthorityChecks(receipt, input),
       receipt.applicationDigest === applicationDigest,
       receipt.storagePolicyArtifactDigest === expectedStoragePolicyArtifactDigest,
       receipt.bucketId === expected.bucketId,

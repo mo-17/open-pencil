@@ -8,6 +8,7 @@ import { compact, uniq } from 'es-toolkit'
 import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
 import { emitBackendClientEvent } from '../backend-client/events'
+import { SUPPORTED_EVENT_KINDS } from './event-kinds'
 import { vueControlledEventValue, vueFieldEventLocals } from './html'
 import { emitVueBackendHandler } from './lowcode/backend-actions'
 import {
@@ -37,28 +38,6 @@ const EVENT_DIRECTIVES: Record<IREventName, string> = {
   onFocus: 'focus',
   onBlur: 'blur'
 }
-
-const SUPPORTED_EVENT_KINDS = new Set<IREventHandler['kind']>([
-  'backendAuth',
-  'backendRequest',
-  'backendCommand',
-  'backendCommandRecovery',
-  'setState',
-  'setVariable',
-  'navigate',
-  'back',
-  'apiCall',
-  'condition',
-  'delay',
-  'stop',
-  'toast',
-  'confirm',
-  'clipboard',
-  'supabaseQuery',
-  'supabaseMutation',
-  'supabaseAuth',
-  'invokeServerWorkflow'
-])
 
 export function emitControlledAttribute(
   node: IRElement,

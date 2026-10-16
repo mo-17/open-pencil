@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 
-import { bold, fmtList, ok } from '#cli/format'
+import { ok } from '#cli/format'
 
 import {
   applicationArg,
@@ -26,6 +26,7 @@ import {
   type ReceiptAudit
 } from './common'
 import ledger from './ledger'
+import { printBackendReport } from './report'
 
 interface PipelineArgs {
   readonly application: string
@@ -59,22 +60,9 @@ function frontendHostingProvider(value: string | undefined): string | null {
 }
 
 function printReport(title: string, report: Record<string, unknown>, json: boolean): void {
-  if (json) {
-    console.log(JSON.stringify(report, null, 2))
-    return
-  }
-  console.log('')
-  console.log(bold(`  ${title}`))
-  console.log('')
-  console.log(
-    fmtList([
-      {
-        header: report.releaseReady === true ? ok('release-ready') : title,
-        details: report
-      }
-    ])
+  printBackendReport(title, report, json, () =>
+    report.releaseReady === true ? ok('release-ready') : title
   )
-  console.log('')
 }
 
 function localPlanReport(

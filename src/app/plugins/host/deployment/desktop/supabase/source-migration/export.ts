@@ -16,14 +16,15 @@ import {
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
 
-import {
-  normalizeSupabaseSchemaName,
-  projectRefFromSupabaseURL
-} from '@/app/lowcode/supabase/management-client'
 import type {
   AppBackendProviderDocumentGraph,
   PreparedAppBackendProviderBuild
 } from '@/app/plugins/host/backend-provider'
+import {
+  normalizedConfig,
+  sameAuthority,
+  sameBuild
+} from '@/app/plugins/host/deployment/desktop/supabase/backend/binding'
 import { validateProjectArchivePath } from '@/app/plugins/host/project-archive'
 import type { PluginFileExportDestination } from '@/app/plugins/host/source-exporter-runtime'
 
@@ -204,35 +205,6 @@ function fail(code: DesktopSupabaseSourceMigrationExportErrorCode, cause?: unkno
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) fail('aborted')
-}
-
-function normalizedConfig(value: SupabaseConfig | undefined): NormalizedConfig | null {
-  try {
-    const projectRef = projectRefFromSupabaseURL(value?.url ?? '')
-    const schema = normalizeSupabaseSchemaName(value?.schema)
-    return schema === 'public' ? Object.freeze({ projectRef, schema }) : null
-  } catch {
-    return null
-  }
-}
-
-function sameAuthority(
-  left: BackendReleaseProviderAuthorityV1,
-  right: BackendReleaseProviderAuthorityV1
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
-}
-
-function sameBuild(
-  left: PreparedAppBackendProviderBuild,
-  right: PreparedAppBackendProviderBuild
-): boolean {
-  return (
-    JSON.stringify(left.request) === JSON.stringify(right.request) &&
-    left.plan.applicationDigest === right.plan.applicationDigest &&
-    left.plan.planDigest === right.plan.planDigest &&
-    left.emission.manifestDigest === right.emission.manifestDigest
-  )
 }
 
 function snapshot<T>(value: T, code: DesktopSupabaseSourceMigrationExportErrorCode): T {

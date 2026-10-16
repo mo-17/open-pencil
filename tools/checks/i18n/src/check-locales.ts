@@ -19,6 +19,7 @@ import {
   normalizedTranslationText,
   placeholders
 } from './quality'
+import { changedTechnicalSyntax } from './technical-syntax'
 
 const LOCALES_DIR = 'packages/vue/src/i18n/locales'
 const LOCALE_FILE_NAMES: Record<string, string> = {
@@ -136,7 +137,7 @@ for (const [locale, dir] of expectedLocaleDirs) {
   const missing: string[] = []
   const extra: string[] = []
   let translated = 0
-  let nonlinguistic = 0
+  let reviewedCopies = 0
   let total = 0
 
   for (const file of fileDiff.missing) missing.push(`${file}.*`)
@@ -161,6 +162,10 @@ for (const [locale, dir] of expectedLocaleDirs) {
       if (source === null || typeof localized !== 'string') continue
       total++
       const id = `${baselineLocaleId(locale)}:${namespace}.${key}`
+      const changedSyntax = changedTechnicalSyntax(source, localized)
+      if (changedSyntax.length > 0) {
+        report(`${id}: technical syntax differs from source (${changedSyntax.join(', ')})`)
+      }
       if (placeholders(source).join(',') !== placeholders(localized).join(',')) {
         report(
           `${id}: placeholders differ from source (${placeholders(source).join(', ')} != ${placeholders(localized).join(', ')})`
@@ -173,8 +178,8 @@ for (const [locale, dir] of expectedLocaleDirs) {
       }
       if (normalizedTranslationText(source) === normalizedTranslationText(localized)) {
         observedIdentical.add(id)
-        if (!isIdenticalEnglishProse(source, localized)) {
-          nonlinguistic++
+        if (!isIdenticalEnglishProse(source, localized, locale, key.endsWith('Placeholder'))) {
+          reviewedCopies++
         } else if (!translationBaseline.has(id))
           report(`${id}: translation is identical to the English source`)
       } else {
@@ -189,7 +194,7 @@ for (const [locale, dir] of expectedLocaleDirs) {
   if (total > 0) {
     const coverage = ((translated / total) * 100).toFixed(1)
     console.log(
-      `${locale}: ${translated}/${total} translated (${coverage}%); ${nonlinguistic} nonlinguistic formats/URLs`
+      `${locale}: ${translated}/${total} translated (${coverage}%); ${reviewedCopies} reviewed terms or nonlinguistic syntax`
     )
   }
 

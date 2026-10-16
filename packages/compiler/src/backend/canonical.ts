@@ -1,3 +1,4 @@
+import { hasOnlyBackendArrayIndexes } from '#compiler/backend/data-shape'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { fromUint8Array } from 'js-base64'
 
@@ -49,12 +50,8 @@ function assertJSONArray(
   if (!Number.isSafeInteger(length) || length < 0 || length > BACKEND_LIMITS.maxNodes) {
     throw new TypeError(`${path} exceeds the Backend JSON node limit`)
   }
-  for (const key of Reflect.ownKeys(value)) {
-    if (key === 'length') continue
-    const index = typeof key === 'string' && /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1
-    if (!Number.isSafeInteger(index) || index < 0 || index >= length) {
-      throw new TypeError(`${path} must not contain symbols or custom array properties`)
-    }
+  if (!hasOnlyBackendArrayIndexes(value, length)) {
+    throw new TypeError(`${path} must not contain symbols or custom array properties`)
   }
   for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
@@ -155,4 +152,9 @@ export function freezeBackendValue<T>(value: T): Readonly<T> {
     if (descriptor && 'value' in descriptor) freezeBackendValue(descriptor.value)
   }
   return Object.freeze(value)
+}
+
+/** Canonical, human-readable review JSON with a stable trailing newline. */
+export function prettyCanonicalBackendJSON(value: unknown, path: string): string {
+  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
 }

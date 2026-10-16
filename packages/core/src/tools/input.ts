@@ -18,6 +18,11 @@ export const positionInputs = {
   y: toolNumber(v.pipe(v.number(), v.description('Y position in the parent, or on the page')))
 }
 
+export const optionalPositionInputs = {
+  x: v.optional(toolNumber(v.pipe(v.number(), v.description('X position')))),
+  y: v.optional(toolNumber(v.pipe(v.number(), v.description('Y position'))))
+}
+
 /** Reuse a native number schema for both numeric and numeric-string agent inputs. */
 export function toolNumber(schema: v.GenericSchema<number, number> = v.number()) {
   // JSON Schema numbers are finite. Express that with representable bounds as well as at runtime.

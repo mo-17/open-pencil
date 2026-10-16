@@ -1,4 +1,7 @@
-import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
+import {
+  prettyCanonicalBackendJSON,
+  digestCanonicalBackendValue
+} from '#compiler/backend/canonical'
 import type {
   BackendArtifactSourceV2,
   BackendProviderAdapterContextV2
@@ -14,10 +17,6 @@ import {
   SUPABASE_PRIVATE_REALTIME_ARTIFACT_PATHS_V2
 } from './realtime'
 import { emitSupabasePrivateRealtimeSQLV2 } from './sql'
-
-function stableJSON(value: unknown, path: string): string {
-  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
-}
 
 function assertExpectedPlan(context: BackendProviderAdapterContextV2, plan: JSONValue): void {
   const expected = createSupabasePrivateRealtimePlanV2(context)
@@ -112,13 +111,19 @@ export function emitSupabasePrivateRealtimeArtifactsV2(
       path: SUPABASE_PRIVATE_REALTIME_ARTIFACT_PATHS_V2.databasePrerequisites,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(databasePrerequisites, '$.supabasePrivateRealtime.prerequisites')
+      content: prettyCanonicalBackendJSON(
+        databasePrerequisites,
+        '$.supabasePrivateRealtime.prerequisites'
+      )
     }),
     Object.freeze({
       path: SUPABASE_PRIVATE_REALTIME_ARTIFACT_PATHS_V2.reviewManifest,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(reviewManifest, '$.supabasePrivateRealtime.reviewManifest')
+      content: prettyCanonicalBackendJSON(
+        reviewManifest,
+        '$.supabasePrivateRealtime.reviewManifest'
+      )
     }),
     Object.freeze({
       path: SUPABASE_PRIVATE_REALTIME_ARTIFACT_PATHS_V2.sql,

@@ -11,6 +11,7 @@ import {
   businessUUIDParameter,
   businessUpdate
 } from '../commands'
+import { businessFutureSlotWindow, businessSlotParameterValues } from '../scheduling'
 import { BOOKING_ROLE, SERVICE_FIELDS, SLOT_FIELDS, type BookingEntities } from './schema'
 import { bookingAccess, readService, readSlot } from './steps'
 
@@ -48,34 +49,14 @@ export function bookingCatalogCommands(entities: BookingEntities): BackendComman
       ],
       [
         readService(entities),
-        businessAssert(
-          'future_start',
-          businessParameter('startsAt'),
-          { kind: 'server-now' },
-          'gte'
-        ),
-        businessAssert(
-          'ordered_times',
-          businessParameter('endsAt'),
-          businessParameter('startsAt'),
-          'gte'
-        ),
-        businessAssert(
-          'nonempty_slot',
-          businessParameter('endsAt'),
-          businessParameter('startsAt'),
-          'neq'
-        ),
+        ...businessFutureSlotWindow(),
         businessInsert(
           entities.slots,
           'slot',
           [
             { field: 'owner_id', value: businessCaller() },
             { field: 'service_id', value: businessParameter('serviceId') },
-            { field: 'title', value: businessParameter('title') },
-            { field: 'starts_at', value: businessParameter('startsAt') },
-            { field: 'ends_at', value: businessParameter('endsAt') },
-            { field: 'capacity', value: businessParameter('capacity') }
+            ...businessSlotParameterValues()
           ],
           SLOT_FIELDS
         )

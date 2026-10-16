@@ -2,6 +2,26 @@
 // Reference licenses remain unreviewed; original collection JavaScript is excluded.
 import type { EffectPickCatalogEntry } from '#core/plugins/effect-pick/types'
 
+function loaderDefaults(
+  effectId: string,
+  artifactDigest: string
+): Pick<EffectPickCatalogEntry, 'defaultConfig' | 'defaultSize' | 'events' | 'editableFields'> {
+  return {
+    defaultConfig: {
+      effectId,
+      collectionVersion: '0.7.0',
+      artifactDigest,
+      text: '',
+      color: '#a7f3d0',
+      secondaryColor: '#102032',
+      speed: 1
+    },
+    defaultSize: { width: 280, height: 240 },
+    events: [],
+    editableFields: ['color', 'secondaryColor', 'speed']
+  }
+}
+
 export const EFFECT_PICK_LOADERS_BATCH2: readonly EffectPickCatalogEntry[] = [
   {
     runtimeRevision: 'effect-pick-css-v1',
@@ -27,21 +47,10 @@ export const EFFECT_PICK_LOADERS_BATCH2: readonly EffectPickCatalogEntry[] = [
       metadata: '8f89747c1a8610bc22bc0bd5b3bea95902a0273eb924ca979ab614a1ad941f94',
       sharedUtils: '1652ebaca26a641065de146768b735b4d9b52d3ddd7d9152386fd7a0d9d3f0ac'
     },
-    defaultConfig: {
-      effectId: 'gooey-dots',
-      collectionVersion: '0.7.0',
-      artifactDigest: '3838c98411d63ff7c714bca169490464654c6c3baddbf842fc7ade292f5b1a12',
-      text: '',
-      color: '#a7f3d0',
-      secondaryColor: '#102032',
-      speed: 1
-    },
-    defaultSize: {
-      width: 280,
-      height: 240
-    },
-    events: [],
-    editableFields: ['color', 'secondaryColor', 'speed'],
+    ...loaderDefaults(
+      'gooey-dots',
+      '3838c98411d63ff7c714bca169490464654c6c3baddbf842fc7ade292f5b1a12'
+    ),
     artifact: {
       markup:
         '<svg viewBox="0 0 300 180" role="img" aria-label="粘液圆点聚合示意"><defs><filter id="ep-gooey-__EP_INSTANCE__" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/><feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 17 -7"/></filter></defs><g filter="url(#ep-gooey-__EP_INSTANCE__)"><circle cx="150" cy="90" r="23"/><circle class="gooey-moving" cx="150" cy="90" r="17"/><circle class="gooey-moving gooey-delayed" cx="150" cy="90" r="17"/></g></svg>',
@@ -74,21 +83,10 @@ export const EFFECT_PICK_LOADERS_BATCH2: readonly EffectPickCatalogEntry[] = [
       metadata: '242c9885a26fb198554b303067598879ea6868157d51c96096c9eb2b3485c06b',
       sharedUtils: '1652ebaca26a641065de146768b735b4d9b52d3ddd7d9152386fd7a0d9d3f0ac'
     },
-    defaultConfig: {
-      effectId: 'infinity-runner',
-      collectionVersion: '0.7.0',
-      artifactDigest: 'beca8c35334e13221b647c95b151f1df2aaccf32bf044f1d70092644d721b14e',
-      text: '',
-      color: '#a7f3d0',
-      secondaryColor: '#102032',
-      speed: 1
-    },
-    defaultSize: {
-      width: 280,
-      height: 240
-    },
-    events: [],
-    editableFields: ['color', 'secondaryColor', 'speed'],
+    ...loaderDefaults(
+      'infinity-runner',
+      'beca8c35334e13221b647c95b151f1df2aaccf32bf044f1d70092644d721b14e'
+    ),
     artifact: {
       markup:
         '<svg viewBox="0 0 400 280" role="img" aria-label="八字轨迹光点示意"><path class="infinity-track" d="M90 140C90 70 155 70 200 140C245 210 310 210 310 140C310 70 245 70 200 140C155 210 90 210 90 140Z"/><path class="infinity-runner" pathLength="1000" d="M90 140C90 70 155 70 200 140C245 210 310 210 310 140C310 70 245 70 200 140C155 210 90 210 90 140Z"/></svg>',
@@ -121,21 +119,10 @@ export const EFFECT_PICK_LOADERS_BATCH2: readonly EffectPickCatalogEntry[] = [
       metadata: '87dc05bcc187ccca07cfaf39e9f176a9ffa494d745c492074c552d7e95bba457',
       sharedUtils: '1652ebaca26a641065de146768b735b4d9b52d3ddd7d9152386fd7a0d9d3f0ac'
     },
-    defaultConfig: {
-      effectId: 'newtons-cradle',
-      collectionVersion: '0.7.0',
-      artifactDigest: 'ab2727f0d33780be3df5eb9a4c9e290030f494f22b9f234fc0115afad7b87bd7',
-      text: '',
-      color: '#a7f3d0',
-      secondaryColor: '#102032',
-      speed: 1
-    },
-    defaultSize: {
-      width: 280,
-      height: 240
-    },
-    events: [],
-    editableFields: ['color', 'secondaryColor', 'speed'],
+    ...loaderDefaults(
+      'newtons-cradle',
+      'ab2727f0d33780be3df5eb9a4c9e290030f494f22b9f234fc0115afad7b87bd7'
+    ),
     artifact: {
       markup:
         '<div class="cradle" role="img" aria-label="牛顿摆球节奏示意"><span class="cradle-beam" aria-hidden="true"></span><span class="cradle-pendulum" aria-hidden="true"><i></i></span><span class="cradle-pendulum" aria-hidden="true"><i></i></span><span class="cradle-pendulum" aria-hidden="true"><i></i></span><span class="cradle-pendulum" aria-hidden="true"><i></i></span><span class="cradle-pendulum" aria-hidden="true"><i></i></span></div>',

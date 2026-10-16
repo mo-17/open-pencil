@@ -14,9 +14,10 @@ import {
 } from '@open-pencil/lowcode/backend'
 
 import { readBoundedJSON } from '#cli/commands/bounded-input'
-import { bold, fmtList, ok } from '#cli/format'
+import { ok } from '#cli/format'
 
 import { jsonArg, runBackendCommandSafely } from './common'
+import { printBackendReport } from './report'
 
 const LEDGER_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$/u
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
@@ -48,15 +49,7 @@ interface SourceFileVerification {
 }
 
 function printLedgerReport(title: string, report: Record<string, unknown>, json: boolean): void {
-  if (json) {
-    console.log(JSON.stringify(report, null, 2))
-    return
-  }
-  console.log('')
-  console.log(bold(`  ${title}`))
-  console.log('')
-  console.log(fmtList([{ header: ok(title), details: report }]))
-  console.log('')
+  printBackendReport(title, report, json, () => ok(title))
 }
 
 async function loadLedger(path: string): Promise<SourceMigrationLedgerV1> {

@@ -1,3 +1,4 @@
+import { hasOnlyBackendArrayIndexes } from '#compiler/backend/data-shape'
 /* oxlint-disable max-lines -- V2 retains the complete V1 artifact boundary plus pre-callback authority checks. */
 
 import {
@@ -13,6 +14,7 @@ import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import {
   RuntimeReadonlyBackendFiles,
   invalidBackendArtifactPath,
+  appendBackendArtifact,
   requiredBackendArtifactSecrets,
   reserveBackendArtifactPath,
   validateBackendArtifactMetadata
@@ -22,6 +24,7 @@ import {
   backendDiagnostic,
   hasBackendErrors,
   sortBackendDiagnostics,
+  validateReplannedBackendDigest,
   unsupportedBackendCompilationModeDiagnostic
 } from '../diagnostics'
 import {
@@ -147,14 +150,10 @@ function snapshotOccupiedPathsV2(value: unknown): OccupiedPathSnapshotResultV2 {
         )
       }
     }
-    for (const key of Reflect.ownKeys(value)) {
-      if (key === 'length') continue
-      const index = typeof key === 'string' && /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1
-      if (!Number.isSafeInteger(index) || index < 0 || index >= length) {
-        return invalidOccupiedPathsV2(
-          'Occupied artifact paths must not contain symbols or custom properties.'
-        )
-      }
+    if (!hasOnlyBackendArrayIndexes(value, length)) {
+      return invalidOccupiedPathsV2(
+        'Occupied artifact paths must not contain symbols or custom properties.'
+      )
     }
     const snapshot: string[] = []
     for (let index = 0; index < length; index += 1) {
@@ -257,27 +256,12 @@ function acceptArtifactV2(
     )
     return
   }
-  const nextTotalBytes = collection.totalBytes + bytes.byteLength
-  if (nextTotalBytes > BACKEND_ARTIFACT_LIMITS_V2.maxTotalBytes) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-total-byte-limit',
-        'error',
-        '$.artifacts',
-        'Backend Provider artifacts exceed the total byte limit.'
-      )
-    )
-    return
-  }
-  collection.totalBytes = nextTotalBytes
-  collection.artifacts.push(
-    Object.freeze({
-      path: artifact.path,
-      kind: artifact.kind,
-      mediaType: artifact.mediaType,
-      content,
-      bytes
-    })
+  appendBackendArtifact(
+    collection,
+    artifact,
+    content,
+    bytes,
+    BACKEND_ARTIFACT_LIMITS_V2.maxTotalBytes
   )
 }
 
@@ -507,21 +491,8 @@ export function emitBackendProviderPlanV2(
     mode
   })
   if (!replanned.ok) return replanned
-  diagnostics.push(...replanned.diagnostics)
-  if (replanned.plan.planDigest !== plan.planDigest) {
-    return {
-      ok: false,
-      diagnostics: sortBackendDiagnostics([
-        ...diagnostics,
-        backendDiagnostic(
-          'backend-provider-v2-plan-stale',
-          'error',
-          '$.plan',
-          'Backend Provider V2 plan no longer matches the trusted registry or normalized input.'
-        )
-      ])
-    }
-  }
+  const stalePlan = validateReplannedBackendDigest(plan.planDigest, replanned, diagnostics, 2)
+  if (stalePlan) return stalePlan
 
   const collection: ArtifactCollectionV2 = {
     artifacts: [],

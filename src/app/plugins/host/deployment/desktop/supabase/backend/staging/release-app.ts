@@ -1,24 +1,14 @@
 import type { SupabaseInspectedMigrationSnapshotV1 } from '@open-pencil/compiler/backend'
 
-import {
-  resolveSupabaseManagementDatabaseWritePat,
-  resolveSupabaseManagementGrantGeneration,
-  resolveSupabaseManagementPat,
-  supabaseManagementPatStatus
-} from '@/app/lowcode/supabase/credentials'
-import {
-  createSupabaseStagingTargetStore,
-  type SupabaseStagingTargetStore
-} from '@/app/lowcode/supabase/staging-target'
-import { appPluginStore } from '@/app/plugins/app'
-import {
-  prepareAppBackendProviderDocumentBuild,
-  resolveAppBackendProviderReleaseAuthority,
-  type AppBackendProviderHostStore
-} from '@/app/plugins/host/backend-provider'
+import { type SupabaseStagingTargetStore } from '@/app/lowcode/supabase/staging-target'
+import { type AppBackendProviderHostStore } from '@/app/plugins/host/backend-provider'
 import { BackendHostReleaseApplyError } from '@/app/plugins/host/deployment/backend/release-controller'
 import type { BackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
 import { createIdbBackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
+import {
+  createDesktopSupabaseBuildAccess,
+  createDesktopSupabaseStagingAccess
+} from '@/app/plugins/host/deployment/desktop/supabase/build-access'
 import {
   createSupabaseBackendRelease,
   type SupabaseBackendReleaseReviewArtifactV1
@@ -38,7 +28,6 @@ import {
 } from '@/app/plugins/host/deployment/supabase/native-pg-catalog-transport'
 import { inspectSupabasePgCatalog } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
 import { reconcileSupabaseStagingBaseline } from '@/app/plugins/host/deployment/supabase/staging-reconciliation'
-import { appCredentialServices } from '@/app/settings/credentials/app'
 import type { CredentialServices } from '@/app/settings/credentials/services'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
@@ -283,13 +272,7 @@ async function prepareStrictStagingRelease(
 function createAppDesktopSupabaseBackendStagingReleaseServiceWithOptions(
   options: AppDesktopSupabaseBackendStagingReleaseForTestingOptionsV1
 ): DesktopSupabaseBackendStagingReleaseService {
-  const pluginStore = options.pluginStore ?? appPluginStore
-  const waitForPluginStoreReady =
-    options.pluginStoreReady ??
-    (options.pluginStore
-      ? () => undefined
-      : () => (appPluginStore.snapshot().ready ? undefined : appPluginStore.load()))
-  const credentials = options.credentialServices ?? appCredentialServices
+  const buildAccess = createDesktopSupabaseBuildAccess(options)
   const runtime = Object.freeze({
     isDesktop: options.isDesktop ?? isTauri,
     readFetcher: options.readFetcher,
@@ -299,25 +282,9 @@ function createAppDesktopSupabaseBackendStagingReleaseServiceWithOptions(
     nextId: options.nextId ?? randomId,
     inspectCatalog: options.inspectCatalog ?? inspectSupabasePgCatalog
   })
-  const readCredentialDependency = options.readFetcher
-    ? { resolveReadCredential: () => resolveSupabaseManagementPat(credentials) }
-    : { resolveReadCredentialStatus: () => supabaseManagementPatStatus(credentials) }
   const dependencies: DesktopSupabaseBackendStagingReleaseDependencies = {
-    async prepareBuild(graph, target) {
-      await Promise.resolve(waitForPluginStoreReady())
-      return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target,
-        mode: 'production'
-      })
-    },
-    resolveBackendProviderAuthority(build) {
-      return resolveAppBackendProviderReleaseAuthority(pluginStore, build.descriptor)
-    },
-    ...readCredentialDependency,
-    resolveWriteCredential: () => resolveSupabaseManagementDatabaseWritePat(credentials),
-    resolveGrantGeneration: () => resolveSupabaseManagementGrantGeneration(credentials),
-    resolveStagingTargetBinding: () =>
-      (options.stagingTargetStore ?? createSupabaseStagingTargetStore()).read(),
+    ...buildAccess,
+    ...createDesktopSupabaseStagingAccess(options),
     prepareStrictStagingRelease: (input) => prepareStrictStagingRelease(input, runtime),
     ...options.dependencyOverrides
   }

@@ -1,3 +1,6 @@
+import { isLocaleHomograph } from './homographs'
+import { isTechnicalMessage, technicalText } from './technical-syntax'
+
 const PLACEHOLDER_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g
 const CODE_LITERAL_PATTERN =
   /\$[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?:\s*\/\s*\.[A-Za-z_][A-Za-z0-9_]*)*/g
@@ -27,10 +30,19 @@ export function normalizedTranslationText(value: string): string {
   return value.normalize('NFKC').replaceAll(/\s+/g, ' ').trim()
 }
 
-export function isIdenticalEnglishProse(source: string, localized: string): boolean {
+export function isIdenticalEnglishProse(
+  source: string,
+  localized: string,
+  locale?: string,
+  inputExample = false
+): boolean {
   return (
     normalizedTranslationText(source) === normalizedTranslationText(localized) &&
-    !(source === localized && isNonLinguisticMessageSyntax(source))
+    !(
+      source === localized &&
+      (isNonLinguisticMessageSyntax(source) || isTechnicalMessage(source, inputExample))
+    ) &&
+    !isLocaleHomograph(locale, source, localized)
   )
 }
 
@@ -61,6 +73,7 @@ export function hasMixedLatinAndCjk(value: string, source?: string): boolean {
         : literal
     )
   }
+  if (source) visibleText = technicalText(source, visibleText)
   return (
     /\p{Script=Latin}/u.test(visibleText) &&
     /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(visibleText)

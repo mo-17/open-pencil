@@ -1,6 +1,7 @@
 /* oxlint-disable max-lines -- The closed atomic validator and resolver intentionally share one auditable contract. */
 import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
 import { backendDiagnostic } from '#compiler/backend/diagnostics'
+import { atomicPostgresType } from '#compiler/backend/supabase/v2/sql-primitives'
 import type { BackendProviderAdapterContextV2 } from '#compiler/backend/v2/contracts'
 
 import type {
@@ -647,27 +648,6 @@ export function validateSupabaseAtomicTransactionV2(
   return Object.freeze(diagnostics)
 }
 
-function postgresType(type: BackendFieldScalarType): string {
-  switch (type) {
-    case 'string':
-      return 'text'
-    case 'integer':
-      return 'int8'
-    case 'number':
-      return 'float8'
-    case 'boolean':
-      return 'bool'
-    case 'date':
-      return 'date'
-    case 'datetime':
-      return 'timestamptz'
-    case 'uuid':
-      return 'uuid'
-    default:
-      throw new TypeError('Unsupported Supabase atomic RPC parameter type.')
-  }
-}
-
 function fieldForParameter(
   entity: DataEntityIR,
   transaction: BackendTransactionDefinitionIR,
@@ -727,7 +707,7 @@ export function resolvedSupabaseAtomicTransactionV2(
       name: parameter.name,
       type: parameter.type,
       sqlArgument: `arg_${String(index + 1).padStart(3, '0')}`,
-      sqlType: postgresType(parameter.type),
+      sqlType: atomicPostgresType(parameter.type, 'parameter'),
       fieldId: field.id,
       field: field.name
     })

@@ -15,3 +15,9 @@ export function waitForManagementOperation<T>(
     signal.removeEventListener('abort', onAbort)
   })
 }
+import { managementAbortReason } from './transport-runtime'
+
+export function createManagementOperationWaiter(message: string) {
+  return <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> =>
+    waitForManagementOperation(operation, signal, () => managementAbortReason(signal, message))
+}

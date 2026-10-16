@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 
 import { getComponentCatalog } from '#core/tools/component-catalog'
-import { toolNumber } from '#core/tools/input'
+import { optionalPositionInputs } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
 export const listLibraries = defineTool({
@@ -28,8 +28,7 @@ export const insertLibraryComponent = defineTool({
     revision_id: v.optional(v.pipe(v.string(), v.description('Pinned revision ID'))),
     asset_key: v.pipe(v.string(), v.description('Stable asset key')),
     parent_id: v.optional(v.pipe(v.string(), v.description('Optional parent node ID'))),
-    x: v.optional(toolNumber(v.pipe(v.number(), v.description('X position')))),
-    y: v.optional(toolNumber(v.pipe(v.number(), v.description('Y position')))),
+    ...optionalPositionInputs,
     variant_values: v.optional(
       v.pipe(v.string(), v.description('Optional JSON object of variant property values'))
     )

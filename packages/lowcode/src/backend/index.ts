@@ -57,3 +57,5 @@ export {
   lowerLegacySupabaseApplication
 } from './legacy-supabase'
 export * from './release'
+
+export { isCanonicalBackendDate, isWellFormedBackendText } from './scalar-text'

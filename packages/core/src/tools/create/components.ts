@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 
 import type { FigmaComponentNode, FigmaNodeProxy } from '#core/figma-api'
-import { toolNumber } from '#core/tools/input'
+import { optionalPositionInputs, toolNumber } from '#core/tools/input'
 import { defineTool, nodeSummary, requireNodes } from '#core/tools/schema'
 import { hasComponentInstanceReferencePath } from '#core/tools/structure/hierarchy'
 
@@ -44,8 +44,7 @@ export const createInstance = defineTool({
         )
       )
     ),
-    x: v.optional(toolNumber(v.pipe(v.number(), v.description('X position')))),
-    y: v.optional(toolNumber(v.pipe(v.number(), v.description('Y position'))))
+    ...optionalPositionInputs
   }),
   execute: (figma, args) => {
     const component = figma.getNodeById(args.component_id)

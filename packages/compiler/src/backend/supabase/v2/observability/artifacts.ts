@@ -1,4 +1,7 @@
-import { canonicalBackendValue, digestCanonicalBackendValue } from '#compiler/backend/canonical'
+import {
+  prettyCanonicalBackendJSON,
+  digestCanonicalBackendValue
+} from '#compiler/backend/canonical'
 import type {
   BackendArtifactSourceV2,
   BackendProviderAdapterContextV2
@@ -35,10 +38,6 @@ import {
   emitSupabaseOperationalEventSinkReviewSQLV2,
   resolveSupabaseOperationalEventSinkScopeV2
 } from './operational-event-sink-sql'
-
-function stableJSON(value: unknown, path: string): string {
-  return `${JSON.stringify(canonicalBackendValue(value, path), null, 2)}\n`
-}
 
 function assertExpectedPlan(context: BackendProviderAdapterContextV2, plan: JSONValue): void {
   if (
@@ -283,19 +282,22 @@ export function emitSupabaseObservabilityArtifactsV2(
       path: SUPABASE_OBSERVABILITY_ARTIFACT_PATHS_V2.reviewManifest,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(reviewManifest, '$.supabaseObservability.reviewManifest')
+      content: prettyCanonicalBackendJSON(reviewManifest, '$.supabaseObservability.reviewManifest')
     }),
     Object.freeze({
       path: SUPABASE_OBSERVABILITY_ARTIFACT_PATHS_V2.inspectionContract,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(inspectionContract, '$.supabaseObservability.inspectionContract')
+      content: prettyCanonicalBackendJSON(
+        inspectionContract,
+        '$.supabaseObservability.inspectionContract'
+      )
     }),
     Object.freeze({
       path: SUPABASE_OBSERVABILITY_ARTIFACT_PATHS_V2.auditContract,
       kind: 'deployment-manifest' as const,
       mediaType: 'application/json',
-      content: stableJSON(auditContract, '$.supabaseObservability.auditContract')
+      content: prettyCanonicalBackendJSON(auditContract, '$.supabaseObservability.auditContract')
     }),
     Object.freeze({
       path: SUPABASE_OBSERVABILITY_ARTIFACT_PATHS_V2.operationalEventSinkSchema,
