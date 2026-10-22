@@ -2,6 +2,8 @@ import { pick } from 'es-toolkit'
 
 import {
   createShaderPaint,
+  supportsShaderContent,
+  readShaderPaints,
   shaderOfPaint,
   withShaderPaints,
   type SceneNode,
@@ -46,7 +48,10 @@ export function createShaderActions(ctx: EditorContext, nodes: NodeActions) {
     if (!node || !previous) return
     const existing = shaderOfPaint(node, previous)
     const { paint, shader } = existing
-      ? { paint: previous, shader: { image: existing.image, preset: structuredClone(preset) } }
+      ? {
+          paint: previous,
+          shader: { ...existing, preset: structuredClone(preset), frame: undefined }
+        }
       : createShaderPaint(preset)
     const shown = { ...paint, opacity: previous.opacity, visible: previous.visible }
     const fills = list === 'fills' ? replaceAt(node.fills, index, shown) : node.fills
@@ -82,5 +87,42 @@ export function createShaderActions(ctx: EditorContext, nodes: NodeActions) {
     }
   }
 
-  return { setShaderPaint }
+  /** Adds a node-local content filter while keeping the source paints and hierarchy editable. */
+  function setContentShader(
+    nodeIds: readonly string[],
+    preset: ShaderPreset = { components: [{ type: 'Pixelate', props: { scale: 24 } }] }
+  ): void {
+    const targets = nodeIds.map((id) => ctx.graph.getNode(id))
+    const overlaps = nodeIds.some((id) =>
+      nodeIds.some((other) => id !== other && ctx.graph.isDescendant(id, other))
+    )
+    if (overlaps || targets.some((node) => !node || !supportsShaderContent(ctx.graph, node))) {
+      throw new Error(
+        'Content shaders support static images, text and decorative containers without controls, bindings, Motion or generated effects.'
+      )
+    }
+    ctx.undo.beginBatch('Set content shader')
+    try {
+      for (const node of targets) {
+        if (!node) continue
+        const existing = readShaderPaints(node).find((shader) => shader.input)
+        const created = createShaderPaint(preset)
+        const shader = {
+          ...(existing ?? created.shader),
+          preset: structuredClone(preset),
+          input: { kind: 'self' as const, version: 1 as const },
+          frame: undefined
+        }
+        const fills = existing ? node.fills : [...node.fills, created.paint]
+        nodes.updateNodeWithUndo(node.id, {
+          fills,
+          pluginData: withShaderPaints(node, [...fills, ...node.strokes], [shader])
+        })
+      }
+    } finally {
+      ctx.undo.commitBatch()
+    }
+  }
+
+  return { setShaderPaint, setContentShader }
 }

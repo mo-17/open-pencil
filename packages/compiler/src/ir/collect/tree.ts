@@ -50,6 +50,7 @@ import {
 } from '@open-pencil/lowcode'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import {
+  shaderContentNode,
   isAutoLayoutMode,
   getMotionChannels,
   parseVariantName,
@@ -1709,6 +1710,7 @@ function applicationShellContext(node: SceneNode, ctx: WalkCtx): WalkCtx {
 }
 
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
+  node = shaderContentNode(ctx.graph, node)
   ctx = applicationShellContext(node, ctx)
   // Phase 3 §8 — a registered COMPONENT master, or a clean INSTANCE of one,
   // renders as `<Name className="..." />` (the shared subtree lives in the
@@ -2318,7 +2320,7 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
 
 function collectAuthoredChildren(node: SceneNode, ctx: WalkCtx, children: IRNode[]): void {
   const childCtx = node.type === 'FORM' && !ctx.inForm ? { ...ctx, inForm: true } : ctx
-  for (const child of ctx.graph.getChildren(node.id)) {
+  for (const child of node.childIds.flatMap((id) => ctx.graph.getNode(id) ?? [])) {
     if (!shouldEmitChild(child, ctx)) continue
     const ir = nodeToIR(child, childCtx)
     if (ir) children.push(ir)

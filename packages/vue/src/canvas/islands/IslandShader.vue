@@ -22,7 +22,7 @@ const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
 const { width, height } = useElementSize(host)
 const frames = shaderFrames(useEditor())
 
-function draw(source: CanvasImageSource) {
+function draw(source: CanvasImageSource | null) {
   const target = canvas.value
   const context = target?.getContext('2d')
   if (!target || !context) return
@@ -33,7 +33,8 @@ function draw(source: CanvasImageSource) {
     target.width = w
     target.height = h
   }
-  context.drawImage(source, 0, 0, w, h)
+  context.clearRect(0, 0, w, h)
+  if (source) context.drawImage(source, 0, 0, w, h)
 }
 
 let stop: (() => void) | null = null

@@ -133,6 +133,7 @@
   "shaderPreset": "JSON del preset",
   "applyShaderPreset": "Aplicar",
   "invalidShaderPreset": "No es un preset de shaders",
+  "shaderSelfContent": "Pixelar contenido propio (imágenes estáticas, texto y decoración)",
   "shaderNeedsWebGPU": "Este navegador no tiene WebGPU, así que los shaders muestran su fotograma guardado.",
   "stops": "Paradas",
   "addStop": "Añadir parada",

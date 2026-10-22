@@ -118,6 +118,7 @@
   "shaderPreset": "JSON du preset",
   "applyShaderPreset": "Appliquer",
   "invalidShaderPreset": "Ce n’est pas un preset shaders",
+  "shaderSelfContent": "Pixelliser le contenu (images fixes, texte et décoration)",
   "shaderNeedsWebGPU": "Ce navigateur n’a pas WebGPU : les shaders affichent leur image enregistrée.",
   "stops": "Arrêts",
   "addStop": "Ajouter un arrêt",

@@ -1,5 +1,10 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import type { BuiltinIOFormatId, ExportRequest, IORegistry } from '@open-pencil/core/io'
+import {
+  exportTargetNodeIds,
+  type BuiltinIOFormatId,
+  type ExportRequest,
+  type IORegistry
+} from '@open-pencil/core/io'
 
 import {
   bundleExportFiles,
@@ -39,6 +44,10 @@ export function createDocumentExportActions(
     const format = io.getFormat(formatId)
     if (!format) throw new Error(`Unknown export format: ${formatId}`)
 
+    const graph = editor.graph
+    const nodeIds = exportTargetNodeIds(graph, target)
+    await editor.settleShaderFrames({ nodeIds, requireFrames: true })
+    if (editor.graph !== graph) throw new Error('Document changed during export')
     const exportOptions = getExportOptions(format, options)
 
     const result = await io.exportContent(

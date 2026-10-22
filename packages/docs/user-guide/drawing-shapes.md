@@ -109,3 +109,13 @@ Select the Frame tool to browse collapsible presets for phones, tablets, desktop
 - Sections can only exist at the top level — they can't be nested inside frames.
 - Use frames with [auto layout](./auto-layout) to build responsive layouts.
 - [Export](./exporting) individual shapes or groups as images via the properties panel or context menu.
+
+## Shader content filters
+
+The Fill section's **Pixelate own content** action adds a content filter to a static image, text layer, or decorative rectangle, ellipse, frame, or group. The original paints, text and children remain editable. Open the appended Shader fill to change its effects or parameters; remove that fill to restore the source. Existing procedural Shader fills and strokes keep their behavior.
+
+Content is sampled once in the layer's local axes, excluding the content Shader itself, and clipped to the layer's rectangular box. Child transforms, opacity and container clipping are composed before filtering; the outer layer's transform and opacity apply afterwards. Text, image, layout, child and visibility edits refresh the still frame. The input texture is capped at 1024 pixels on its longest side; the saved result at 2048 pixels.
+
+This first stage accepts static subtrees. It does not accept controls, behaviour instances, bound data, dynamic visibility, variable-bound nodes, Motion, generated effects, masks, non-normal blend modes, or nested content filters. An unsupported subtree retains its original structure and interactive behavior. Backdrop sampling, live content animation and Shader video export are not included. Preview and static exports show the content filter's saved still frame.
+
+WebGPU is needed to generate a new frame. If the adapter or renderer fails, the last saved frame stays available. Saving and exporting wait for pending frames; static exports report an error if a required frame has never been generated. On a host without WebGPU, reopen a document with saved frames to export those frames. See [exporting](./exporting) and the [Shader host contract](../development/shaders).

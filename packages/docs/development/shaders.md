@@ -1,0 +1,28 @@
+# Shader host contract
+
+Shader paints remain image fills/strokes plus validated plugin data. Legacy entries omit `input`. A content filter adds `input: { kind: 'self', version: 1 }`; its frame also records a content signature. Only this data and encoded image bytes persist. Canvas, bitmap, device and texture handles stay in the host.
+
+`setContentShader` appends a paint, preserving the source fills and hierarchy in one undo step. The static support predicate is shared by authoring, the renderer and exporters. If later edits introduce unsupported runtime content, projection returns the authored subtree, excluding the content paint. It never turns a control into an image. `generatedEffect` and the Motion/Lowcode contracts are independent and unchanged.
+
+The editor reuses `extractExportGraph` and the existing raster compositor to capture a private node-local subtree. It removes the content Shader, resets only the root transform/opacity, and clips capture to its rectangular box. No backdrop is sampled. The compositor's isolated document caches keep the capture apart from live images and retained pictures. Captures are serial and capped at 1024 pixels per side; output uses `shaderFramePixels` (2048 maximum). The temporary native surfaces are released by the raster exporter.
+
+The locked dependency is `shaders@4.0.4`. The host injects a transient `ImageTexture` containing a blob URL of the captured PNG, nested inside the selected filter components. It uses `onNaturalSizeChange` and `getNaturalSize` to await the library's source decode/upload before keeping a frame. The wait is cancellable and bounded by the static job's deadline. The native media shader performs sRGB decoding and owns its GPU texture; renderer disposal and URL revocation release the host resources. Document presets contain neither that URL nor the injected texture node. Static draws also check WebGPU validation scopes, since a broken composition may otherwise resolve without a global failure reason. Vite keeps the Shader entrypoints out of dependency optimization: the adapter-backed browser regression otherwise produces omitted TypeGPU expressions and invalid textures.
+
+Still frames keep transparent PNG / opaque JPEG encoding. Playback checks `getFailureReason()` after initialization and every frame and subscribes to `setOnUnavailable()`. An unavailable player stops publication, removes the live image, notifies DOM islands to clear their overlay and restores the saved image. Failed presets are not retried every animation frame. Initializers that finish after stop/document replacement dispose their resources and cannot publish.
+
+Static drawing uses a serial queue with a 10-second operation bound, graph identity and preset/size/content checks. Editing during a draw queues the replacement and invalidates the obsolete result. `settleShaderFrames` waits for both queued and active work; targeted calls schedule only stale frames within their requested subtrees. Failed keys retain saved bytes and are not retried by every export. New edits or a new rasterizer allow another attempt. Cancellation and graph replacement release waiters; late work cannot write into another graph.
+
+Copied subtrees can initially share their saved bytes. Before rendering a content filter whose image key is shared, the host gives it an independent output key and retains the saved fallback, so editing a copy cannot overwrite its source's frame.
+
+The browser and Tauri document save/export actions await settlement before serializing. HTML, SVG, ordinary React/Vue components and Lowcode compiler projection consume the content image, preserving unrelated controls and bindings. Content components emit no `shaders` dependency. Existing procedural component exports retain their Shader runtime. Headless IO/compiler paths consume saved bytes; missing required frames fail explicitly. Editing sources and saving a document without a GPU can preserve an unrendered preset, but that is not successful static frame generation. External Figma does not execute OpenPencil content filters; native `.fig` round trips preserve the editable sources and extension metadata.
+
+## Upstream provenance
+
+The source remote was refreshed for this work. Official `master` was `806380c6d0a3fa032f17827262f8880e747a406f`; fork `lowcode-rebaseline` was `c7b740c82cbdf87c4f699d067b7e6eef7f026805`. There are 111 official commits after the already integrated `78355fd3890cc9da9539235ee3b38beb917f2ed6`. This work does not merge that range.
+
+- [#1300](https://github.com/open-pencil/open-pencil/pull/1300), Danila Poyarkov, [`59956f826fbcab2f5bfdf0ee1ed5f5ea7871f65b`](https://github.com/open-pencil/open-pencil/commit/59956f826fbcab2f5bfdf0ee1ed5f5ea7871f65b): recreate a dropped WebGL parking context on tab release.
+- [#1356](https://github.com/open-pencil/open-pencil/pull/1356), Andrew Avsenin and Danila Poyarkov, [`806380c6d0a3fa032f17827262f8880e747a406f`](https://github.com/open-pencil/open-pencil/commit/806380c6d0a3fa032f17827262f8880e747a406f): measure isolation bounds in the node's orientation frame. Adaptation preserves this fork's Motion geometry handling and its child-derived shadow silhouette. The upstream pixel regressions are retained.
+
+## Verification boundaries
+
+Unit rasterizer doubles exercise queue/lifecycle contracts; CanvasKit CPU pixels exercise compositing and capture, not WebGPU. Browser tests label simulated renderers separately from adapter-backed rendering. The real WebGPU case skips explicitly if no adapter exists. Playwright Chromium/WebKit, native Tauri/WebView, external Figma and physical Safari tabs are distinct acceptance targets. A mock, build or CPU snapshot cannot establish any of those runtime results.

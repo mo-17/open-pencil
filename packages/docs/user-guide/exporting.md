@@ -7,6 +7,8 @@ description: Export images, SVG, and .fig subsets, and open .fig or .pen documen
 
 Export individual nodes as images or `.fig` subsets, and open full `.fig` or `.pen` documents.
 
+Shader exports wait for pending static frames. If WebGPU is unavailable or fails, an existing saved frame can be used; a required frame that has never been drawn produces an export error. [Content filters](./drawing-shapes#shader-content-filters) use static images in HTML and React/Vue/Lowcode exports, without adding a Shader runtime dependency.
+
 ## Image Export
 
 Select a node and use the Export section in the properties panel.

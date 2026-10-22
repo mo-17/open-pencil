@@ -118,6 +118,12 @@ export function createExportTargetActions(editor: Editor, state: EditorState, io
       'bounds' | 'motionVisualStates' | 'generatedEffectTimeMs' | 'generatedEffectMode'
     > = {}
   ): Promise<Uint8Array | null> {
+    const graph = editor.graph
+    await editor.settleShaderFrames({
+      nodeIds: nodeIds.length ? nodeIds : [pageId],
+      requireFrames: true
+    })
+    if (editor.graph !== graph) throw new Error('Document changed during export')
     const renderer = editor.renderer
     if (!renderer) return null
     const ids = nodeIds.length > 0 ? nodeIds : editor.graph.getChildren(pageId).map((n) => n.id)

@@ -167,3 +167,143 @@ describe('shader frames on page preparation', () => {
     expect(editor.graph.images.get(shader.image)).toEqual(new Uint8Array([1]))
   })
 })
+
+describe('shader frame settlement and fallback', () => {
+  function deferred<T>() {
+    let resolve: (value: T) => void = () => {
+      throw new Error('Deferred not initialized')
+    }
+    const promise = new Promise<T>((done) => {
+      resolve = done
+    })
+    return { promise, resolve }
+  }
+
+  test('waits for a frame already removed from the pending queue', async () => {
+    const { editor, id, read } = setup()
+    const started = deferred<undefined>()
+    const frame = deferred<Uint8Array | null>()
+    editor.setShaderRasterizer({
+      render: () => {
+        started.resolve(undefined)
+        return frame.promise
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await started.promise
+    let settled = false
+    const saving = editor.settleShaderFrames().then(() => {
+      settled = true
+      return undefined
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    frame.resolve(new Uint8Array([7]))
+    await saving
+    expect(editor.graph.images.get(read().fills[0].imageHash ?? '')).toEqual(new Uint8Array([7]))
+    editor.dispose()
+  })
+
+  test('keeps saved bytes after failure, and does not retry on every export', async () => {
+    const { editor, id, read } = setup()
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await editor.settleShaderFrames()
+    const image = read().fills[0].imageHash ?? ''
+    let attempts = 0
+    editor.setShaderRasterizer({
+      render: () => {
+        attempts++
+        return Promise.resolve(null)
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, SWIRL)
+    await editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })
+    await editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })
+    expect(attempts).toBe(1)
+    expect(editor.graph.images.get(image)).toEqual(new Uint8Array([1]))
+    editor.setShaderRasterizer(null)
+    await editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })
+    expect(editor.graph.images.get(image)).toEqual(new Uint8Array([1]))
+    editor.dispose()
+  })
+
+  test('rejects a static export when there is no usable frame', async () => {
+    const { editor, id } = setup()
+    editor.setShaderRasterizer(null)
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await expect(editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })).rejects.toThrow(
+      'No usable saved Shader frame'
+    )
+    // Saving the editable document can preserve an unrendered preset for another GPU host.
+    await editor.settleShaderFrames({ nodeIds: [id] })
+    editor.dispose()
+  })
+
+  test('discards an obsolete size and waits for the concurrent edit', async () => {
+    const { editor, id, read } = setup()
+    const started = deferred<undefined>()
+    const first = deferred<Uint8Array | null>()
+    const sizes: number[] = []
+    editor.setShaderRasterizer({
+      render: (_preset, size) => {
+        sizes.push(size.width)
+        started.resolve(undefined)
+        return sizes.length === 1 ? first.promise : Promise.resolve(new Uint8Array([2]))
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    const saving = editor.settleShaderFrames()
+    await started.promise
+    editor.updateNodeWithUndo(id, { width: 80 })
+    first.resolve(new Uint8Array([1]))
+    await saving
+    expect(sizes).toEqual([80, 160])
+    expect(editor.graph.images.get(read().fills[0].imageHash ?? '')).toEqual(new Uint8Array([2]))
+    expect(shaderOfPaint(read(), read().fills[0])?.frame?.width).toBe(80)
+    editor.dispose()
+  })
+
+  test('document replacement cancels a hung rasterizer and prevents late writes', async () => {
+    const { editor, id } = setup()
+    const started = deferred<undefined>()
+    const first = deferred<Uint8Array | null>()
+    let signal: AbortSignal | undefined
+    editor.setShaderRasterizer({
+      render: (_preset, _size, options) => {
+        signal = options?.signal
+        started.resolve(undefined)
+        return first.promise
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    const saving = editor.settleShaderFrames()
+    await started.promise
+    editor.replaceGraph(new SceneGraph())
+    await expect(saving).rejects.toThrow('superseded')
+    expect(signal?.aborted).toBe(true)
+    first.resolve(new Uint8Array([9]))
+    await Promise.resolve()
+    expect(editor.graph.images.size).toBe(0)
+    editor.dispose()
+  })
+
+  test('deleting a layer prevents an in-flight frame from being saved', async () => {
+    const { editor, id } = setup()
+    const frame = deferred<Uint8Array | null>()
+    const started = deferred<undefined>()
+    editor.setShaderRasterizer({
+      render: () => {
+        started.resolve(undefined)
+        return frame.promise
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    const saving = editor.settleShaderFrames()
+    await started.promise
+    editor.graph.deleteNode(id)
+    frame.resolve(new Uint8Array([9]))
+    await saving
+    expect(editor.graph.images.size).toBe(0)
+    editor.dispose()
+  })
+})

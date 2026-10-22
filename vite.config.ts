@@ -51,7 +51,8 @@ export default defineConfig(async ({ command }) => {
       )
     },
     // Dynamic browser fixtures must not trigger a dependency-optimizer reload mid-test.
-    optimizeDeps: { include: ['ai/test'] },
+    // Shader/TypeGPU expressions must share their original module identity across lazy effects.
+    optimizeDeps: { include: ['ai/test'], exclude: ['shaders/core', 'shaders/std'] },
     plugins: [
       rawMarkdownPlugin(),
       copyCanvasKitAssetsPlugin(),

@@ -4,7 +4,7 @@ import type { Editor } from '@open-pencil/core/editor'
  * Draws one fresh frame of a shader. The source is a WebGPU canvas that keeps the frame only
  * until the current task ends, so it is drawn from at once, never kept.
  */
-export type ShaderFrameListener = (source: CanvasImageSource) => void
+export type ShaderFrameListener = (source: CanvasImageSource | null) => void
 
 /**
  * Where the canvas's shader playback hands each frame it draws, by the image its paint shows,
@@ -13,13 +13,13 @@ export type ShaderFrameListener = (source: CanvasImageSource) => void
  */
 export interface ShaderFrames {
   listen(image: string, listener: ShaderFrameListener): () => void
-  publish(image: string, source: CanvasImageSource): void
+  publish(image: string, source: CanvasImageSource | null): void
 }
 
-const hubs = new WeakMap<Editor, ShaderFrames>()
+const hubs = new WeakMap<Pick<Editor, 'graph'>, ShaderFrames>()
 
 /** The shader frames of `editor`'s documents, shared by its canvases and islands. */
-export function shaderFrames(editor: Editor): ShaderFrames {
+export function shaderFrames(editor: Pick<Editor, 'graph'>): ShaderFrames {
   let hub = hubs.get(editor)
   if (hub) return hub
   const listeners = new Map<string, Set<ShaderFrameListener>>()
@@ -34,7 +34,13 @@ export function shaderFrames(editor: Editor): ShaderFrames {
       }
     },
     publish(image, source) {
-      for (const listener of listeners.get(image) ?? []) listener(source)
+      for (const listener of listeners.get(image) ?? []) {
+        try {
+          listener(source)
+        } catch (error) {
+          console.warn('Could not show a Shader frame', error)
+        }
+      }
     }
   }
   hubs.set(editor, hub)

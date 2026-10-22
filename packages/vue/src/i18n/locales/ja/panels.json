@@ -133,6 +133,7 @@
   "shaderPreset": "プリセット JSON",
   "applyShaderPreset": "適用",
   "invalidShaderPreset": "shaders のプリセットではありません",
+  "shaderSelfContent": "自身の内容をピクセル化（静止画・テキスト・装飾）",
   "shaderNeedsWebGPU": "このブラウザーは WebGPU に対応していないため、シェーダーは保存されたフレームを表示します。",
   "stops": "カラーピッカーの分岐点",
   "addStop": "分岐点を追加",

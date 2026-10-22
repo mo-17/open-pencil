@@ -1,3 +1,4 @@
+import { shaderContentNode } from '@open-pencil/scene-graph'
 import type { RenderColorSpace } from '@open-pencil/scene-graph/color'
 import { resolveNodeTextDirection } from '@open-pencil/scene-graph/text-direction'
 
@@ -453,6 +454,7 @@ function appendChildContent(
 }
 
 function renderNode(node: SceneNode, ctx: SVGExportContext): SVGNode | null {
+  node = shaderContentNode(ctx.graph, node)
   if (!node.visible) return null
 
   const { attrs: groupAttrs, clipId } = buildGroupAttrs(node, ctx)

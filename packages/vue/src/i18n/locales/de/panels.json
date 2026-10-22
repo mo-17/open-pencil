@@ -118,6 +118,7 @@
   "shaderPreset": "Preset-JSON",
   "applyShaderPreset": "Anwenden",
   "invalidShaderPreset": "Kein Shaders-Preset",
+  "shaderSelfContent": "Eigenen Inhalt verpixeln (statische Bilder, Text und Dekoration)",
   "shaderNeedsWebGPU": "Dieser Browser hat kein WebGPU, daher zeigen Shader ihr gespeichertes Bild.",
   "stops": "Stopps",
   "addStop": "Stopp hinzufügen",

@@ -118,6 +118,7 @@
   "shaderPreset": "JSON presetu",
   "applyShaderPreset": "Zastosuj",
   "invalidShaderPreset": "To nie jest preset shaders",
+  "shaderSelfContent": "Pikseluj zawartość (obrazy statyczne, tekst i dekoracje)",
   "shaderNeedsWebGPU": "Ta przeglądarka nie obsługuje WebGPU, więc shadery pokazują zapisaną klatkę.",
   "stops": "Punkty",
   "addStop": "Dodaj punkt",

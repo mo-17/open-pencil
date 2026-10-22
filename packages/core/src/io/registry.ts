@@ -1,5 +1,6 @@
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import { assertShaderFrames, type SceneGraph } from '@open-pencil/scene-graph'
 
+import { exportTargetNodeIds } from './subgraph'
 import type {
   ExportRequest,
   IOContext,
@@ -94,6 +95,7 @@ export class IORegistry {
     if (!adapter?.exportContent) {
       throw new Error(`Format does not support exportContent: ${formatId}`)
     }
+    assertShaderFrames(request.graph, exportTargetNodeIds(request.graph, request.target))
     return adapter.exportContent(request, options, context)
   }
 }

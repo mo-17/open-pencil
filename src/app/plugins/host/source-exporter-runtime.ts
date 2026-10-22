@@ -31,6 +31,7 @@ export { archiveProjectFiles as archiveSourceProjectFiles }
 
 export interface SourceExporterEditor {
   graph: EditorStore['graph']
+  settleShaderFrames?: EditorStore['settleShaderFrames']
   state: Pick<EditorStore['state'], 'documentName'>
 }
 
@@ -115,6 +116,9 @@ export async function prepareSourceProjectCompilerInput<TEditor extends SourceEx
     | AppBackendProviderHostStore
     | Promise<AppBackendProviderHostStore>
 ): Promise<CompilerInput> {
+  const graph = editor.graph
+  await editor.settleShaderFrames?.({ nodeIds: pageIds, requireFrames: true })
+  if (editor.graph !== graph) throw new Error('Document changed during source export')
   const baseOptions = withDefaults({
     packageName: names.package,
     productName: names.product,

@@ -330,13 +330,25 @@ function showCanvas(next: CodeSource) {
     return
   }
   const styling = codeStyling.value
-  void generatedCodeAsync(next, styling, store.graph, selected).then((generated) => {
-    if (current !== generation || source.value !== next || codeStyling.value !== styling)
+  const graph = store.graph
+  const generatedSource = next
+  async function generate() {
+    await store.settleShaderFrames({ nodeIds: selected, requireFrames: true })
+    if (store.graph !== graph) throw new Error('Document changed during code generation')
+    return generatedCodeAsync(generatedSource, styling, graph, selected)
+  }
+  void generate()
+    .then((generated) => {
+      if (current !== generation || source.value !== next || codeStyling.value !== styling)
+        return generated
+      codeLayers.showGenerated(generated)
+      draft.value = generated.code
       return generated
-    codeLayers.showGenerated(generated)
-    draft.value = generated.code
-    return generated
-  })
+    })
+    .catch((error: unknown) => {
+      if (current === generation)
+        draft.value = error instanceof Error ? error.message : String(error)
+    })
 }
 
 /**

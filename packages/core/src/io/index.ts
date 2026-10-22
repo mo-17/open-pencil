@@ -1,6 +1,6 @@
 export { IORegistry } from './registry'
 export * from './design-tokens'
-export { extractExportGraph, findPageId } from './subgraph'
+export { extractExportGraph, findPageId, exportTargetNodeIds } from './subgraph'
 export {
   BUILTIN_IO_FORMATS,
   type BuiltinIOFormatId,

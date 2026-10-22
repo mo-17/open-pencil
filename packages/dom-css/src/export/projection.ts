@@ -6,6 +6,7 @@ import {
   layoutSizingInParent,
   readIcon,
   shaderOfPaint,
+  shaderContentNode,
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
@@ -248,7 +249,7 @@ function imageDataURL(bytes: Uint8Array): string {
 function layerShader(graph: SceneGraph, node: SceneNode): DesignElement['shader'] {
   const fill = node.fills.at(0)
   const shader = fill?.visible ? shaderOfPaint(node, fill) : null
-  if (!shader) return undefined
+  if (!shader || shader.input) return undefined
   const bytes = graph.images.get(shader.image)
   const frame = bytes ? imageDataURL(bytes) : undefined
   return { preset: shader.preset, frame }
@@ -269,7 +270,12 @@ function addShaderLayerStyle(style: DesignStyleDeclaration): void {
 
 function addImageStyle(style: DesignStyleDeclaration, node: SceneNode): void {
   const fill = node.fills.at(0)
-  if (fill?.type !== 'IMAGE' || !fill.visible || shaderOfPaint(node, fill)) return
+  if (
+    fill?.type !== 'IMAGE' ||
+    !fill.visible ||
+    (shaderOfPaint(node, fill) && !shaderOfPaint(node, fill)?.input)
+  )
+    return
   if (node.width > 0 && node.height > 0) style['aspect-ratio'] = `${node.width} / ${node.height}`
   if (fill.imageScaleMode === 'FIT') style['object-fit'] = 'contain'
   if (fill.imageScaleMode === 'FILL') style['object-fit'] = 'cover'
@@ -436,7 +442,12 @@ function attrsForNode(
   const sourceURL = imageSourceURL(node)
   if (sourceURL) attrs.src = sourceURL
   const fill = node.fills.at(0)
-  if (fill?.type !== 'IMAGE' || !fill.imageHash || shaderOfPaint(node, fill)) return attrs
+  if (
+    fill?.type !== 'IMAGE' ||
+    !fill.imageHash ||
+    (shaderOfPaint(node, fill) && !shaderOfPaint(node, fill)?.input)
+  )
+    return attrs
   const bytes = graph.images.get(fill.imageHash)
   if (!bytes) return attrs
   return { ...attrs, src: imageDataURL(bytes) }
@@ -446,7 +457,8 @@ function tagNameForNode(node: SceneNode): string {
   if (node.type === 'BUTTON') return 'button'
   if (node.type === 'SECTION') return 'section'
   const fill = node.fills.at(0)
-  const image = fill?.type === 'IMAGE' && !shaderOfPaint(node, fill)
+  const image =
+    fill?.type === 'IMAGE' && (!shaderOfPaint(node, fill) || shaderOfPaint(node, fill)?.input)
   if ((image || imageSourceURL(node)) && node.childIds.length === 0) return 'img'
   return 'div'
 }
@@ -508,6 +520,7 @@ function sceneNodeToDesignNode(
 ): DesignNode | null {
   if ((!node.visible && !context.shown?.has(node.id)) || node.internalOnly) return null
   const { graph, includeSourceIds, tokens } = context
+  node = shaderContentNode(graph, node)
   const parent = node.parentId ? graph.getNode(node.parentId) : undefined
   const entered = tokens?.enter(node, inherited, root)
   const modes = entered?.modes ?? inherited

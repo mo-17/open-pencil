@@ -132,6 +132,7 @@
   "shaderPreset": "JSON пресета",
   "applyShaderPreset": "Применить",
   "invalidShaderPreset": "Это не пресет shaders",
+  "shaderSelfContent": "Пикселизация содержимого (статичные изображения, текст и декор)",
   "shaderNeedsWebGPU": "В этом браузере нет WebGPU, поэтому шейдеры показывают сохранённый кадр.",
   "stops": "Точки",
   "addStop": "Добавить точку",

@@ -14,6 +14,8 @@
 
 ### Added
 
+- Apply a Shader to the own content of static images, text and decorative containers, keeping editable sources and static image fallbacks in HTML, React/Vue components and Lowcode exports.
+
 - Protect shared-room invitations with a random key in the URL fragment, retained when copying, reloading, or handing the room to the desktop app. Links without the key cannot join; ask the sharer for a new invitation.
 
 - Add thirty-two curated local EffectPick CSS and SVG assets across buttons, backgrounds, text, cards and loaders with validated configuration, unpainted outer frames that remain selectable and draggable for embedding in designs, a browsable effect library, effect switching in the inspector, an isolated effect playground that preserves node dimensions and React/Vue source exports. The canvas shows static illustrations with current text and colors, and source redistribution permissions remain unreviewed.
@@ -199,6 +201,10 @@
 - Scene Graph owns color conversion and text/layout direction. Core retains compatibility subpaths, and `@open-pencil/dom-css` receives font resolution through injected services instead of depending on Core.
 
 ### Fixed
+
+- Keep saved Shader frames when WebGPU initialization or playback fails, and wait for updated static frames before saving or exporting.
+- Keep Safari tabs on their own documents after repeated canvas switches by replacing a lost parking context ([#1300](https://github.com/open-pencil/open-pencil/pull/1300)).
+- Draw rotated faded and blended layers without clipping while preserving Motion previews ([#1356](https://github.com/open-pencil/open-pencil/pull/1356)).
 
 - Keep reply Revert and Restore disabled while a submission is still saving.
 

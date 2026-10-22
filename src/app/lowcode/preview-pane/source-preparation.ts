@@ -29,7 +29,7 @@ function pageRole(graph: SceneGraph, page: SceneNode) {
 
 /** Keep lazy application input and its authority tied to one owned preview build. */
 export function createPreviewSourcePreparation(
-  editor: Pick<Editor, 'graph' | 'loadPageNodes'>,
+  editor: Pick<Editor, 'graph' | 'loadPageNodes'> & Partial<Pick<Editor, 'settleShaderFrames'>>,
   requestIsCurrent: () => boolean
 ) {
   const graph = editor.graph
@@ -125,6 +125,7 @@ export function createPreviewSourcePreparation(
         if (currentShell && graph.pageOf(currentShell.frameNodeId)) break
       }
     }
+    await editor.settleShaderFrames?.({ nodeIds: [...pageIds], requireFrames: true })
     return isCurrent()
   }
 

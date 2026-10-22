@@ -132,6 +132,7 @@
   "shaderPreset": "预设 JSON",
   "applyShaderPreset": "应用",
   "invalidShaderPreset": "不是 shaders 预设",
+  "shaderSelfContent": "像素化自身内容（静态图片、文字和装饰容器）",
   "shaderNeedsWebGPU": "此浏览器不支持 WebGPU，着色器显示已保存的帧。",
   "stops": "色标",
   "addStop": "添加色标",

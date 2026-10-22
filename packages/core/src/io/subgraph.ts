@@ -344,3 +344,19 @@ export function extractExportGraph(source: SceneGraph, target: ExportTarget): Ex
       return extractExportGraph(source, { scope: 'document' })
   }
 }
+
+/** Roots whose subtree a save/export request consumes, without copying or drawing it. */
+export function exportTargetNodeIds(graph: SceneGraph, target: ExportTarget): readonly string[] {
+  switch (target.scope) {
+    case 'document':
+      return graph.getPages().map((page) => page.id)
+    case 'page':
+      return [target.pageId]
+    case 'node':
+      return [target.nodeId]
+    case 'selection':
+      return target.nodeIds
+    default:
+      throw new Error('Unknown export target')
+  }
+}

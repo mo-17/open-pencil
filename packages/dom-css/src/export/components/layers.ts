@@ -5,6 +5,7 @@ import type { StateElement, StateNode, StateStyles } from '#dom-css/behaviours/s
 import type { DesignDocument, DesignElement, DesignNode } from '#dom-css/types'
 import { zip } from 'es-toolkit/array'
 
+import { assertShaderFrames } from '@open-pencil/scene-graph'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { extractImageAssets, type ExportHTMLFile } from '../bundle'
@@ -37,6 +38,7 @@ export async function layerComponents(
   framework: LayerComponentFramework,
   options: Pick<SceneGraphToDesignOptions, 'vectorElement'> & ComponentGeneratorOptions = {}
 ): Promise<LayerComponent[]> {
+  assertShaderFrames(graph, layerIds, true)
   const generate = framework === 'vue' ? vueComponent : reactComponent
   const taken = new Set<string>()
   const components: LayerComponent[] = []
@@ -93,6 +95,7 @@ export async function layerMarkup(
   options: Pick<SceneGraphToDesignOptions, 'vectorElement'> &
     ComponentGeneratorOptions & { assetBasePath?: string } = {}
 ): Promise<LayerMarkup> {
+  assertShaderFrames(graph, layerIds)
   const taken = new Set<string>()
   const html: string[] = []
   const layers: (string | null)[] = []

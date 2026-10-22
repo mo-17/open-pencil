@@ -7,6 +7,7 @@ import {
   validateSupabaseConfig
 } from '@open-pencil/lowcode'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import { assertShaderFrames } from '@open-pencil/scene-graph'
 import type {
   LowcodeHeadMetadata,
   SceneGraph,
@@ -147,6 +148,7 @@ const DEFAULT_OPTIONS: CompilerOptions = {
  */
 export function compile(input: CompilerInput): CompilerOutput {
   validatePackaging(input.options)
+  assertShaderFrames(input.graph, input.pageIds)
   if (input.pageIds.length === 0) {
     return {
       files: new Map(),

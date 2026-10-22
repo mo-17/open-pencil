@@ -3,6 +3,7 @@ import type { StateElement } from '#dom-css/behaviours/states/types'
 import { es, jsx } from '@open-pencil/emit'
 import {
   findLayerByPath,
+  shaderContentNode,
   shaderOfPaint,
   type SceneGraph,
   type ShaderComponent,
@@ -46,13 +47,14 @@ export function shaderLayers(
 ): Map<StateElement, ShaderPreset> {
   const shaders = new Map<StateElement, ShaderPreset>()
   for (const element of elements) {
-    const layer = findLayerByPath(graph, restId, element.key.split('\0')[0] ?? '')
-    if (!layer) continue
+    const authored = findLayerByPath(graph, restId, element.key.split('\0')[0] ?? '')
+    if (!authored) continue
+    const layer = shaderContentNode(graph, authored)
     const shader = layer.fills
       .filter((fill) => fill.visible)
       .map((fill) => shaderOfPaint(layer, fill))
       .findLast((found) => found !== null)
-    if (shader) shaders.set(element, shader.preset)
+    if (shader && !shader.input) shaders.set(element, shader.preset)
   }
   return shaders
 }

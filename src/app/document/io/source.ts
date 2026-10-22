@@ -70,6 +70,9 @@ export function createDocumentSourceActions({
   }
 
   async function buildFigFile() {
+    const graph = editor.graph
+    await editor.settleShaderFrames({ nodeIds: graph.getPages().map((page) => page.id) })
+    if (graph !== editor.graph) throw new Error('Document changed while preparing Shader frames')
     const sceneVersion = changes.capture()
     const data = await exportFigFileWithOptions(editor.graph, {
       renderer: getRenderer() ?? undefined,

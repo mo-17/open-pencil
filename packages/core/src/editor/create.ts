@@ -458,6 +458,7 @@ export function createEditor(options: EditorOptions = {}) {
   }
 
   function dispose() {
+    shaderFrames.disposeShaderFrames()
     releaseTextMeasurer()
     nodes.cancelNodePreviews()
     interactiveEdits.clear()

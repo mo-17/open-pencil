@@ -6,7 +6,12 @@ import {
   projectMotionAdvancedChannels,
   type MotionVisualState
 } from '@open-pencil/motion'
-import { type SceneNode, type SceneGraph, type Fill } from '@open-pencil/scene-graph'
+import {
+  shaderContentNode,
+  type SceneNode,
+  type SceneGraph,
+  type Fill
+} from '@open-pencil/scene-graph'
 import type { ArrowEndpoint } from '@open-pencil/scene-graph/arrow-caps'
 import {
   arrowCapOverflow,
@@ -784,7 +789,10 @@ export function renderNodeSelf(
   ) {
     return
   }
-  const node = motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
+  const node = shaderContentNode(
+    graph,
+    motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
+  )
   const visual = motionVisual(overlays, nodeId)
   const renderedNode = motionNode(node, visual)
   canvas.save()
@@ -930,7 +938,10 @@ export function renderNode(
 ): void {
   const authoredNode = graph.getNode(nodeId)
   if (!authoredNode || !drawsNode(authoredNode, overlays)) return
-  const node = motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
+  const node = shaderContentNode(
+    graph,
+    motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
+  )
 
   r._nodeCount++
 

@@ -1498,6 +1498,7 @@ export const panelMessageDefaults = {
   shaderPreset: 'Preset JSON',
   applyShaderPreset: 'Apply',
   invalidShaderPreset: 'Not a shaders preset',
+  shaderSelfContent: 'Pixelate own content (static images, text and decorations)',
   shaderNeedsWebGPU: 'This browser has no WebGPU, so shaders show their saved frame.',
   stops: 'Stops',
   addStop: 'Add stop',

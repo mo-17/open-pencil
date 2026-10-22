@@ -35,12 +35,15 @@ export type ShaderPreset = v.InferOutput<typeof shaderPresetSchema>
 export const shaderPaintSchema = v.object({
   image: v.pipe(v.string(), v.nonEmpty()),
   preset: shaderPresetSchema,
+  /** The host captures this layer before this shader, in local axes, clipped to its box. */
+  input: v.optional(v.strictObject({ kind: v.literal('self'), version: v.literal(1) })),
   frame: v.optional(
     v.object({
       width: v.pipe(v.number(), v.finite(), v.minValue(0)),
       height: v.pipe(v.number(), v.finite(), v.minValue(0)),
       /** The preset's key (`shaderPresetKey`) when the frame was rendered. */
-      preset: v.pipe(v.string(), v.nonEmpty())
+      preset: v.pipe(v.string(), v.nonEmpty()),
+      content: v.optional(v.string())
     })
   )
 })

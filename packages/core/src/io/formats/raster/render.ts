@@ -3,6 +3,7 @@ import type { CanvasKit, Canvas } from 'canvaskit-wasm'
 import type { MotionVisualState } from '@open-pencil/motion'
 import {
   getWorldMatrix,
+  assertShaderFrames,
   type Mat3,
   type SceneGraph,
   type SceneNode
@@ -291,6 +292,7 @@ export function renderNodesToImage(
   nodeIds: string[],
   options: RasterRenderOptions
 ): Uint8Array | null {
+  assertShaderFrames(graph, nodeIds)
   if (!ensureSinglePageSelection(graph, pageId, nodeIds)) {
     throw new Error('Raster export selection must stay on a single page')
   }

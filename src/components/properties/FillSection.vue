@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { shaderOfPaint, type Fill, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  supportsShaderContent,
+  shaderOfPaint,
+  type Fill,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 import { colorToHexRaw } from '@open-pencil/scene-graph/color'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 import {
@@ -106,6 +111,20 @@ function updateSolidColor(
       :ui="{ body: '@container/paint-list' }"
     >
       <template #actions>
+        <IconButton
+          :label="panels.shaderSelfContent"
+          :disabled="
+            selectedNodeIds.length === 0 ||
+            selectedNodeIds.some((id) => {
+              const node = store.graph.getNode(id)
+              return !node || !supportsShaderContent(store.graph, node)
+            })
+          "
+          data-property="shader-self-content"
+          @click="store.setContentShader(selectedNodeIds)"
+        >
+          <icon-lucide-sparkles class="size-3.5" />
+        </IconButton>
         <AppSelect
           v-if="stylesVisible && !hasStyle"
           :model-value="styleValue"
