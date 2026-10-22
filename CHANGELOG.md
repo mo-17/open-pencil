@@ -311,6 +311,7 @@
 
 ### Security
 
+- Update Storybook and its official Vue integration and addons to 10.6.2 to reject untrusted development-preview origins (GHSA-f2ph-cmg5-wxc8).
 - Update the desktop app to Tauri 2.12, which binds large IPC channel responses to the webview that requested them instead of letting another webview fetch them (GHSA-w28w-mhc8-qvjv).
 - Install a desktop update only when its signature names the version the update server announces, so a tampered update manifest cannot pair a newer version number with an older signed build.
 - Update `@xmldom/xmldom` to 0.9.12, which fixes quadratic-time and quadratic-memory parsing of crafted SVG and XML and reports malformed end tags instead of accepting them.
