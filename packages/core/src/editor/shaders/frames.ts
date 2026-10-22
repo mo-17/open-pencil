@@ -18,7 +18,7 @@ import type { EditorContext, EditorOptions } from '#core/editor/types'
 
 import { prepareShaderContent, renderShaderContent } from './content'
 import { createShaderFrameJob, waitForShaderFrames } from './job'
-import type { ShaderFrameStatus, ShaderRasterizer } from './types'
+import type { ShaderContentFrame, ShaderFrameStatus, ShaderRasterizer } from './types'
 
 const SETTLE_MS = 150
 const FRAME_TIMEOUT_MS = 10_000
@@ -56,6 +56,7 @@ export function createShaderFrames(
   const playbackFailures = new Map<string, string>()
   const pending = new Set<string>()
   const contentOwners = new Set<string>()
+  const captures = new Set<AbortController>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let drawing: Promise<void> | null = null
   let activeJob: AbortController | null = null
@@ -272,6 +273,37 @@ export function createShaderFrames(
     return independent
   }
 
+  /** Reuse static capture, including copy ownership, without publishing pixels to the document. */
+  async function captureShaderContent(
+    id: string,
+    signal: AbortSignal
+  ): Promise<ShaderContentFrame | null> {
+    const graph = ctx.graph
+    const node = graph.getNode(id)
+    const content = node && contentShader(graph, node)
+    if (!node || !content || disposed || signal.aborted) return null
+    const shader = independentContentOutput(node, content.shader)
+    const key = frameKey(node, shader)
+    const job = createShaderFrameJob(signal)
+    captures.add(job.controller)
+    try {
+      const bytes = await job.wait(
+        captureInput(node, shader, job.controller.signal).then((bytes) => bytes ?? null)
+      )
+      if (
+        !bytes?.length ||
+        job.controller.signal.aborted ||
+        graph !== ctx.graph ||
+        !freshFrame(id, shader.image, key)
+      )
+        return null
+      return { image: shader.image, key: shaderContentKey(graph, node), bytes }
+    } finally {
+      captures.delete(job.controller)
+      job.close()
+    }
+  }
+
   async function drawFrame(
     id: string,
     shader: ShaderPaint,
@@ -423,6 +455,7 @@ export function createShaderFrames(
   })
   ctx.onEditorEvent('graph:replaced', () => {
     activeJob?.abort()
+    for (const capture of captures) capture.abort()
     resetContentOwners()
     drawn.clear()
     failed.clear()
@@ -492,6 +525,7 @@ export function createShaderFrames(
 
   function disposeShaderFrames() {
     disposed = true
+    for (const capture of captures) capture.abort()
     if (timer) clearTimeout(timer)
     activeJob?.abort()
     rasterizer?.destroy?.()
@@ -503,6 +537,7 @@ export function createShaderFrames(
   }
 
   return {
+    captureShaderContent,
     setShaderRasterizer,
     getShaderFrameStatus,
     retryShaderFrames,

@@ -1,6 +1,13 @@
 import type { ShaderPreset } from '@open-pencil/scene-graph'
 import type { Size } from '@open-pencil/scene-graph/primitives'
 
+/** Isolated, encoded input pixels for a live host; never a saved output frame. */
+export interface ShaderContentFrame {
+  image: string
+  key: string
+  bytes: Uint8Array
+}
+
 /** Ephemeral host state; never written to the document or undo history. */
 export interface ShaderFrameStatus {
   phase: 'queued' | 'rendering' | 'ready' | 'saved' | 'missing' | 'unsupported'

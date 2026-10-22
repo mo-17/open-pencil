@@ -44,6 +44,58 @@ function setup() {
 }
 
 describe('node-local Shader content', () => {
+  test('live capture reuses original content without persisting a generated output', async () => {
+    const { graph, node, child, editor } = setup()
+    editor.setContentShader([node.id])
+    const image = expectDefined(contentShader(graph, node)).shader.image
+    const saved = new Uint8Array([9, 9, 9])
+    graph.images.set(image, saved)
+    const before = expectDefined(
+      await editor.captureShaderContent(node.id, new AbortController().signal)
+    )
+    expect(before.image).toBe(image)
+    expect(before.key).toBe(shaderContentKey(graph, node))
+    expect(before.bytes).toEqual(expectDefined(renderShaderContent(graph, node, renderer)))
+    graph.updateNode(child.id, { width: 20 })
+    const after = expectDefined(
+      await editor.captureShaderContent(node.id, new AbortController().signal)
+    )
+    expect(after.key).not.toBe(before.key)
+    expect(after.bytes).not.toEqual(before.bytes)
+    expect(graph.images.get(image)).toBe(saved)
+  })
+
+  test('live input capture cancels on abort, deletion, document replacement and disposal', async () => {
+    for (const change of ['abort', 'delete', 'replace', 'dispose'] as const) {
+      const { graph, node, editor } = setup()
+      editor.setContentShader([node.id])
+      const controller = new AbortController()
+      const capturing = editor.captureShaderContent(node.id, controller.signal)
+      if (change === 'abort') controller.abort()
+      if (change === 'delete') graph.deleteNode(node.id)
+      if (change === 'replace') editor.replaceGraph(new SceneGraph())
+      if (change === 'dispose') editor.dispose()
+      expect(await capturing).toBeNull()
+    }
+  })
+
+  test('live capture separates copied content image identities before publishing', async () => {
+    const { graph, node, editor } = setup()
+    editor.setContentShader([node.id])
+    const image = expectDefined(contentShader(graph, node)).shader.image
+    const saved = new Uint8Array([7])
+    graph.images.set(image, saved)
+    const copy = expectDefined(graph.cloneTree(node.id, graph.getPages()[0].id))
+    const captured = expectDefined(
+      await editor.captureShaderContent(copy.id, new AbortController().signal)
+    )
+    expect(captured.image).not.toBe(image)
+    expect(contentShader(graph, copy)?.shader.image).toBe(captured.image)
+    expect(contentShader(graph, node)?.shader.image).toBe(image)
+    expect(graph.images.get(image)).toBe(saved)
+    expect(graph.images.get(captured.image)).toBe(saved)
+  })
+
   test('selection eligibility rejects overlapping roots and status exposes newly dynamic content', () => {
     const { graph, node, child, editor } = setup()
     expect(editor.canSetContentShader([node.id])).toBe(true)
