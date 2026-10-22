@@ -1,5 +1,7 @@
 export async function openNativeEditorDocument(): Promise<void> {
   await browser.execute(() => {
+    const store = window.openPencil?.getStore?.()
+    if (document.querySelector('[data-test-id="canvas-area"]') && store?.textEditor) return
     document.querySelector<HTMLElement>('[data-test-id="home-new-document"]')?.click()
   })
   await browser.waitUntil(

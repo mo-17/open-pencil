@@ -9,14 +9,16 @@ import { withNativeEventRecorder } from '#tests/helpers/tauri/event-recorder'
 describe('native text editing', () => {
   it('commits ordinary WebView input exactly once', async () => {
     await createNativeTextFixture('Replace me')
-    const tabCount = await browser.execute(() => document.querySelectorAll('[role="tab"]').length)
+    const tabCount = await browser.execute(
+      () => document.querySelectorAll('[data-test-id="tabbar-tab"]').length
+    )
     const id = await createNativeTextFixture('Another fixture')
     const prepared = await readNativeEditorSnapshot()
     assert.equal(prepared.editingTextId, id)
     assert.equal(prepared.editingText, 'Another fixture')
     assert.equal(prepared.textNodeCount, 1)
     assert.equal(
-      await browser.execute(() => document.querySelectorAll('[role="tab"]').length),
+      await browser.execute(() => document.querySelectorAll('[data-test-id="tabbar-tab"]').length),
       tabCount
     )
     const textarea = await $('textarea[aria-hidden="true"]')

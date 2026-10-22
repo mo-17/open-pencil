@@ -4,6 +4,7 @@ import type * as TauriAPI from '@tauri-apps/api'
 import type * as TauriOS from '@tauri-apps/plugin-os'
 
 import type { Editor } from '@open-pencil/core/editor'
+import type { RasterExportFormat } from '@open-pencil/core/io'
 import type { Fill } from '@open-pencil/scene-graph'
 
 export {}
@@ -23,6 +24,11 @@ type NativeTestStore = Pick<
   Editor,
   'setContentShader' | 'setShaderPaint' | 'setShaderRasterizer' | 'settleShaderFrames'
 > & {
+  renderExportImage: (
+    nodeIds: string[],
+    scale: number,
+    format: RasterExportFormat
+  ) => Promise<Uint8Array | null>
   saveFigFileToPath: (path: string) => Promise<boolean>
   openFigFile: (file: File) => Promise<void>
   state: {

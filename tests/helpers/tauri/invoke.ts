@@ -33,13 +33,18 @@ export async function invokeNativeBytes(
 }
 
 /** Writes a file through the fs plugin the way `writeFile` does, and returns its error if any. */
-export async function writeNativeFile(path: string, text: string): Promise<string | null> {
+export async function writeNativeFile(
+  path: string,
+  data: string | number[]
+): Promise<string | null> {
   return browser.execute(
-    async (path, text) => {
+    async (path, data) => {
       const core = window.__TAURI__?.core
       if (!core) throw new Error('Native test requires app.withGlobalTauri')
       try {
-        await core.invoke('plugin:fs|write_file', new TextEncoder().encode(text), {
+        const bytes =
+          typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data)
+        await core.invoke('plugin:fs|write_file', bytes, {
           headers: { path: encodeURIComponent(path), options: JSON.stringify({}) }
         })
         return null
@@ -48,6 +53,6 @@ export async function writeNativeFile(path: string, text: string): Promise<strin
       }
     },
     path,
-    text
+    data
   )
 }
