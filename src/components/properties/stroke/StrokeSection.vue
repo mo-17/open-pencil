@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import type { Color, Fill, SceneNode, Stroke } from '@open-pencil/scene-graph'
+import {
+  shaderOfPaint,
+  type Color,
+  type Fill,
+  type SceneNode,
+  type Stroke
+} from '@open-pencil/scene-graph'
 import { colorToHexRaw } from '@open-pencil/scene-graph/color'
 import {
   applySolidStrokeColor,
@@ -29,6 +35,7 @@ import {
 import { useGradientEditing } from '@/components/properties/paint/gradient-edit'
 import { createStrokeOkhclAdapter } from '@/components/properties/paint/okhcl'
 import PaintValue from '@/components/properties/paint/PaintValue.vue'
+import ShaderPaintDetails from '@/components/properties/paint/ShaderPaintDetails.vue'
 import PropertyListRoot from '@/components/properties/PropertyListRoot.vue'
 import { useSharedStylePicker } from '@/components/properties/shared-style/useSharedStylePicker'
 import IconButton from '@/components/ui/button/IconButton.vue'
@@ -231,6 +238,15 @@ function onToggleSides(nodes: readonly SceneNode[]) {
             </template>
           </PaintField>
         </BindableValueRoot>
+        <template #details>
+          <ShaderPaintDetails
+            v-if="selectedNodeIds.length === 1"
+            :node="activeNode"
+            :shader="activeNode ? shaderOfPaint(activeNode, stroke) : null"
+            list="strokes"
+            :index="index"
+          />
+        </template>
       </PropertyItemRow>
 
       <div v-if="!isMixed && items.length > 0" class="mt-1 flex flex-wrap items-center gap-1.5">

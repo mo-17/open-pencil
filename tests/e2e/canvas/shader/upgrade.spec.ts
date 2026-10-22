@@ -40,7 +40,13 @@ for (const capability of ['missing', 'no-adapter'] as const) {
   })
 }
 
-for (const failure of ['initialization', 'device-loss', 'document-switch'] as const) {
+for (const failure of [
+  'initialization',
+  'device-loss',
+  'document-switch',
+  'manual-retry',
+  'canvas-remount'
+] as const) {
   test(`simulated Shader playback ${failure} restores static frames`, async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} })
@@ -62,6 +68,21 @@ for (const failure of ['initialization', 'device-loss', 'document-switch'] as co
       expect(stats.starts).toBe(1)
       if (failure !== 'device-loss') expect(stats.published).toBe(0)
       else expect(stats.published).toBe(1)
+      if (failure !== 'document-switch')
+        await expect.poll(() => probe.evaluate((p) => p.status()?.reason)).toBe('failed')
+      if (failure === 'manual-retry') {
+        await probe.evaluate((p) => p.retry())
+        await expect.poll(() => probe.evaluate((p) => p.stats.starts)).toBe(2)
+        await expect.poll(() => probe.evaluate((p) => p.stats.published)).toBeGreaterThan(0)
+        expect(await probe.evaluate((p) => p.saved())).toEqual([42])
+      }
+      if (failure === 'canvas-remount') {
+        await probe.evaluate((p) => p.remount())
+        await expect.poll(() => probe.evaluate((p) => p.stats.starts)).toBe(2)
+        await expect.poll(() => probe.evaluate((p) => p.stats.published)).toBeGreaterThan(0)
+        await expect.poll(() => probe.evaluate((p) => p.status()?.phase)).toBe('ready')
+        expect(await probe.evaluate((p) => p.saved())).toEqual([42])
+      }
     } finally {
       await probe.evaluate((p) => p.close())
       await probe.dispose()

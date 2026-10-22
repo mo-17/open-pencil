@@ -44,6 +44,29 @@ function setup() {
 }
 
 describe('node-local Shader content', () => {
+  test('selection eligibility rejects overlapping roots and status exposes newly dynamic content', () => {
+    const { graph, node, child, editor } = setup()
+    expect(editor.canSetContentShader([node.id])).toBe(true)
+    expect(editor.canSetContentShader([node.id, child.id])).toBe(false)
+    expect(editor.canSetContentShader([])).toBe(false)
+    expect(() => editor.setContentShader([])).not.toThrow()
+    editor.setContentShader([node.id])
+    const image = expectDefined(contentShader(graph, node)).shader.image
+    graph.images.set(image, new Uint8Array([7]))
+    graph.updateNode(child.id, { type: 'INPUT' })
+    expect(editor.canSetContentShader([node.id])).toBe(false)
+    expect(editor.getShaderFrameStatus(node.id, image)).toEqual({
+      phase: 'unsupported',
+      hasSavedFrame: true,
+      canRetry: false
+    })
+    const projected = shaderContentNode(graph, node)
+    expect(projected.fills.some((paint) => paint.imageHash === image)).toBe(false)
+    expect(projected.childIds).toEqual([child.id])
+    expect(graph.getNode(child.id)?.type).toBe('INPUT')
+    expect(node.childIds).toEqual([child.id])
+  })
+
   test('copied subtrees keep independent output images when their content diverges', async () => {
     const { graph, node, child, editor } = setup()
     let frames = 0

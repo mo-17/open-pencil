@@ -1142,6 +1142,7 @@ fr:panels.radialGradient
 fr:panels.rotation
 fr:panels.saturation
 fr:panels.shader
+fr:panels.shaderSaturation
 fr:panels.slotDescription
 fr:panels.slots
 fr:panels.variableModeAuto

@@ -14,7 +14,7 @@
 
 ### Added
 
-- Apply a Shader to the own content of static images, text and decorative containers, keeping editable sources and static image fallbacks in HTML, React/Vue components and Lowcode exports.
+- Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Keep editable sources and static image fallbacks in HTML, React/Vue components and Lowcode exports.
 
 - Protect shared-room invitations with a random key in the URL fragment, retained when copying, reloading, or handing the room to the desktop app. Links without the key cannot join; ask the sharer for a new invitation.
 

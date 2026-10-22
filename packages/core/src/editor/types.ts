@@ -275,6 +275,8 @@ export type FigmaClipboardImageResolver = (
 ) => Promise<ReadonlyMap<string, Uint8Array>>
 
 export interface EditorEvents extends SceneGraphEvents {
+  'shader:status-changed': (nodeId: string | null) => void
+  'shader:retry-requested': (nodeIds: readonly string[]) => void
   'render:requested': (versions: {
     renderVersion: number
     sceneVersion: number

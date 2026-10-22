@@ -141,6 +141,9 @@ export { useFillControls } from '#vue/controls/fill/use'
 export { canDrawShaders, createShaderRasterizer } from '#vue/canvas/surface/shader/rasterizer'
 export {
   addShaderEffect,
+  CONTENT_SHADER_FILTERS,
+  contentShaderFilter,
+  contentShaderPreset,
   DEFAULT_SHADER_EFFECT,
   DEFAULT_SHADER_PRESET,
   loadShaderCatalog,
@@ -152,7 +155,7 @@ export {
   shaderEffectPreview,
   shaderPresetJSON
 } from '#vue/controls/shader'
-export type { ShaderEffect, ShaderPropControl } from '#vue/controls/shader'
+export type { ContentShaderFilter, ShaderEffect, ShaderPropControl } from '#vue/controls/shader'
 export { useColorVariableBinding } from '#vue/controls/color-variable-binding/use'
 export { useNumberVariableBinding } from '#vue/controls/number-variable-binding/use'
 export type { NumberBindingPath } from '#vue/controls/number-variable-binding/use'

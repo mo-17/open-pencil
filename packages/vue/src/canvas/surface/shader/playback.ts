@@ -4,7 +4,12 @@ import { onScopeDispose, watch } from 'vue'
 
 import type { SkiaRenderer } from '@open-pencil/core/canvas'
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import { readShaderPaints, shaderOfPaint, type ShaderPreset } from '@open-pencil/scene-graph'
+import {
+  readShaderPaints,
+  shaderOfPaint,
+  shaderPresetKey,
+  type ShaderPreset
+} from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
 import { shaderFrames } from '#vue/canvas/surface/shader/frames'
@@ -106,7 +111,14 @@ function shadersOnPage(editor: Pick<Editor, 'graph'>, pageId: string) {
  * frames stay.
  */
 export function useShaderPlayback(options: {
-  editor: Pick<Editor, 'graph' | 'state' | 'onEditorEvent'>
+  editor: Pick<
+    Editor,
+    | 'graph'
+    | 'state'
+    | 'onEditorEvent'
+    | 'reportShaderPlaybackFailure'
+    | 'reportShaderPlaybackReady'
+  >
   getRenderer: () => Pick<SkiaRenderer, 'setLiveImage'> | null
   /** The view this canvas draws: its pan, zoom, page, and whether it previews. */
   getView: () => Pick<EditorState, 'panX' | 'panY' | 'zoom' | 'currentPageId' | 'play'>
@@ -142,6 +154,11 @@ export function useShaderPlayback(options: {
   let turn = 0
   /** Whether this browser needs each frame copied before the canvas can show it. */
   let copyFrames = false
+
+  function fail(hash: string, player: Player) {
+    failed.set(hash, player.preset)
+    editor.reportShaderPlaybackFailure(hash, player.preset)
+  }
 
   function release() {
     for (const player of retired.splice(0)) {
@@ -211,7 +228,7 @@ export function useShaderPlayback(options: {
     canvas.width = Math.max(1, Math.round(size.width / ratio))
     canvas.height = Math.max(1, Math.round(size.height / ratio))
     const player: Player = {
-      preset: JSON.stringify(preset),
+      preset: shaderPresetKey(preset),
       nodeIds: new Set(),
       canvas,
       renderer: null,
@@ -237,7 +254,7 @@ export function useShaderPlayback(options: {
       renderer.setOnUnavailable(() => {
         if (players.get(hash) === player) {
           stop(hash)
-          failed.set(hash, player.preset)
+          fail(hash, player)
         } else if (replacing.get(hash) === player) {
           replacing.delete(hash)
           player.disposed = true
@@ -268,7 +285,7 @@ export function useShaderPlayback(options: {
         failedSizes.set(hash, { preset: player.preset, size })
       } else if (players.get(hash) === player) {
         stop(hash)
-        failed.set(hash, player.preset)
+        fail(hash, player)
       }
       return
     } finally {
@@ -332,10 +349,10 @@ export function useShaderPlayback(options: {
     const wanted = playing ? shadersOnPage(editor, view.currentPageId) : new Map()
     for (const [hash, player] of players) {
       const shader = wanted.get(hash)
-      if (!shader || JSON.stringify(shader.preset) !== player.preset) stop(hash)
+      if (!shader || shaderPresetKey(shader.preset) !== player.preset) stop(hash)
     }
     for (const [hash, shader] of wanted) {
-      if (failed.get(hash) !== JSON.stringify(shader.preset)) failed.delete(hash)
+      if (failed.get(hash) !== shaderPresetKey(shader.preset)) failed.delete(hash)
       const visible = onScreen(shader.bounds)
       const size = screenSize(shader.bounds)
       const existing = players.get(hash)
@@ -387,11 +404,13 @@ export function useShaderPlayback(options: {
       console.warn('Could not draw a playing shader', error)
       if (players.get(hash) === player) {
         stop(hash)
-        failed.set(hash, player.preset)
+        fail(hash, player)
       }
       return false
     }
-    return !player.disposed && graph === editor.graph && getView().play !== null
+    const ready = !player.disposed && graph === editor.graph && getView().play !== null
+    if (ready) editor.reportShaderPlaybackReady(hash, player.preset)
+    return ready
   }
 
   /**
@@ -421,7 +440,7 @@ export function useShaderPlayback(options: {
             .catch(() => {
               if (players.get(hash) === player) {
                 stop(hash)
-                failed.set(hash, player.preset)
+                fail(hash, player)
               }
               return null
             })
@@ -446,7 +465,7 @@ export function useShaderPlayback(options: {
         frame.close()
         if (players.get(hash) === player) {
           stop(hash)
-          failed.set(hash, player.preset)
+          fail(hash, player)
         }
         continue
       }
@@ -493,8 +512,19 @@ export function useShaderPlayback(options: {
     failed.clear()
     graph = editor.graph
   })
+  const stopRetry = editor.onEditorEvent('shader:retry-requested', (ids) => {
+    for (const id of ids) {
+      const node = editor.graph.getNode(id)
+      for (const shader of node ? readShaderPaints(node) : []) {
+        failed.delete(shader.image)
+        failedSizes.delete(shader.image)
+      }
+    }
+    sync()
+  })
   onScopeDispose(() => {
     stopGraph()
+    stopRetry()
     pause()
     for (const hash of Array.from(players.keys())) stop(hash)
     release()

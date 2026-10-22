@@ -37,6 +37,129 @@ function setup() {
 }
 
 describe('shader paints', () => {
+  test('playback failure reports a saved fallback without dirtying the document, and retry clears it', async () => {
+    const { editor, id, read } = setup()
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await editor.settleShaderFrames()
+    const image = read().fills[0].imageHash ?? ''
+    const version = editor.state.sceneVersion
+    editor.reportShaderPlaybackFailure(image, shaderPresetKey(AURORA))
+    expect(editor.getShaderFrameStatus(id, image)).toMatchObject({
+      phase: 'saved',
+      reason: 'failed',
+      canRetry: true
+    })
+    expect(editor.state.sceneVersion).toBe(version)
+    editor.setShaderRasterizer({ render: async () => null })
+    expect(editor.getShaderFrameStatus(id, image)?.reason).toBe('failed')
+    editor.reportShaderPlaybackReady(image, shaderPresetKey(SWIRL))
+    expect(editor.getShaderFrameStatus(id, image)?.reason).toBe('failed')
+    editor.reportShaderPlaybackReady(image, shaderPresetKey(AURORA))
+    expect(editor.getShaderFrameStatus(id, image)?.phase).toBe('ready')
+    expect(editor.state.sceneVersion).toBe(version)
+    editor.reportShaderPlaybackFailure(image, shaderPresetKey(AURORA))
+    editor.retryShaderFrames([id])
+    await editor.settleShaderFrames()
+    expect(editor.getShaderFrameStatus(id, image)?.phase).toBe('ready')
+    editor.reportShaderPlaybackFailure(image, shaderPresetKey(SWIRL))
+    expect(editor.getShaderFrameStatus(id, image)?.phase).toBe('ready')
+    editor.dispose()
+  })
+
+  test('reports queued, active and current frames without persisting host status', async () => {
+    const { editor, id, read } = setup()
+    let finish: (bytes: Uint8Array) => void = () => {
+      throw new Error('Not started')
+    }
+    let begin: () => void = () => {
+      throw new Error('Not started')
+    }
+    const started = new Promise<void>((resolve) => {
+      begin = resolve
+    })
+    const bytes = new Promise<Uint8Array>((resolve) => {
+      finish = resolve
+    })
+    editor.setShaderRasterizer({
+      render: () => {
+        begin()
+        return bytes
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    const image = read().fills[0].imageHash ?? ''
+    const metadata = structuredClone(read().pluginData)
+    expect(editor.getShaderFrameStatus(id, image)?.phase).toBe('queued')
+    const drawing = editor.settleShaderFrames()
+    await started
+    expect(editor.getShaderFrameStatus(id, image)).toMatchObject({
+      phase: 'rendering',
+      hasSavedFrame: false,
+      canRetry: false
+    })
+    expect(read().pluginData).toEqual(metadata)
+    finish(new Uint8Array([7]))
+    await drawing
+    expect(editor.getShaderFrameStatus(id, image)).toMatchObject({
+      phase: 'ready',
+      hasSavedFrame: true
+    })
+    editor.setShaderRasterizer(null)
+    expect(editor.getShaderFrameStatus(id, image)).toEqual({
+      phase: 'saved',
+      reason: 'unavailable',
+      hasSavedFrame: true,
+      canRetry: false
+    })
+    editor.graph.deleteNode(id)
+    expect(editor.getShaderFrameStatus(id, image)).toBeNull()
+    editor.dispose()
+  })
+
+  test('exposes failure and explicit retry while exports retain saved bytes without retrying', async () => {
+    const { editor, id, read } = setup()
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await editor.settleShaderFrames()
+    const image = read().fills[0].imageHash ?? ''
+    let calls = 0
+    editor.setShaderRasterizer({
+      render: async () => {
+        calls++
+        return calls > 1 ? new Uint8Array([9]) : null
+      }
+    })
+    editor.setShaderPaint([id], 'fills', 0, SWIRL)
+    await editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })
+    expect(editor.getShaderFrameStatus(id, image)).toEqual({
+      phase: 'saved',
+      reason: 'failed',
+      hasSavedFrame: true,
+      canRetry: true
+    })
+    await editor.settleShaderFrames({ nodeIds: [id], requireFrames: true })
+    expect(calls).toBe(1)
+    editor.retryShaderFrames([id])
+    await editor.settleShaderFrames()
+    expect(calls).toBe(2)
+    expect(editor.getShaderFrameStatus(id, image)?.phase).toBe('ready')
+    editor.replaceGraph(new SceneGraph())
+    expect(editor.getShaderFrameStatus(id, image)).toBeNull()
+    editor.dispose()
+  })
+
+  test('distinguishes a missing frame without a renderer from successful generation', () => {
+    const { editor, id, read } = setup()
+    editor.setShaderRasterizer(null)
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    expect(editor.getShaderFrameStatus(id, read().fills[0].imageHash ?? '')).toEqual({
+      phase: 'missing',
+      reason: 'unavailable',
+      hasSavedFrame: false,
+      canRetry: false
+    })
+    editor.dispose()
+  })
+
   test('a fill becomes a shader as one undo step', () => {
     const { editor, id, read } = setup()
     const before = read().fills
@@ -255,8 +378,10 @@ describe('shader frame settlement and fallback', () => {
     const saving = editor.settleShaderFrames()
     await started.promise
     editor.updateNodeWithUndo(id, { width: 80 })
-    first.resolve(new Uint8Array([1]))
     await saving
+    // Settlement must not depend on the obsolete renderer ever completing.
+    first.resolve(new Uint8Array([1]))
+    await Promise.resolve()
     expect(sizes).toEqual([80, 160])
     expect(editor.graph.images.get(read().fills[0].imageHash ?? '')).toEqual(new Uint8Array([2]))
     expect(shaderOfPaint(read(), read().fills[0])?.frame?.width).toBe(80)
@@ -301,8 +426,9 @@ describe('shader frame settlement and fallback', () => {
     const saving = editor.settleShaderFrames()
     await started.promise
     editor.graph.deleteNode(id)
-    frame.resolve(new Uint8Array([9]))
     await saving
+    frame.resolve(new Uint8Array([9]))
+    await Promise.resolve()
     expect(editor.graph.images.size).toBe(0)
     editor.dispose()
   })

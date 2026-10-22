@@ -87,16 +87,29 @@ export function createShaderActions(ctx: EditorContext, nodes: NodeActions) {
     }
   }
 
+  /** Rejects overlapping roots and dynamic subtrees before a batch changes any layer. */
+  function canSetContentShader(nodeIds: readonly string[]): boolean {
+    return (
+      nodeIds.length > 0 &&
+      nodeIds.every((id) => {
+        const node = ctx.graph.getNode(id)
+        return (
+          node &&
+          supportsShaderContent(ctx.graph, node) &&
+          !nodeIds.some((other) => id !== other && ctx.graph.isDescendant(id, other))
+        )
+      })
+    )
+  }
+
   /** Adds a node-local content filter while keeping the source paints and hierarchy editable. */
   function setContentShader(
     nodeIds: readonly string[],
     preset: ShaderPreset = { components: [{ type: 'Pixelate', props: { scale: 24 } }] }
   ): void {
+    if (nodeIds.length === 0) return
     const targets = nodeIds.map((id) => ctx.graph.getNode(id))
-    const overlaps = nodeIds.some((id) =>
-      nodeIds.some((other) => id !== other && ctx.graph.isDescendant(id, other))
-    )
-    if (overlaps || targets.some((node) => !node || !supportsShaderContent(ctx.graph, node))) {
+    if (!canSetContentShader(nodeIds)) {
       throw new Error(
         'Content shaders support static images, text and decorative containers without controls, bindings, Motion or generated effects.'
       )
@@ -124,5 +137,5 @@ export function createShaderActions(ctx: EditorContext, nodes: NodeActions) {
     }
   }
 
-  return { setShaderPaint, setContentShader }
+  return { setShaderPaint, setContentShader, canSetContentShader }
 }

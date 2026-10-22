@@ -18,7 +18,7 @@ import type { EditorContext, EditorOptions } from '#core/editor/types'
 
 import { prepareShaderContent, renderShaderContent } from './content'
 import { createShaderFrameJob, waitForShaderFrames } from './job'
-import type { ShaderRasterizer } from './types'
+import type { ShaderFrameStatus, ShaderRasterizer } from './types'
 
 const SETTLE_MS = 150
 const FRAME_TIMEOUT_MS = 10_000
@@ -52,14 +52,67 @@ export function createShaderFrames(
 ) {
   let rasterizer: ShaderRasterizer | null = options?.shaderRasterizer ?? null
   const drawn = new Map<string, string>()
-  const failed = new Map<string, string>()
+  const failed = new Map<string, { key: string; reason: 'failed' | 'timeout' }>()
+  const playbackFailures = new Map<string, string>()
   const pending = new Set<string>()
   const contentOwners = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let drawing: Promise<void> | null = null
   let activeJob: AbortController | null = null
+  let activeFrame: { graph: SceneGraph; id: string; image: string; key: string } | null = null
   let publishing = false
   let disposed = false
+
+  function notifyStatus(id: string | null) {
+    ctx.emitEditorEvent('shader:status-changed', id)
+  }
+
+  function getShaderFrameStatus(id: string, image: string): ShaderFrameStatus | null {
+    const node = ctx.graph.getNode(id)
+    const shader = node && shownShaders(node).find((shader) => shader.image === image)
+    if (!node || !shader) return null
+    const hasSavedFrame = Boolean(ctx.graph.images.get(image)?.length)
+    const fallback = (reason: ShaderFrameStatus['reason']): ShaderFrameStatus => ({
+      phase: hasSavedFrame ? 'saved' : 'missing',
+      reason,
+      hasSavedFrame,
+      canRetry: rasterizer !== null && !disposed
+    })
+    if (shader.input && !contentShader(ctx.graph, node))
+      return { phase: 'unsupported', hasSavedFrame, canRetry: false }
+    if (!rasterizer || disposed) return { ...fallback('unavailable'), canRetry: false }
+    const key = frameKey(node, shader)
+    if (activeFrame?.graph === ctx.graph && activeFrame.image === image && activeFrame.key === key)
+      return { phase: 'rendering', hasSavedFrame, canRetry: false }
+    if (pending.has(id)) return { phase: 'queued', hasSavedFrame, canRetry: false }
+    const failure = failed.get(image)
+    if (failure?.key === key) return fallback(failure.reason)
+    if (playbackFailures.get(image) === shaderPresetKey(shader.preset)) return fallback('failed')
+    return isCurrent(node, shader)
+      ? { phase: 'ready', hasSavedFrame, canRetry: false }
+      : fallback('stale')
+  }
+
+  function playbackOwners(image: string, presetKey: string) {
+    return [...ctx.graph.getAllNodes()].filter((node) =>
+      shownShaders(node).some(
+        (shader) => shader.image === image && shaderPresetKey(shader.preset) === presetKey
+      )
+    )
+  }
+
+  function reportShaderPlaybackFailure(image: string, presetKey: string) {
+    const owners = playbackOwners(image, presetKey)
+    if (!owners.length) return
+    playbackFailures.set(image, presetKey)
+    for (const node of owners) notifyStatus(node.id)
+  }
+
+  function reportShaderPlaybackReady(image: string, presetKey: string) {
+    if (playbackFailures.get(image) !== presetKey) return
+    playbackFailures.delete(image)
+    for (const node of playbackOwners(image, presetKey)) notifyStatus(node.id)
+  }
 
   function frameKey(node: SceneNode, shader: ShaderPaint): string {
     return JSON.stringify([
@@ -82,7 +135,9 @@ export function createShaderFrames(
 
   function schedule(id: string) {
     if (!rasterizer || disposed) return
+    abortStaleFrame(id)
     pending.add(id)
+    notifyStatus(id)
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = null
@@ -146,10 +201,20 @@ export function createShaderFrames(
     return renderer ? (renderShaderContent(ctx.graph, node, renderer) ?? undefined) : undefined
   }
 
-  function freshFrame(id: string, shader: ShaderPaint, key: string) {
+  function freshFrame(id: string, image: string, key: string) {
     const node = ctx.graph.getNode(id)
-    const current = node && shownShaders(node).find((item) => item.image === shader.image)
-    return node && current && frameKey(node, current) === key ? { node, current } : null
+    const current = node && shownShaders(node).find((item) => item.image === image)
+    return node &&
+      current &&
+      (!current.input || contentShader(ctx.graph, node)) &&
+      frameKey(node, current) === key
+      ? { node, current }
+      : null
+  }
+
+  function abortStaleFrame(id: string) {
+    if (activeFrame?.id === id && !freshFrame(id, activeFrame.image, activeFrame.key))
+      activeJob?.abort()
   }
 
   async function renderBytes(
@@ -166,6 +231,18 @@ export function createShaderFrames(
 
   function jobIsCurrent(graph: SceneGraph, active: ShaderRasterizer, controller: AbortController) {
     return !controller.signal.aborted && graph === ctx.graph && !disposed && active === rasterizer
+  }
+
+  function targetIsCurrent(
+    graph: SceneGraph,
+    active: ShaderRasterizer,
+    id: string,
+    shader: ShaderPaint,
+    key: string
+  ) {
+    return (
+      graph === ctx.graph && active === rasterizer && !disposed && freshFrame(id, shader.image, key)
+    )
   }
 
   /** Copies may share saved bytes until their node-local content needs an independent output. */
@@ -207,30 +284,37 @@ export function createShaderFrames(
     if (shader.input && !contentShader(graph, node)) return
     shader = independentContentOutput(node, shader)
     const key = frameKey(node, shader)
-    if (failed.get(shader.image) === key || isCurrent(node, shader)) return
+    if (failed.get(shader.image)?.key === key || isCurrent(node, shader)) return
     const size: Size = { width: node.width, height: node.height }
     const job = createShaderFrameJob(signal)
     const controller = job.controller
     activeJob = controller
+    activeFrame = { graph, id, image: shader.image, key }
+    notifyStatus(id)
     try {
       const bytes = await job.wait(renderBytes(node, shader, size, active, controller.signal))
       if (!jobIsCurrent(graph, active, controller)) return
-      const fresh = freshFrame(id, shader, key)
+      const fresh = freshFrame(id, shader.image, key)
       if (!fresh) return
       if (!bytes?.length) {
-        failed.set(shader.image, key)
+        failed.set(shader.image, { key, reason: 'failed' })
         return
       }
       publishFrame(fresh.node, fresh.current, bytes, size, key)
     } catch (error) {
       if (graph === ctx.graph && !controller.signal.aborted) {
-        failed.set(shader.image, key)
+        failed.set(shader.image, { key, reason: 'failed' })
         console.warn('Could not draw a shader frame', error)
       }
     } finally {
-      if (job.timedOut()) failed.set(shader.image, key)
+      if (job.timedOut() && targetIsCurrent(graph, active, id, shader, key))
+        failed.set(shader.image, { key, reason: 'timeout' })
       job.close()
-      if (activeJob === controller) activeJob = null
+      if (activeJob === controller) {
+        activeJob = null
+        activeFrame = null
+      }
+      if (graph === ctx.graph) notifyStatus(id)
     }
   }
 
@@ -247,6 +331,7 @@ export function createShaderFrames(
       const node = ctx.graph.getNode(id)
       if (!node) continue
       for (const shader of shownShaders(node)) await drawFrame(id, shader, active)
+      notifyStatus(id)
     }
   }
 
@@ -317,6 +402,7 @@ export function createShaderFrames(
   })
   ctx.onEditorEvent('node:updated', (id, changes) => {
     if (publishing) return
+    abortStaleFrame(id)
     const node = ctx.graph.getNode(id)
     if (node) trackContent(node)
     if (node && FRAME_FIELDS.some((field) => field in changes) && readShaderPaints(node).length) {
@@ -326,6 +412,7 @@ export function createShaderFrames(
     invalidateContent(id)
   })
   ctx.onEditorEvent('node:deleted', (id, parentId) => {
+    if (activeFrame?.id === id) activeJob?.abort()
     pending.delete(id)
     contentOwners.delete(id)
     invalidateContent(parentId)
@@ -339,7 +426,10 @@ export function createShaderFrames(
     resetContentOwners()
     drawn.clear()
     failed.clear()
+    playbackFailures.clear()
     pending.clear()
+    activeFrame = null
+    notifyStatus(null)
   })
 
   function setShaderRasterizer(next: ShaderRasterizer | null) {
@@ -349,6 +439,22 @@ export function createShaderFrames(
     rasterizer = next
     failed.clear()
     if (!next) pending.clear()
+    activeFrame = null
+    notifyStatus(null)
+  }
+
+  /** Explicit user retry, limited to the requested layers. Exports never retry failed keys. */
+  function retryShaderFrames(nodeIds: readonly string[]) {
+    for (const id of nodeIds) {
+      const node = ctx.graph.getNode(id)
+      if (!node) continue
+      for (const shader of shownShaders(node)) {
+        failed.delete(shader.image)
+        playbackFailures.delete(shader.image)
+      }
+      schedule(id)
+    }
+    ctx.emitEditorEvent('shader:retry-requested', nodeIds)
   }
 
   async function settleShaderFrames(options: SettleShaderFramesOptions = {}): Promise<void> {
@@ -391,10 +497,17 @@ export function createShaderFrames(
     rasterizer?.destroy?.()
     rasterizer = null
     pending.clear()
+    activeFrame = null
+    playbackFailures.clear()
+    notifyStatus(null)
   }
 
   return {
     setShaderRasterizer,
+    getShaderFrameStatus,
+    retryShaderFrames,
+    reportShaderPlaybackFailure,
+    reportShaderPlaybackReady,
     hasShaderRasterizer: () => rasterizer !== null,
     settleShaderFrames,
     drawPageShaderFrames,

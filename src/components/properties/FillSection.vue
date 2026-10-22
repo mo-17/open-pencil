@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  supportsShaderContent,
-  shaderOfPaint,
-  type Fill,
-  type SceneNode
-} from '@open-pencil/scene-graph'
+import { shaderOfPaint, type Fill, type SceneNode } from '@open-pencil/scene-graph'
 import { colorToHexRaw } from '@open-pencil/scene-graph/color'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 import {
@@ -34,6 +29,7 @@ import {
 import { useGradientEditing } from '@/components/properties/paint/gradient-edit'
 import { createFillOkhclAdapter } from '@/components/properties/paint/okhcl'
 import PaintValue from '@/components/properties/paint/PaintValue.vue'
+import ShaderPaintDetails from '@/components/properties/paint/ShaderPaintDetails.vue'
 import PropertyListRoot from '@/components/properties/PropertyListRoot.vue'
 import { useSharedStylePicker } from '@/components/properties/shared-style/useSharedStylePicker'
 import IconButton from '@/components/ui/button/IconButton.vue'
@@ -113,13 +109,7 @@ function updateSolidColor(
       <template #actions>
         <IconButton
           :label="panels.shaderSelfContent"
-          :disabled="
-            selectedNodeIds.length === 0 ||
-            selectedNodeIds.some((id) => {
-              const node = store.graph.getNode(id)
-              return !node || !supportsShaderContent(store.graph, node)
-            })
-          "
+          :disabled="!store.canSetContentShader(selectedNodeIds)"
           data-property="shader-self-content"
           @click="store.setContentShader(selectedNodeIds)"
         >
@@ -240,6 +230,13 @@ function updateSolidColor(
           </BindableValueRoot>
 
           <template #details>
+            <ShaderPaintDetails
+              v-if="selectedNodeIds.length === 1"
+              :node="activeNode"
+              :shader="fillShader(activeNode, fill)"
+              list="fills"
+              :index="index"
+            />
             <PanelFieldGroup :label="panels.blendMode">
               <AppSelect
                 :model-value="fill.blendMode ?? 'NORMAL'"

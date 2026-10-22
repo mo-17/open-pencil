@@ -393,6 +393,8 @@ ja:panels.lowcodeSupabaseSourceMigrationErrorReviewStale
 ja:panels.lowcodeSupabaseSourceMigrationExport
 ja:panels.lowcodeSupabaseSourceMigrationPostSaveHint
 ja:panels.lowcodeSupabaseSourceMigrationSaved
+ja:panels.shaderContentScope
+ja:panels.shaderFrameUnavailable
 ja:panels.shaderNeedsWebGPU
 ja:panels.shaderPreset
 ja:panels.sizingFillFr
@@ -929,6 +931,8 @@ zh-cn:panels.lowcodeSupabaseSourceMigrationErrorReviewStale
 zh-cn:panels.lowcodeSupabaseSourceMigrationExport
 zh-cn:panels.lowcodeSupabaseSourceMigrationPostSaveHint
 zh-cn:panels.lowcodeSupabaseSourceMigrationSaved
+zh-cn:panels.shaderContentScope
+zh-cn:panels.shaderFrameUnavailable
 zh-cn:panels.shaderNeedsWebGPU
 zh-cn:panels.shaderPreset
 zh-cn:panels.sizingFillFr

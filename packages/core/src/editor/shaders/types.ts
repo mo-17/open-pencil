@@ -1,6 +1,14 @@
 import type { ShaderPreset } from '@open-pencil/scene-graph'
 import type { Size } from '@open-pencil/scene-graph/primitives'
 
+/** Ephemeral host state; never written to the document or undo history. */
+export interface ShaderFrameStatus {
+  phase: 'queued' | 'rendering' | 'ready' | 'saved' | 'missing' | 'unsupported'
+  reason?: 'unavailable' | 'failed' | 'timeout' | 'stale'
+  hasSavedFrame: boolean
+  canRetry: boolean
+}
+
 /**
  * Draws a shader's still frame. Core has no GPU or DOM, so the canvas that has them supplies
  * one; without it, or where it cannot draw, a shader paint keeps the frame it was saved with.
