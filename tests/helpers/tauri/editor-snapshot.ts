@@ -10,23 +10,7 @@ async function ensureNativeEditorReady(): Promise<void> {
     async () => browser.execute(() => Boolean(window.openPencil?.getStore?.())),
     { timeout: 30_000, timeoutMsg: 'OpenPencil store did not initialize' }
   )
-  await browser.execute(() => {
-    const store = window.openPencil?.getStore?.()
-    if (document.querySelector('canvas') && store?.textEditor) return
-    const newDesign = [...document.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === 'New design'
-    )
-    // Setup only: input assertions still use WebDriver after the document is ready.
-    newDesign?.click()
-  })
-  await browser.waitUntil(
-    async () =>
-      browser.execute(() => {
-        const store = window.openPencil?.getStore?.()
-        return Boolean(document.querySelector('canvas') && store?.textEditor)
-      }),
-    { timeout: 30_000, timeoutMsg: 'Native canvas and text editor did not initialize' }
-  )
+  await openNativeEditorDocument()
 }
 
 export async function createNativeLayerFixture(): Promise<NativeLayerFixture> {
@@ -107,3 +91,4 @@ export async function createNativeTextFixture(text = ''): Promise<string> {
     return id
   }, text)
 }
+import { openNativeEditorDocument } from '#tests/helpers/tauri/editor-ready'

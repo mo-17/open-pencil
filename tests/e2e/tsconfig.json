@@ -31,7 +31,8 @@
       "#fig-tests/*": ["../../packages/fig/tests/*"],
       "#cli-tests/*": ["../../packages/cli/tests/*"],
       "/src/*": ["../../src/*"],
-      "/packages/*": ["../../packages/*"]
+      "/packages/*": ["../../packages/*"],
+      "/tests/*": ["../../tests/*"]
     }
   },
   "include": ["./**/*.ts", "../helpers/**/*.ts"],

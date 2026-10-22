@@ -3,6 +3,9 @@
 import type * as TauriAPI from '@tauri-apps/api'
 import type * as TauriOS from '@tauri-apps/plugin-os'
 
+import type { Editor } from '@open-pencil/core/editor'
+import type { Fill } from '@open-pencil/scene-graph'
+
 export {}
 
 type NativeTestNode = {
@@ -12,9 +15,16 @@ type NativeTestNode = {
   parentId?: string | null
   type: string
   text?: string
+  fills: Fill[]
+  width: number
 }
 
-type NativeTestStore = {
+type NativeTestStore = Pick<
+  Editor,
+  'setContentShader' | 'setShaderPaint' | 'setShaderRasterizer' | 'settleShaderFrames'
+> & {
+  saveFigFileToPath: (path: string) => Promise<boolean>
+  openFigFile: (file: File) => Promise<void>
   state: {
     currentPageId: string
     editingTextId: string | null
@@ -24,6 +34,7 @@ type NativeTestStore = {
     snappingPreferences: { objects: boolean }
   }
   graph: {
+    images: Map<string, Uint8Array>
     createNode: (type: string, parentId: string, changes: Record<string, unknown>) => NativeTestNode
     deleteNode: (id: string) => void
     getChildren: (id: string) => NativeTestNode[]
