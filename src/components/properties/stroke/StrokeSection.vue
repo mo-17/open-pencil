@@ -238,9 +238,11 @@ function onToggleSides(nodes: readonly SceneNode[]) {
             </template>
           </PaintField>
         </BindableValueRoot>
-        <template #details>
+        <template
+          v-if="selectedNodeIds.length === 1 && activeNode && shaderOfPaint(activeNode, stroke)"
+          #details
+        >
           <ShaderPaintDetails
-            v-if="selectedNodeIds.length === 1"
             :node="activeNode"
             :shader="activeNode ? shaderOfPaint(activeNode, stroke) : null"
             list="strokes"
