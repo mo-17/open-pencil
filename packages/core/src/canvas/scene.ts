@@ -13,7 +13,7 @@ import {
   collectArrowEndpoints,
   lineArrowEndpoints
 } from '@open-pencil/scene-graph/arrow-caps'
-import { computeDescendantVisualBounds, polygonVertices } from '@open-pencil/scene-graph/geometry'
+import { polygonVertices } from '@open-pencil/scene-graph/geometry'
 import Matrix from '@open-pencil/scene-graph/matrix'
 import type { Color, Rect } from '@open-pencil/scene-graph/primitives'
 
@@ -54,6 +54,7 @@ import {
   effectRasterScale,
   effectRasterScaleMatches
 } from './renderer/effect-raster-cache'
+import { mapVisualBounds, subtreeVisualBounds } from './renderer/visual-bounds'
 import { renderSelectContent } from './select'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
 import {
@@ -806,23 +807,17 @@ function viewportLayerBounds(
   const inverse = Matrix.invert(createSceneGeometry(graph, preview).worldMatrix(node))
   if (!inverse) return null
   const viewport = r.worldViewport
-  const points = Matrix.mapPoints(inverse, [
-    viewport.x,
-    viewport.y,
-    viewport.x + viewport.w,
-    viewport.y,
-    viewport.x + viewport.w,
-    viewport.y + viewport.h,
-    viewport.x,
-    viewport.y + viewport.h
-  ])
-  const xs = [points[0], points[2], points[4], points[6]]
-  const ys = [points[1], points[3], points[5], points[7]]
+  const bounds = mapVisualBounds(inverse, {
+    minX: viewport.x,
+    minY: viewport.y,
+    maxX: viewport.x + viewport.w,
+    maxY: viewport.y + viewport.h
+  })
   return r.ck.LTRBRect(
-    Math.min(...xs) - padding,
-    Math.min(...ys) - padding,
-    Math.max(...xs) + padding,
-    Math.max(...ys) + padding
+    bounds.minX - padding,
+    bounds.minY - padding,
+    bounds.maxX + padding,
+    bounds.maxY + padding
   )
 }
 
@@ -839,15 +834,9 @@ function beginNodeOpacityLayer(
   const needsLayer = effectiveOpacity < 1 || needsIsolatedBlendLayer(node.blendMode)
   if (!needsLayer) return false
 
-  const bounds = computeDescendantVisualBounds(
-    [nodeId],
-    (id) => graph.getNode(id) ?? undefined,
-    (id) => graph.getAbsolutePosition(id)
-  )
   // Only this subtree can invalidate the authored compositing bounds. Motion elsewhere
   // on the canvas must not turn every isolated layer into an unbounded saveLayer.
   const hasAnimatedGeometry = subtreeHasMotionGeometry(graph, nodeId, overlays)
-  const authoredPosition = graph.getAbsolutePosition(nodeId)
   const viewportBounds = hasAnimatedGeometry
     ? null
     : viewportLayerBounds(r, graph, node, 0, overlays.rotationPreview)
@@ -856,15 +845,14 @@ function beginNodeOpacityLayer(
     layerBounds = null
   } else if (viewportBounds) {
     layerBounds = viewportBounds
-  } else if (bounds) {
-    layerBounds = r.ck.LTRBRect(
-      bounds.minX - authoredPosition.x,
-      bounds.minY - authoredPosition.y,
-      bounds.maxX - authoredPosition.x,
-      bounds.maxY - authoredPosition.y
-    )
   } else {
-    layerBounds = r.ck.LTRBRect(0, 0, node.width, node.height)
+    const bounds = subtreeVisualBounds(
+      graph,
+      node,
+      nodeOrientationMatrix(node, overlays.rotationPreview),
+      overlays.rotationPreview
+    )
+    layerBounds = r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY)
   }
   r.opacityPaint.setAlphaf(effectiveOpacity)
   r.opacityPaint.setBlendMode(figmaBlendModeToSkia(r.ck, node.blendMode))
