@@ -137,7 +137,7 @@
 - Add a NestJS Backend Provider that exports PostgreSQL owner-protected CRUD services, validated DTOs, JWT authentication, OpenAPI, a typed client and pinned dependencies alongside React/Vue source projects.
 - Connect the NestJS visual workflow with public OIDC + PKCE configuration, undoable login/notes pages, authenticated LIST and form actions, and React/Vue browser clients that clear account data on logout and ignore stale requests.
 - Connect desktop React and Vue live previews to an existing local NestJS service, with browser login, frontend hot updates, and automatic disconnection when the backend contract changes.
-- Manage an isolated local NestJS preview on macOS/Linux desktop, with explicit dependency/database setup, automatic runtime rebuilds, reviewed SQL for supported model changes, and database preservation on stop.
+- Manage an isolated local NestJS preview on macOS/Linux desktop, with explicit dependency/database setup, automatic runtime rebuilds, reviewed SQL for supported model changes, and database preservation on stop. Keep bounded Unicode command arguments usable without crashing the desktop editor during permission initialization.
 - Simplify NestJS preview setup with a status-led side panel, separate SQL review, and reusable Keycloak and OIDC configuration presets.
 - Choose React or Vue for Desktop Backend review, staging Apply, capability verification, and migration export, with a fresh review required after switching frameworks.
 - Edit nested Backend Workflow branches and declare server environment reference names, with reference-preserving renames and deletion guards.

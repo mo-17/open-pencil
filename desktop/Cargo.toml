@@ -36,7 +36,7 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-fs = { version = "2.4.5", features = ["watch"] }
-tauri-plugin-shell = "2"
+tauri-plugin-shell = { version = "=2.3.5", path = "vendor/tauri-plugin-shell" }
 zstd = "0.13"
 zip = { version = "2", default-features = false }
 which = "7.0.3"
@@ -70,3 +70,6 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
+
+[dev-dependencies]
+regex = "1"
