@@ -7,7 +7,7 @@ import {
   type DesignElement,
   type DesignNode
 } from '@open-pencil/dom-css/export'
-import { layerPath, shaderOfPaint, type SceneGraph } from '@open-pencil/scene-graph'
+import { contentShader, layerPath, shaderOfPaint, type SceneGraph } from '@open-pencil/scene-graph'
 
 import { wrapRole } from './controls'
 import IslandShader from './IslandShader.vue'
@@ -60,16 +60,30 @@ export function renderElement(
     override.children ?? (() => element.children.map((child) => renderNode(context, child, path)))
   // A shader fill plays behind the content, whatever draws the content, from the canvas's own
   // player for the image its paint shows.
-  const image = element.shader ? shaderImage(element) : undefined
+  const authored = element.sourceSceneNodeId && context.graph.getNode(element.sourceSceneNodeId)
+  const input = element.tagName === 'img' && authored && contentShader(context.graph, authored)
+  let image = element.shader ? shaderImage(element) : undefined
+  if (input) {
+    image = input.shader.image
+    if (!style.position || style.position === 'static') style.position = 'relative'
+    style.isolation = 'isolate'
+  }
   const children = () => [
     ...(image
-      ? [h(IslandShader, { key: `${path}\0shader`, image, frame: element.shader?.frame })]
+      ? [
+          h(IslandShader, {
+            key: `${path}\0shader`,
+            image,
+            frame: input ? element.attrs.src : element.shader?.frame
+          })
+        ]
       : []),
     ...content()
   ]
   const { 'data-open-pencil-node-id': _id, ...attrs } = element.attrs
+  if (input) delete attrs.src
   return h(
-    override.tag ?? element.tagName,
+    override.tag ?? (input ? 'div' : element.tagName),
     { ...attrs, key: path, 'data-layer': path, style, ...override.props },
     children()
   )

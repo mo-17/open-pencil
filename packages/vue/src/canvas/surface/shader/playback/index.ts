@@ -1,19 +1,20 @@
 import { useRafFn, watchThrottled } from '@vueuse/core'
-import type { createRendererFromJSON } from 'shaders/core'
 import { onScopeDispose, watch } from 'vue'
 
 import type { SkiaRenderer } from '@open-pencil/core/canvas'
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import {
-  readShaderPaints,
-  shaderOfPaint,
-  shaderPresetKey,
-  type ShaderPreset
-} from '@open-pencil/scene-graph'
+import { readShaderPaints, shaderPresetKey, type ShaderPreset } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
 import { shaderFrames } from '#vue/canvas/surface/shader/frames'
 import { canDrawShaders } from '#vue/canvas/surface/shader/rasterizer'
+
+import { initializationQueue, untilAborted } from './queue'
+import { playerResources, type PlayerRenderer, type ContentPresetFactory } from './renderer'
+import { shadersOnPage, isCurrentInput, type PlaybackSource } from './sources'
+
+/** At most four content textures play; other layers retain their saved frames. */
+const MAX_CONTENT_PLAYERS = 4
 
 /** The longest side a playing shader is drawn at, however large it is on screen. */
 const MAX_PLAY_EDGE = 1024
@@ -30,37 +31,12 @@ const VIEW_CHECK_MS = 200
 /** How much a shader's size on screen may change before it is drawn at the new size. */
 const RESIZE_FACTOR = 1.5
 
-type PlayerRenderer = Partial<Pick<ReturnType<typeof createRendererFromJSON>, 'getGPUContext'>> &
-  Pick<
-    ReturnType<typeof createRendererFromJSON>,
-    'initialize' | 'renderFrame' | 'getFailureReason' | 'setOnUnavailable' | 'dispose'
-  >
-
-/** Prepare without publishing the library's pipeline-only first frame. */
-async function preparePlayer(
-  renderer: PlayerRenderer,
-  canvas: HTMLCanvasElement,
-  stopped: () => boolean
-) {
-  await renderer.initialize(canvas)
-  if (stopped()) return
-  if (renderer.getFailureReason() !== null) throw new Error('Shader renderer is unavailable')
-  const device = renderer.getGPUContext?.().device
-  device?.pushErrorScope('validation')
-  try {
-    await renderer.renderFrame({ deltaSeconds: 0, waitForGpu: true })
-  } catch (error) {
-    await device?.popErrorScope()
-    throw error
-  }
-  const error = await device?.popErrorScope()
-  if (error) throw new Error(`Shader playback validation: ${error.message}`)
-  if (renderer.getFailureReason() !== null) throw new Error('Shader renderer became unavailable')
-}
-
 /** A shader playing on its own WebGPU canvas, shown wherever its image is painted. */
 interface Player {
   preset: string
+  source: PlaybackSource
+  controller: AbortController
+  close: () => void
   nodeIds: Set<string>
   canvas: HTMLCanvasElement
   renderer: PlayerRenderer | null
@@ -73,34 +49,6 @@ interface Player {
   drawnAt: number
   /** How far its animation has run, in seconds, so a player that replaces it goes on from there. */
   elapsed: number
-}
-
-interface PageShader {
-  preset: ShaderPreset
-  nodeIds: Set<string>
-  /** Where the layers that paint it are, on the page. */
-  bounds: Rect[]
-}
-
-/** Each image a shader paint on `pageId` shows, with its preset and the layers painting it. */
-function shadersOnPage(editor: Pick<Editor, 'graph'>, pageId: string) {
-  const found = new Map<string, PageShader>()
-  for (const node of editor.graph.getAllNodes()) {
-    if (readShaderPaints(node).length === 0 || !editor.graph.isDescendant(node.id, pageId)) continue
-    for (const paint of [...node.fills, ...node.strokes]) {
-      const shader = shaderOfPaint(node, paint)
-      if (!shader || shader.input || !paint.visible) continue
-      const entry = found.get(shader.image) ?? {
-        preset: shader.preset,
-        nodeIds: new Set<string>(),
-        bounds: []
-      }
-      entry.nodeIds.add(node.id)
-      entry.bounds.push(editor.graph.getAbsoluteBounds(node.id))
-      found.set(shader.image, entry)
-    }
-  }
-  return found
 }
 
 /**
@@ -118,6 +66,7 @@ export function useShaderPlayback(options: {
     | 'onEditorEvent'
     | 'reportShaderPlaybackFailure'
     | 'reportShaderPlaybackReady'
+    | 'captureShaderContent'
   >
   getRenderer: () => Pick<SkiaRenderer, 'setLiveImage'> | null
   /** The view this canvas draws: its pan, zoom, page, and whether it previews. */
@@ -125,6 +74,7 @@ export function useShaderPlayback(options: {
   getViewport: () => { width: number; height: number }
   markDirty: () => void
   createRenderer?: (preset: ShaderPreset) => Promise<PlayerRenderer>
+  prepareContent?: ContentPresetFactory
 }) {
   const { editor, getRenderer, getView, getViewport, markDirty } = options
   const createRenderer =
@@ -135,6 +85,8 @@ export function useShaderPlayback(options: {
     })
   const frames = shaderFrames(editor)
   const players = new Map<string, Player>()
+  const initializers = initializationQueue()
+  let syncedVersion = -1
   /** Players starting at a new size beside the ones they replace, by image. */
   const replacing = new Map<string, Player>()
   /**
@@ -143,7 +95,7 @@ export function useShaderPlayback(options: {
    * preset changes or the view moves well away from it.
    */
   const failedSizes = new Map<string, { preset: string; size: { width: number; height: number } }>()
-  /** Shaders that failed to start, by the preset that failed, which are not tried again. */
+  /** Failed preset/content keys wait for a source edit or explicit retry. */
   const failed = new Map<string, string>()
   /** Renderers to let go of once the frame being drawn is done with them. */
   const retired: Player[] = []
@@ -156,14 +108,13 @@ export function useShaderPlayback(options: {
   let copyFrames = false
 
   function fail(hash: string, player: Player) {
-    failed.set(hash, player.preset)
+    failed.set(hash, player.source.key)
     editor.reportShaderPlaybackFailure(hash, player.preset)
   }
 
   function release() {
     for (const player of retired.splice(0)) {
-      player.renderer?.setOnUnavailable(null)
-      player.renderer?.dispose()
+      player.close()
       player.copied?.close()
     }
   }
@@ -173,11 +124,14 @@ export function useShaderPlayback(options: {
     const replacement = replacing.get(hash)
     if (replacement) {
       replacement.disposed = true
+      replacement.controller.abort()
+      retired.push(replacement)
       replacing.delete(hash)
     }
     const player = players.get(hash)
     if (!player) return
     player.disposed = true
+    player.controller.abort()
     players.delete(hash)
     getRenderer()?.setLiveImage(hash, null, player.nodeIds)
     frames.publish(hash, null)
@@ -187,10 +141,13 @@ export function useShaderPlayback(options: {
   }
 
   /** How many pixels a shader painted over `bounds` covers on screen, at most. */
-  function screenSize(bounds: Rect[]): { width: number; height: number } {
+  function screenSize(
+    bounds: Rect[],
+    input?: PlaybackSource['input']
+  ): { width: number; height: number } {
     const scale = getView().zoom * (window.devicePixelRatio || 1)
-    const width = Math.max(...bounds.map((rect) => rect.width)) * scale
-    const height = Math.max(...bounds.map((rect) => rect.height)) * scale
+    const width = (input?.width ?? Math.max(...bounds.map((rect) => rect.width))) * scale
+    const height = (input?.height ?? Math.max(...bounds.map((rect) => rect.height))) * scale
     const fit = Math.min(1, MAX_PLAY_EDGE / Math.max(width, height, 1))
     return {
       width: Math.max(1, Math.round(width * fit)),
@@ -218,7 +175,7 @@ export function useShaderPlayback(options: {
    */
   async function start(
     hash: string,
-    preset: ShaderPreset,
+    source: PlaybackSource,
     size: { width: number; height: number },
     replaces?: Player
   ) {
@@ -228,8 +185,13 @@ export function useShaderPlayback(options: {
     canvas.width = Math.max(1, Math.round(size.width / ratio))
     canvas.height = Math.max(1, Math.round(size.height / ratio))
     const player: Player = {
-      preset: shaderPresetKey(preset),
-      nodeIds: new Set(),
+      preset: shaderPresetKey(source.preset),
+      source,
+      controller: new AbortController(),
+      close() {
+        /* Resources are installed when initialization starts. */
+      },
+      nodeIds: source.nodeIds,
       canvas,
       renderer: null,
       visible: true,
@@ -240,63 +202,65 @@ export function useShaderPlayback(options: {
     }
     if (replaces) replacing.set(hash, player)
     else players.set(hash, player)
-    // Read through a call: the player may be stopped while the library loads.
-    const stopped = () => player.disposed
-    let renderer: Player['renderer'] = null
-    let timeout: ReturnType<typeof setTimeout> | undefined
+    const current = () =>
+      !player.disposed &&
+      graph === editor.graph &&
+      getView().play !== null &&
+      isCurrentInput(editor.graph, hash, source)
+    const unavailable = () => {
+      if (players.get(hash) === player) {
+        stop(hash)
+        if (isCurrentInput(editor.graph, hash, source)) fail(hash, player)
+      } else if (replacing.get(hash) === player) {
+        replacing.delete(hash)
+        player.disposed = true
+        player.controller.abort()
+        failedSizes.set(hash, { preset: source.key, size })
+        retired.push(player)
+        if (!stepping) release()
+      }
+    }
+    const prepare = () => {
+      const resources = playerResources({
+        source,
+        image: hash,
+        canvas,
+        signal: player.controller.signal,
+        capture: editor.captureShaderContent,
+        create: createRenderer,
+        texture: options.prepareContent,
+        unavailable
+      })
+      player.close = resources.close
+      return resources.ready
+    }
+    const timeout = setTimeout(() => player.controller.abort(), 10_000)
     try {
-      if (stopped()) return
-      renderer = await createRenderer(preset)
-      if (stopped()) {
-        renderer.dispose()
+      player.renderer = await (source.input
+        ? initializers.run(prepare, player.controller.signal)
+        : untilAborted(prepare(), player.controller.signal))
+      if (!current()) {
+        if (players.get(hash) === player) stop(hash)
+        player.close()
         return
       }
-      renderer.setOnUnavailable(() => {
-        if (players.get(hash) === player) {
-          stop(hash)
-          fail(hash, player)
-        } else if (replacing.get(hash) === player) {
-          replacing.delete(hash)
-          player.disposed = true
-          failedSizes.set(hash, { preset: player.preset, size })
-        }
-      })
-      const initializing = preparePlayer(renderer, canvas, stopped).then(() => {
-        if (stopped()) renderer?.dispose()
-        return undefined
-      })
-      await Promise.race([
-        initializing,
-        new Promise<never>((_resolve, reject) => {
-          timeout = setTimeout(() => reject(new Error('Shader initialization timed out')), 10_000)
-        })
-      ])
-      if (renderer.getFailureReason() !== null) throw new Error('Shader renderer is unavailable')
     } catch (error) {
-      // A shader that cannot play keeps its still frame until its preset changes. A newer
-      // player that replaced this one while it started is left alone.
-      player.disposed = true
-      console.warn('Could not play a shader', error)
-      renderer?.setOnUnavailable(null)
-      renderer?.dispose()
-      // A replacement that fails leaves the player it would have replaced playing.
+      const failedCurrent = current()
+      if (failedCurrent) console.warn('Could not play a shader', error)
       if (replacing.get(hash) === player) {
         replacing.delete(hash)
-        failedSizes.set(hash, { preset: player.preset, size })
+        if (failedCurrent) failedSizes.set(hash, { preset: source.key, size })
       } else if (players.get(hash) === player) {
         stop(hash)
-        fail(hash, player)
+        if (failedCurrent) fail(hash, player)
       }
+      player.disposed = true
+      player.controller.abort()
+      player.close()
       return
     } finally {
       clearTimeout(timeout)
     }
-    if (stopped()) {
-      renderer.setOnUnavailable(null)
-      renderer.dispose()
-      return
-    }
-    player.renderer = renderer
     if (replacing.get(hash) !== player) return
     replacing.delete(hash)
     const previous = players.get(hash)
@@ -314,11 +278,11 @@ export function useShaderPlayback(options: {
     players.set(hash, player)
     // Its frame replaces the old one's at the next draw, so the canvas never shows the still.
     previous.disposed = true
+    previous.controller.abort()
     retired.push(previous)
     if (!stepping) release()
   }
 
-  /** Whether a player drawing at `canvas`'s size should be redrawn at `size` instead. */
   /** Whether `size` is far enough from `from`, in pixels, to draw at again. */
   function differs(from: number, size: { width: number; height: number }) {
     const factor = size.width / Math.max(1, from)
@@ -338,39 +302,53 @@ export function useShaderPlayback(options: {
     return false
   }
 
+  function syncPlayer(hash: string, shader: PlaybackSource) {
+    if (failed.get(hash) !== shader.key) failed.delete(hash)
+    const visible = onScreen(shader.bounds)
+    const size = screenSize(shader.bounds, shader.input)
+    const existing = players.get(hash)
+    if (
+      existing &&
+      visible &&
+      !replacing.has(hash) &&
+      resized(existing.canvas, size) &&
+      !failedNear(hash, shader.key, size)
+    ) {
+      void start(hash, shader, size, existing)
+    }
+    if (shader.input && !visible) {
+      if (existing) stop(hash)
+      return
+    }
+    const contentCount = [...players.values()].filter((player) => player.source.input).length
+    if (
+      !players.has(hash) &&
+      visible &&
+      !failed.has(hash) &&
+      (!shader.input || contentCount < MAX_CONTENT_PLAYERS)
+    )
+      void start(hash, shader, size)
+    const player = players.get(hash)
+    if (!player) return
+    player.nodeIds = shader.nodeIds
+    player.visible = visible
+  }
+
   function sync() {
     if (editor.graph !== graph) {
       for (const hash of Array.from(players.keys())) stop(hash)
       failed.clear()
       graph = editor.graph
     }
+    syncedVersion = editor.state.sceneVersion
     const view = getView()
     const playing = view.play !== null && canDrawShaders()
     const wanted = playing ? shadersOnPage(editor, view.currentPageId) : new Map()
     for (const [hash, player] of players) {
       const shader = wanted.get(hash)
-      if (!shader || shaderPresetKey(shader.preset) !== player.preset) stop(hash)
+      if (!shader || shader.key !== player.source.key) stop(hash)
     }
-    for (const [hash, shader] of wanted) {
-      if (failed.get(hash) !== shaderPresetKey(shader.preset)) failed.delete(hash)
-      const visible = onScreen(shader.bounds)
-      const size = screenSize(shader.bounds)
-      const existing = players.get(hash)
-      if (
-        existing &&
-        visible &&
-        !replacing.has(hash) &&
-        resized(existing.canvas, size) &&
-        !failedNear(hash, existing.preset, size)
-      ) {
-        void start(hash, shader.preset, size, existing)
-      }
-      if (!players.has(hash) && visible && !failed.has(hash)) void start(hash, shader.preset, size)
-      const player = players.get(hash)
-      if (!player) continue
-      player.nodeIds = shader.nodeIds
-      player.visible = visible
-    }
+    for (const [hash, shader] of wanted) syncPlayer(hash, shader)
     if (players.size > 0) resume()
     else {
       pause()
@@ -393,14 +371,22 @@ export function useShaderPlayback(options: {
 
   async function drawPlayer(hash: string, player: Player, now: number): Promise<boolean> {
     // A player's first frame jumps to where the one it replaced had got to.
+    const version = editor.state.sceneVersion
     const delta = player.drawnAt === 0 ? player.elapsed : (now - player.drawnAt) / 1000
     if (player.drawnAt !== 0) player.elapsed += delta
     player.drawnAt = now
+    const renderer = player.renderer
+    if (!renderer) return false
     try {
-      await player.renderer?.renderFrame({ deltaSeconds: delta, waitForGpu: false })
-      if (player.renderer?.getFailureReason() !== null)
+      await untilAborted(
+        renderer.renderFrame({ deltaSeconds: delta, waitForGpu: false }),
+        player.controller.signal
+      )
+      if (renderer.getFailureReason() !== null)
         throw new Error('Shader renderer became unavailable')
     } catch (error) {
+      // A stopped driver may finish late. It must not hold retirement or the next document open.
+      if (player.controller.signal.aborted || player.disposed) return false
       console.warn('Could not draw a playing shader', error)
       if (players.get(hash) === player) {
         stop(hash)
@@ -408,7 +394,12 @@ export function useShaderPlayback(options: {
       }
       return false
     }
-    const ready = !player.disposed && graph === editor.graph && getView().play !== null
+    const ready =
+      !player.disposed &&
+      graph === editor.graph &&
+      getView().play !== null &&
+      version === editor.state.sceneVersion &&
+      version === syncedVersion
     if (ready) editor.reportShaderPlaybackReady(hash, player.preset)
     return ready
   }
@@ -420,6 +411,8 @@ export function useShaderPlayback(options: {
    * readback, so frames then come at most every `COPY_FRAME_MS`.
    */
   async function step(now: number) {
+    if (syncedVersion !== editor.state.sceneVersion || graph !== editor.graph) sync()
+    const version = editor.state.sceneVersion
     const renderer = getRenderer()
     if (!renderer) return
     const copies: Promise<{ hash: string; player: Player; frame: ImageBitmap } | null>[] = []
@@ -455,7 +448,12 @@ export function useShaderPlayback(options: {
     for (const copy of await Promise.all(copies)) {
       if (!copy) continue
       const { hash, player, frame } = copy
-      if (player.disposed) {
+      if (
+        player.disposed ||
+        graph !== editor.graph ||
+        getView().play === null ||
+        version !== editor.state.sceneVersion
+      ) {
         frame.close()
         continue
       }

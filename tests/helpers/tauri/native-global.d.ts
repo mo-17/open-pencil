@@ -22,7 +22,13 @@ type NativeTestNode = {
 
 type NativeTestStore = Pick<
   Editor,
-  'setContentShader' | 'setShaderPaint' | 'setShaderRasterizer' | 'settleShaderFrames'
+  | 'setContentShader'
+  | 'setShaderPaint'
+  | 'setShaderRasterizer'
+  | 'settleShaderFrames'
+  | 'setBehaviour'
+  | 'startPlay'
+  | 'stopPlay'
 > & {
   renderExportImage: (
     nodeIds: string[],
@@ -42,6 +48,7 @@ type NativeTestStore = Pick<
   graph: {
     images: Map<string, Uint8Array>
     createNode: (type: string, parentId: string, changes: Record<string, unknown>) => NativeTestNode
+    createInstance: Editor['graph']['createInstance']
     deleteNode: (id: string) => void
     getChildren: (id: string) => NativeTestNode[]
     getNode: (id: string) => NativeTestNode | undefined
