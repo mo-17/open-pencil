@@ -2,8 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 
 import type { ImageFilter, Path } from 'canvaskit-wasm'
 
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
-import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
+import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { applyClippedBlur } from '#core/canvas/effects'
 import { renderNode } from '#core/canvas/scene'
@@ -296,11 +295,8 @@ describe('Renderer handles all effect types (Behavioral)', () => {
   test('handles LAYER_BLUR in renderNode', () => {
     const r = createMockRenderer()
     const canvas = createMockCanvas()
-    const node: Partial<SceneNode> = {
-      id: 'n1',
-      visible: true,
-      x: 0,
-      y: 0,
+    const graph = new SceneGraph()
+    const node = graph.createNode('RECTANGLE', graph.getPages()[0].id, {
       width: 100,
       height: 100,
       rotation: 0,
@@ -314,14 +310,9 @@ describe('Renderer handles all effect types (Behavioral)', () => {
           offset: { x: 0, y: 0 },
           spread: 0
         }
-      ],
-      childIds: [],
-      source: createDefaultSourceMetadata()
-    }
-    const graph: Partial<SceneGraph> = {
-      getNode: mock(() => node as SceneNode)
-    }
-    renderNode(r, asCanvas(canvas), graph as SceneGraph, 'n1', {})
+      ]
+    })
+    renderNode(r, asCanvas(canvas), graph, node.id, {})
     // Figma draws a blur radius as a Gaussian of 0.43 × radius.
     expect(r.getCachedBlur).toHaveBeenCalledWith(expect.closeTo(4.3))
     expect(canvas.saveLayer).toHaveBeenCalledWith(r.effectLayerPaint, expect.any(Float32Array))
@@ -331,11 +322,8 @@ describe('Renderer handles all effect types (Behavioral)', () => {
   test('handles FOREGROUND_BLUR in renderNode', () => {
     const r = createMockRenderer()
     const canvas = createMockCanvas()
-    const node: Partial<SceneNode> = {
-      id: 'n1',
-      visible: true,
-      x: 0,
-      y: 0,
+    const graph = new SceneGraph()
+    const node = graph.createNode('RECTANGLE', graph.getPages()[0].id, {
       width: 100,
       height: 100,
       rotation: 0,
@@ -349,14 +337,9 @@ describe('Renderer handles all effect types (Behavioral)', () => {
           offset: { x: 0, y: 0 },
           spread: 0
         }
-      ],
-      childIds: [],
-      source: createDefaultSourceMetadata()
-    }
-    const graph: Partial<SceneGraph> = {
-      getNode: mock(() => node as SceneNode)
-    }
-    renderNode(r, asCanvas(canvas), graph as SceneGraph, 'n1', {})
+      ]
+    })
+    renderNode(r, asCanvas(canvas), graph, node.id, {})
     expect(r.getCachedBlur).toHaveBeenCalledWith(expect.closeTo(8.6))
     expect(canvas.saveLayer).toHaveBeenCalledWith(r.effectLayerPaint, expect.any(Float32Array))
     expect(r.ck.LTRBRect).toHaveBeenCalledWith(-40, -40, 140, 140)
