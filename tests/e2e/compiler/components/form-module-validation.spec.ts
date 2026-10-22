@@ -135,7 +135,10 @@ test('React real Radix select supports keyboard and pointer selection with mount
       if (!popupId) throw new Error('The accessible Radix listbox requires an id')
       await expect(openTrigger).toHaveAttribute('aria-controls', popupId)
       await expect(list.locator('[data-radix-collection-item]')).toHaveCount(2)
+      await expect(list.getByRole('option', { name: 'One', exact: true })).toBeFocused()
       await page.keyboard.press('End')
+      // Radix defers keyboard focus changes until after the key event.
+      await expect(list.getByRole('option', { name: 'Two', exact: true })).toBeFocused()
       await page.keyboard.press('Enter')
       await expect(select).toHaveText('Two')
       await expect(select).toBeFocused()
