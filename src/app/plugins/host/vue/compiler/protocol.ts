@@ -20,11 +20,12 @@ import {
   assertVueCompilerOutputWithinLimits,
   uint8ArrayBackingBuffer
 } from './output'
+import { VUE_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION } from './version'
 
 export { VUE_SOURCE_COMPILER_WORKER_LIMITS } from './limits'
 export { assertVueCompilerOutputWithinLimits } from './output'
 
-export const VUE_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION = 1
+export { VUE_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION } from './version'
 
 const MAP_SIZE_DESCRIPTOR = Object.getOwnPropertyDescriptor(Map.prototype, 'size')
 const SET_SIZE_DESCRIPTOR = Object.getOwnPropertyDescriptor(Set.prototype, 'size')

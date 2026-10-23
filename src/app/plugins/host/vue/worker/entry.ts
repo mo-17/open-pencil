@@ -9,6 +9,12 @@ interface VueSourceWorkerEntryOptions {
   errorResponse(requestId: string, error: string): unknown
 }
 
+export interface VueSourceWorkerEntryScope {
+  addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void
+  postMessage(value: unknown): void
+  close(): void
+}
+
 function candidateRequestId(value: unknown): string | null {
   if (value === null || typeof value !== 'object') return null
   const descriptor = Object.getOwnPropertyDescriptor(value, 'requestId')
@@ -25,9 +31,12 @@ export function vueSourceWorkerErrorResponse<TVersion extends number>(
   return { version, type: 'error' as const, requestId, error }
 }
 
-export function installVueSourceWorkerEntry(options: VueSourceWorkerEntryOptions): void {
+export function installVueSourceWorkerEntry(
+  options: VueSourceWorkerEntryOptions,
+  scope: VueSourceWorkerEntryScope = globalThis
+): void {
   let consumed = false
-  globalThis.addEventListener('message', (event: MessageEvent<unknown>) => {
+  scope.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (consumed) return
     consumed = true
     const fallbackRequestId = candidateRequestId(event.data)
@@ -37,10 +46,10 @@ export function installVueSourceWorkerEntry(options: VueSourceWorkerEntryOptions
       } catch (cause) {
         if (fallbackRequestId) {
           const message = cause instanceof Error ? cause.message : options.defaultError
-          globalThis.postMessage(options.errorResponse(fallbackRequestId, message.slice(0, 2_048)))
+          scope.postMessage(options.errorResponse(fallbackRequestId, message.slice(0, 2_048)))
         }
       } finally {
-        globalThis.close()
+        scope.close()
       }
     })()
   })

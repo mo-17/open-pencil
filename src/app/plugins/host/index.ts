@@ -99,6 +99,7 @@ import {
   WECHAT_MINIPROGRAM_EXPORTER,
   WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from './ids'
+import { createMarketplacePluginManifests, MARKETPLACE_HOST_PLUGIN_ALIASES } from './marketplace'
 import {
   exportCurrentDocumentAsMpxSource,
   exportCurrentDocumentAsTaroSource,
@@ -173,6 +174,8 @@ interface TrustedExporterAdapter {
   schemaVersion: 1 | 2
   fileExtension?: string
   permissions?: readonly PluginHostPermissionV2[]
+  parameters?: DeclarativeExporterContributionV2['parameters']
+  result?: DeclarativeExporterContributionV2['result']
   outputs?: readonly PluginExporterOutputV2[]
   mcpExposure: 'enabled' | 'disabled'
   supportsCancellation: boolean
@@ -542,9 +545,84 @@ const TRUSTED_EXPORTER_ADAPTERS = new Map<string, TrustedExporterAdapter>([
   ]
 ])
 
+function registerMarketplaceHostAdapters(): void {
+  const manifests = createMarketplacePluginManifests()
+  for (const alias of MARKETPLACE_HOST_PLUGIN_ALIASES) {
+    const manifest = manifests.find((entry) => entry.plugin.id === alias.newPluginId)
+    if (!manifest) throw new Error(`Marketplace host manifest is unavailable: ${alias.newPluginId}`)
+    if (alias.kind === 'command') {
+      const original = TRUSTED_COMMAND_ADAPTERS.get(alias.originalAdapterId)
+      if (
+        !original ||
+        original.pluginId !== alias.originalPluginId ||
+        manifest.schemaVersion !== 2
+      ) {
+        throw new Error(`Marketplace command source is unavailable: ${alias.originalAdapterId}`)
+      }
+      const contribution = manifest.contributions.commands?.find(
+        (entry) => entry.adapterId === alias.newAdapterId
+      )
+      if (!contribution || contribution.commandId !== original.commandId) {
+        throw new Error(`Marketplace command identity is unavailable: ${alias.newAdapterId}`)
+      }
+      TRUSTED_COMMAND_ADAPTERS.set(alias.newAdapterId, {
+        ...original,
+        pluginId: alias.newPluginId,
+        schemaVersion: manifest.schemaVersion,
+        permissions: contribution.permissions,
+        parameters: contribution.parameters,
+        result: contribution.result
+      })
+      continue
+    }
+    const original = TRUSTED_EXPORTER_ADAPTERS.get(alias.originalAdapterId)
+    if (
+      !original ||
+      original.pluginId !== alias.originalPluginId ||
+      manifest.schemaVersion !== original.schemaVersion
+    ) {
+      throw new Error(`Marketplace exporter source is unavailable: ${alias.originalAdapterId}`)
+    }
+    if (manifest.schemaVersion === 2) {
+      const contribution = manifest.contributions.exporters?.find(
+        (entry) => entry.adapterId === alias.newAdapterId
+      )
+      if (!contribution || contribution.exporterId !== original.exporterId) {
+        throw new Error(`Marketplace exporter identity is unavailable: ${alias.newAdapterId}`)
+      }
+      TRUSTED_EXPORTER_ADAPTERS.set(alias.newAdapterId, {
+        ...original,
+        pluginId: alias.newPluginId,
+        permissions: contribution.permissions,
+        parameters: contribution.parameters,
+        result: contribution.result,
+        outputs: contribution.outputs
+      })
+    } else {
+      const contribution = manifest.contributions.exporters?.find(
+        (entry) => entry.adapterId === alias.newAdapterId
+      )
+      if (!contribution || contribution.exporterId !== original.exporterId) {
+        throw new Error(`Marketplace exporter identity is unavailable: ${alias.newAdapterId}`)
+      }
+      TRUSTED_EXPORTER_ADAPTERS.set(alias.newAdapterId, {
+        ...original,
+        pluginId: alias.newPluginId,
+        fileExtension: contribution.fileExtension
+      })
+    }
+  }
+}
+
+registerMarketplaceHostAdapters()
+
 function resolveTrustedPluginCommandExecutor(
   adapterId: string
 ): AppPluginCommandExecutor | undefined {
+  const alias = MARKETPLACE_HOST_PLUGIN_ALIASES.find(
+    (entry) => entry.kind === 'command' && entry.newAdapterId === adapterId
+  )
+  if (alias) return resolveTrustedPluginCommandExecutor(alias.originalAdapterId)
   if (adapterId === ACCESSIBILITY_AUDIT_COMMAND.adapterId) {
     return (editor) => {
       const data = runStaticAccessibilityAudit(editor)
@@ -797,6 +875,18 @@ export function inspectPluginExporterCompatibility(
       return incompatible(
         'outputs-mismatch',
         `Adapter ${contribution.adapterId} requires its exact trusted output set`
+      )
+    }
+    if (adapter.parameters && !sameJSONAuthority(contributionV2.parameters, adapter.parameters)) {
+      return incompatible(
+        'parameters-mismatch',
+        `Adapter ${contribution.adapterId} requires its exact trusted parameter contract`
+      )
+    }
+    if (adapter.result && !sameJSONAuthority(contributionV2.result, adapter.result)) {
+      return incompatible(
+        'result-contract-mismatch',
+        `Adapter ${contribution.adapterId} requires its exact trusted result contract`
       )
     }
   }

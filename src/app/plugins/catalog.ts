@@ -148,6 +148,7 @@ import {
   SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
 } from './host/backend-provider'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from './host/deployment/contract'
+import { PLUGIN_EXPORT_RESULT_CONTRACT } from './host/export-result'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
@@ -713,7 +714,7 @@ function designTokensExporterManifest(): PluginManifestPayloadV2 {
           description:
             'Export published variables, modes, types, descriptions, and aliases as deterministic JSON.',
           parameters: EMPTY_DATA_CONTRACT,
-          result: EMPTY_DATA_CONTRACT
+          result: PLUGIN_EXPORT_RESULT_CONTRACT
         }
       ]
     }
@@ -735,7 +736,7 @@ function figmaProjectionExporterManifest(): PluginManifestPayloadV2 {
           description:
             'Create a derived .fig projection with editable native layers; OpenPencil runtime behavior is not preserved.',
           parameters: EMPTY_DATA_CONTRACT,
-          result: EMPTY_DATA_CONTRACT
+          result: PLUGIN_EXPORT_RESULT_CONTRACT
         }
       ]
     }

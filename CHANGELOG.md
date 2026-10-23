@@ -14,6 +14,8 @@
 
 ### Added
 
+- Install eight marketplace editions of built-in audits and exporters independently while keeping their existing bundled editions available.
+
 - Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Save up to 24 personal parameter presets locally, choose them from reopened inspectors and edit compatible selections together, with the first layer's parameters and status identified. Preview own-content Shader animations on WebGPU hosts with live, paused and four-layer-limit feedback while retaining editable sources and saved-frame fallbacks in HTML, React/Vue components and Lowcode exports. Preserve imported image bytes when saving updated frames so edited FIG files reopen correctly.
 - Inspect export targets for missing image resources, required Shader frames and static fallbacks, review source-export compiler diagnostics, and locate affected layers from a bounded preflight report.
 - Trace embedded React/Vue preview events, actions, expressions, requests and state changes on demand, retaining the latest 200 metadata entries without field values, expression contents or request URLs and bodies.
