@@ -1118,6 +1118,42 @@ describe('generated web preview bridge in a real parent/iframe channel', () => {
         await loaded?.server.close()
       }
     }, 30_000)
+    test(`${target} routes focused text edits through the authenticated preview channel`, async () => {
+      if (!browser) throw new Error('Browser did not start')
+      const page = await browser.newPage()
+      let loaded: LoadedBridge | null = null
+      try {
+        loaded = await loadBridge(page, target)
+        const input = page.frameLocator('#preview').getByPlaceholder('Shared preview value')
+        await input.focus()
+        await input.evaluate((field: HTMLInputElement) => field.setSelectionRange(2, 2))
+        await postToPreview(
+          loaded,
+          { type: 'textEdit', command: 'selectAll' },
+          { channel: 'wrong_channel_0123456789' }
+        )
+        await postToPreview(loaded, { type: 'textEdit', command: 'selectAll', extra: true })
+        // A subsequent valid message acknowledges that both rejected edits have been processed.
+        await postToPreview(loaded, { type: 'theme', theme: 'dark' })
+        await expectTheme(page, 'dark')
+        expect(await input.evaluate((field: HTMLInputElement) => field.selectionStart)).toBe(2)
+        await postToPreview(loaded, { type: 'textEdit', command: 'selectAll' })
+        await playwrightExpect
+          .poll(() =>
+            input.evaluate((field: HTMLInputElement) => [field.selectionStart, field.selectionEnd])
+          )
+          .toEqual([0, 7])
+        await input.pressSequentially('edited')
+        await playwrightExpect(input).toHaveValue('edited')
+        await postToPreview(loaded, { type: 'textEdit', command: 'undo' })
+        await playwrightExpect(input).toHaveValue('initial')
+        await postToPreview(loaded, { type: 'textEdit', command: 'redo' })
+        await playwrightExpect(input).toHaveValue('edited')
+      } finally {
+        await page.close()
+        await loaded?.server.close()
+      }
+    }, 30_000)
     test(`${target} closes select, navigate, docState, and Theme message loops`, async () => {
       if (!browser) throw new Error('Browser did not start')
       const page = await browser.newPage()

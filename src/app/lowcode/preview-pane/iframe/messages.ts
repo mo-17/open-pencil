@@ -188,6 +188,7 @@ export type PreviewAutomationPayload =
     }
 
 export type PreviewEditorPayload =
+  | { type: 'textEdit'; command: 'selectAll' | 'undo' | 'redo' }
   | { type: 'select'; id: string | null }
   | { type: 'navigate'; route: string; replace?: boolean }
   | { type: 'theme'; theme: 'light' | 'dark' }
@@ -995,6 +996,13 @@ export function createPreviewEditorMessage(
   const data = parsePreviewRecord(payload)
   if (!data) return null
   if (data.type === 'select') return createEditorSelectMessage(data, channel)
+  if (
+    data.type === 'textEdit' &&
+    hasExactKeys(data, ['type', 'command']) &&
+    (data.command === 'selectAll' || data.command === 'undo' || data.command === 'redo')
+  ) {
+    return { source: EDITOR_SOURCE, channel, type: 'textEdit', command: data.command }
+  }
   if (data.type === 'navigate') return createEditorNavigateMessage(data, channel)
   if (data.type === 'theme') return createEditorThemeMessage(data, channel)
   if (data.type === 'motionDebug') return createEditorMotionMessage(data, channel)

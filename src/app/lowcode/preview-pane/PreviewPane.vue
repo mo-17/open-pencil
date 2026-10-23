@@ -39,6 +39,7 @@ import {
 import { compilerPreviewPopoutControls } from '@/app/settings/compiler-preview-popout-controls'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { previewToolbarLayout } from '@/app/settings/preview-toolbar-layout'
+import { FOCUSED_TEXT_EDIT_EVENT } from '@/app/shell/commands/focused'
 import { openExternalLink, toast } from '@/app/shell/ui'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
 import Tip from '@/components/ui/overlay/Tip.vue'
@@ -669,6 +670,14 @@ function postIframe(payload: PreviewEditorPayload): void {
 function postTheme(): void {
   postIframe({ type: 'theme', theme: previewTheme.value })
 }
+
+useEventListener(iframeEl, FOCUSED_TEXT_EDIT_EVENT, (event: Event) => {
+  if (document.activeElement !== iframeEl.value || !(event instanceof CustomEvent)) return
+  const command: unknown = event.detail
+  if (command === 'selectAll' || command === 'undo' || command === 'redo') {
+    postIframe({ type: 'textEdit', command })
+  }
+})
 
 function postPreviewNavigate(route: string): void {
   const application = resolveLowcodeApplicationPages(store.graph).mode === 'application'

@@ -97,6 +97,12 @@ interface InboundSelect {
   type: 'select'
   id: string | null
 }
+interface InboundTextEdit {
+  source: typeof INBOUND_SOURCE
+  channel: string
+  type: 'textEdit'
+  command: 'selectAll' | 'undo' | 'redo'
+}
 interface InboundNavigate {
   source: typeof INBOUND_SOURCE
   channel: string
@@ -176,6 +182,7 @@ type InboundAutomation =
   | InboundAutomationWait
   | InboundAutomationRead
 type Inbound =
+  | InboundTextEdit
   | InboundSelect
   | InboundNavigate
   | InboundDocState
@@ -514,6 +521,11 @@ function parseInbound(value: unknown, channel: string): Inbound | null {
     return session?.source === INBOUND_SOURCE && session.channel === channel ? session : null
   }
   if (!isRecord(value) || value.source !== INBOUND_SOURCE || value.channel !== channel) return null
+  if (value.type === 'textEdit' && hasExactKeys(value, ['source', 'channel', 'type', 'command'])) {
+    return value.command === 'selectAll' || value.command === 'undo' || value.command === 'redo'
+      ? (value as unknown as InboundTextEdit)
+      : null
+  }
   if (value.type === 'select' && hasExactKeys(value, ['source', 'channel', 'type', 'id'])) {
     return value.id === null ||
       (typeof value.id === 'string' && value.id.length > 0 && value.id.length <= MAX_NODE_ID_LENGTH)
@@ -1046,6 +1058,15 @@ ${buildPreviewPageSessionTransport()}
   }
 
   function handleInbound(data: Inbound): void {
+    if (data.type === 'textEdit') {
+      let active = document.activeElement
+      while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+      if (document.hasFocus() && (
+        active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      )) document.execCommand(data.command)
+      return
+    }
     if (data.type === 'pageSession') {
       restorePageSession(data.snapshot)
       return

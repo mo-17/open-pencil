@@ -4,6 +4,8 @@ import type { EditorCommandId } from '@open-pencil/vue'
 import type { EditorStore } from '@/app/editor/active-store'
 import { isInputElement } from '@/app/shell/keyboard/focus'
 
+export const FOCUSED_TEXT_EDIT_EVENT = 'openpencil:text-edit'
+
 /**
  * Commands a focused text field carries out itself. As in VS Code's
  * `EditorOrNativeTextInputCommand`, `execCommand` is the one API that reaches a field's own
@@ -15,10 +17,18 @@ const TEXT_FIELD_EDITS: Partial<Record<EditorCommandId, 'selectAll' | 'undo' | '
   'edit.redo': 'redo'
 }
 
-/** A text field in the page has focus; the canvas text editor types through its own textarea. */
+function focusedElement(): Element | null {
+  let active = document.activeElement
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+  return active
+}
+
+/** Preview frames own their focus, including when their origin is isolated from the editor. */
 export function textFieldFocused(): boolean {
-  const active = document.activeElement
-  return isInputElement(active) && !isCanvasTextInput(active)
+  const active = focusedElement()
+  return (
+    active instanceof HTMLIFrameElement || (isInputElement(active) && !isCanvasTextInput(active))
+  )
 }
 
 /**
@@ -34,15 +44,19 @@ export function runFocusedCommand(
   runCommand: (id: EditorCommandId) => void,
   id: EditorCommandId
 ): void {
-  if (id === 'selection.selectAll' && isCanvasTextInput(document.activeElement)) {
+  const active = focusedElement()
+  if (id === 'selection.selectAll' && isCanvasTextInput(active)) {
     store.textEditor?.selectAll()
     store.requestRender()
     return
   }
   if (textFieldFocused()) {
     const edit = TEXT_FIELD_EDITS[id]
-    if (edit) document.execCommand(edit)
-    else if (id.startsWith('view.')) runCommand(id)
+    if (edit && active instanceof HTMLIFrameElement) {
+      active.dispatchEvent(new CustomEvent(FOCUSED_TEXT_EDIT_EVENT, { detail: edit }))
+    } else if (edit) {
+      document.execCommand(edit)
+    } else if (id.startsWith('view.')) runCommand(id)
     return
   }
   runCommand(id)

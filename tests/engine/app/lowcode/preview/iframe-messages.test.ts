@@ -12,6 +12,24 @@ import {
 const CHANNEL = 'preview_channel_0123456789'
 
 describe('preview iframe message protocol', () => {
+  test('bounds focused text edits to the three native menu operations', () => {
+    for (const command of ['selectAll', 'undo', 'redo'] as const) {
+      expect(createPreviewEditorMessage(CHANNEL, { type: 'textEdit', command })).toEqual({
+        source: 'op-lowcode-editor',
+        channel: CHANNEL,
+        type: 'textEdit',
+        command
+      })
+    }
+    expect(createPreviewEditorMessage(CHANNEL, { type: 'textEdit', command: 'delete' })).toBeNull()
+    expect(
+      createPreviewEditorMessage(CHANNEL, {
+        type: 'textEdit',
+        command: 'selectAll',
+        value: 'injected'
+      })
+    ).toBeNull()
+  })
   test('serializes an exact, origin-bound frame boot context', () => {
     expect(JSON.parse(serializePreviewFrameName(CHANNEL, 'https://editor.example'))).toEqual({
       protocol: PREVIEW_FRAME_PROTOCOL,

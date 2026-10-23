@@ -1,5 +1,5 @@
 /** Serializable setup shared by browser and the native test WebView; no module closures. */
-export async function createShaderPlaybackIsland() {
+export async function createShaderPlaybackIsland(withLowcodeControls = false) {
   const store = window.openPencil?.getStore?.()
   if (!store) throw new Error('Shader island editor missing')
   for (const child of store.graph.getChildren(store.state.currentPageId))
@@ -70,6 +70,55 @@ export async function createShaderPlaybackIsland() {
     parts: {}
   })
   graph.createInstance(field.id, root.id, { x: 180, y: 20 })
+  if (withLowcodeControls) {
+    graph.updateNode(root.id, { height: 240 })
+    graph.updateNode(store.state.currentPageId, {
+      state: [
+        { id: 'qa-value', name: 'qaValue', type: 'string', defaultValue: 'initial' },
+        { id: 'qa-choice', name: 'qaChoice', type: 'string', defaultValue: 'a' }
+      ]
+    })
+    graph.createNode('BUTTON', root.id, {
+      x: 180,
+      y: 70,
+      width: 160,
+      height: 32,
+      interactiveProps: { text: 'Set value' },
+      events: {
+        onClick: [
+          { id: 'qa-click', kind: 'setState', targetStateId: 'qa-value', valueExpr: "'clicked'" }
+        ]
+      }
+    })
+    graph.createNode('INPUT', root.id, {
+      x: 180,
+      y: 116,
+      width: 160,
+      height: 32,
+      bindings: { value: { kind: 'ref', stateId: 'qa-value' } }
+    })
+    graph.createNode('SELECT', root.id, {
+      x: 180,
+      y: 162,
+      width: 160,
+      height: 32,
+      interactiveProps: {
+        options: [
+          { label: 'Alpha', value: 'a' },
+          { label: 'Beta', value: 'b' }
+        ]
+      },
+      bindings: { value: { kind: 'ref', stateId: 'qa-choice' } }
+    })
+    graph.createNode('TEXT', root.id, {
+      x: 180,
+      y: 204,
+      width: 160,
+      height: 24,
+      text: 'initial',
+      bindings: { text: { kind: 'ref', stateId: 'qa-value' } }
+    })
+  }
   // Freeze the persisted fallback. Playback must capture independently, without saving live frames.
   store.setShaderRasterizer(null)
   store.select([])
