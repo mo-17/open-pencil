@@ -17,8 +17,10 @@ test('simulated content playback discards an old capture after source edits', as
   })
   try {
     await expect.poll(() => probe.evaluate((p) => p.stats.captures)).toBe(1)
+    expect(await probe.evaluate((p) => p.statuses()[0]?.playback)).toBe('starting')
     await probe.evaluate((p) => p.edit())
     await expect.poll(() => probe.evaluate((p) => p.stats.published)).toBeGreaterThan(0)
+    expect(await probe.evaluate((p) => p.statuses()[0]?.playback)).toBe('playing')
     expect(await probe.evaluate((p) => p.stats.starts)).toBe(1)
     await probe.evaluate((p) => p.release())
     expect(await probe.evaluate((p) => p.saved())).toEqual([42])
@@ -40,6 +42,7 @@ for (const action of ['pause', 'delete', 'switch'] as const) {
       await expect.poll(() => probe.evaluate((p) => p.stats.starts)).toBe(1)
       await probe.evaluate((p, action) => p[action](), action)
       await expect.poll(() => probe.evaluate((p) => p.stats.closedTextures)).toBe(1)
+      expect(await probe.evaluate((p) => p.statuses()[0]?.playback)).toBeUndefined()
       await probe.evaluate((p) => p.release())
       await expect.poll(() => probe.evaluate((p) => p.stats.disposed)).toBe(1)
       expect(await probe.evaluate((p) => p.stats.published)).toBe(0)
@@ -81,10 +84,12 @@ test('simulated content loss retains saved bytes and retries only on request', a
   })
   try {
     await expect.poll(() => probe.evaluate((p) => p.stats.published)).toBeGreaterThan(3)
+    expect(await probe.evaluate((p) => p.stats.statusChanges)).toBe(2)
     expect(await probe.evaluate((p) => p.stats.captures)).toBe(1)
     expect(await probe.evaluate((p) => p.stats.textures)).toBe(1)
     await probe.evaluate((p) => p.lose())
     await expect.poll(() => probe.evaluate((p) => p.stats.disposed)).toBe(1)
+    expect(await probe.evaluate((p) => p.statuses()[0]?.playback)).toBeUndefined()
     expect(await probe.evaluate((p) => p.stats.starts)).toBe(1)
     expect(await probe.evaluate((p) => p.saved())).toEqual([42])
     await probe.evaluate((p) => p.retry())
@@ -137,7 +142,13 @@ test('simulated content edits, undo, redo and unsupported bindings refresh playb
     expect(await probe.evaluate((p) => p.stats.closedTextures)).toBe(4)
     expect(await probe.evaluate((p) => p.saved())).toEqual([42])
     await probe.evaluate((p) => p.undo())
-    await expect.poll(() => probe.evaluate((p) => p.stats.starts)).toBe(5)
+    await expect
+      .poll(() => probe.evaluate((p) => p.observation()))
+      .toMatchObject({
+        starts: 5,
+        supported: true,
+        preview: true
+      })
   } finally {
     await probe.evaluate((p) => p.close())
     await probe.dispose()
@@ -155,12 +166,26 @@ test('simulated content initialization is serial, bounded, and releases offscree
   try {
     await expect.poll(() => probe.evaluate((p) => p.stats.starts)).toBe(1)
     expect(await probe.evaluate((p) => p.stats.captures)).toBe(1)
+    expect(await probe.evaluate((p) => p.statuses().map((s) => s?.playback))).toEqual([
+      'starting',
+      'starting',
+      'starting',
+      'starting',
+      'limited'
+    ])
     await probe.evaluate((p) => p.release())
     await expect.poll(() => probe.evaluate((p) => p.stats.live)).toBe(4)
     expect(await probe.evaluate((p) => p.stats.starts)).toBe(4)
     await probe.evaluate((p) => p.pan(-10000))
     await expect.poll(() => probe.evaluate((p) => p.stats.live)).toBe(0)
+    expect(await probe.evaluate((p) => p.statuses().map((s) => s?.playback))).toEqual(
+      Array.from({ length: 5 }, () => 'offscreen')
+    )
     expect(await probe.evaluate((p) => p.stats.closedTextures)).toBe(4)
+    await probe.evaluate((p) => p.pause())
+    await expect
+      .poll(() => probe.evaluate((p) => p.statuses().every((s) => !s?.playback)))
+      .toBe(true)
   } finally {
     await probe.evaluate((p) => p.close())
     await probe.dispose()

@@ -12,6 +12,8 @@ export interface ShaderContentFrame {
 export interface ShaderFrameStatus {
   phase: 'queued' | 'rendering' | 'ready' | 'saved' | 'missing' | 'unsupported'
   reason?: 'unavailable' | 'failed' | 'timeout' | 'stale'
+  /** Live host feedback; static frame readiness and export behavior remain independent. */
+  playback?: 'starting' | 'playing' | 'offscreen' | 'limited'
   hasSavedFrame: boolean
   canRetry: boolean
 }

@@ -2,7 +2,7 @@ import { useRafFn, watchThrottled } from '@vueuse/core'
 import { onScopeDispose, watch } from 'vue'
 
 import type { SkiaRenderer } from '@open-pencil/core/canvas'
-import type { Editor, EditorState } from '@open-pencil/core/editor'
+import type { Editor, EditorState, ShaderFrameStatus } from '@open-pencil/core/editor'
 import { readShaderPaints, shaderPresetKey, type ShaderPreset } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
@@ -66,6 +66,7 @@ export function useShaderPlayback(options: {
     | 'onEditorEvent'
     | 'reportShaderPlaybackFailure'
     | 'reportShaderPlaybackReady'
+    | 'reportShaderPlaybackState'
     | 'captureShaderContent'
   >
   getRenderer: () => Pick<SkiaRenderer, 'setLiveImage'> | null
@@ -85,6 +86,10 @@ export function useShaderPlayback(options: {
     })
   const frames = shaderFrames(editor)
   const players = new Map<string, Player>()
+  const reported = new Map<
+    string,
+    { source: PlaybackSource; phase: NonNullable<ShaderFrameStatus['playback']>; version: number }
+  >()
   const initializers = initializationQueue()
   let syncedVersion = -1
   /** Players starting at a new size beside the ones they replace, by image. */
@@ -107,6 +112,30 @@ export function useShaderPlayback(options: {
   /** Whether this browser needs each frame copied before the canvas can show it. */
   let copyFrames = false
 
+  function report(
+    hash: string,
+    source: PlaybackSource,
+    phase: NonNullable<ShaderFrameStatus['playback']>
+  ) {
+    const previous = reported.get(hash)
+    const version = editor.state.sceneVersion
+    if (
+      previous?.source.key === source.key &&
+      previous.phase === phase &&
+      previous.version === version
+    )
+      return
+    reported.set(hash, { source, phase, version })
+    editor.reportShaderPlaybackState(hash, shaderPresetKey(source.preset), phase)
+  }
+
+  function clearReport(hash: string) {
+    const previous = reported.get(hash)
+    if (!previous) return
+    reported.delete(hash)
+    editor.reportShaderPlaybackState(hash, shaderPresetKey(previous.source.preset), null)
+  }
+
   function fail(hash: string, player: Player) {
     failed.set(hash, player.source.key)
     editor.reportShaderPlaybackFailure(hash, player.preset)
@@ -120,6 +149,7 @@ export function useShaderPlayback(options: {
   }
 
   function stop(hash: string) {
+    clearReport(hash)
     failedSizes.delete(hash)
     const replacement = replacing.get(hash)
     if (replacement) {
@@ -201,7 +231,10 @@ export function useShaderPlayback(options: {
       elapsed: 0
     }
     if (replaces) replacing.set(hash, player)
-    else players.set(hash, player)
+    else {
+      players.set(hash, player)
+      report(hash, source, 'starting')
+    }
     const current = () =>
       !player.disposed &&
       graph === editor.graph &&
@@ -302,6 +335,18 @@ export function useShaderPlayback(options: {
     return false
   }
 
+  function reportVisibility(
+    hash: string,
+    shader: PlaybackSource,
+    visible: boolean,
+    player?: Player
+  ) {
+    if (!visible) report(hash, shader, 'offscreen')
+    else if (!player && shader.input && !failed.has(hash)) report(hash, shader, 'limited')
+    else if (player && reported.get(hash)?.phase === 'offscreen')
+      report(hash, shader, player.drawnAt === 0 ? 'starting' : 'playing')
+  }
+
   function syncPlayer(hash: string, shader: PlaybackSource) {
     if (failed.get(hash) !== shader.key) failed.delete(hash)
     const visible = onScreen(shader.bounds)
@@ -318,6 +363,7 @@ export function useShaderPlayback(options: {
     }
     if (shader.input && !visible) {
       if (existing) stop(hash)
+      report(hash, shader, 'offscreen')
       return
     }
     const contentCount = [...players.values()].filter((player) => player.source.input).length
@@ -329,6 +375,7 @@ export function useShaderPlayback(options: {
     )
       void start(hash, shader, size)
     const player = players.get(hash)
+    reportVisibility(hash, shader, visible, player)
     if (!player) return
     player.nodeIds = shader.nodeIds
     player.visible = visible
@@ -337,6 +384,7 @@ export function useShaderPlayback(options: {
   function sync() {
     if (editor.graph !== graph) {
       for (const hash of Array.from(players.keys())) stop(hash)
+      for (const hash of Array.from(reported.keys())) clearReport(hash)
       failed.clear()
       graph = editor.graph
     }
@@ -344,6 +392,7 @@ export function useShaderPlayback(options: {
     const view = getView()
     const playing = view.play !== null && canDrawShaders()
     const wanted = playing ? shadersOnPage(editor, view.currentPageId) : new Map()
+    for (const hash of reported.keys()) if (!wanted.has(hash)) clearReport(hash)
     for (const [hash, player] of players) {
       const shader = wanted.get(hash)
       if (!shader || shader.key !== player.source.key) stop(hash)
@@ -424,6 +473,7 @@ export function useShaderPlayback(options: {
       if (!(await drawPlayer(hash, player, now))) continue
       // Preview's islands draw their shader layers from this frame, in this same task.
       frames.publish(hash, player.canvas)
+      report(hash, player.source, 'playing')
       if (!copyFrames && uploads(renderer, hash, player)) drew = true
       else {
         copyFrames = true
@@ -507,6 +557,7 @@ export function useShaderPlayback(options: {
 
   const stopGraph = editor.onEditorEvent('graph:replaced', () => {
     for (const hash of Array.from(players.keys())) stop(hash)
+    for (const hash of Array.from(reported.keys())) clearReport(hash)
     failed.clear()
     graph = editor.graph
   })
@@ -525,6 +576,7 @@ export function useShaderPlayback(options: {
     stopRetry()
     pause()
     for (const hash of Array.from(players.keys())) stop(hash)
+    for (const hash of Array.from(reported.keys())) clearReport(hash)
     release()
   })
 }

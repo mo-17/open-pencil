@@ -54,6 +54,10 @@ export function createShaderFrames(
   const drawn = new Map<string, string>()
   const failed = new Map<string, { key: string; reason: 'failed' | 'timeout' }>()
   const playbackFailures = new Map<string, string>()
+  const playbackStates = new Map<
+    string,
+    { preset: string; phase: NonNullable<ShaderFrameStatus['playback']>; keys: Map<string, string> }
+  >()
   const pending = new Set<string>()
   const contentOwners = new Set<string>()
   const captures = new Set<AbortController>()
@@ -68,29 +72,36 @@ export function createShaderFrames(
     ctx.emitEditorEvent('shader:status-changed', id)
   }
 
+  function playbackStatus(image: string, id: string, key: string, hasSavedFrame: boolean) {
+    const live = playbackStates.get(image)
+    return hasSavedFrame && live?.keys.get(id) === key ? { playback: live.phase } : {}
+  }
+
   function getShaderFrameStatus(id: string, image: string): ShaderFrameStatus | null {
     const node = ctx.graph.getNode(id)
     const shader = node && shownShaders(node).find((shader) => shader.image === image)
     if (!node || !shader) return null
     const hasSavedFrame = Boolean(ctx.graph.images.get(image)?.length)
+    if (shader.input && !contentShader(ctx.graph, node))
+      return { phase: 'unsupported', hasSavedFrame, canRetry: false }
+    const key = frameKey(node, shader)
+    const playback = playbackStatus(image, id, key, hasSavedFrame)
     const fallback = (reason: ShaderFrameStatus['reason']): ShaderFrameStatus => ({
       phase: hasSavedFrame ? 'saved' : 'missing',
       reason,
       hasSavedFrame,
-      canRetry: rasterizer !== null && !disposed
+      canRetry: rasterizer !== null && !disposed,
+      ...playback
     })
-    if (shader.input && !contentShader(ctx.graph, node))
-      return { phase: 'unsupported', hasSavedFrame, canRetry: false }
     if (!rasterizer || disposed) return { ...fallback('unavailable'), canRetry: false }
-    const key = frameKey(node, shader)
     if (activeFrame?.graph === ctx.graph && activeFrame.image === image && activeFrame.key === key)
-      return { phase: 'rendering', hasSavedFrame, canRetry: false }
-    if (pending.has(id)) return { phase: 'queued', hasSavedFrame, canRetry: false }
+      return { phase: 'rendering', hasSavedFrame, canRetry: false, ...playback }
+    if (pending.has(id)) return { phase: 'queued', hasSavedFrame, canRetry: false, ...playback }
     const failure = failed.get(image)
     if (failure?.key === key) return fallback(failure.reason)
     if (playbackFailures.get(image) === shaderPresetKey(shader.preset)) return fallback('failed')
     return isCurrent(node, shader)
-      ? { phase: 'ready', hasSavedFrame, canRetry: false }
+      ? { phase: 'ready', hasSavedFrame, canRetry: false, ...playback }
       : fallback('stale')
   }
 
@@ -106,6 +117,7 @@ export function createShaderFrames(
     const owners = playbackOwners(image, presetKey)
     if (!owners.length) return
     playbackFailures.set(image, presetKey)
+    playbackStates.delete(image)
     for (const node of owners) notifyStatus(node.id)
   }
 
@@ -113,6 +125,29 @@ export function createShaderFrames(
     if (playbackFailures.get(image) !== presetKey) return
     playbackFailures.delete(image)
     for (const node of playbackOwners(image, presetKey)) notifyStatus(node.id)
+  }
+
+  /** Hosts report transitions only; nothing is written to graph data or the undo history. */
+  function reportShaderPlaybackState(
+    image: string,
+    presetKey: string,
+    phase: NonNullable<ShaderFrameStatus['playback']> | null
+  ) {
+    if (disposed) return
+    if (phase === null) {
+      if (playbackStates.get(image)?.preset !== presetKey) return
+      playbackStates.delete(image)
+    }
+    const owners = playbackOwners(image, presetKey)
+    if (phase !== null && owners.length) {
+      const keys = new Map<string, string>()
+      for (const node of owners) {
+        const shader = shownShaders(node).find((shader) => shader.image === image)
+        if (shader) keys.set(node.id, frameKey(node, shader))
+      }
+      playbackStates.set(image, { preset: presetKey, phase, keys })
+    }
+    for (const node of owners) notifyStatus(node.id)
   }
 
   function frameKey(node: SceneNode, shader: ShaderPaint): string {
@@ -460,6 +495,7 @@ export function createShaderFrames(
     drawn.clear()
     failed.clear()
     playbackFailures.clear()
+    playbackStates.clear()
     pending.clear()
     activeFrame = null
     notifyStatus(null)
@@ -533,6 +569,7 @@ export function createShaderFrames(
     pending.clear()
     activeFrame = null
     playbackFailures.clear()
+    playbackStates.clear()
     notifyStatus(null)
   }
 
@@ -543,6 +580,7 @@ export function createShaderFrames(
     retryShaderFrames,
     reportShaderPlaybackFailure,
     reportShaderPlaybackReady,
+    reportShaderPlaybackState,
     hasShaderRasterizer: () => rasterizer !== null,
     settleShaderFrames,
     drawPageShaderFrames,

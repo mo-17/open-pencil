@@ -37,6 +37,56 @@ function setup() {
 }
 
 describe('shader paints', () => {
+  test('live feedback is ephemeral, scoped to the current frame and cleared on document replacement', async () => {
+    const { editor, id, read } = setup()
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await editor.settleShaderFrames()
+    const image = read().fills[0].imageHash ?? ''
+    const preset = shaderPresetKey(AURORA)
+    const version = editor.state.sceneVersion
+    const metadata = structuredClone(read().pluginData)
+    for (const phase of ['starting', 'playing', 'limited', 'offscreen'] as const) {
+      editor.reportShaderPlaybackState(image, preset, phase)
+      expect(editor.getShaderFrameStatus(id, image)).toMatchObject({
+        phase: 'ready',
+        playback: phase,
+        hasSavedFrame: true
+      })
+    }
+    expect(editor.state.sceneVersion).toBe(version)
+    expect(read().pluginData).toEqual(metadata)
+    editor.reportShaderPlaybackState(image, shaderPresetKey(SWIRL), null)
+    expect(editor.getShaderFrameStatus(id, image)?.playback).toBe('offscreen')
+    editor.reportShaderPlaybackState(image, preset, null)
+    expect(editor.getShaderFrameStatus(id, image)?.playback).toBeUndefined()
+    editor.reportShaderPlaybackState(image, preset, 'playing')
+    editor.graph.updateNode(id, { width: 60 })
+    expect(editor.getShaderFrameStatus(id, image)?.playback).toBeUndefined()
+    const graph = editor.graph
+    editor.replaceGraph(new SceneGraph())
+    editor.replaceGraph(graph)
+    expect(editor.getShaderFrameStatus(id, image)?.playback).toBeUndefined()
+    editor.dispose()
+  })
+
+  test('playback failure clears live feedback and keeps the saved frame', async () => {
+    const { editor, id, read } = setup()
+    editor.setShaderPaint([id], 'fills', 0, AURORA)
+    await editor.settleShaderFrames()
+    const image = read().fills[0].imageHash ?? ''
+    const saved = editor.graph.images.get(image)
+    const preset = shaderPresetKey(AURORA)
+    editor.reportShaderPlaybackState(image, preset, 'playing')
+    editor.reportShaderPlaybackFailure(image, preset)
+    expect(editor.getShaderFrameStatus(id, image)).toMatchObject({
+      phase: 'saved',
+      reason: 'failed'
+    })
+    expect(editor.getShaderFrameStatus(id, image)?.playback).toBeUndefined()
+    expect(editor.graph.images.get(image)).toEqual(saved)
+    editor.dispose()
+  })
+
   test('playback failure reports a saved fallback without dirtying the document, and retry clears it', async () => {
     const { editor, id, read } = setup()
     editor.setShaderPaint([id], 'fills', 0, AURORA)

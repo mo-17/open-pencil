@@ -40,8 +40,12 @@ export function contentPlaybackProbe(
     published: 0,
     restored: 0,
     live: 0,
+    statusChanges: 0,
     lastKey: ''
   }
+  const stopStatus = editor.onEditorEvent('shader:status-changed', () => {
+    stats.statusChanges++
+  })
   let release = () => {
     /* Installed by the deferred promise. */
   }
@@ -57,6 +61,7 @@ export function contentPlaybackProbe(
     onEditorEvent: editor.onEditorEvent,
     reportShaderPlaybackFailure: editor.reportShaderPlaybackFailure,
     reportShaderPlaybackReady: editor.reportShaderPlaybackReady,
+    reportShaderPlaybackState: editor.reportShaderPlaybackState,
     async captureShaderContent(id: string, _signal: AbortSignal) {
       const node = graph.getNode(id)
       const content = node && contentShader(graph, node)
@@ -75,6 +80,7 @@ export function contentPlaybackProbe(
     | 'captureShaderContent'
     | 'reportShaderPlaybackFailure'
     | 'reportShaderPlaybackReady'
+    | 'reportShaderPlaybackState'
   >
   const scope = effectScope()
   const stops = nodes.map(({ image }) =>
@@ -130,6 +136,13 @@ export function contentPlaybackProbe(
   )
   return {
     stats,
+    observation: () => ({
+      starts: stats.starts,
+      supported: Boolean(contentShader(editor.graph, first.node)),
+      preview: state.play !== null,
+      bindings: graph.getNode(first.node.childIds[0] ?? '')?.bindings
+    }),
+    statuses: () => nodes.map(({ node, image }) => editor.getShaderFrameStatus(node.id, image)),
     saved: () => Array.from(graph.images.get(first.image) ?? []),
     currentKey: () => shaderContentKey(graph, first.node),
     edit() {
@@ -157,6 +170,7 @@ export function contentPlaybackProbe(
     close() {
       scope.stop()
       for (const stop of stops) stop()
+      stopStatus()
       release()
       editor.dispose()
     }
