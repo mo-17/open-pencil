@@ -2,7 +2,12 @@
 import { computed, ref } from 'vue'
 
 import type { ShaderFrameStatus, ShaderPaintList } from '@open-pencil/core/editor'
-import type { SceneNode, ShaderPaint, ShaderPreset } from '@open-pencil/scene-graph'
+import {
+  readShaderPaints,
+  type SceneNode,
+  type ShaderPaint,
+  type ShaderPreset
+} from '@open-pencil/scene-graph'
 import {
   CONTENT_SHADER_FILTERS,
   contentShaderFilter,
@@ -13,20 +18,47 @@ import {
 } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { shaderPresetCopy } from '@/app/editor/shaders/preset-copy'
 import NumberField from '@/components/inputs/NumberField.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import PanelFieldGroup from '@/components/ui/panel/PanelFieldGroup.vue'
 import AppSelect from '@/components/ui/select/AppSelect.vue'
 
-const { node, shader, list, index } = defineProps<{
+import ShaderPresetLibrary from './ShaderPresetLibrary.vue'
+
+const {
+  node,
+  shader,
+  list,
+  index,
+  selectedNodeIds = []
+} = defineProps<{
   node: SceneNode | null
   shader: ShaderPaint | null
   list: ShaderPaintList
   index: number
+  selectedNodeIds?: readonly string[]
 }>()
 const store = useEditorStore()
-const { panels } = useI18n()
+const { panels, locale } = useI18n()
+const copy = computed(() => shaderPresetCopy(locale.value))
+const targets = computed(() => {
+  if (selectedNodeIds.length > 0) return selectedNodeIds
+  return node ? [node.id] : []
+})
+const batch = computed(() => targets.value.length > 1)
+const compatible = computed(() => {
+  void store.state.sceneVersion
+  return (
+    !batch.value ||
+    (store.canSetContentShader(targets.value) &&
+      targets.value.every((id) => {
+        const node = store.graph.getNode(id)
+        return node && readShaderPaints(node).some((paint) => paint.input)
+      }))
+  )
+})
 const revision = ref(0)
 useEditorEvent('shader:status-changed', (id) => {
   if (id === null || id === node?.id) revision.value++
@@ -86,7 +118,9 @@ const parameter = computed(() => {
   return typeof value === 'number' ? value : 0
 })
 function apply(preset: ShaderPreset) {
-  if (node) store.setShaderPaint([node.id], list, index, preset)
+  if (!node || !compatible.value) return
+  if (batch.value && shader?.input) store.setContentShader(targets.value, preset)
+  else store.setShaderPaint([node.id], list, index, preset)
 }
 function choose(type: string) {
   const selected = CONTENT_SHADER_FILTERS.find((filter) => filter.type === type)
@@ -113,11 +147,14 @@ function description(state: ShaderFrameStatus) {
     data-property="shader-details"
   >
     <template v-if="shader.input && status.phase !== 'unsupported'">
+      <p v-if="batch" class="text-[10px] text-muted">{{ copy.batch(targets.length) }}</p>
+      <AppAlert v-if="!compatible" tone="warning" :heading="copy.unsupported" />
       <PanelFieldGroup :label="panels.shaderContentFilter">
         <AppSelect
           :model-value="filter?.type ?? 'custom'"
           :options="options"
           :label="panels.shaderContentFilter"
+          :disabled="!compatible"
           data-property="shader-content-filter"
           @update:model-value="choose"
         />
@@ -129,6 +166,7 @@ function description(state: ShaderFrameStatus) {
           :max="filter.max"
           :step="filter.step"
           :aria-label="parameterLabel"
+          :disabled="!compatible"
           data-property="shader-content-parameter"
           @commit="setParameter"
         />
@@ -136,11 +174,13 @@ function description(state: ShaderFrameStatus) {
       <AppButton
         v-if="filter"
         size="xs"
+        :disabled="!compatible"
         data-property="shader-content-reset"
         @click="apply(contentShaderPreset(filter))"
       >
         {{ panels.shaderResetFilter }}
       </AppButton>
+      <ShaderPresetLibrary :preset="shader.preset" :disabled="!compatible" @apply="apply" />
     </template>
     <AppAlert
       :tone="tone"

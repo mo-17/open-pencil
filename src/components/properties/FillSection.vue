@@ -30,6 +30,7 @@ import { useGradientEditing } from '@/components/properties/paint/gradient-edit'
 import { createFillOkhclAdapter } from '@/components/properties/paint/okhcl'
 import PaintValue from '@/components/properties/paint/PaintValue.vue'
 import ShaderPaintDetails from '@/components/properties/paint/ShaderPaintDetails.vue'
+import ShaderSelectionDetails from '@/components/properties/paint/ShaderSelectionDetails.vue'
 import PropertyListRoot from '@/components/properties/PropertyListRoot.vue'
 import { useSharedStylePicker } from '@/components/properties/shared-style/useSharedStylePicker'
 import IconButton from '@/components/ui/button/IconButton.vue'
@@ -142,6 +143,7 @@ function updateSolidColor(
         @update:model-value="updateStyle"
       />
 
+      <ShaderSelectionDetails v-if="selectedNodeIds.length > 1" :node-ids="selectedNodeIds" />
       <p v-if="isMixed" class="text-[11px] text-muted">{{ panels.mixedFillsHelp }}</p>
 
       <div v-for="(fill, index) in items" :key="`${index}:${fill.visible ? 'visible' : 'hidden'}`">
