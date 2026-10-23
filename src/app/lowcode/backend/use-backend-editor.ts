@@ -127,7 +127,7 @@ export function useBackendEditor() {
   })
 
   const openGettingStartedPage = async (id: string): Promise<void> => {
-    if (busy.value || !gettingStartedGuide.value) return
+    if (busy.value || committedRequest.value?.selection.providerId !== 'nestjs') return
     const graph = editor.graph
     const page = graph.getNode(id)
     if (page?.type !== 'CANVAS' || page.internalOnly || !page.lowcodeRoutePattern) {

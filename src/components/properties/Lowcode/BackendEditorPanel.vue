@@ -2,9 +2,11 @@
 import { unrefElement } from '@vueuse/core'
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 
+import { IS_TAURI } from '@open-pencil/core/constants'
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
 
+import { useEditorStore } from '@/app/editor/active-store'
 import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
 import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
 import BackendCommandsEditor from '@/app/lowcode/backend/components/BackendCommandsEditor.vue'
@@ -22,6 +24,9 @@ import {
   createBackendLibraryCatalog,
   type BackendLibraryTemplateId
 } from '@/app/lowcode/backend/library/catalog'
+import BackendTemplateSetup from '@/app/lowcode/backend/library/setup/BackendTemplateSetup.vue'
+import { templateSetupCopy } from '@/app/lowcode/backend/library/setup/copy'
+import type { TemplateSetupAction } from '@/app/lowcode/backend/library/setup/model'
 import { backendLibraryViewCopy } from '@/app/lowcode/backend/library/view-copy'
 import {
   backendProviderDescriptorKey,
@@ -44,11 +49,14 @@ type BackendTab =
   | 'migration'
 
 const sectionCls = useSectionUI()
+const editor = useEditorStore()
 const { panels, locale } = useI18n()
 const commerceText = computed(() => commerceCopy(locale.value))
 const nestJSText = computed(() => nestJSUICopy(locale.value))
 const libraryText = computed(() => backendLibraryViewCopy(locale.value))
 const libraryOpen = ref(false)
+const setupOpen = ref(false)
+const setupText = computed(() => templateSetupCopy(locale.value))
 const libraryTrigger = useTemplateRef('libraryTrigger')
 const activeTab = ref<BackendTab>('model')
 const tabs = Object.freeze([
@@ -111,6 +119,16 @@ const templateProviderKey = computed(() => {
       : providerDescriptors.value.find((entry) => entry.providerId === 'nestjs')
   return descriptor ? backendProviderDescriptorKey(descriptor) : ''
 })
+const savedProviderAvailable = computed(() => {
+  const saved = committedRequest.value
+  return (
+    !!saved &&
+    providerDescriptors.value.some(
+      (descriptor) =>
+        backendProviderDescriptorKey(descriptor) === backendProviderDescriptorKey(saved.selection)
+    )
+  )
+})
 const visibleTabs = computed(() =>
   usesNestJSModel.value
     ? (['model', 'http', 'commands', 'relations', 'security', 'migration'] as const)
@@ -146,6 +164,34 @@ async function addBusinessModule(kind: BusinessTemplateId, reviewKey: string): P
     libraryOpen.value = false
     activeTab.value = 'http'
   }
+}
+async function createSetupTemplate(
+  id: BackendLibraryTemplateId,
+  authentication: BackendHttpAPIOIDCAuthenticationIRV1,
+  providerKey: string,
+  commissionBasisPoints: number
+): Promise<boolean> {
+  const graph = editor.graph
+  const created = await createLibraryTemplate(
+    id,
+    authentication,
+    providerKey,
+    commissionBasisPoints
+  )
+  if (created && editor.graph === graph) activeTab.value = 'http'
+  return created
+}
+async function navigateSetup(action: TemplateSetupAction): Promise<void> {
+  if (busy.value) return
+  if (action === 'plugins') {
+    await nextTick()
+    openSettingsDialog('plugins')
+  } else if (action === 'preview') {
+    editor.state.activeRibbonTab = 'code'
+  } else if (action === 'pages') {
+    editor.state.activeRibbonTab = 'panels'
+    editor.state.panelMode = 'layers'
+  } else activeTab.value = action === 'login' ? 'http' : 'model'
 }
 async function managePlugins(): Promise<void> {
   libraryOpen.value = false
@@ -219,6 +265,10 @@ function tabLabel(tab: BackendTab): string {
         <template #leading><icon-lucide-layout-grid /></template>
         {{ libraryText.browse }}
       </AppButton>
+      <AppButton class="mt-2 w-full" variant="outline" :disabled="busy" @click="setupOpen = true">
+        <template #leading><icon-lucide-list-checks /></template>
+        {{ setupText.title }}
+      </AppButton>
     </div>
     <BackendGettingStarted
       v-if="gettingStartedGuide"
@@ -244,6 +294,27 @@ function tabLabel(tab: BackendTab): string {
       @use-template="useLibraryTemplate"
       @add-module="addBusinessModule"
       @manage-plugins="managePlugins"
+    />
+    <BackendTemplateSetup
+      v-model:open="setupOpen"
+      :items="libraryItems"
+      :document-identity="editor.graph"
+      :current-provider-key="selectedProviderKey"
+      :block-reason="libraryBlockReason"
+      :busy="busy"
+      :loading="providersLoading"
+      :error="operationError || readError"
+      :has-declaration="hasBackendDeclaration"
+      :saved-provider-id="committedRequest?.selection.providerId ?? ''"
+      :saved-application="committedRequest?.application ?? null"
+      :saved-provider-available="savedProviderAvailable"
+      :valid="draftValidation.ok && !readError"
+      :unsaved="hasUnsavedBackendDraft"
+      :pages="gettingStartedPages"
+      :desktop="IS_TAURI"
+      :create-template="createSetupTemplate"
+      @navigate="navigateSetup"
+      @open-page="openGettingStartedPage"
     />
 
     <fieldset

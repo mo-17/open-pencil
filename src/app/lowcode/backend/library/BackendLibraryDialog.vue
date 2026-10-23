@@ -2,10 +2,7 @@
 import { tv } from 'tailwind-variants'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
-import {
-  isBackendOIDCIssuer,
-  type BackendHttpAPIOIDCAuthenticationIRV1
-} from '@open-pencil/lowcode/backend'
+import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
@@ -17,6 +14,7 @@ import theme from '@/theme/backend-library'
 
 import type { BusinessModuleReview } from '../business/installation/types'
 import type { BusinessTemplateId } from '../business/model/types'
+import { templateAuthentication, validTemplateAuthentication } from './authentication'
 import {
   filterBackendLibraryCatalog,
   isBusinessTemplate,
@@ -110,22 +108,14 @@ const selectedProvider = computed(() =>
           item.descriptorKey === (moduleMode.value ? currentProviderKey : templateProviderKey)
       )
 )
-const authentication = computed<BackendHttpAPIOIDCAuthenticationIRV1>(() => ({
-  kind: 'oidc-pkce',
-  issuer:
-    authProfile.value === 'local-keycloak'
-      ? 'http://127.0.0.1:18080/realms/openpencil'
-      : String(issuer.value).trim(),
-  clientId:
-    authProfile.value === 'local-keycloak' ? 'notes-public-client' : String(clientId.value).trim(),
-  scopes: ['openid', 'profile'],
-  callbackPath: '/_openpencil/auth/callback'
-}))
-const validAuth = computed(
-  () =>
-    isBackendOIDCIssuer(authentication.value.issuer) &&
-    /^[\x21-\x7e]{1,256}$/u.test(authentication.value.clientId)
+const authentication = computed(() =>
+  templateAuthentication(
+    authProfile.value === 'local-keycloak' ? 'local-keycloak' : 'oidc',
+    String(issuer.value),
+    String(clientId.value)
+  )
 )
+const validAuth = computed(() => validTemplateAuthentication(authentication.value))
 const unavailable = computed(() => {
   if (moduleMode.value) return false
   const item = selected.value
