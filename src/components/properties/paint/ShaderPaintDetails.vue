@@ -50,7 +50,19 @@ const reasons = computed(() => ({
   timeout: panels.value.shaderFrameTimeout,
   stale: panels.value.shaderFrameStale
 }))
+const playbackHeadings = computed(() => ({
+  starting: panels.value.shaderPlaybackStarting,
+  playing: panels.value.shaderPlaybackPlaying,
+  offscreen: panels.value.shaderPlaybackOffscreen,
+  limited: panels.value.shaderPlaybackLimited
+}))
+const heading = computed(() => {
+  const state = status.value
+  if (!state) return ''
+  return state.playback ? playbackHeadings.value[state.playback] : headings.value[state.phase]
+})
 const tone = computed(() => {
+  if (status.value?.playback) return status.value.playback === 'limited' ? 'warning' : 'info'
   const phase = status.value?.phase
   return phase === 'missing' || phase === 'saved' || phase === 'unsupported' ? 'warning' : 'info'
 })
@@ -87,6 +99,7 @@ function retry() {
   if (node && status.value?.canRetry) store.retryShaderFrames([node.id])
 }
 function description(state: ShaderFrameStatus) {
+  if (state.playback) return panels.value.shaderPlaybackStaticExport
   return state.phase === 'unsupported'
     ? panels.value.shaderContentScope
     : state.reason && reasons.value[state.reason]
@@ -131,10 +144,11 @@ function description(state: ShaderFrameStatus) {
     </template>
     <AppAlert
       :tone="tone"
-      :heading="headings[status.phase]"
+      :heading="heading"
       :description="description(status)"
       data-property="shader-status"
       :data-phase="status.phase"
+      :data-playback="status.playback"
     >
       <template v-if="status.canRetry" #actions>
         <AppButton size="xs" data-property="shader-retry" @click="retry">{{

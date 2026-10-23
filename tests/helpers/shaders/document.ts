@@ -1,4 +1,5 @@
-import { readShaderPaints } from '@open-pencil/scene-graph'
+import type { ShaderFrameStatus } from '@open-pencil/core/editor'
+import { readShaderPaints, shaderPresetKey } from '@open-pencil/scene-graph'
 
 function editor() {
   const store = window.openPencil?.getStore?.()
@@ -88,6 +89,24 @@ export function shaderFrameProbe() {
     },
     settle: () => store.settleShaderFrames({ nodeIds: [layer().id], requireFrames: true }),
     close: () => store.setShaderRasterizer(null)
+  }
+}
+
+/** Simulated host transitions for the inspector; this does not start a GPU renderer. */
+export function shaderPlaybackStatusProbe() {
+  const store = editor()
+  const node = layer()
+  const shader = readShaderPaints(node).at(0)
+  if (!shader) throw new Error('Shader status fixture missing')
+  const preset = shaderPresetKey(shader.preset)
+  return {
+    startPreview: () => store.startPlay(),
+    show: (phase: NonNullable<ShaderFrameStatus['playback']>) =>
+      store.reportShaderPlaybackState(shader.image, preset, phase),
+    close() {
+      store.reportShaderPlaybackState(shader.image, preset, null)
+      store.stopPlay()
+    }
   }
 }
 

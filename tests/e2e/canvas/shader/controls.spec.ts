@@ -7,6 +7,52 @@ test.use({
   }
 })
 
+test('simulated live status is visible without changing saved output or filter controls', async ({
+  page
+}, testInfo) => {
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
+  )
+  await page.goto('/?test')
+  await new CanvasHelper(page).waitForInit()
+  const document = await page.evaluateHandle(
+    async () => import('/tests/helpers/shaders/document.ts')
+  )
+  const before = await document.evaluate((probe) => probe.createShaderDocument(true))
+  const probe = await document.evaluateHandle((probe) => probe.shaderPlaybackStatusProbe())
+  const status = page.locator('[data-property="shader-status"]')
+  try {
+    for (const phase of ['starting', 'playing', 'offscreen', 'limited'] as const) {
+      await probe.evaluate((probe, phase) => probe.show(phase), phase)
+      await expect(status).toHaveAttribute('data-playback', phase)
+      await expect(status).toHaveAttribute('data-phase', 'saved')
+      await expect(
+        page.getByRole('combobox', { name: 'Content filter', exact: true })
+      ).toBeVisible()
+    }
+    await status.screenshot({ path: testInfo.outputPath('shader-playback-limited.png') })
+    expect((await document.evaluate((probe) => probe.shaderDocumentObservation())).digest).toBe(
+      before.digest
+    )
+    await probe.evaluate((probe) => probe.close())
+    await expect(status).not.toHaveAttribute('data-playback')
+    await expect(status).toHaveAttribute('data-phase', 'saved')
+    await probe.evaluate((probe) => probe.startPreview())
+    const preview = page.locator('[data-property="shader-preview-status"]')
+    await expect(preview.locator('[data-playback="saved"]')).toBeVisible()
+    await probe.evaluate((probe) => probe.show('limited'))
+    await expect(preview.locator('[data-playback="limited"]')).toBeVisible()
+    await expect(preview).toHaveCSS('pointer-events', 'none')
+    await preview.screenshot({ path: testInfo.outputPath('shader-preview-limited.png') })
+    await probe.evaluate((probe) => probe.close())
+    await expect(preview).toHaveCount(0)
+  } finally {
+    await probe.evaluate((probe) => probe.close())
+    await probe.dispose()
+    await document.dispose()
+  }
+})
+
 test('real WebGPU content filters switch, edit, reset and undo through inspector controls', async ({
   page
 }) => {

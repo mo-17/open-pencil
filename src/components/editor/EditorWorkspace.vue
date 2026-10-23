@@ -37,6 +37,7 @@ import IconButton from '@/components/ui/button/IconButton.vue'
 import VariablesDialog from '@/components/variables/VariablesDialog.vue'
 import splitterTheme from '@/theme/splitter'
 
+import ShaderPreviewStatus from './ShaderPreviewStatus.vue'
 import WorkspacePill from './WorkspacePill.vue'
 
 const showChrome = appRuntimeConfig.showChrome
@@ -192,6 +193,7 @@ const { pending: roomPending } = useRoomActions()
       <EditorCanvas />
       <ActiveRoomOverlay />
       <MobileHud />
+      <ShaderPreviewStatus v-if="store.state.play" />
       <Toolbar />
     </div>
     <MobileDrawer />
@@ -201,6 +203,7 @@ const { pending: roomPending } = useRoomActions()
     <div class="relative flex min-w-0 flex-1">
       <EditorCanvas />
       <ActiveRoomOverlay />
+      <ShaderPreviewStatus v-if="playingAlone" />
       <WorkspacePill
         v-if="!isMobile && playingAlone"
         mode="preview"
