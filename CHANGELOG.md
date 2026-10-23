@@ -14,7 +14,11 @@
 
 ### Added
 
-- Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Preview own-content Shader animations on WebGPU hosts with live, paused and four-layer-limit feedback while retaining editable sources and saved-frame fallbacks in HTML, React/Vue components and Lowcode exports. Preserve imported image bytes when saving updated frames so edited FIG files reopen correctly.
+- Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Save up to 24 personal parameter presets locally and edit compatible selections together, with the first layer's parameters and status identified. Preview own-content Shader animations on WebGPU hosts with live, paused and four-layer-limit feedback while retaining editable sources and saved-frame fallbacks in HTML, React/Vue components and Lowcode exports. Preserve imported image bytes when saving updated frames so edited FIG files reopen correctly.
+- Inspect export targets for missing image resources, required Shader frames and static fallbacks, review source-export compiler diagnostics, and locate affected layers from a bounded preflight report.
+- Trace embedded React/Vue preview events, actions, expressions, requests and state changes on demand, retaining the latest 200 metadata entries without field values, expression contents or request URLs and bodies.
+- Create named local document checkpoints, compare structural changes and restore a separate unsaved tab after saving a safety copy, with explicit storage limits and no automatic version deletion.
+- Configure existing NestJS business templates through a guided provider, public sign-in and readiness workflow, with links to missing settings and a clear distinction between local configuration and a running backend.
 
 - Protect shared-room invitations with a random key in the URL fragment, retained when copying, reloading, or handing the room to the desktop app. Links without the key cannot join; ask the sharer for a new invitation.
 

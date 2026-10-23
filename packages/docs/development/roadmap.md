@@ -51,6 +51,7 @@ Since v0.15.1, the development branch adds:
 - Vue and React components of the selection in the Code tab, with variants as props and Reka UI or Radix behaviour.
 - SVG and HTML imported as editable layers, with HTML and CSS laid out as a browser lays them out.
 - Shader fills from the open-source `shaders` library, on-canvas gradient and corner-radius handles, multi-selection editing, and accent colours with a customizable toolbar.
+- Export resource preflight, opt-in React/Vue runtime traces, named local document checkpoints, business-template setup and personal own-content filter presets. See [Local editing and delivery workflows](./product-workflows.md) for the implemented scope and runtime boundaries.
 
 These changes are not part of v0.15.1; they ship with the next release.
 

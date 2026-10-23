@@ -9,6 +9,8 @@ Export individual nodes as images or `.fig` subsets, and open full `.fig` or `.p
 
 Shader exports wait for pending static frames. If WebGPU is unavailable or fails, an existing saved frame can be used; a required frame that has never been drawn produces an export error. [Content filters](./drawing-shapes#shader-content-filters) use static images in HTML and React/Vue/Lowcode exports, without adding a Shader runtime dependency.
 
+Use **Export preflight** to inspect the current target's image resources and Shader fallbacks, or review the latest source-export compiler diagnostics. It reports configuration and resources rather than running the generated application. [Local editing and delivery workflows](../development/product-workflows.md) explains preflight, runtime traces and named document checkpoints.
+
 ## Image Export
 
 Select a node and use the Export section in the properties panel.
