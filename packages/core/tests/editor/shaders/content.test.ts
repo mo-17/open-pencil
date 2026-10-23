@@ -5,6 +5,7 @@ import { expectDefined } from '#core-tests/helpers/assert'
 import {
   SceneGraph,
   contentShader,
+  computeImageHash,
   shaderContentKey,
   shaderContentNode,
   supportsShaderContent
@@ -13,7 +14,7 @@ import {
 import { SkiaRenderer } from '#core/canvas'
 import { createEditor, type Editor } from '#core/editor'
 import { renderShaderContent } from '#core/editor/shaders/content'
-import { initCanvasKit } from '#core/io'
+import { initCanvasKit, exportFigFile, IORegistry, BUILTIN_IO_FORMATS } from '#core/io'
 
 const ck = await initCanvasKit()
 const renderer = new SkiaRenderer(ck, expectDefined(ck.MakeSurface(1, 1)))
@@ -44,6 +45,42 @@ function setup() {
 }
 
 describe('node-local Shader content', () => {
+  test('editing a reopened Shader preserves canonical image bytes through a second FIG roundtrip', async () => {
+    const { graph, node, editor } = setup()
+    editor.setShaderRasterizer({ render: async () => new Uint8Array([1, 2, 3]) })
+    editor.setContentShader([node.id])
+    await editor.settleShaderFrames()
+    const io = new IORegistry(BUILTIN_IO_FORMATS)
+    const { graph: reopened } = await io.readDocument({
+      name: 'shader.fig',
+      data: await exportFigFile(graph)
+    })
+    const target = expectDefined(
+      [...reopened.getAllNodes()].find((node) => contentShader(reopened, node))
+    )
+    const original = expectDefined(contentShader(reopened, target)).shader
+    const saved = expectDefined(reopened.images.get(original.image))
+    expect(computeImageHash(saved)).toBe(original.image)
+    const next = createEditor({ graph: reopened })
+    editors.push(next)
+    next.setCanvasKit(ck, renderer)
+    next.setShaderRasterizer({ render: async () => new Uint8Array([4, 5, 6]) })
+    next.setContentShader([target.id], { components: [{ type: 'Pixelate', props: { scale: 8 } }] })
+    await next.settleShaderFrames()
+    expect(reopened.images.get(original.image)).toEqual(saved)
+    const current = expectDefined(contentShader(reopened, target)).shader
+    expect(current.image).not.toBe(original.image)
+    const { graph: restored } = await io.readDocument({
+      name: 'edited.fig',
+      data: await exportFigFile(reopened)
+    })
+    const restoredNode = expectDefined(
+      [...restored.getAllNodes()].find((node) => contentShader(restored, node))
+    )
+    const restoredShader = expectDefined(contentShader(restored, restoredNode)).shader
+    expect(restored.images.get(restoredShader.image)).toEqual(new Uint8Array([4, 5, 6]))
+  })
+
   test('live capture reuses original content without persisting a generated output', async () => {
     const { graph, node, child, editor } = setup()
     editor.setContentShader([node.id])

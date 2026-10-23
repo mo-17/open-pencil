@@ -6,7 +6,6 @@ import {
   shaderPresetKey,
   shaderContentKey,
   contentShader,
-  createShaderPaint,
   withShaderPaints,
   type SceneGraph,
   type SceneNode,
@@ -17,6 +16,7 @@ import type { Size } from '@open-pencil/scene-graph/primitives'
 import type { EditorContext, EditorOptions } from '#core/editor/types'
 
 import { prepareShaderContent, renderShaderContent } from './content'
+import { independentShaderImage, shaderFrameTarget } from './images'
 import { createShaderFrameJob, waitForShaderFrames } from './job'
 import type { ShaderContentFrame, ShaderFrameStatus, ShaderRasterizer } from './types'
 
@@ -198,6 +198,11 @@ export function createShaderFrames(
     size: Size,
     key: string
   ) {
+    const target = shaderFrameTarget(ctx.graph, now, current)
+    const paintChanges =
+      target.node === now ? {} : { fills: target.node.fills, strokes: target.node.strokes }
+    now = target.node
+    current = target.shader
     ctx.graph.images.set(current.image, bytes)
     drawn.set(current.image, key)
     failed.delete(current.image)
@@ -205,6 +210,7 @@ export function createShaderFrames(
     publishing = true
     try {
       ctx.graph.updateNode(now.id, {
+        ...paintChanges,
         pluginData: withShaderPaints(
           now,
           [...now.fills, ...now.strokes],
@@ -289,23 +295,20 @@ export function createShaderFrames(
       return other && readShaderPaints(other).some((item) => item.image === shader.image)
     })
     if (!shared) return shader
-    const { image } = createShaderPaint(shader.preset).shader
-    const independent = { ...shader, image }
-    const fills = node.fills.map((fill) =>
-      fill.imageHash === shader.image ? { ...fill, imageHash: image } : fill
-    )
+    const independent = independentShaderImage(node, shader)
     const saved = ctx.graph.images.get(shader.image)
-    if (saved) ctx.graph.images.set(image, saved)
+    if (saved) ctx.graph.images.set(independent.shader.image, saved)
     publishing = true
     try {
       ctx.graph.updateNode(node.id, {
-        fills,
-        pluginData: withShaderPaints(node, [...fills, ...node.strokes], [independent])
+        fills: independent.node.fills,
+        strokes: independent.node.strokes,
+        pluginData: independent.node.pluginData
       })
     } finally {
       publishing = false
     }
-    return independent
+    return independent.shader
   }
 
   /** Reuse static capture, including copy ownership, without publishing pixels to the document. */
