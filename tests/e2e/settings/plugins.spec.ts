@@ -577,14 +577,17 @@ async function injectPublisherReviewFixtures(page: Page): Promise<PublisherRevie
 
     const calls = { install: 0, update: 0 }
     Reflect.set(window, '__publisherReviewCalls', calls)
-    appPluginStore.installReviewed = async () => {
+    appPluginStore.installReviewed = async (_pluginId, reviewedPackage) => {
+      structuredClone(reviewedPackage)
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 150)
       })
       calls.install += 1
       return structuredClone(updatePlugin)
     }
-    appPluginStore.acceptUpdateReviewed = async () => {
+    appPluginStore.acceptUpdateReviewed = async (_pluginId, reviewedPackage, currentAuthority) => {
+      structuredClone(reviewedPackage)
+      structuredClone(currentAuthority)
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 150)
       })
@@ -641,7 +644,7 @@ async function publisherReviewCalls(page: Page): Promise<{ install: number; upda
   })
 }
 
-test('requires explicit third-party install and update review before dispatch', async ({
+test('requires explicit third-party review and dispatches cloneable install and update authority', async ({
   page
 }) => {
   await page.goto('/?test')

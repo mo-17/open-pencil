@@ -343,6 +343,43 @@ describe('marketplace source manager', () => {
     expect(managed.snapshot().active).toMatchObject({ origin: 'managed' })
   })
 
+  test('refreshes a committed managed source after restart without changing its authority', async () => {
+    const root = await keys()
+    const storage = createMemoryMarketplaceSourceStorage()
+    const managedConfigJSON = JSON.stringify(await config(root))
+    const manager = createMarketplaceSourceManager({
+      storage,
+      managedConfigJSON,
+      now: () => NOW,
+      idFactory: ids()
+    })
+    await manager.load()
+    const initial = required(manager.pendingManagedSource(), 'Expected initial managed source')
+    await manager.commitCandidate(initial, await verifiedSnapshot(2, root))
+    const accepted = required(manager.snapshot().active, 'Expected accepted managed source')
+
+    const restarted = createMarketplaceSourceManager({
+      storage,
+      managedConfigJSON,
+      now: () => NOW,
+      idFactory: ids()
+    })
+    await restarted.load()
+    expect(restarted.pendingManagedSource()).toBeNull()
+    const refresh = required(
+      await restarted.stageActiveSourceRefresh(),
+      'Expected restored managed source refresh'
+    )
+    await expect(
+      restarted.commitCandidate(refresh, await verifiedSnapshot(1, root))
+    ).rejects.toThrow()
+    await restarted.commitCandidate(refresh, await verifiedSnapshot(2, root))
+    expect(restarted.snapshot().active).toEqual(accepted)
+    await expect(
+      restarted.commitCandidate(refresh, await verifiedSnapshot(2, root))
+    ).rejects.toThrow('stale')
+  })
+
   test('durably checkpoints privilege time across restart and clock rollback', async () => {
     const root = await keys()
     const storage = createMemoryMarketplaceSourceStorage()

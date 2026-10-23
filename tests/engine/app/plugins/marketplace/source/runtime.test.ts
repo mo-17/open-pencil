@@ -185,6 +185,56 @@ describe('marketplace source runtime', () => {
     })
   })
 
+  test('reloads a committed managed marketplace and supports repeated refresh', async () => {
+    const data = await fixture()
+    const storage = createMemoryMarketplaceSourceStorage()
+    const cache = createMemoryRemotePluginCacheStorage()
+    let clock = NOW
+    let id = 0
+    const fetchImpl: typeof fetch = fetchStub(async (input) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      if (url === SNAPSHOT_URL) return jsonResponse(data.snapshot)
+      if (url === CATALOG_URL) return jsonResponse(data.catalog)
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+    const createManager = () =>
+      createMarketplaceSourceManager({
+        storage,
+        managedConfigJSON: JSON.stringify(data.source),
+        now: () => clock,
+        idFactory: (kind) => `${kind}:${++id}`
+      })
+    const createRuntime = (manager: ReturnType<typeof createManager>) =>
+      createMarketplaceSourceRuntime({
+        manager,
+        cache,
+        engineVersion: '0.13.2',
+        transportOptions: { fetchImpl }
+      })
+    const manager = createManager()
+    await manager.load()
+    const runtime = createRuntime(manager)
+    const initial = await runtime.loadActiveTrustBundle()
+    if (!initial) throw new Error('Expected initial managed marketplace trust bundle')
+
+    clock += 1_000
+    expect((await runtime.loadActiveTrustBundle())?.lease).toEqual(initial.lease)
+
+    const restarted = createManager()
+    await restarted.load()
+    expect(restarted.pendingManagedSource()).toBeNull()
+    const restartedRuntime = createRuntime(restarted)
+    clock += 1_000
+    expect((await restartedRuntime.loadActiveTrustBundle())?.lease).toEqual(initial.lease)
+    clock += 1_000
+    expect((await restartedRuntime.loadActiveTrustBundle())?.lease).toEqual(initial.lease)
+    expect(restarted.snapshot().active?.highWater).toMatchObject({
+      snapshotSequence: data.snapshot.sequence,
+      snapshotDigest: data.snapshot.integrity.digest,
+      lastSeenWallTime: new Date(clock).toISOString()
+    })
+  })
+
   test('rejects an expired reviewed catalog before committing source or root rotation', async () => {
     let clock = NOW
     let served = await fixture()

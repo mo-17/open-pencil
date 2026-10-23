@@ -572,11 +572,13 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
       const source = resolvedActiveSource()
       if (!source) return null
       const resolved = await resolveMarketplaceSourceRecord(source)
-      return candidateFor(source.origin, {
+      const candidate = candidateFor(source.origin, {
         ...resolved,
         rootPublicKeyPem: source.rootPublicKeyPem,
         rootKeySpkiSha256: source.rootKeySpkiSha256
       })
+      if (source.origin === 'managed') managedCandidate = candidate
+      return candidate
     })
   }
 

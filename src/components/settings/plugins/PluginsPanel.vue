@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, shallowRef } from 'vue'
 
 import {
   EFFECT_PICK_MODULE_TYPE,
@@ -120,7 +120,7 @@ const pendingUninstallId = ref<string | null>(null)
 const pendingPinReplacementId = ref<string | null>(null)
 const pendingResetPluginId = ref<string | null>(null)
 const pendingRollback = ref<{ pluginId: string; targetDigest: string } | null>(null)
-const pendingPackageReview = ref<PendingPluginPackageReview | null>(null)
+const pendingPackageReview = shallowRef<PendingPluginPackageReview | null>(null)
 const packageReviewError = ref<string | null>(null)
 const documentLockMessage = ref<string | null>(null)
 const refreshingRemoteCatalog = ref(false)

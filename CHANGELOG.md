@@ -167,6 +167,7 @@
   parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
+- Install signed third-party plugins and accept verified updates from their package review in Settings, preserving the reviewed version, digest, signing key, and permissions. Restore installed plugins after reopening the editor and refresh the managed marketplace without resetting local plugin state.
 - Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
 - Add explicit shared/view editor-state ownership and canvas render-state hooks as a foundation for independent same-document canvas panes.
 - Run React lowcode previews in ordinary browsers through a bounded SceneGraph Worker, a
