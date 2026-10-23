@@ -16,11 +16,7 @@ const capability: TauriCapabilities = {
 // Keep the spawned MCP server's discovery file out of the user's application
 // support directory. It stays inside the home directory because the app only
 // accepts a server-reported path within it.
-process.env.OPENPENCIL_MCP_DISCOVERY_PATH = join(
-  homedir(),
-  '.openpencil-native-test',
-  'mcp.json'
-)
+process.env.OPENPENCIL_MCP_DISCOVERY_PATH = join(homedir(), '.openpencil-native-test', 'mcp.json')
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -45,5 +41,11 @@ export const config: WebdriverIO.Config = {
   waitforTimeout: 20_000,
   connectionRetryTimeout: 120_000,
   connectionRetryCount: 1,
+  // The embedded driver exposes window labels as handles. Selecting the editor
+  // explicitly also avoids guest-plugin focus IPC, which this Rust-only test
+  // harness does not install.
+  before: async () => {
+    await browser.switchToWindow('main')
+  },
   mochaOpts: { ui: 'bdd', timeout: 60_000 }
 }

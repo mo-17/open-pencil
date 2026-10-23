@@ -9,6 +9,13 @@ import type { Fill } from '@open-pencil/scene-graph'
 
 export {}
 
+/** App-owned source metadata observed by native tests without importing the app type graph. */
+type NativeDocumentSourceIdentity = Readonly<{
+  handle: FileSystemFileHandle | null
+  path: string | null
+}>
+type NativeStorageDocumentIdentity = Readonly<{ documentId: string }>
+
 type NativeTestNode = {
   childIds?: string[]
   id: string
@@ -18,6 +25,7 @@ type NativeTestNode = {
   text?: string
   fills: Fill[]
   width: number
+  height: number
 }
 
 type NativeTestStore = Pick<
@@ -30,6 +38,9 @@ type NativeTestStore = Pick<
   | 'startPlay'
   | 'stopPlay'
 > & {
+  getSourceIdentity: () => NativeDocumentSourceIdentity
+  getDocumentFilePath: () => string | null
+  getStorageBinding: () => NativeStorageDocumentIdentity | null
   renderExportImage: (
     nodeIds: string[],
     scale: number,
