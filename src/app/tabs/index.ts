@@ -786,6 +786,36 @@ export async function listRecoverySnapshots(): Promise<RecoverySnapshotMeta[]> {
   return getRecoveryStore().list()
 }
 
+/** Checkpoints are copies: never retarget or replace the user's current source document. */
+export async function openCheckpointInNewTab(
+  bytes: Uint8Array,
+  documentName: string
+): Promise<void> {
+  const { store, id } = createTab()
+  store.state.documentName = `${documentName} (checkpoint)`
+  const load = store.preparationController.begin({
+    kind: 'recovery-restore',
+    subject: store.state.documentName
+  })
+  let succeeded = false
+  try {
+    const ownedBytes = bytes.slice()
+    const file = new File([ownedBytes.buffer], `${documentName}.fig`, {
+      type: 'application/octet-stream'
+    })
+    const graph = await readFigForTab(file, store, load)
+    await showImportedGraph(store, graph, undefined, load)
+    await store.persistRecoveryNow()
+    succeeded = true
+  } catch (error) {
+    failPreparation(load, 'decode-failed', error)
+    await closeTab(id, 'discard')
+    throw error
+  } finally {
+    if (succeeded) load.complete()
+  }
+}
+
 export async function discardRecoverySnapshot(id: string): Promise<void> {
   await getRecoveryStore().remove(id)
 }

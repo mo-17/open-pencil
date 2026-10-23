@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useStore } from '@nanostores/vue'
 import { templateRef } from '@vueuse/core'
 import {
   MenubarCheckboxItem,
@@ -14,11 +15,12 @@ import {
   MenubarSubTrigger,
   MenubarTrigger
 } from 'reka-ui'
-import { useTemplateRef, watch } from 'vue'
+import { ref, useTemplateRef, watch } from 'vue'
 import IconChevronRight from '~icons/lucide/chevron-right'
 
 import { vTestId, useI18n } from '@open-pencil/vue'
 
+import { checkpointMessages } from '@/app/document/checkpoints/messages'
 import { useEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { useAppMenu } from '@/app/shell/menu/app-menu'
@@ -38,6 +40,7 @@ import {
 import { appMenuShortcutLabel } from '@/app/shell/menu/shortcut'
 import { resolvedAppTheme } from '@/app/shell/theme'
 import BrandMark from '@/components/brand/BrandMark.vue'
+import DocumentCheckpointsDialog from '@/components/document/DocumentCheckpointsDialog.vue'
 import { useScrollOverflow } from '@/components/shell/useScrollOverflow'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import AppShortcutText from '@/components/ui/menu/AppShortcutText.vue'
@@ -46,6 +49,8 @@ import MenuScrollArea from '@/components/ui/menu/MenuScrollArea.vue'
 import { IS_TAURI } from '@/constants'
 
 const store = useEditorStore()
+const checkpointsOpen = ref(false)
+const checkpointsText = useStore(checkpointMessages)
 
 const { rename, editingName, startRename, commitRename } = useDocumentNameRename(store)
 const nameInput = templateRef<HTMLInputElement>('nameInput')
@@ -91,6 +96,9 @@ const { overflowStart, overflowEnd, scrollTowardHidden } = useScrollOverflow(men
         @dblclick="startRename"
         >{{ store.state.documentName }}</span
       >
+      <IconButton :label="checkpointsText.title" @click="checkpointsOpen = true">
+        <icon-lucide-history class="size-3.5" />
+      </IconButton>
       <IconButton
         :label="settings.title"
         data-test-id="app-settings-trigger"
@@ -213,4 +221,5 @@ const { overflowStart, overflowEnd, scrollTowardHidden } = useScrollOverflow(men
       </button>
     </div>
   </div>
+  <DocumentCheckpointsDialog v-if="checkpointsOpen" v-model:open="checkpointsOpen" />
 </template>
