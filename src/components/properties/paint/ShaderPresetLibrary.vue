@@ -83,7 +83,7 @@ function applySelected() {
         placement="below"
         :options="options"
         :label="copy.select"
-        :placeholder="copy.empty"
+        :placeholder="options.length ? copy.select : copy.empty"
       />
     </PanelFieldGroup>
     <div class="flex flex-wrap gap-1">
