@@ -16,6 +16,11 @@ import {
   saveExportedFile,
   type ExportedFile
 } from '@/app/document/export/files'
+import {
+  inspectExportReadiness,
+  requireExportReadiness
+} from '@/app/document/export/preflight/inspect'
+import { exportPreflightReport } from '@/app/document/export/preflight/state'
 import type { ExportOptions } from '@/app/document/export/types'
 import { trackDocumentFormat } from '@/app/telemetry'
 
@@ -46,8 +51,33 @@ export function createDocumentExportActions(
 
     const graph = editor.graph
     const nodeIds = exportTargetNodeIds(graph, target)
-    await editor.settleShaderFrames({ nodeIds, requireFrames: true })
+    const initial = inspectExportReadiness(graph, nodeIds, {
+      format: formatId,
+      canRenderShaders: true,
+      sceneVersion: state.sceneVersion,
+      shaderStatus: editor.getShaderFrameStatus
+    })
+    exportPreflightReport(graph).value = initial
+    requireExportReadiness(initial)
+    try {
+      await editor.settleShaderFrames({ nodeIds, requireFrames: true })
+    } catch (error) {
+      exportPreflightReport(graph).value = inspectExportReadiness(graph, nodeIds, {
+        format: formatId,
+        sceneVersion: state.sceneVersion,
+        shaderStatus: editor.getShaderFrameStatus
+      })
+      throw error
+    }
     if (editor.graph !== graph) throw new Error('Document changed during export')
+    const report = inspectExportReadiness(graph, nodeIds, {
+      format: formatId,
+      sceneVersion: state.sceneVersion,
+      shaderStatus: editor.getShaderFrameStatus
+    })
+    exportPreflightReport(graph).value = report
+    requireExportReadiness(report)
+    const sceneVersion = state.sceneVersion
     const exportOptions = getExportOptions(format, options)
 
     const result = await io.exportContent(
@@ -56,6 +86,9 @@ export function createDocumentExportActions(
       exportOptions,
       editor.renderer ? { canvasKit: editor.renderer.ck, renderer: editor.renderer } : undefined
     )
+    if (editor.graph !== graph || state.sceneVersion !== sceneVersion) {
+      throw new Error('Document changed during export')
+    }
 
     const baseName = getExportBaseName(editor.graph, target)
     return {

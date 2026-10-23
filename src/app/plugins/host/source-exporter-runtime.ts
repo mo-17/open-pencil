@@ -1,3 +1,5 @@
+import { partition } from 'es-toolkit'
+
 import {
   compile,
   withDefaults,
@@ -9,8 +11,19 @@ import {
 } from '@open-pencil/compiler'
 import { IS_BROWSER } from '@open-pencil/core/constants'
 import { fontManager } from '@open-pencil/core/text'
+import {
+  resolveLowcodeApplicationPages,
+  resolveLowcodeApplicationShell
+} from '@open-pencil/lowcode'
 
 import { chooseTauriExportPath, writeTauriExportFile } from '@/app/document/export/files'
+import {
+  exportIssueMessage,
+  inspectExportReadiness,
+  requireExportReadiness,
+  type ExportPreflightReport
+} from '@/app/document/export/preflight/inspect'
+import { exportPreflightReport } from '@/app/document/export/preflight/state'
 import { downloadBlob } from '@/app/document/io/browser'
 import type { EditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
@@ -29,10 +42,13 @@ import { safeSourceProjectPackageName, safeSourceProjectProductName } from './so
 
 export { archiveProjectFiles as archiveSourceProjectFiles }
 
+const MAX_SOURCE_PREFLIGHT_ISSUES = 100
+
 export interface SourceExporterEditor {
   graph: EditorStore['graph']
   settleShaderFrames?: EditorStore['settleShaderFrames']
-  state: Pick<EditorStore['state'], 'documentName'>
+  state: Pick<EditorStore['state'], 'documentName'> &
+    Partial<Pick<EditorStore['state'], 'sceneVersion'>>
 }
 
 export interface PluginFileExportDestination {
@@ -106,6 +122,36 @@ async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHost
   const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
   await appPluginStoreReady
   return appPluginStore
+}
+
+/** Mirrors public application scope, without replacing compiler-owned dependency diagnostics. */
+function sourceProjectExportRoots(
+  graph: SourceExporterEditor['graph'],
+  pageIds: readonly string[]
+): string[] {
+  const selection = resolveLowcodeApplicationPages(graph, pageIds)
+  if (selection.mode === 'legacy') return [...pageIds]
+  if (selection.mode === 'invalid' || selection.warnings.length > 0) return []
+  const roots = selection.pages.flatMap(({ entryNodeId }) => (entryNodeId ? [entryNodeId] : []))
+  if (selection.shell && roots.length > 0) {
+    const shell = resolveLowcodeApplicationShell(graph, selection.shell)
+    if (shell.ok) roots.push(shell.frameNodeId)
+  }
+  return roots
+}
+
+function addBlockingCompilerIssue(
+  report: ExportPreflightReport,
+  code: string,
+  message: string
+): void {
+  const [errors, remaining] = partition(report.issues, (issue) => issue.severity === 'error')
+  report.truncated ||= report.issues.length >= MAX_SOURCE_PREFLIGHT_ISSUES
+  report.issues = [{ code, severity: 'error' as const, message }, ...errors, ...remaining].slice(
+    0,
+    MAX_SOURCE_PREFLIGHT_ISSUES
+  )
+  report.blockingCount++
 }
 
 export async function prepareSourceProjectCompilerInput<TEditor extends SourceExporterEditor>(
@@ -194,6 +240,14 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
   throwIfPluginExportAborted(signal)
   const pageIds = editor.graph.getPages().map(({ id }) => id)
   if (pageIds.length === 0) throw new Error('The current document has no pages to export')
+  const graph = editor.graph
+  const initial = inspectExportReadiness(graph, sourceProjectExportRoots(graph, pageIds), {
+    format: options.compilerTargetName ?? 'source',
+    canRenderShaders: Boolean(editor.settleShaderFrames),
+    sceneVersion: editor.state.sceneVersion
+  })
+  exportPreflightReport(graph).value = initial
+  requireExportReadiness(initial)
 
   updateActiveAppPluginExportStage('choosing-destination')
   const destination = await dependencies.chooseDestination(fileName, signal)
@@ -201,6 +255,7 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
   if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
 
   updateActiveAppPluginExportStage('preparing')
+  if (editor.graph !== graph) throw new Error('Document changed during source export')
   const resolvedFontManifest = await dependencies.resolveFontManifest(editor, pageIds, signal)
   throwIfPluginExportAborted(signal)
   const fontPolicy = options.applyFontPolicy
@@ -208,14 +263,75 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
     : { manifest: resolvedFontManifest, warnings: [] }
   throwIfPluginExportAborted(signal)
   updateActiveAppPluginExportStage('compiling')
-  const compiled = await dependencies.compile(
-    await options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest }),
-    signal
-  )
+  let sceneVersion = editor.state.sceneVersion
+  let compiled: CompilerOutput
+  try {
+    const compilerInput = await options.createCompilerInput({
+      editor,
+      pageIds,
+      fontManifest: fontPolicy.manifest
+    })
+    if (editor.graph !== graph) throw new Error('Document changed during source export')
+    sceneVersion = editor.state.sceneVersion
+    compiled = await dependencies.compile(compilerInput, signal)
+  } catch (error) {
+    if (editor.graph === graph && !signal?.aborted) {
+      const report = inspectExportReadiness(graph, sourceProjectExportRoots(graph, pageIds), {
+        format: options.compilerTargetName ?? 'source',
+        sceneVersion: editor.state.sceneVersion
+      })
+      addBlockingCompilerIssue(
+        report,
+        'compiler-failed',
+        'Source preparation failed. Review the export diagnostics and configuration.'
+      )
+      exportPreflightReport(graph).value = report
+    }
+    throw error
+  }
   throwIfPluginExportAborted(signal)
-  requireSourceProjectCompilerFiles(compiled, options.compilerTargetName)
 
-  const warnings = [...fontPolicy.warnings, ...compiled.warnings]
+  function requireCurrentDocument() {
+    if (editor.graph !== graph || editor.state.sceneVersion !== sceneVersion) {
+      throw new Error('Document changed during source export')
+    }
+  }
+  requireCurrentDocument()
+  const report = inspectExportReadiness(graph, sourceProjectExportRoots(graph, pageIds), {
+    format: options.compilerTargetName ?? 'source',
+    sceneVersion: editor.state.sceneVersion
+  })
+  const warnings = [
+    ...report.issues.map((issue) => ({
+      code: `export-${issue.code}`,
+      message: exportIssueMessage(issue),
+      ...(issue.nodeId ? { nodeId: issue.nodeId } : {})
+    })),
+    ...fontPolicy.warnings,
+    ...compiled.warnings
+  ]
+  report.issues.push(
+    ...[...fontPolicy.warnings, ...compiled.warnings]
+      .slice(0, MAX_SOURCE_PREFLIGHT_ISSUES)
+      .map((warning) => ({
+        code: warning.code,
+        message: warning.message,
+        nodeId: warning.nodeId,
+        severity: 'warning' as const
+      }))
+  )
+  report.truncated ||= report.issues.length > MAX_SOURCE_PREFLIGHT_ISSUES
+  report.issues = report.issues.slice(0, MAX_SOURCE_PREFLIGHT_ISSUES)
+  if (compiled.files.size === 0) {
+    addBlockingCompilerIssue(
+      report,
+      'compiler-empty-output',
+      'The compiler produced no project files. Resolve the compiler diagnostics before exporting.'
+    )
+  }
+  exportPreflightReport(graph).value = report
+  requireSourceProjectCompilerFiles(compiled, options.compilerTargetName)
+  requireExportReadiness(report)
   const compiledFiles = new Map(compiled.files)
   for (const [path, content] of fontPolicy.additionalFiles ?? []) {
     if (compiledFiles.has(path)) {
@@ -227,6 +343,7 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
   updateActiveAppPluginExportStage('archiving')
   const archive = await dependencies.archive(project, signal)
   throwIfPluginExportAborted(signal)
+  requireCurrentDocument()
   updateActiveAppPluginExportStage('saving')
   const saved = (await destination.write(archive, signal)) ?? true
   return { fileName, fileCount: project.size, warnings, saved }

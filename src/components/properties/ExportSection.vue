@@ -4,7 +4,9 @@ import { computed, onActivated, onDeactivated, ref, shallowRef, watch } from 'vu
 
 import { useExport, useI18n, useRetainedActivity } from '@open-pencil/vue'
 
+import { exportPreflightReport } from '@/app/document/export/preflight/state'
 import { useEditorStore } from '@/app/editor/active-store'
+import ExportPreflight from '@/components/properties/ExportPreflight.vue'
 import ExportScaleInput from '@/components/properties/ExportScaleInput.vue'
 import MotionAnimationExport from '@/components/properties/motion-export/MotionAnimationExport.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
@@ -37,6 +39,7 @@ const previewBlob = shallowRef<Blob | null>(null)
 const previewURL = useObjectUrl(previewBlob)
 const showPreview = ref(false)
 const exporting = ref(false)
+const preflightOpen = ref(false)
 const retainedActivity = useRetainedActivity()
 let previewVersion = 0
 
@@ -73,6 +76,9 @@ async function doExport() {
     }
     // A single file downloads directly; multiple files bundle into one zip.
     await editorStore.exportTargets(requests)
+  } catch (error) {
+    if (exportPreflightReport(editorStore.graph).value?.blockingCount) preflightOpen.value = true
+    else throw error
   } finally {
     exporting.value = false
   }
@@ -122,6 +128,11 @@ watch(previewKey, updatePreview, { flush: 'post' })
 <template>
   <PanelSection :label="panels.export" :empty="activeSettings.length === 0">
     <template #actions>
+      <ExportPreflight
+        v-model:open="preflightOpen"
+        :node-ids="targetIds"
+        :format="activeSettings[0]?.format ?? 'png'"
+      />
       <IconButton :label="panels.addExport" @click="addSetting">
         <icon-lucide-plus class="size-3.5" />
       </IconButton>
