@@ -14,7 +14,7 @@
 
 ### Added
 
-- Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Preview own-content Shader animations on WebGPU hosts with live, paused and four-layer-limit feedback while retaining editable sources and saved-frame fallbacks in HTML, React/Vue components and Lowcode exports.
+- Apply pixelation, twirl and saturation filters to the own content of static images, text and decorative containers, with parameter controls, reset, frame status and explicit retry. Preview own-content Shader animations on WebGPU hosts with live, paused and four-layer-limit feedback while retaining editable sources and saved-frame fallbacks in HTML, React/Vue components and Lowcode exports. Preserve imported image bytes when saving updated frames so edited FIG files reopen correctly.
 
 - Protect shared-room invitations with a random key in the URL fragment, retained when copying, reloading, or handing the room to the desktop app. Links without the key cannot join; ask the sharer for a new invitation.
 
@@ -171,6 +171,8 @@
   references inside variants.
 
 ### Changed
+
+- Keep native Select All, Undo and Redo commands in focused preview inputs, including shadow controls and isolated React/Vue compiler previews, while preserving canvas text editing.
 
 - Save or cancel S3 connection settings explicitly, validate required fields inline, and test replacement credentials without saving them. Retain replacement drafts after partial saves and prevent late results from changing another profile.
 - Translate Motion and Backend panel workflows, property section headings and filtering into German, Spanish, French, Italian, Japanese, Polish, Russian and Simplified Chinese, preserving technical identifiers and code examples. Clarify migration review identity and authorization bindings, custom-code draft validation and HTML head controls, and localize Stripe error-target controls and server-secret guidance.
