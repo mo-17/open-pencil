@@ -1,3 +1,4 @@
+import { previewDebugExpression } from '#compiler/adapters/preview-debug/instrument'
 import type { IREventHandler, IRStateDecl } from '#compiler/ir/types'
 
 import type { ExprAst } from '@open-pencil/lowcode'
@@ -85,7 +86,10 @@ export function emitVueStateHandler(
   const expressionAliases = new Map(aliases)
   const functional = handler.mode === 'functional'
   if (functional) expressionAliases.set('prev', '__opPrevious')
-  const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
+  const expression = previewDebugExpression(
+    scriptExpression(handler.ast, context.refNames, expressionAliases),
+    context.devMode
+  )
   const assignment = emitVueStateAssignment(
     stateName,
     expression,

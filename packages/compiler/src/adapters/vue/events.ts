@@ -2,6 +2,12 @@ import {
   emitMountedValidationCapture,
   MOUNTED_VALIDATION_COMPLETION_GUARD
 } from '#compiler/adapters/form-validation'
+import {
+  previewDebugAction,
+  previewDebugBegin,
+  previewDebugExpression,
+  previewDebugStep
+} from '#compiler/adapters/preview-debug/instrument'
 import type { IRElement, IREventHandler, IREventName, IRUpload } from '#compiler/ir/types'
 import { compact, uniq } from 'es-toolkit'
 
@@ -103,7 +109,14 @@ function controlledWritePrelude(
     prelude.push(`const __opNextValue = ${raw}`)
   }
   const write = controlledWriteStatement(controlled, context, nextValue)
-  prelude.push(numeric ? `if (__opNextNumber !== undefined) ${write}` : write)
+  const changed = previewDebugStep(context.devMode, 'state', controlled.write.name, 'changed')
+  if (numeric) {
+    prelude.push(
+      context.devMode
+        ? `if (__opNextNumber !== undefined) { ${write}; ${changed} }`
+        : `if (__opNextNumber !== undefined) ${write}`
+    )
+  } else prelude.push(context.devMode ? `${write}; ${changed}` : write)
   if (validationKey) {
     const key = vueValidationKeyBinding(context, validationKey)
     prelude.push(
@@ -320,6 +333,14 @@ function registerEventFunction(
   const params = ['__opEvent: Event', ...localParams].join(', ')
   const statements = emitHandlerList(handlers, context, handlerAliases)
   const eventLocals = [
+    ...(context.devMode && request
+      ? [
+          previewDebugBegin({
+            nodeId: request.requestKey.slice(0, request.requestKey.lastIndexOf(':')),
+            event: request.eventName
+          })
+        ]
+      : []),
     ...(context.applicationGuards
       ? ['const __opNavigationOrigin = __opRouter.currentRoute.value.fullPath']
       : []),
@@ -369,7 +390,19 @@ function emitHandlerList(
   aliases: ReadonlyMap<string, string>
 ): string[] {
   const lines: string[] = []
-  for (const handler of handlers) lines.push(...emitHandler(handler, context, aliases))
+  for (const handler of handlers) {
+    const body = emitHandler(handler, context, aliases)
+    if (!body.length) continue
+    let state: string | undefined
+    if (handler.kind === 'setState') state = handler.stateName
+    else if (handler.kind === 'setVariable') state = handler.docStateName
+    const statement =
+      body.join('; ') +
+      ';' +
+      (state ? previewDebugStep(context.devMode, 'state', state, 'changed') : '')
+    if (context.devMode) lines.push(previewDebugAction(statement, handler.kind, true))
+    else lines.push(...body)
+  }
   return lines
 }
 
@@ -395,12 +428,18 @@ function emitHandler(
       const expressionAliases = new Map(aliases)
       if (handler.mode === 'functional') {
         expressionAliases.set('prev', '__opPrevious')
-        const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
+        const expression = previewDebugExpression(
+          scriptExpression(handler.ast, context.refNames, expressionAliases),
+          context.devMode
+        )
         return [
           `{ const __opPrevious = __getDocState<${docStateTypeScript(context.docStateTypes.get(handler.docStateName))}>(${scriptJSON(handler.docStateName)}); __setDocState(${scriptJSON(handler.docStateName)}, ${expression}) }`
         ]
       }
-      const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
+      const expression = previewDebugExpression(
+        scriptExpression(handler.ast, context.refNames, expressionAliases),
+        context.devMode
+      )
       return [`__setDocState(${scriptJSON(handler.docStateName)}, ${expression})`]
     }
     case 'navigate':
@@ -464,7 +503,7 @@ function emitHandler(
       const alternate = emitHandlerList(handler.alternate ?? [], context, aliases).join('; ')
       const suffix = alternate ? ` else { ${alternate} }` : ''
       return [
-        `if (${scriptExpression(handler.condAst, context.refNames, aliases)}) { ${consequent} }${suffix}`
+        `if (${previewDebugExpression(scriptExpression(handler.condAst, context.refNames, aliases), context.devMode)}) { ${consequent} }${suffix}`
       ]
     }
     case 'toast':

@@ -8,6 +8,8 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * Phase 4 §28 — user event coverage. onChange/onFocus/onBlur emit end to end,
  * and event handlers get `$event` / `$value` locals. Controlled onChange keeps
  * the generated writer and then runs the user action chain.
+ * These source contracts cover exported apps; dev preview execution is tested
+ * separately under packages/compiler/tests/adapters/preview-debug.
  */
 describe('compile — user events (Phase 4 §28)', () => {
   test('onFocus and onBlur user handlers emit with event locals', () => {
@@ -26,7 +28,7 @@ describe('compile — user events (Phase 4 §28)', () => {
     const out = compile({
       graph,
       pageIds: [pageId],
-      options: withDefaults({ packageName: 'events' })
+      options: withDefaults({ packageName: 'events', devMode: false })
     })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain(
@@ -58,7 +60,7 @@ describe('compile — user events (Phase 4 §28)', () => {
     const out = compile({
       graph,
       pageIds: [pageId],
-      options: withDefaults({ packageName: 'events' })
+      options: withDefaults({ packageName: 'events', devMode: false })
     })
     const app = out.files.get('src/App.tsx') as string
     expect(out.warnings).toEqual([])

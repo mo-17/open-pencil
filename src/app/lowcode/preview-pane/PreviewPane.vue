@@ -83,6 +83,9 @@ import {
   syncActiveCompilerPreviewPopout
 } from './popout/session'
 import PreviewSettingsPopover from './PreviewSettingsPopover.vue'
+import { runtimeDebugCopy } from './runtime-debug/copy'
+import RuntimeDebugPanel from './runtime-debug/Panel.vue'
+import { useRuntimeDebug } from './runtime-debug/use'
 import { previewSyncDescription, previewSyncLabel } from './sync-copy'
 import SyncModeSelect from './SyncModeSelect.vue'
 import { resolvePreviewToolbarBand } from './toolbar-layout'
@@ -99,6 +102,8 @@ import { usePreviewViewport } from './viewport/use'
 const emit = defineEmits<{ close: []; 'request-expand': [complete: () => void] }>()
 const { locale } = useI18n()
 const codeMessages = useCodeMessages()
+const debugCopy = computed(() => runtimeDebugCopy(locale.value))
+const runtimeDebug = useRuntimeDebug(postIframe)
 const { embeddedVisible = true } = defineProps<{ embeddedVisible?: boolean }>()
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
@@ -393,6 +398,8 @@ const applicationPages = createApplicationPageSessionCache()
 watch(
   () => store.graph,
   () => {
+    runtimeDebug.close()
+    runtimeDebug.reset()
     lastPreviewRoute.value = null
     retainedNavigationPage = null
     applicationState.clear()
@@ -434,6 +441,7 @@ function recompilePreviewOptions(): void {
 }
 
 function resetMotionDebugForReload(): void {
+  runtimeDebug.reset()
   if (!motionDebugEnabled.value) return
   motionDebugStatus.value = 'waiting'
   motionDebugError.value = ''
@@ -834,6 +842,7 @@ function replayPreviewState(): void {
   postSelection()
   adaptation.request()
   if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: true })
+  runtimeDebug.replay()
 }
 
 let loadedBrowserFrameChannel: string | null = null
@@ -970,6 +979,8 @@ function handlePreviewContentMessage(
       pageSessionFrameAuthority
     )
   } else if (data.type === 'motionDebug') handleMotionDebugMessage(data)
+  else if (data.type === 'runtimeDebug' && adaptationFrameGraph.value === store.graph)
+    runtimeDebug.accept(data)
   else if (data.type === 'adaptation') adaptation.accept(data)
   // A WebDriver caller installs its own correlated listener before posting
   // an automation request. The application listener validates but deliberately
@@ -1036,6 +1047,14 @@ function jumpToAdaptation(nodeId: string): void {
   store.zoomToSelection()
 }
 
+function jumpToRuntimeDebug(nodeId: string): void {
+  if (!store.graph.getNode(nodeId)) return
+  const pageId = findPageIdOfNode(nodeId)
+  if (pageId && pageId !== store.state.currentPageId) store.switchPage(pageId)
+  store.select([nodeId])
+  store.zoomToSelection()
+}
+
 function consumeRequestedPreviewWidth(): void {
   const request = widthRequests.pending.value
   if (!widthRequestMounted.value || !request || getActiveEditorStore() !== widthRequestOwner) return
@@ -1085,6 +1104,7 @@ onMounted(() => {
   widthRequestMounted.value = true
 })
 onBeforeUnmount(() => {
+  runtimeDebug.close()
   expireWebPreviewWidthRequest(widthRequestOwner)
   setWebPreviewWidthAvailability(widthRequestOwner, null)
 })
@@ -1625,6 +1645,14 @@ onBeforeUnmount(() => {
                   <span class="flex-1">Motion runtime</span>
                   <span class="text-muted">{{ motionDebugEnabled ? 'On' : 'Off' }}</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  :class="moreMenuItemClass"
+                  :disabled="localBackendActive || !['react', 'vue'].includes(previewTarget)"
+                  @select="runtimeDebug.toggle"
+                >
+                  <icon-lucide-bug class="size-3.5 text-muted" />
+                  <span class="flex-1">{{ debugCopy.title }}</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator :class="moreMenuUI.separator" />
                 <DropdownMenuItem
                   :class="moreMenuItemClass"
@@ -1810,6 +1838,19 @@ onBeforeUnmount(() => {
               Motion
             </button>
           </Tip>
+          <Tip :label="debugCopy.title">
+            <button
+              type="button"
+              aria-controls="lowcode-runtime-debug"
+              :aria-pressed="runtimeDebug.open.value"
+              :disabled="localBackendActive || !['react', 'vue'].includes(previewTarget)"
+              class="h-6 rounded px-2 text-xs text-muted outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent data-[active=true]:bg-hover data-[active=true]:text-surface disabled:opacity-50"
+              :data-active="runtimeDebug.open.value"
+              @click="runtimeDebug.toggle"
+            >
+              {{ debugCopy.title }}
+            </button>
+          </Tip>
           <Tip
             :label="
               canRecompile
@@ -1986,6 +2027,17 @@ onBeforeUnmount(() => {
           </li>
         </ul>
       </section>
+      <RuntimeDebugPanel
+        v-if="runtimeDebug.open.value"
+        :entries="runtimeDebug.entries.value"
+        :recording="runtimeDebug.recording.value"
+        :dropped="runtimeDebug.dropped.value"
+        :available="adaptationAvailable && ['react', 'vue'].includes(previewTarget)"
+        @record="runtimeDebug.setRecording"
+        @clear="runtimeDebug.clear"
+        @close="runtimeDebug.close"
+        @select="jumpToRuntimeDebug"
+      />
       <section
         v-if="motionDebugEnabled"
         id="lowcode-preview-motion-debug"

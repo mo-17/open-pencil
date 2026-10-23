@@ -3,6 +3,8 @@ import * as v from 'valibot'
 
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
+import { parseRuntimeDebugBatch, type RuntimeDebugBatch } from '../runtime-debug/protocol'
+
 export const PREVIEW_FRAME_PROTOCOL = 'open-pencil-preview-v2'
 export type PreviewFrameTransport = 'window' | 'message-port'
 export const PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY = 'open-pencil:webdriver-preview-automation'
@@ -86,6 +88,12 @@ interface PreviewReadyMessage {
   type: 'ready'
 }
 
+interface PreviewRuntimeDebugMessage extends RuntimeDebugBatch {
+  source: typeof PREVIEW_SOURCE
+  channel: string
+  type: 'runtimeDebug'
+}
+
 interface PreviewRuntimeErrorMessage {
   source: typeof PREVIEW_SOURCE
   channel: string
@@ -149,6 +157,7 @@ export type PreviewInboundMessage =
   | PreviewDocStateMessage
   | PreviewPageSessionMessage
   | PreviewMotionDebugMessage
+  | PreviewRuntimeDebugMessage
   | PreviewReadyMessage
   | PreviewRuntimeErrorMessage
   | PreviewAdaptationMessage
@@ -193,6 +202,7 @@ export type PreviewEditorPayload =
   | { type: 'navigate'; route: string; replace?: boolean }
   | { type: 'theme'; theme: 'light' | 'dark' }
   | { type: 'motionDebug'; enabled: boolean }
+  | { type: 'runtimeDebug'; enabled: boolean }
   | { type: 'docState'; name: string; value: unknown }
   | { type: 'pageSession'; snapshot: PreviewPageSessionSnapshot }
   | { type: 'adaptation'; revision: number; textScale: PreviewTextScale; diagnostics: boolean }
@@ -800,6 +810,13 @@ export function parsePreviewInboundMessage(
   if (data.type === 'docState') return parseDocStateMessage(data, expectedChannel)
   if (data.type === 'pageSession') return parsePageSessionMessage(data, expectedChannel)
   if (data.type === 'motionDebug') return parseMotionDebugMessage(data, expectedChannel)
+  if (data.type === 'runtimeDebug') {
+    if (!hasExactKeys(data, ['source', 'channel', 'type', 'entries', 'dropped'])) return null
+    const batch = parseRuntimeDebugBatch({ entries: data.entries, dropped: data.dropped })
+    return batch
+      ? { source: PREVIEW_SOURCE, channel: expectedChannel, type: 'runtimeDebug', ...batch }
+      : null
+  }
   if (data.type === 'ready') return parseReadyMessage(data, expectedChannel)
   if (data.type === 'runtimeError') return parseRuntimeErrorMessage(data, expectedChannel)
   if (data.type === 'adaptation') return parseAdaptationMessage(data, expectedChannel)
@@ -862,7 +879,12 @@ function createEditorMotionMessage(
   channel: string
 ): PreviewEditorMessage | null {
   if (!hasExactKeys(data, ['type', 'enabled']) || typeof data.enabled !== 'boolean') return null
-  return { source: EDITOR_SOURCE, channel, type: 'motionDebug', enabled: data.enabled }
+  return {
+    source: EDITOR_SOURCE,
+    channel,
+    type: data.type === 'runtimeDebug' ? 'runtimeDebug' : 'motionDebug',
+    enabled: data.enabled
+  }
 }
 
 function createEditorDocStateMessage(
@@ -1005,7 +1027,8 @@ export function createPreviewEditorMessage(
   }
   if (data.type === 'navigate') return createEditorNavigateMessage(data, channel)
   if (data.type === 'theme') return createEditorThemeMessage(data, channel)
-  if (data.type === 'motionDebug') return createEditorMotionMessage(data, channel)
+  if (data.type === 'motionDebug' || data.type === 'runtimeDebug')
+    return createEditorMotionMessage(data, channel)
   if (data.type === 'docState') return createEditorDocStateMessage(data, channel)
   if (data.type === 'pageSession') return createEditorPageSessionMessage(data, channel)
   if (data.type === 'adaptation') return createEditorAdaptationMessage(data, channel)

@@ -8,6 +8,7 @@ import { reactModuleDataBinding } from '#compiler/adapters/module-data'
 import { reactModuleValueBindings } from '#compiler/adapters/module-values'
 import { reactStepperBindings } from '#compiler/adapters/navigation/stepper/bindings'
 import { reactPaginationBindings } from '#compiler/adapters/pagination/bindings'
+import { previewDebugStep } from '#compiler/adapters/preview-debug/instrument'
 import type {
   IRAttrValue,
   IRControlledInput,
@@ -421,7 +422,8 @@ function tagOpenParts(
     node.sourceId,
     requestState.overriddenAttrs,
     node.formValidationMountedOnly,
-    node.validationScopeMarker
+    node.validationScopeMarker,
+    devMode
   )
   const baseAttrsStr = joinAttrs(
     standardAttrs,
@@ -763,7 +765,8 @@ function formatAttrs(
   requestSourceId?: string,
   overriddenAttrs: ReadonlySet<string> = new Set(),
   formValidationMountedOnly = false,
-  validationScopeMarker = false
+  validationScopeMarker = false,
+  previewDebug = false
 ): string {
   const parts: string[] = []
   const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
@@ -787,7 +790,14 @@ function formatAttrs(
   if (link) parts.push(...linkAttrParts(link))
   if (controlled)
     parts.push(
-      ...controlledAttrParts(controlled, attrs, events?.onChange, validationKey, requestSourceId)
+      ...controlledAttrParts(
+        controlled,
+        attrs,
+        events?.onChange,
+        validationKey,
+        requestSourceId,
+        previewDebug
+      )
     )
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
   if (validationKey !== undefined)
@@ -798,7 +808,8 @@ function formatAttrs(
     ...eventAttrParts(events, formValidationKeys, {
       skip: eventSkipSet(controlled, validationKey),
       requestSourceId,
-      mountedOnly: formValidationMountedOnly
+      mountedOnly: formValidationMountedOnly,
+      previewDebug
     })
   )
   return parts.join(' ')
@@ -872,7 +883,8 @@ function controlledAttrParts(
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined,
   validationKey: string | undefined,
-  requestSourceId: string | undefined
+  requestSourceId: string | undefined,
+  previewDebug = false
 ): string[] {
   // §3.v4 dispatch:
   //  - type="radio" → per-option `checked={read === <opt>}`.
@@ -886,7 +898,8 @@ function controlledAttrParts(
       'radio',
       onChangeHandlers,
       validationKey,
-      requestSourceId
+      requestSourceId,
+      previewDebug
     )
   }
   if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
@@ -896,7 +909,8 @@ function controlledAttrParts(
       'checkbox-group',
       onChangeHandlers,
       validationKey,
-      requestSourceId
+      requestSourceId,
+      previewDebug
     )
   }
   if (controlled.write.targetType === 'boolean') {
@@ -907,7 +921,8 @@ function controlledAttrParts(
         controlledEventValue(controlled.write.targetType),
         onChangeHandlers,
         validationKey,
-        requestSourceId
+        requestSourceId,
+        previewDebug
       )
     ]
   }
@@ -916,7 +931,8 @@ function controlledAttrParts(
     attrs,
     onChangeHandlers,
     validationKey,
-    requestSourceId
+    requestSourceId,
+    previewDebug
   )
 }
 
@@ -926,7 +942,8 @@ function controlledOptionAttrParts(
   mode: 'radio' | 'checkbox-group',
   onChangeHandlers: IREventHandler[] | undefined,
   validationKey: string | undefined,
-  requestSourceId: string | undefined
+  requestSourceId: string | undefined,
+  previewDebug = false
 ): string[] {
   const optValue = optionValueExpression(attrs.value)
   const checked =
@@ -943,7 +960,8 @@ function controlledOptionAttrParts(
     value,
     onChangeHandlers,
     validationKey,
-    requestSourceId
+    requestSourceId,
+    previewDebug
   )
 }
 
@@ -953,11 +971,19 @@ function controlledCheckedParts(
   valueExpr: string,
   onChangeHandlers: IREventHandler[] | undefined,
   validationKey: string | undefined,
-  requestSourceId: string | undefined
+  requestSourceId: string | undefined,
+  previewDebug = false
 ): string[] {
   return [
     `checked={${checkedExpr}}`,
-    controlledOnChangeAttr(controlled, valueExpr, onChangeHandlers, validationKey, requestSourceId)
+    controlledOnChangeAttr(
+      controlled,
+      valueExpr,
+      onChangeHandlers,
+      validationKey,
+      requestSourceId,
+      previewDebug
+    )
   ]
 }
 
@@ -972,7 +998,8 @@ function controlledValueAttrParts(
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined,
   validationKey: string | undefined,
-  requestSourceId: string | undefined
+  requestSourceId: string | undefined,
+  previewDebug = false
 ): string[] {
   const parts: string[] = []
   if (controlled.write.targetType === 'number' && !('type' in attrs)) {
@@ -985,7 +1012,8 @@ function controlledValueAttrParts(
       controlledEventValue(controlled.write.targetType),
       onChangeHandlers,
       validationKey,
-      requestSourceId
+      requestSourceId,
+      previewDebug
     )
   )
   return parts
@@ -1040,7 +1068,12 @@ function numericDraftValidation(key: string, includeAsync: boolean): string {
 function eventAttrParts(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   formValidationKeys: readonly string[] | undefined,
-  options: { skip?: ReadonlySet<IREventName>; requestSourceId?: string; mountedOnly?: boolean } = {}
+  options: {
+    skip?: ReadonlySet<IREventName>
+    requestSourceId?: string
+    mountedOnly?: boolean
+    previewDebug?: boolean
+  } = {}
 ): string[] {
   const parts: string[] = []
   if (events) {
@@ -1050,10 +1083,12 @@ function eventAttrParts(
       // The wrapped onSubmit is emitted below from the same handlers.
       if (name === 'onSubmit' && formValidationKeys) continue
       parts.push(
-        `${name}={${emitEventHandler(
-          handlers,
-          eventHandlerOptions(name, eventRequestTiming(options.requestSourceId, name, handlers))
-        )}}`
+        `${name}={${emitEventHandler(handlers, {
+          ...eventHandlerOptions(name, eventRequestTiming(options.requestSourceId, name, handlers)),
+          ...(options.previewDebug && options.requestSourceId
+            ? { debug: { nodeId: options.requestSourceId, event: name } }
+            : {})
+        })}}`
       )
     }
   }
@@ -1064,7 +1099,10 @@ function eventAttrParts(
         submitHandlers,
         formValidationKeys,
         eventRequestTiming(options.requestSourceId, 'onSubmit', submitHandlers)?.requestKey,
-        options.mountedOnly
+        options.mountedOnly,
+        options.previewDebug && options.requestSourceId
+          ? { nodeId: options.requestSourceId, event: 'onSubmit' }
+          : undefined
       )}}`
     )
   }
@@ -1266,13 +1304,22 @@ function controlledOnChangeAttr(
   valueExpr: string,
   handlers: IREventHandler[] | undefined,
   validationKey: string | undefined,
-  requestSourceId: string | undefined
+  requestSourceId: string | undefined,
+  previewDebug = false
 ): string {
   const numeric = c.write.targetType === 'number'
   const write = controlledWriteCall(c, numeric ? '__opNextNumber' : valueExpr)
+  const debug =
+    previewDebug && requestSourceId ? { nodeId: requestSourceId, event: 'onChange' } : undefined
+  const changed = previewDebugStep(debug !== undefined, 'state', c.write.name, 'changed')
   const prelude = numeric
-    ? [`const __opNextNumber = ${valueExpr}`, `if (__opNextNumber !== undefined) ${write}`]
-    : [write]
+    ? [
+        `const __opNextNumber = ${valueExpr}`,
+        debug
+          ? `if (__opNextNumber !== undefined) { ${write}; ${changed} }`
+          : `if (__opNextNumber !== undefined) ${write}`
+      ]
+    : [write, ...(changed ? [changed] : [])]
   const changeValidationKey = validationKey ?? c.validationKey
   if (changeValidationKey !== undefined) {
     prelude.push(
@@ -1282,10 +1329,11 @@ function controlledOnChangeAttr(
     )
   }
   if (!handlers || handlers.length === 0) {
-    if (prelude.length === 1) return `onChange={(e) => ${write}}`
-    return `onChange={${emitEventHandler([], { prelude, forceAsync: changeValidationKey !== undefined })}}`
+    if (!debug && prelude.length === 1) return `onChange={(e) => ${write}}`
+    return `onChange={${emitEventHandler([], { debug, prelude, forceAsync: changeValidationKey !== undefined })}}`
   }
   return `onChange={${emitEventHandler(handlers, {
+    debug,
     ...eventHandlerOptions('onChange', eventRequestTiming(requestSourceId, 'onChange', handlers)),
     prelude,
     forceAsync: changeValidationKey !== undefined
@@ -1335,7 +1383,7 @@ function componentRefAttrs(
   if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
   if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
   attrs.push(...node.props.map(componentRefPropAttr))
-  const rootEvents = componentRefRootEventsAttr(node.events, node.sourceId)
+  const rootEvents = componentRefRootEventsAttr(node.events, node.sourceId, devMode)
   if (rootEvents) attrs.push(rootEvents)
   if (node.motion) {
     attrs.push(`__opMotionKey="${motionToken(node.motion)}"`)
@@ -1381,17 +1429,18 @@ function componentPrototypeProp(name: string, value: string, scoped: true | unde
 
 function componentRefRootEventsAttr(
   events: Extract<IRNode, { kind: 'componentRef' }>['events'],
-  sourceId: string
+  sourceId: string,
+  previewDebug = false
 ): string | undefined {
   if (!events) return undefined
   const entries: string[] = []
   for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
     if (handlers.length === 0) continue
     entries.push(
-      `${name}: ${emitEventHandler(
-        handlers,
-        eventHandlerOptions(name, eventRequestTiming(sourceId, name, handlers))
-      )}`
+      `${name}: ${emitEventHandler(handlers, {
+        ...eventHandlerOptions(name, eventRequestTiming(sourceId, name, handlers)),
+        ...(previewDebug ? { debug: { nodeId: sourceId, event: name } } : {})
+      })}`
     )
   }
   return entries.length > 0 ? `__opRootEvents={{ ${entries.join(', ')} }}` : undefined

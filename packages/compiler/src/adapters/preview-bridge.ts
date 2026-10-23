@@ -1,5 +1,6 @@
 /* oxlint-disable eslint/max-lines -- This builder emits one self-contained, dependency-free runtime module. */
 import { buildPreviewAdaptationRuntime } from './preview-adaptation/runtime'
+import { buildPreviewDebugRuntime } from './preview-debug/runtime'
 import {
   buildPreviewPageSessionTransport,
   buildPreviewPageSessionValidation
@@ -87,6 +88,11 @@ declare global {
     // Phase 3 §4.6 — the adapter-owned lowcode docState store, exposed by
     // the generated state module so the bridge can mirror state across peers.
     __opDocStore?: DocStore
+    __opLowcodeDebug?: {
+      begin(nodeId: string, label: string): number
+      step(trace: number, kind: 'action' | 'state', label: string, status: 'start' | 'success' | 'error' | 'changed'): void
+      expression<T>(trace: number, compute: () => T): T
+    }
     __opPageSessionStore?: OpenPencilPageSessionStore
 ${options.applicationGuards ? '    __opApplicationNavigationGuard?: OpenPencilApplicationNavigationGuard\n    __opApplicationGuardBootPending?: boolean\n' : ''}  }
 }${options.applicationGuards ? '\ndeclare global { interface OpenPencilApplicationNavigationGuard { requestRoute(route: string, replace?: boolean): Promise<boolean>; cancelPending?(): void } }\n' : ''}
@@ -127,6 +133,12 @@ interface InboundMotionDebug {
   source: typeof INBOUND_SOURCE
   channel: string
   type: 'motionDebug'
+  enabled: boolean
+}
+interface InboundRuntimeDebug {
+  source: typeof INBOUND_SOURCE
+  channel: string
+  type: 'runtimeDebug'
   enabled: boolean
 }
 interface InboundAdaptation {
@@ -188,6 +200,7 @@ type Inbound =
   | InboundDocState
   | InboundTheme
   | InboundMotionDebug
+  | InboundRuntimeDebug
   | InboundAdaptation
   | InboundPageSession
   | InboundAutomation
@@ -548,11 +561,11 @@ function parseInbound(value: unknown, channel: string): Inbound | null {
       : null
   }
   if (
-    value.type === 'motionDebug' &&
+    (value.type === 'motionDebug' || value.type === 'runtimeDebug') &&
     hasExactKeys(value, ['source', 'channel', 'type', 'enabled']) &&
     typeof value.enabled === 'boolean'
   ) {
-    return value as unknown as InboundMotionDebug
+    return value as unknown as InboundMotionDebug | InboundRuntimeDebug
   }
   if (value.type === 'automation') return parseAutomationInbound(value)
   return null
@@ -606,6 +619,8 @@ if (typeof window !== 'undefined' && frameContext && !window.__openPencilPreview
   // navigate, so the editor→iframe→editor echo loop never fires.
   let suppressOutbound = false
   let motionDebugTimer: ReturnType<typeof setInterval> | null = null
+
+${buildPreviewDebugRuntime()}
 
   function postMotionDebug(
     status: 'ready' | 'unavailable' | 'error',
@@ -745,12 +760,13 @@ if (typeof window !== 'undefined' && frameContext && !window.__openPencilPreview
   let suppressDocStateOutbound = false
 
   function wireDocStore(store: DocStore): void {
-    if (!MIRROR_DOCUMENT_STATE) return
     store.subscribe((state, prev) => {
-      if (suppressDocStateOutbound) return
+      if (suppressDocStateOutbound || (!MIRROR_DOCUMENT_STATE && !runtimeDebugEnabled)) return
       for (const name of Object.keys(state)) {
         if (state[name] !== prev[name]) {
+          runtimeDebugState(name)
           if (
+            MIRROR_DOCUMENT_STATE &&
             name.length > 0 &&
             name.length <= MAX_DOC_STATE_NAME_LENGTH &&
             validDocStateValue(state[name])
@@ -1120,6 +1136,10 @@ ${
     }
     if (data.type === 'motionDebug') {
       setMotionDebugEnabled(data.enabled === true)
+      return
+    }
+    if (data.type === 'runtimeDebug') {
+      setRuntimeDebugEnabled(data.enabled)
       return
     }
     if (data.type === 'automation') void runAutomation(data)

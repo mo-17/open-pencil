@@ -3,6 +3,13 @@ import {
   emitMountedValidationCapture,
   MOUNTED_VALIDATION_COMPLETION_GUARD
 } from '#compiler/adapters/form-validation'
+import {
+  previewDebugAction,
+  previewDebugBegin,
+  previewDebugExpression,
+  previewDebugStep,
+  type PreviewDebugEvent
+} from '#compiler/adapters/preview-debug/instrument'
 import type {
   IRAPICallHandler,
   IRConfirmHandler,
@@ -94,6 +101,7 @@ function handlersAreAsync(handlers: IREventHandler[]): boolean {
 }
 
 interface EmitEventHandlerOptions {
+  debug?: PreviewDebugEvent
   eventLocals?: boolean
   prelude?: string[]
   forceAsync?: boolean
@@ -145,6 +153,7 @@ export function emitEventHandler(
   handlers: IREventHandler[],
   options: EmitEventHandlerOptions = {}
 ): string {
+  const trace = options.debug !== undefined
   const prelude = options.prelude ?? []
   const requestKey =
     options.requestKey && handlersUseRequestGate(handlers) ? options.requestKey : undefined
@@ -153,7 +162,12 @@ export function emitEventHandler(
   const params = needsEventArg ? '(e)' : '()'
   const arrow =
     options.forceAsync || handlersAreAsync(handlers) ? `async ${params} =>` : `${params} =>`
-  if (!needsEventArg && handlers.length === 1 && SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)) {
+  if (
+    !trace &&
+    !needsEventArg &&
+    handlers.length === 1 &&
+    SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)
+  ) {
     return `${arrow} ${emitHandlerStatement(handlers[0])}`
   }
   const locals = options.eventLocals
@@ -162,15 +176,16 @@ export function emitEventHandler(
   const prefix = prelude.map((stmt) => `${stmt};`).join(' ')
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget;' : ''
   const preventDefault = options.preventDefault === true ? 'e.preventDefault();' : ''
-  const deferred = emitStatementList(handlers, motionScope)
-  const body = joinHandlerParts(scopeCapture, locals, prefix, deferred)
+  const deferred = emitStatementList(handlers, motionScope, trace)
+  const captureTrace = previewDebugBegin(options.debug)
+  const body = joinHandlerParts(scopeCapture, locals, captureTrace, prefix, deferred)
   if (requestKey !== undefined) {
     return emitRequestTimedArrow({
       arrow,
       requestKey,
       debounce: options.debounceRequest === true,
       preventDefault,
-      immediate: joinHandlerParts(scopeCapture, locals, prefix),
+      immediate: joinHandlerParts(scopeCapture, locals, captureTrace, prefix),
       body,
       deferred
     })
@@ -223,7 +238,8 @@ export function emitFormSubmitHandler(
   handlers: IREventHandler[],
   validationKeys: readonly string[],
   requestKey?: string,
-  mountedOnly = false
+  mountedOnly = false,
+  debug?: PreviewDebugEvent
 ): string {
   const arrow = 'async (e) =>'
   const ids = validationKeys.map((k) => JSON.stringify(k)).join(', ')
@@ -238,8 +254,8 @@ export function emitFormSubmitHandler(
       : '')
   const motionScope = handlersContainMotion(handlers) ? '__opMotionScope' : undefined
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget; ' : ''
-  const body = `${scopeCapture}${validationGuard}${mountedOnly ? MOUNTED_VALIDATION_COMPLETION_GUARD : ''}${
-    handlers.length > 0 ? ` ${emitStatementList(handlers, motionScope)}` : ''
+  const body = `${previewDebugBegin(debug)}${scopeCapture}${validationGuard}${mountedOnly ? MOUNTED_VALIDATION_COMPLETION_GUARD : ''}${
+    handlers.length > 0 ? ` ${emitStatementList(handlers, motionScope, debug !== undefined)}` : ''
   }`
   if (requestKey !== undefined && handlersUseRequestGate(handlers)) {
     return `${arrow} { e.preventDefault(); ${capture}await __opRunRequest(${JSON.stringify(requestKey)}, async () => { ${body} }); }`
@@ -250,13 +266,24 @@ export function emitFormSubmitHandler(
 /** Join handlers as statements: expression / `return` statements get a
  *  trailing `;`; complete blocks (try/catch, if/else) splice as-is. Shared by
  *  the top-level body and `condition`'s nested `then` / `else` branches. */
-function emitStatementList(handlers: IREventHandler[], motionScope?: string): string {
+function emitStatementList(
+  handlers: IREventHandler[],
+  motionScope?: string,
+  trace = false
+): string {
   return handlers
-    .map((h) =>
-      NEEDS_SEMICOLON.has(h.kind)
-        ? `${emitHandlerStatement(h, motionScope)};`
-        : emitHandlerStatement(h, motionScope)
-    )
+    .map((handler) => {
+      const emitted = emitHandlerStatement(handler, motionScope, trace)
+      const statement = NEEDS_SEMICOLON.has(handler.kind) ? `${emitted};` : emitted
+      let state: string | undefined
+      if (handler.kind === 'setState') state = handler.stateName
+      else if (handler.kind === 'setVariable') state = handler.docStateName
+      return previewDebugAction(
+        `${statement}${state ? previewDebugStep(trace, 'state', state, 'changed') : ''}`,
+        handler.kind,
+        trace
+      )
+    })
     .join(' ')
 }
 
@@ -267,13 +294,14 @@ function emitIfElse(
   cond: string,
   consequent: IREventHandler[],
   alternate: IREventHandler[] | undefined,
-  motionScope?: string
+  motionScope?: string,
+  trace = false
 ): string {
   const elseArm =
     alternate && alternate.length > 0
-      ? ` else { ${emitStatementList(alternate, motionScope)} }`
+      ? ` else { ${emitStatementList(alternate, motionScope, trace)} }`
       : ''
-  return `if (${cond}) { ${emitStatementList(consequent, motionScope)} }${elseArm}`
+  return `if (${previewDebugExpression(cond, trace && !cond.startsWith('await '))}) { ${emitStatementList(consequent, motionScope, trace)} }${elseArm}`
 }
 
 /** Build a `{ k: v, ... }` object-literal string from the entries whose value is
@@ -361,14 +389,14 @@ function emitStripeRedirect(
 /** Phase 3 §10 v3 / v5: emit a `confirm` handler as an `if (await __opConfirm(…))`
  *  block. Custom button labels (§10 v5) ride in an options object; a confirm
  *  with no labels stays byte-identical to the §10 v3 output. */
-function emitConfirm(h: IRConfirmHandler, motionScope?: string): string {
+function emitConfirm(h: IRConfirmHandler, motionScope?: string, trace = false): string {
   const message = emitExpression(h.ast)
   const opts = objectLiteral([
     ['confirmLabel', h.confirmLabel === undefined ? undefined : JSON.stringify(h.confirmLabel)],
     ['cancelLabel', h.cancelLabel === undefined ? undefined : JSON.stringify(h.cancelLabel)]
   ])
   const arg = opts === '' ? message : `${message}, ${opts}`
-  return emitIfElse(`await __opConfirm(${arg})`, h.consequent, h.alternate, motionScope)
+  return emitIfElse(`await __opConfirm(${arg})`, h.consequent, h.alternate, motionScope, trace)
 }
 
 /** Phase 2 §3 / §4: emit an `apiCall` handler. GET → `fetch(url)`; POST →
@@ -376,7 +404,7 @@ function emitConfirm(h: IRConfirmHandler, motionScope?: string): string {
  *  spliced verbatim inside `JSON.stringify(...)`; `h.url` is a template AST (a
  *  static URL emits as a double-quoted string, an interpolated one as a
  *  backtick template). Result goes to `setDocState`; errors are logged. */
-function emitAPICall(h: IRAPICallHandler, motionScope?: string): string {
+function emitAPICall(h: IRAPICallHandler, motionScope?: string, trace = false): string {
   const url = emitExpression(h.url)
   const fetchCall =
     h.method === 'POST'
@@ -394,9 +422,9 @@ function emitAPICall(h: IRAPICallHandler, motionScope?: string): string {
   }
   // With result branches / errorTarget: a non-2xx response is a failure (throw
   // the parsed body into the catch) so onError fires and onSuccess does not.
-  const successTail = h.onSuccess ? ` ${emitStatementList(h.onSuccess, motionScope)}` : ''
+  const successTail = h.onSuccess ? ` ${emitStatementList(h.onSuccess, motionScope, trace)}` : ''
   const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, err); ` : ''
-  const errorTail = h.onError ? ` ${emitStatementList(h.onError, motionScope)}` : ''
+  const errorTail = h.onError ? ` ${emitStatementList(h.onError, motionScope, trace)}` : ''
   return (
     `try { ` +
     `const res = await ${fetchCall}; ` +
@@ -407,14 +435,18 @@ function emitAPICall(h: IRAPICallHandler, motionScope?: string): string {
   )
 }
 
-function emitInvokeServerWorkflow(h: IRInvokeServerWorkflowHandler, motionScope?: string): string {
+function emitInvokeServerWorkflow(
+  h: IRInvokeServerWorkflowHandler,
+  motionScope?: string,
+  trace = false
+): string {
   const args = h.args
     .map((entry) => `${JSON.stringify(entry.key)}: ${emitExpression(entry.ast)}`)
     .join(', ')
   const call = `invokeServerWorkflow(${JSON.stringify(h.workflowId)}, { ${args} })`
   const invocation = h.resultName ? `const ${h.resultName} = await ${call};` : `await ${call};`
-  const success = h.onSuccess ? ` ${emitStatementList(h.onSuccess, motionScope)}` : ''
-  const failure = h.onError ? ` ${emitStatementList(h.onError, motionScope)}` : ''
+  const success = h.onSuccess ? ` ${emitStatementList(h.onSuccess, motionScope, trace)}` : ''
+  const failure = h.onError ? ` ${emitStatementList(h.onError, motionScope, trace)}` : ''
   return (
     `try { ${invocation}${success} ` +
     `} catch { console.error("Server workflow invocation failed.");${failure} }`
@@ -458,10 +490,10 @@ function isImmediateHandler(h: IREventHandler): h is IRImmediateHandler {
   return IMMEDIATE_HANDLER_KINDS.has(h.kind)
 }
 
-function emitImmediateHandler(h: IRImmediateHandler): string {
+function emitImmediateHandler(h: IRImmediateHandler, trace = false): string {
   switch (h.kind) {
     case 'setState': {
-      const inner = emitExpression(h.ast)
+      const inner = previewDebugExpression(emitExpression(h.ast), trace)
       return h.mode === 'functional'
         ? `${setterName(h.stateName)}((prev) => ${inner})`
         : `${setterName(h.stateName)}(${inner})`
@@ -471,7 +503,7 @@ function emitImmediateHandler(h: IRImmediateHandler): string {
     case 'back':
       return `await __opBack(${JSON.stringify(h.fallback)})`
     case 'setVariable': {
-      const inner = emitExpression(h.ast)
+      const inner = previewDebugExpression(emitExpression(h.ast), trace)
       return h.mode === 'functional'
         ? `setDocState(${JSON.stringify(h.docStateName)}, (prev) => ${inner})`
         : `setDocState(${JSON.stringify(h.docStateName)}, ${inner})`
@@ -487,16 +519,16 @@ function emitImmediateHandler(h: IRImmediateHandler): string {
   throw new Error(`unhandled immediate handler kind: ${JSON.stringify(exhaustive)}`)
 }
 
-function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
+function emitHandlerStatement(h: IREventHandler, motionScope?: string, trace = false): string {
   // Exhaustive switch over IREventHandler — the `never` assertion below
   // makes tsgo flag any new kind added to ir/types.ts that misses a case
   // here (the silent-drop hole Phase 0 had).
-  if (isImmediateHandler(h)) return emitImmediateHandler(h)
+  if (isImmediateHandler(h)) return emitImmediateHandler(h, trace)
   if (isMotionControlHandler(h)) return emitMotionControlHandler(h, motionScope)
-  if (h.kind === 'invokeServerWorkflow') return emitInvokeServerWorkflow(h, motionScope)
+  if (h.kind === 'invokeServerWorkflow') return emitInvokeServerWorkflow(h, motionScope, trace)
   switch (h.kind) {
     case 'apiCall':
-      return emitAPICall(h, motionScope)
+      return emitAPICall(h, motionScope, trace)
     case 'stripeCheckout':
       return emitStripeCheckout(h)
     case 'stripeCustomerPortal':
@@ -507,7 +539,7 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
     case 'backendRequest':
       return emitBackendClientEvent(h, {
         expression: emitExpression,
-        statements: (handlers) => emitStatementList(handlers, motionScope),
+        statements: (handlers) => emitStatementList(handlers, motionScope, trace),
         request: '__opBackend.backendRequest',
         auth: '__opBackend'
       })
@@ -520,7 +552,7 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
     case 'condition':
       // Phase 3 §10: `if (<cond>) { <consequent> } else { <alternate> }` over a
       // static predicate. Branches nest through the shared statement-list path.
-      return emitIfElse(emitExpression(h.condAst), h.consequent, h.alternate, motionScope)
+      return emitIfElse(emitExpression(h.condAst), h.consequent, h.alternate, motionScope, trace)
     case 'delay':
       // Phase 3 §10: timed wait. Forces the enclosing arrow async (ASYNC_KINDS).
       return `await new Promise((resolve) => setTimeout(resolve, ${h.ms}))`
@@ -531,7 +563,7 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
       // Phase 3 §10 v3 / v5: `if (await __opConfirm(<msg>[, opts])) {…} else {…}`
       // — the awaited user choice forces the enclosing arrow async (ASYNC_KINDS);
       // optional button labels ride in an options object.
-      return emitConfirm(h, motionScope)
+      return emitConfirm(h, motionScope, trace)
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)
