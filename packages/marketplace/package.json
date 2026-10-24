@@ -9,6 +9,7 @@
   "type": "module",
   "main": "./dist/index.mjs",
   "imports": {
+    "#marketplace-web/*": "./web/*.ts",
     "#marketplace/*": {
       "types": "./src/*.ts",
       "bun": "./src/*.ts",
@@ -28,7 +29,8 @@
     }
   },
   "scripts": {
-    "build": "bunx tsdown --config tsdown.config.ts"
+    "build": "bunx tsdown --config tsdown.config.ts",
+    "check:web": "tsc --noEmit -p web/tsconfig.json"
   },
   "dependencies": {
     "@open-pencil/plugin-contracts": "workspace:*",

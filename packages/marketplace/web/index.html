@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8f8f5" />
+    <meta
+      name="description"
+      content="发现适合你的 OpenPencil 插件。浏览文档分析、节点统计、样式检查与变量管理工具，在编辑器中安装并启用。"
+    />
+    <title>OpenPencil Market · 让创作多一点可能</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/mark.svg" />
+    <link rel="stylesheet" href="./assets/main.css" />
+    <script type="module" src="./assets/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#plugins">跳转到插件目录</a>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="OpenPencil Market 首页">
+          <img src="./assets/mark.svg" alt="" width="34" height="34" />
+          <span
+            >OpenPencil<span class="brand-divider">/</span
+            ><span class="brand-market">Market</span></span
+          >
+        </a>
+        <nav class="main-nav" aria-label="主导航">
+          <a class="nav-active" href="#plugins">发现插件</a>
+          <a href="#how-it-works">使用指南</a>
+        </nav>
+        <button class="button button-dark header-action" type="button" data-connect>
+          如何安装 <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero container" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-line"></span>为你的设计工作流，添一件好工具</p>
+          <h1 id="hero-title">专注创作。<br />让插件<span class="title-accent">帮一把。</span></h1>
+          <p class="hero-description">
+            从读懂文档，到梳理设计细节。<br
+              class="desktop-break"
+            />发现小而实用的工具，让每一次创作更顺手。
+          </p>
+          <a class="button button-dark hero-action" href="#plugins"
+            >探索插件 <span aria-hidden="true">↓</span></a
+          >
+          <div class="hero-note">
+            <span class="small-check" aria-hidden="true">✓</span> 开放工具 · 按需安装 ·
+            在编辑器中使用
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="art-grid"></div>
+          <div class="art-caption">A LITTLE EXTRA,<br />FOR YOUR NEXT IDEA.</div>
+          <div class="art-frame">
+            <div class="art-toolbar"><span></span><span></span><span></span><i></i></div>
+            <div class="art-canvas">
+              <div class="art-circle"></div>
+              <div class="art-block"></div>
+              <div class="art-selection"><span></span><span></span><span></span><span></span></div>
+              <div class="art-text-line"></div>
+              <div class="art-text-line art-text-short"></div>
+              <div class="art-cursor">
+                <svg viewBox="0 0 20 24"><path d="m3 2 13 12-7 1-3 7Z" /></svg><b>你的灵感</b>
+              </div>
+            </div>
+          </div>
+          <div class="art-tool art-tool-document">
+            <svg viewBox="0 0 24 24"><path d="M8 3h8l4 4v14H4V3Z M15 3v5h5 M8 12h8 M8 16h5" /></svg
+            ><span>文档洞察</span><i>↗</i>
+          </div>
+          <div class="art-tool art-tool-styles">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <circle cx="17" cy="7" r="4" />
+              <path d="m7 14 4 7H3Z" />
+              <rect x="14" y="14" width="7" height="7" rx="1" /></svg
+            ><span>设计检查</span><i>↗</i>
+          </div>
+          <div class="art-spark">✳</div>
+          <div class="art-bottom-label">YOUR CANVAS. YOUR TOOLKIT.</div>
+        </div>
+      </section>
+
+      <section class="directory container" id="plugins" aria-labelledby="directory-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">THE TOOLKIT</p>
+            <h2 id="directory-title">
+              找到你的得力助手<span id="total-count" class="total-count" hidden></span>
+            </h2>
+          </div>
+          <div id="catalog-status" class="catalog-status" role="status">
+            <span class="status-dot status-loading"></span>正在连接在线目录
+          </div>
+        </div>
+        <div class="directory-controls">
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="10.8" cy="10.8" r="6.8" />
+              <path d="m16 16 5 5" />
+            </svg>
+            <label class="sr-only" for="plugin-search">搜索插件</label>
+            <input
+              id="plugin-search"
+              type="search"
+              placeholder="搜索插件、功能或关键词…"
+              autocomplete="off"
+            />
+            <kbd aria-hidden="true">/</kbd>
+          </div>
+          <label class="sort-field" for="plugin-sort"
+            ><span>排序</span
+            ><select id="plugin-sort">
+              <option value="asc">名称 A → Z</option>
+              <option value="desc">名称 Z → A</option>
+            </select></label
+          >
+        </div>
+        <div class="filter-line">
+          <div id="category-filters" class="category-filters" role="group" aria-label="按分类筛选">
+            <button
+              type="button"
+              class="filter-chip is-active"
+              aria-pressed="true"
+              data-category=""
+            >
+              全部插件
+            </button>
+          </div>
+          <p id="result-count" class="result-count" aria-live="polite">读取目录中…</p>
+        </div>
+        <div id="plugin-grid" class="plugin-grid" aria-busy="true">
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-icon"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-icon"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+          </div>
+        </div>
+        <div id="directory-message" class="directory-message" hidden></div>
+        <p id="catalog-footnote" class="catalog-footnote" hidden></p>
+      </section>
+
+      <section class="guide container" id="how-it-works" aria-labelledby="guide-title">
+        <div class="guide-intro">
+          <p class="section-kicker">MAKE IT YOURS</p>
+          <h2 id="guide-title">发现喜欢的，<br />带回你的编辑器。</h2>
+          <p>网页上了解工具，在 OpenPencil 中安装和使用。你的工作流，由你决定。</p>
+          <button class="text-button" type="button" data-connect>
+            查看接入说明 <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+        <ol class="guide-steps">
+          <li>
+            <span class="step-number">01</span>
+            <div>
+              <h3>发现适合你的插件</h3>
+              <p>搜索功能与关键词，查看插件详情、发布者和版本。</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <div>
+              <h3>在编辑器中安装</h3>
+              <p>打开「设置 → 插件」，找到插件，确认权限后安装。</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <div>
+              <h3>启用，开始使用</h3>
+              <p>启用已安装的插件，从命令或导出器区域运行相应工具。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+      <section class="trust-strip container" aria-label="市场与安装说明">
+        <span class="trust-symbol" aria-hidden="true"
+          ><svg viewBox="0 0 24 24">
+            <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z M8 12l3 3 5-6" /></svg
+        ></span>
+        <div>
+          <h2>每次安装，都明明白白。</h2>
+          <p>目录来自签名快照；安装时由编辑器继续验证插件包，并向你展示所需权限。</p>
+        </div>
+        <a href="https://kushui.shop/v1/snapshot" target="_blank" rel="noreferrer"
+          >查看目录接口 <span aria-hidden="true">↗</span></a
+        >
+      </section>
+    </main>
+
+    <footer class="site-footer container">
+      <div class="footer-brand">
+        <img src="./assets/mark.svg" alt="" width="24" height="24" /><span>OpenPencil Market</span>
+      </div>
+      <p>小工具，让好想法走得更远。</p>
+      <a href="#hero-title">回到顶部 ↑</a>
+    </footer>
+
+    <dialog id="plugin-dialog" class="market-dialog" aria-labelledby="plugin-dialog-title">
+      <div class="dialog-header">
+        <p class="section-kicker">PLUGIN DETAILS</p>
+        <button class="icon-button" type="button" data-close-dialog aria-label="关闭插件详情">
+          ×
+        </button>
+      </div>
+      <div id="plugin-detail"></div>
+    </dialog>
+    <dialog
+      id="connect-dialog"
+      class="market-dialog connect-dialog"
+      aria-labelledby="connect-title"
+    >
+      <div class="dialog-header">
+        <p class="section-kicker">ADD TO YOUR WORKFLOW</p>
+        <button class="icon-button" type="button" data-close-dialog aria-label="关闭接入说明">
+          ×
+        </button>
+      </div>
+      <h2 id="connect-title">把好工具，带进工作流。</h2>
+      <p class="dialog-description" id="connect-description">
+        请在已接入此市场的 OpenPencil 编辑器中完成安装。
+      </p>
+      <ol class="connect-steps">
+        <li>
+          <span>1</span>
+          <div>
+            <h3>打开插件设置</h3>
+            <p>在 OpenPencil 中打开「设置 → 插件」。</p>
+          </div>
+        </li>
+        <li>
+          <span>2</span>
+          <div>
+            <h3 id="connect-search-title">搜索想要的插件</h3>
+            <p>查看发布者、版本与权限，确认后点击安装。</p>
+          </div>
+        </li>
+        <li>
+          <span>3</span>
+          <div>
+            <h3>启用并运行</h3>
+            <p>安装后启用插件，从命令或导出器区域运行工具。</p>
+          </div>
+        </li>
+      </ol>
+      <div class="connection-info">
+        <label for="market-url">市场快照地址</label>
+        <div class="copy-field">
+          <input id="market-url" readonly value="https://kushui.shop/v1/snapshot" /><button
+            class="button button-dark"
+            id="copy-market-url"
+            type="button"
+          >
+            复制地址
+          </button>
+        </div>
+        <p>
+          该地址供市场配置使用。若编辑器中没有此目录，需要使用已预置信任配置的版本，或联系编辑器维护者接入。
+        </p>
+        <p class="copy-feedback" role="status" aria-live="polite"></p>
+      </div>
+      <p id="connect-plugin-id" class="connect-plugin-id" hidden></p>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <noscript
+      ><p class="noscript">
+        此插件目录需要 JavaScript。你也可以在 OpenPencil 的「设置 → 插件」中浏览市场。
+      </p></noscript
+    >
+  </body>
+</html>

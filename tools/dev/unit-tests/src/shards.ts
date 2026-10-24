@@ -19,6 +19,7 @@ export const UNIT_TEST_GROUPS = {
     'tests/engine/ai',
     'tests/engine/docs',
     'packages/docs/tests',
+    'packages/marketplace/tests',
     'tests/engine/marketplace',
     'tests/engine/plugins',
     'packages/plugin-contracts/tests',

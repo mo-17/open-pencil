@@ -42,6 +42,7 @@ export const ROOT_MARKDOWN_ALLOWLIST = new Set([
   'SECURITY.md'
 ])
 export const PACKAGE_ALIASES: Record<string, string> = {
+  '#marketplace-web/': 'packages/marketplace/web/',
   '#core/': 'packages/core/src/',
   '#core-tests/': 'packages/core/tests/',
   '#fig/': 'packages/fig/src/',
@@ -55,6 +56,7 @@ export const PACKAGE_ALIASES: Record<string, string> = {
 }
 
 export const PACKAGE_ALIAS_OWNERS: Record<string, string> = {
+  '#marketplace-web/': 'packages/marketplace/',
   // A package's own tests mirror its source tree, so they address it by alias rather than
   // drilling up through ../../src.
   '#core/': 'packages/core/',

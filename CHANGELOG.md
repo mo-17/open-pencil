@@ -170,6 +170,8 @@
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
 - Install signed third-party plugins and accept verified updates from their package review in Settings, preserving the reviewed version, digest, signing key, and permissions. Restore installed plugins after reopening the editor and refresh the managed marketplace without resetting local plugin state.
+- Browse the standalone plugin marketplace with signed live catalog verification, search, category filters, plugin details, and editor installation guidance.
+- Open the plugin marketplace and ChatDeep from a shared product homepage while keeping existing login, downloads, and API addresses.
 - Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
 - Add explicit shared/view editor-state ownership and canvas render-state hooks as a foundation for independent same-document canvas panes.
 - Run React lowcode previews in ordinary browsers through a bounded SceneGraph Worker, a

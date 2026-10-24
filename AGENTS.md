@@ -35,7 +35,7 @@ This file holds the repository map and the rules that apply everywhere. Rules fo
 | `packages/plugin-contracts` | Data-only plugin/connector/provider schemas, signing, trust and marketplace contracts | — |
 | `packages/motion-runtime` | SSR-safe scheduler, clocks, reversible DOM projection and Vanilla/Vue lifecycle adapters | — |
 | `packages/compiler` | Frontend and backend compiler IR, adapters and verified runtime composition | — |
-| `packages/marketplace` | Portable signed package/catalog workflows | — |
+| `packages/marketplace` | Portable signed package/catalog workflows, the standalone marketplace website, and its public product portal | — |
 | `packages/backend-compiler-sidecar` | Verified local backend compiler process | — |
 | `packages/codepen-sidecar` | Verified CodePen process and protocol | — |
 | `packages/figma-motion-plugin` | Motion metadata bridge for Figma | — |

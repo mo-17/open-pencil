@@ -616,9 +616,23 @@ const submissionList = defineCommand({
   }
 })
 
+const submissionPublish = defineCommand({
+  meta: { name: 'publish', description: 'Verify and publish one approved plugin submission' },
+  args: {
+    ...storageArgs,
+    id: { type: 'positional', required: true },
+    actor: { type: 'string' }
+  },
+  async run({ args }) {
+    await withMarketplace(args, async ({ service }) =>
+      print(args.json, await service.publishSubmission(args.id, { actor: actor(args.actor) }))
+    )
+  }
+})
+
 const submission = defineCommand({
   meta: { name: 'submission', description: 'Import and inspect marketplace submissions' },
-  subCommands: { import: submissionImport, list: submissionList }
+  subCommands: { import: submissionImport, list: submissionList, publish: submissionPublish }
 })
 
 const review = defineCommand({
